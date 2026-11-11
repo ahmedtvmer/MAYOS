@@ -44,9 +44,9 @@ void main() {
 
     const AppFailureMessage connectionFailure = AppFailureMessage(
       AppFailureId.cannotReachService,
-      'Cannot reach the service. Check your connection.',
+      "You're offline. We'll retry when you're back online.",
     );
-    expect(find.text('Cannot reach the service. Check your connection.'),
+    expect(find.text("You're offline. We'll retry when you're back online."),
         findsOneWidget);
 
     await _selectArabicOnAuth(tester);
@@ -54,7 +54,7 @@ void main() {
       find.text(const MayosCopy('ar').failureMessage(connectionFailure)),
       findsOneWidget,
     );
-    expect(find.text('Cannot reach the service. Check your connection.'),
+    expect(find.text("You're offline. We'll retry when you're back online."),
         findsNothing);
 
     fake.loginNetworkFails = false;

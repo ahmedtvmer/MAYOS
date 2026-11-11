@@ -1,6 +1,7 @@
 """Build deterministic Food library rows from USDA sources and MAYOS curation."""
 
 import csv
+import math
 import re
 from pathlib import Path
 
@@ -36,6 +37,30 @@ def _text(value):
 
 def _list(value):
     return [part.strip() for part in (value or "").replace(";", "|").split("|") if part.strip()]
+
+
+def _meal_limit(fields, food_id, column):
+    raw_grams = _text(fields.get(column))
+    if not raw_grams:
+        return None
+    try:
+        grams = float(raw_grams)
+    except ValueError as error:
+        raise ValueError(f"Food curation row {food_id!r}: {column} must be a finite number > 0") from error
+    if not math.isfinite(grams) or grams <= 0:
+        raise ValueError(f"Food curation row {food_id!r}: {column} must be a finite number > 0")
+    return grams
+
+
+def _meal_limits(fields, food_id):
+    min_grams = _meal_limit(fields, food_id, "min_grams")
+    max_grams = _meal_limit(fields, food_id, "max_grams")
+    if min_grams is not None or max_grams is not None:
+        if not _list(fields.get("staple_roles")):
+            raise ValueError(f"Food curation row {food_id!r}: meal limits require Staple roles")
+    if min_grams is not None and max_grams is not None and min_grams > max_grams:
+        raise ValueError(f"Food curation row {food_id!r}: min_grams must be <= max_grams")
+    return {"min_grams": min_grams, "max_grams": max_grams}
 
 
 def _is_branded(name):
@@ -97,6 +122,8 @@ def _curated_food(source, curation, portions):
         "portions": sorted(portions.get(food_id, []), key=lambda part: (part["label"], part["grams"] or 0)),
         "portion_label": _text(fields.get("portion_label")) or None,
         "portion_grams": _number(fields.get("portion_grams")),
+        "min_grams": fields.get("min_grams"),
+        "max_grams": fields.get("max_grams"),
     }
     row.update({nutrient: _number(source.get(nutrient)) for nutrient in NUTRIENTS})
     return row
@@ -111,6 +138,7 @@ def _new_recipe(source, key):
         "aliases_en": [], "aliases_ar": [], "hidden": False,
         "staple_roles": [], "reviewed": _text(source.get("reviewed")).casefold() == "true",
         "portions": [], "portion_label": None, "portion_grams": None,
+        "min_grams": None, "max_grams": None,
         "ingredients": [],
     }
 
@@ -179,6 +207,7 @@ def build_food_library(
         food_id = _text(row["id"])
         if food_id in curation:
             raise ValueError(f"Duplicate food curation id {food_id!r}")
+        row.update(_meal_limits(row, food_id))
         curation[food_id] = row
     portions_by_id = {}
     for portion in portions:

@@ -36,6 +36,7 @@ FIXED_NOW = datetime(2026, 9, 26, 12, 0, tzinfo=UTC)
 
 CLIENT_A = "11111111-1111-4111-8111-111111111111"
 CLIENT_B = "22222222-2222-4222-8222-222222222222"
+CLIENT_C = "33333333-3333-4333-8333-333333333333"
 
 
 # --------------------------------------------------------------------------
@@ -349,6 +350,52 @@ def _prepare_player(client, db, username="alice"):
     return headers, db.ledger.get_active_program().version
 
 
+def _prepare_test_set_player(client, db, *, working_rir=1):
+    headers, _ = _prepare_player(client, db)
+    program = db.ledger.get_active_program().model_dump()
+    set_groups = [
+        {"sets": 1, "reps_min": 5, "reps_max": 8, "target_rir": 3},
+        {"sets": 2, "reps_min": 5, "reps_max": 8, "target_rir": working_rir},
+    ]
+    bench = next(
+        exercise
+        for day in program["days"]
+        for exercise in day["exercises"]
+        if exercise["exercise_id"] == "bp"
+    )
+    bench["set_groups"] = set_groups
+    program["program_rationale"] = {
+        "days": [{
+            "day_order": 1,
+            "exercises": [{
+                "exercise_id": "bp",
+                "rationale": {
+                    "prescription": {
+                        "rir": {
+                            "code": "rir.test_set_rule",
+                            "params": {"test_set_count": 1},
+                        }
+                    }
+                },
+            }],
+        }]
+    }
+    db.ledger.save_training_program(program)
+    exercise = {**_exercise_payload("bp", "Bench Press"), "set_groups": set_groups}
+    return headers, db.ledger.get_active_program().version, exercise
+
+
+def _test_set_session(exercise, test_weight, working_rpe, test_rpe=7.0):
+    return [{
+        "exercise": exercise,
+        "sets": [
+            {"weight_kg": test_weight, "reps": 8, "rpe": test_rpe},
+            {"weight_kg": 90.0, "reps": 5, "rpe": working_rpe},
+            {"weight_kg": 90.0, "reps": 5, "rpe": working_rpe},
+        ],
+    }]
+
+
 def _commit(client, headers, version, sets, *, client_session_id, performed_date, captured_at):
     resp = client.post(
         "/workouts/sessions",
@@ -447,6 +494,79 @@ def test_commit_accepts_and_persists_a_mix_of_rated_and_unrated_sets(api):
     target = next(t for t in prescription.json()["targets"] if t["exercise_id"] == "bp")
     assert target["last_perf"][-1]["rpe"] is None
     assert target["projection"]["status"] in {"LOAD_MAINTAINED", "PROGRESSION_UP"}
+
+
+@pytest.mark.parametrize(
+    ("test_rpe", "working_rpe", "expected_projection"),
+    [
+        (7.0, 9.0, "LOAD_MAINTAINED"),
+        (10.0, 9.0, "LOAD_MAINTAINED"),
+        (7.0, 7.0, "DYNAMIC_UPSCALE"),
+    ],
+)
+def test_working_group_progression_ignores_test_set(
+    api, test_rpe, working_rpe, expected_projection
+):
+    client, db = api
+    headers, version, exercise = _prepare_test_set_player(client, db)
+
+    _commit(
+        client, headers, version, _test_set_session(exercise, 105.0, 9.0),
+        client_session_id=CLIENT_A, performed_date="2026-09-24", captured_at="2026-09-24T11:00:00+00:00",
+    )
+    outcome = _commit(
+        client, headers, version,
+        _test_set_session(exercise, 100.0, working_rpe, test_rpe=test_rpe),
+        client_session_id=CLIENT_B, performed_date="2026-09-25", captured_at="2026-09-25T11:00:00+00:00",
+    )
+
+    summary = outcome["exercise_summaries"][0]
+    assert summary["top_load"] == 90.0
+    assert summary["top_rpe"] == working_rpe
+    assert summary["load_delta"] == 0.0
+    assert summary["projection_status"] == expected_projection
+    if expected_projection == "LOAD_MAINTAINED":
+        assert summary["action"] == "hold"
+        assert summary["status_badge"] == "CONSOLIDATING"
+
+
+def test_test_set_without_working_sets_has_no_load_target(api):
+    client, db = api
+    headers, version, exercise = _prepare_test_set_player(client, db)
+    outcome = _commit(
+        client, headers, version,
+        [{
+            "exercise": exercise,
+            "sets": [{"weight_kg": 100.0, "reps": 8, "rpe": 7.0}],
+        }],
+        client_session_id=CLIENT_A,
+        performed_date="2026-09-25",
+        captured_at="2026-09-25T11:00:00+00:00",
+    )
+
+    summary = outcome["exercise_summaries"][0]
+    assert summary["action"] == "hold"
+    assert summary["projection_status"] == "LOAD_MAINTAINED"
+    assert summary["target_text"] == ""
+
+
+def test_working_group_rpe_10_still_triggers_the_overshoot_detector(api):
+    client, db = api
+    headers, version, exercise = _prepare_test_set_player(client, db, working_rir=2)
+    _commit(
+        client, headers, version, _test_set_session(exercise, 80.0, 9.0),
+        client_session_id=CLIENT_A, performed_date="2026-09-24", captured_at="2026-09-24T11:00:00+00:00",
+    )
+
+    outcome = _commit(
+        client, headers, version, _test_set_session(exercise, 100.0, 10.0),
+        client_session_id=CLIENT_C, performed_date="2026-09-25", captured_at="2026-09-25T11:00:00+00:00",
+    )
+
+    summary = outcome["exercise_summaries"][0]
+    assert summary["action"] == "deload"
+    assert summary["status_badge"] == "OVERSHOOT"
+    assert summary["projection_status"] == "RPE_OVERSHOOT_DELOAD"
 
 
 def test_a_rated_rpe_10_top_set_still_opens_a_regression_alert():

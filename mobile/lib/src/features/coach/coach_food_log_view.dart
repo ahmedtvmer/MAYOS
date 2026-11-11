@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api_client.dart';
+import '../../core/refetch_on_reconnect.dart';
 import '../../core/coach_food_log_models.dart';
 import '../../core/connectivity_message.dart';
 import '../../core/display_language/coach_food_log_copy.dart';
@@ -16,7 +17,11 @@ class CoachFoodLogView extends ConsumerStatefulWidget {
   ConsumerState<CoachFoodLogView> createState() => _CoachFoodLogViewState();
 }
 
-class _CoachFoodLogViewState extends ConsumerState<CoachFoodLogView> {
+class _CoachFoodLogViewState extends ConsumerState<CoachFoodLogView>
+    with RefetchOnReconnect<CoachFoodLogView> {
+  @override
+  Future<void> refreshAfterReconnect() => _load(_selectedDate);
+
   static final DateTime _firstDate = DateTime(1);
   CoachFoodLogDay? _day;
   DateTime? _selectedDate;

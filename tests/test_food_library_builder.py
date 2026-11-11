@@ -33,6 +33,7 @@ def test_builder_applies_defaults_overrides_aliases_and_recipe_yield(tmp_path):
     rows = build_food_library(foods, portions, curation, recipes)
     assert rows == build_food_library(foods, portions, curation, recipes)
     assert rows[0]['hidden'] is False
+    assert rows[0]['min_grams'] is None and rows[0]['max_grams'] is None
     assert rows[0]['fiber_g'] is None and rows[0]['sodium_mg'] is None
     assert rows[2]['aliases_ar'] == ['رز', 'أرز أبيض']
     recipe = next(row for row in rows if row['id'] == 'mayos:koshari')

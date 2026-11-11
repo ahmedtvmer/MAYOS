@@ -595,7 +595,7 @@ def test_program_edit_http_preview_adds_and_raises_then_active_program_reads_it(
     from agent.player_tools import build_player_read_tools
     tools, _ = build_player_read_tools(db.ledger)
     program_tool = next(tool for tool in tools if tool.name == "get_active_program")
-    tool_result = program_tool.invoke({})
+    tool_result = program_tool.invoke({"exercise_id": "ohp"})
     assert "Overhead Press" in str(tool_result)
 
 

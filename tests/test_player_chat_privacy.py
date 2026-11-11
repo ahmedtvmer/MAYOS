@@ -25,6 +25,7 @@ from fastapi.testclient import TestClient
 from agent import assistant_graph
 from agent import player_prompt
 from agent import player_tools
+from agent.chat_markers import SessionPointerFacts, format_session_pointer
 from agent.ProgramState import (
     GeneratedProgramSchema, ProgramDaySchema, ProgramExerciseSchema,
     ProgramSetGroupSchema, PersistedProgramSchema, PersistedProgramDaySchema,
@@ -32,7 +33,9 @@ from agent.ProgramState import (
 )
 from agent import program_generator, program_rules
 from agent.focus_muscles import FOCUS_REVIEW_MUSCLES
+from agent.program_prescription import MAX_PROGRAM_WEEKS
 from core.weak_points import WEAK_POINT_MUSCLES
+from core.movement_restrictions import MOVEMENT_RESTRICTIONS
 from database.database_manager import DatabaseManager
 from service import coach as coach_service
 from service import workouts as workouts_service
@@ -645,6 +648,75 @@ def test_player_model_input_excludes_identifying_fields(api, monkeypatch):
     assert "secretpineapple" not in rendered
 
 
+@pytest.mark.parametrize("message_count", [5, 6, 7, 10, 12])
+@pytest.mark.parametrize(
+    ("language", "filler", "question"),
+    [
+        ("en", "x", "How should I cue my bench?"),
+        ("ar", "ش", "إزاي أظبط تكنيك البنش؟"),
+    ],
+)
+def test_chat_turn_keeps_recent_six_full_and_trims_only_older_assistant_replies(
+    api, monkeypatch, message_count, language, filler, question
+):
+    # Cover short history, the 6/7 boundary, and the 10-message window; old
+    # replies below/at/above 600 characters must count characters, not bytes.
+    _force_free_form_coaching_intent(monkeypatch)
+    client, db = api
+    username = "history-trimming"
+    headers = _authed(_register(client, username)["access_token"])
+    short_reply = "Short: " + filler * 592
+    exact_reply = "Exact: " + filler * 593
+    long_reply = "Older: " + filler * 900
+    old_user = "Old user: " + filler * 900
+    recent_reply = "Recent: " + filler * 900
+    recent_user = "Recent user: " + filler * 900
+    # Each entry supplies saved text and the independently expected model text.
+    history = [
+        ("user", "Outside user", "Outside user"),
+        ("assistant", "Outside answer", "Outside answer"),
+        ("assistant", short_reply, short_reply),
+        ("user", old_user, old_user),
+        ("assistant", exact_reply, exact_reply),
+        ("assistant", long_reply, long_reply[:600]),
+        ("assistant", recent_reply, recent_reply),
+        ("user", recent_user, recent_user),
+        ("assistant", recent_reply + " second", recent_reply + " second"),
+        ("user", recent_user + " second", recent_user + " second"),
+        ("assistant", recent_reply + " third", recent_reply + " third"),
+    ][-(message_count - 1):]
+    pointer = format_session_pointer(SessionPointerFacts(
+        display_language=language, day_name="Full A", performed_date="2026-11-01",
+        total_working_sets=3, total_tonnage_kg=150.0, readiness=4,
+    ))
+    with db.open_ledger(username) as ledger:
+        for role, saved_text, _expected in history:
+            ledger.add_chat_message(role, saved_text)
+        ledger.add_chat_message("assistant", pointer)
+    model = ScriptedChatModel(["Keep your movement controlled."])
+    monkeypatch.setattr(assistant_graph, "llm", model)
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers, json={"content": question}
+    ) as response:
+        response.read()
+        assert response.status_code == 200
+
+    messages = model.calls[-1]["messages"]
+    expected = [(role, expected_text) for role, _saved, expected_text in history]
+    expected.append(("user", question))
+    assert [
+        (player_prompt.message_role(message), message.content)
+        for message in messages[1:]
+    ] == expected[-10:]
+    assert pointer not in "\n".join(str(message.content) for message in messages)
+    saved_history = client.get("/chat/history", headers=headers).json()
+    assert [(row["role"], row["content"]) for row in saved_history[:-2]] == [
+        *((role, saved_text) for role, saved_text, _expected in history),
+        ("assistant", pointer),
+    ]
+
+
 def test_tool_bound_chat_fetches_profile_and_program_only_after_parallel_calls(
     api, monkeypatch, caplog
 ):
@@ -697,11 +769,11 @@ def test_tool_bound_chat_fetches_profile_and_program_only_after_parallel_calls(
         [
             ToolCallsTurn(
                 calls=[
-                    {"name": "get_player_profile", "args": {}, "id": "profile-call"},
+                    {"name": "get_player_profile", "args": {"sections": ["Goals", "Training setup", "Limitations", "Recovery"]}, "id": "profile-call"},
                     {"name": "get_active_program", "args": {}, "id": "program-call"},
                 ]
             ),
-            "Your goal and training age are recorded. Leg Day includes Squat.",
+            "Your goal and training age are recorded. Leg Day trains quads.",
         ],
         chunk_size=14,
     )
@@ -711,12 +783,12 @@ def test_tool_bound_chat_fetches_profile_and_program_only_after_parallel_calls(
         "POST",
         "/chat/messages",
         headers=headers,
-        json={"content": "What do you know about my profile and program?"},
+        json={"content": "What do you know about my profile?"},
     ) as response:
         body = response.read().decode("utf-8")
         assert response.status_code == 200
 
-    assert _done_content(body) == "Your goal and training age are recorded. Leg Day includes Squat."
+    assert _done_content(body) == "Your goal and training age are recorded. Leg Day trains quads."
     assert [name for name in model.calls[0]["tools"]] == [
         "get_player_profile",
         "get_active_program",
@@ -724,8 +796,8 @@ def test_tool_bound_chat_fetches_profile_and_program_only_after_parallel_calls(
         "get_player_weight_trend",
         "get_player_nutrition",
         "get_player_food_log",
-        "get_player_injuries",
         "get_assistant_preferences",
+        "search_chat_history",
     ]
     first_payload = "\n".join(
         str(getattr(message, "content", message)) for message in model.calls[0]["messages"]
@@ -742,7 +814,8 @@ def test_tool_bound_chat_fetches_profile_and_program_only_after_parallel_calls(
     assert "PROFILE_LONG_GOAL_PRIVATE" in combined_results
     assert "PROFILE_LIMITATION_PRIVATE" in combined_results
     assert "PROFILE_STRESS_PRIVATE" in combined_results
-    assert "Leg Day" in combined_results and "Squat" in combined_results
+    assert "Leg Day" in combined_results and "quads" in combined_results
+    assert "Squat" not in combined_results
     for private_value in (
         username,
         email,
@@ -779,6 +852,196 @@ def test_tool_bound_chat_fetches_profile_and_program_only_after_parallel_calls(
         if line.startswith("data: ") and '"token"' in line
     ]
     assert len(token_frames) >= 2
+
+
+def test_chat_search_finds_old_english_and_arabic_messages_with_filters(api, monkeypatch):
+    _force_free_form_coaching_intent(monkeypatch)
+    client, db = api
+    username = "chat-history-search"
+    headers = _authed(_register(client, username)["access_token"])
+    with db.open_ledger(username) as ledger:
+        history = [
+            ("user", "I told you my shoulder hurts after overhead press.", "2026-01-05T12:00:00+00:00"),
+            ("assistant", "coachassistantnote: I suggested a lighter shoulder warm-up.", "2026-01-08T12:00:00+00:00"),
+            ("user", "training diary first January entry", "2026-01-10T12:00:00+00:00"),
+            ("user", "training diary second January entry", "2026-01-20T12:00:00+00:00"),
+            ("user", "training diary February entry", "2026-02-20T12:00:00+00:00"),
+            ("user", "أَلَمٌ في الكَتِفِ بعد الضغط", "2026-02-05T12:00:00+00:00"),
+        ]
+        for role, content, created_at in history:
+            message_id = ledger.add_chat_message(role, content)
+            ledger.conn.execute(
+                "UPDATE chat_history SET created_at = ? WHERE id = ?",
+                (created_at, message_id),
+            )
+        for index in range(9):
+            ledger.add_chat_message("user", f"Recent training note {index}")
+        # Newest message, so it sits inside the prompt's recent window (ordered by created_at).
+        ledger.add_chat_message("assistant", "RECENT_WINDOW_SECRET")
+        ledger.add_chat_message(
+            "assistant",
+            format_session_pointer(SessionPointerFacts(
+                display_language="en", day_name="POINTER_ONLY_SECRET",
+                performed_date="2026-10-31", total_working_sets=3,
+                total_tonnage_kg=150.0, readiness=4,
+            )),
+        )
+
+    model = ScriptedChatModel(
+        [
+            ToolCallsTurn(calls=[
+                {"name": "search_chat_history", "args": {
+                    "query": "shoulder hurts", "start_date": "2026-01-01",
+                    "end_date": "2026-01-31", "limit": 10,
+                }, "id": "search-english"},
+                {"name": "search_chat_history", "args": {
+                    "query": "الم", "start_date": "2026-02-01",
+                    "end_date": "2026-02-28", "limit": 10,
+                }, "id": "search-arabic"},
+                {"name": "search_chat_history", "args": {
+                    "query": "coachassistantnote",
+                }, "id": "search-assistant"},
+                {"name": "search_chat_history", "args": {
+                    "query": "training", "start_date": "2026-01-01",
+                    "end_date": "2026-01-31", "limit": 1,
+                }, "id": "search-limit"},
+                {"name": "search_chat_history", "args": {
+                    "query": "RECENT_WINDOW_SECRET",
+                }, "id": "search-recent"},
+                {"name": "search_chat_history", "args": {
+                    "query": "POINTER_ONLY_SECRET",
+                }, "id": "search-pointer"},
+                {"name": "search_chat_history", "args": {
+                    "query": "never stored search phrase",
+                }, "id": "search-empty"},
+            ]),
+            "لقيت الملاحظات القديمة اللي بتسأل عنها.",
+        ]
+    )
+    monkeypatch.setattr(assistant_graph, "llm", model)
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers,
+        json={"content": "إيه اللي قولتهولك قبل كده عن كتفي؟"},
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+
+    results = [
+        json.loads(message.content)
+        for message in model.calls[1]["messages"]
+        if getattr(message, "name", None) == "search_chat_history"
+    ]
+    assert len(results) == 7
+    assert "shoulder hurts" in results[0]["matches"][0]["content"]
+    assert results[1]["matches"][0]["content"] == "أَلَمٌ في الكَتِفِ بعد الضغط"
+    assert "coachassistantnote" in results[2]["matches"][0]["content"]
+    assert len(results[3]["matches"]) == 1
+    assert "second January entry" in results[3]["matches"][0]["content"]
+    assert results[4] == {"status": "no_matches", "matches": [], "has_more": False}
+    assert results[5] == {"status": "no_matches", "matches": [], "has_more": False}
+    assert results[6] == {"status": "no_matches", "matches": [], "has_more": False}
+    statuses = [
+        json.loads(frame.splitlines()[1].removeprefix("data: "))["status"]
+        for frame in body.split("\n\n") if frame.startswith("event: status\n")
+    ]
+    # The context router may add its own status before the search; count only the searches.
+    assert statuses.count("بدور في محادثاتك القديمة…") == 7
+
+
+def test_chat_history_search_backfills_legacy_messages_on_first_mount(api, monkeypatch):
+    _force_free_form_coaching_intent(monkeypatch)
+    client, db = api
+    username = "chat-history-migration"
+    headers = _authed(_register(client, username)["access_token"])
+    with db.open_ledger(username) as ledger:
+        ledger.conn.execute("DROP TABLE chat_history_fts")
+        ledger.conn.execute(
+            "INSERT INTO chat_history (id, role, content, created_at) "
+            "VALUES (?, 'user', ?, ?)",
+            ("legacy-search-hit", "Last month I described my shoulder recovery plan.",
+             "2026-01-01T12:00:00+00:00"),
+        )
+        for index in range(12):
+            ledger.conn.execute(
+                "INSERT INTO chat_history (id, role, content, created_at) "
+                "VALUES (?, 'user', ?, ?)",
+                (f"legacy-filler-{index}", f"Old conversation note {index}",
+                 f"2026-02-01T00:00:{index:02d}+00:00"),
+            )
+        ledger.conn.execute("PRAGMA user_version = 55")
+
+    model = ScriptedChatModel(
+        [
+            ToolCallsTurn(calls=[{
+                "name": "search_chat_history",
+                "args": {"query": "shoulder recovery"},
+                "id": "legacy-search",
+            }]),
+            "I found your earlier note about shoulder recovery.",
+        ]
+    )
+    monkeypatch.setattr(assistant_graph, "llm", model)
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers,
+        json={"content": "What did I tell you about shoulder recovery?"},
+    ) as response:
+        response.read()
+        assert response.status_code == 200
+
+    tool_result = next(
+        json.loads(message.content)
+        for message in model.calls[1]["messages"]
+        if getattr(message, "name", None) == "search_chat_history"
+    )
+    assert tool_result["matches"][0]["content"] == (
+        "Last month I described my shoulder recovery plan."
+    )
+
+
+def test_delete_chat_history_removes_old_messages_from_search(api, monkeypatch):
+    _force_free_form_coaching_intent(monkeypatch)
+    client, db = api
+    username = "chat-history-clear-search"
+    headers = _authed(_register(client, username)["access_token"])
+    with db.open_ledger(username) as ledger:
+        message_id = ledger.add_chat_message(
+            "user", "I described my old shoulder rehabilitation plan."
+        )
+        ledger.conn.execute(
+            "UPDATE chat_history SET created_at = ? WHERE id = ?",
+            ("2026-01-01T12:00:00+00:00", message_id),
+        )
+        for index in range(12):
+            ledger.add_chat_message("user", f"Old filler conversation {index}")
+    assert client.delete("/chat/history", headers=headers).status_code == 204
+
+    model = ScriptedChatModel(
+        [
+            ToolCallsTurn(calls=[{
+                "name": "search_chat_history",
+                "args": {"query": "shoulder rehabilitation"},
+                "id": "cleared-search",
+            }]),
+            "I couldn't find an older message about that.",
+        ]
+    )
+    monkeypatch.setattr(assistant_graph, "llm", model)
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers,
+        json={"content": "What did I tell you about my shoulder?"},
+    ) as response:
+        response.read()
+        assert response.status_code == 200
+
+    tool_result = next(
+        json.loads(message.content)
+        for message in model.calls[1]["messages"]
+        if getattr(message, "name", None) == "search_chat_history"
+    )
+    assert tool_result == {"status": "no_matches", "matches": [], "has_more": False}
 
 
 def test_arabic_tool_status_uses_fixed_localized_text(api, monkeypatch):
@@ -848,13 +1111,157 @@ def test_turn_without_tool_call_sends_no_profile_telemetry_or_program_data(api, 
         "get_player_weight_trend",
         "get_player_nutrition",
         "get_player_food_log",
-        "get_player_injuries",
         "get_assistant_preferences",
+        "search_chat_history",
     )
     assert "PROFILE_MUST_STAY_PRIVATE" not in payload
     assert "PROGRAM_MUST_STAY_PRIVATE" not in payload
     assert "99" not in payload
     assert "[TRAINEE CONTEXT]" not in payload
+
+
+def _run_profile_read(ledger, arguments):
+    tools, definitions = player_tools.build_player_read_tools(ledger)
+    messages, _ = player_tools.run_player_tool_calls(
+        [{"name": "get_player_profile", "args": arguments, "id": "scoped-profile"}],
+        tools=tools, definitions=definitions, language="en",
+    )
+    assert len(messages[0].content.encode("utf-8")) <= player_tools.MAX_TOOL_RESULT_BYTES
+    return json.loads(messages[0].content)
+
+
+@pytest.fixture
+def populated_profile_ledger(fresh_store):
+    ledger = fresh_store.ledger
+    ledger.upsert_player_profile({
+        "gender": "female", "age": 31, "height_cm": 165, "weight_kg": 67,
+        "target_weight_kg": 63, "current_goal": "GOAL_PRIVATE",
+        "long_term_goal": "LONG_GOAL_PRIVATE", "weekly_frequency": 3,
+        "equipment_access": "Home gym", "rep_preference": "high",
+        "training_age_years": 3, "injuries_or_limitations": "LIMITATION_TEXT_PRIVATE",
+        "movement_restrictions": ["Knee flexion"],
+        "weak_points": [{"muscle": "biceps", "source": "named"}],
+        "stress_and_sleep": "RECOVERY_PRIVATE", "proportions": "PROPORTIONS_PRIVATE",
+    })
+    ledger.create_injury_record("knee", "INJURY_RECORD_PRIVATE", status="physician_seen")
+    return ledger
+
+
+@pytest.mark.parametrize(
+    "sections,expected_profile",
+    [
+        (["Body"], {"gender": "female", "age": 31, "height_cm": 165,
+                    "weight_kg": 67, "target_weight_kg": 63}),
+        (["Goals"], {"current_goal": "GOAL_PRIVATE", "long_term_goal": "LONG_GOAL_PRIVATE"}),
+        (["Training setup"], {"weekly_frequency": 3, "equipment_access": "Home gym",
+                              "rep_preference": "high", "training_age_years": 3}),
+        (["Limitations"], {"injuries_or_limitations": "LIMITATION_TEXT_PRIVATE",
+                           "movement_restrictions": ["Knee flexion"]}),
+        (["Focus"], {"weak_points": [{"muscle": "biceps", "source": "named"}]}),
+        (["Recovery"], {"stress_and_sleep": "RECOVERY_PRIVATE"}),
+        (["Goals", "Recovery", "Goals"], {"current_goal": "GOAL_PRIVATE",
+                                            "long_term_goal": "LONG_GOAL_PRIVATE",
+                                            "stress_and_sleep": "RECOVERY_PRIVATE"}),
+    ],
+)
+def test_profile_sections_return_only_requested_fields(populated_profile_ledger, sections, expected_profile):
+    result = _run_profile_read(populated_profile_ledger, {"sections": sections})
+    assert result["status"] == "ok"
+    assert result["profile"] == expected_profile
+    assert set(result) == ({"status", "profile", "injuries"} if "Limitations" in sections
+                           else {"status", "profile"})
+    if "Limitations" in sections:
+        assert result["injuries"][0]["description"] == "INJURY_RECORD_PRIVATE"
+
+
+@pytest.mark.parametrize("arguments", [{}, {"sections": []}])
+def test_unscoped_profile_lists_sections_without_values(populated_profile_ledger, arguments):
+    result = _run_profile_read(populated_profile_ledger, arguments)
+    assert set(result) == {"status", "sections"}
+    assert result["status"] == "ok"
+    assert set(result["sections"]) == {
+        "Body", "Goals", "Training setup", "Limitations", "Focus", "Recovery",
+    }
+    assert all(isinstance(description, str) and description.strip() and "\n" not in description
+               for description in result["sections"].values())
+    for private_value in ("PRIVATE", "female", "31", "Knee flexion", "biceps", "Home gym"):
+        assert private_value not in json.dumps(result)
+
+
+@pytest.mark.parametrize("arguments", [
+    {"sections": ["Unknown"]}, {"sections": ["Body", "Unknown"]},
+    {"sections": None}, {"sections": "Body"},
+])
+def test_invalid_profile_scope_returns_unavailable_without_values(populated_profile_ledger, arguments):
+    assert _run_profile_read(populated_profile_ledger, arguments) == {"status": "unavailable"}
+
+
+@pytest.mark.parametrize(
+    "prefilled,completion,expected_age",
+    [(True, None, "not set"), (False, None, 25),
+     (True, "confirmed", 25), (True, "analytics", 25)],
+)
+def test_scoped_profile_preserves_intake_default_evidence(fresh_store, prefilled, completion, expected_age):
+    ledger = fresh_store.ledger
+    ledger.upsert_player_profile({})
+    ledger.save_intake_answer("age", 25, prefilled=prefilled)
+    if completion == "confirmed":
+        ledger.save_intake_state(status="confirmed")
+    elif completion == "analytics":
+        ledger.start_onboarding_analytics("2026-11-08T10:00:00+00:00")
+        ledger.mark_onboarding_analytics_completed("2026-11-08T10:10:00+00:00")
+    result = _run_profile_read(ledger, {"sections": ["Body"]})
+    assert result["profile"]["age"] == expected_age
+
+
+def test_large_merged_limitations_are_capped_through_tool_runner(populated_profile_ledger):
+    ledger = populated_profile_ledger
+    for index in range(4):
+        injury, _ = ledger.create_injury_record("knee", f"Record {index}: " + "إصابة " * 200)
+        ledger.create_exercise_clearance(
+            injury_id=injury["id"], exercise_id=None, exercise_name="Squat",
+            original_wording="Physician wording " * 100, verdict="cleared_with_limits",
+            note="Only as advised " * 100,
+        )
+    assert _run_profile_read(ledger, {"sections": ["Limitations"]})["status"] == "truncated"
+
+
+@pytest.mark.parametrize("question", ["How old am I?", "أنا عندي كام سنة؟"])
+def test_age_question_sends_body_without_injury_or_weak_point_data(api, monkeypatch, question):
+    _force_free_form_coaching_intent(monkeypatch)
+    client, db = api
+    headers = _authed(_register(client, "body-only-player")["access_token"])
+    with db.open_ledger("body-only-player") as ledger:
+        ledger.upsert_player_profile({
+            "age": 31, "injuries_or_limitations": "LIMITATION_TEXT_PRIVATE",
+            "movement_restrictions": ["Knee flexion"],
+            "weak_points": [{"muscle": "biceps", "source": "named"}],
+        })
+        injury, _ = ledger.create_injury_record("knee", "INJURY_RECORD_PRIVATE", status="resolved")
+        ledger.create_exercise_clearance(
+            injury_id=injury["id"], exercise_id=None, exercise_name="Squat",
+            original_wording="CLEARANCE_WORDING_PRIVATE", verdict="not_cleared",
+        )
+    model = ScriptedChatModel([
+        ToolCallsTurn(calls=[{"name": "get_player_profile", "args": {"sections": ["Body"]}, "id": "age"}]),
+        "You are 31 years old.",
+    ])
+    monkeypatch.setattr(assistant_graph, "llm", model)
+    with client.stream("POST", "/chat/messages", headers=headers, json={"content": question}) as response:
+        response.read()
+        assert response.status_code == 200
+    tool_messages = [message for call in model.calls for message in call["messages"]
+                     if getattr(message, "type", "") == "tool"]
+    assert tool_messages
+    assert json.loads(tool_messages[-1].content)["profile"]["age"] == 31
+    for call in model.calls:
+        payload = "\n".join(str(message.content) for message in call["messages"])
+        for forbidden in ("LIMITATION_TEXT_PRIVATE", "INJURY_RECORD_PRIVATE", "CLEARANCE_WORDING_PRIVATE",
+                          "biceps", "Knee flexion", "weak_points", "injuries_or_limitations"):
+            assert forbidden not in payload
+        assert "get_player_injuries" not in call["tools"]
+    assert len(tool_messages[-1].content.encode("utf-8")) <= player_tools.MAX_TOOL_RESULT_BYTES
+    assert model.calls[0]["messages"][0].content == model.calls[-1]["messages"][0].content
 
 
 def test_unset_profile_fields_return_not_set_without_invented_defaults(api, monkeypatch):
@@ -868,7 +1275,7 @@ def test_unset_profile_fields_return_not_set_without_invented_defaults(api, monk
     model = ScriptedChatModel(
         [
             ToolCallsTurn(
-                calls=[{"name": "get_player_profile", "args": {}, "id": "unset-profile"}]
+                calls=[{"name": "get_player_profile", "args": {"sections": ["Body", "Goals", "Training setup", "Limitations", "Focus", "Recovery"]}, "id": "unset-profile"}]
             ),
             "Your profile has no saved details yet.",
         ]
@@ -882,7 +1289,7 @@ def test_unset_profile_fields_return_not_set_without_invented_defaults(api, monk
         assert response.status_code == 200
 
     result = model.calls[1]["messages"][-1].content
-    assert result.count("not set") == 15
+    assert result.count("not set") == 14
     assert '"weak_points":"not set"' in result
     for invented in ("male", "hypertrophy", "25", "75", "175"):
         assert invented not in result
@@ -906,7 +1313,7 @@ def test_legacy_completed_profile_keeps_values_equal_to_storage_defaults(api, mo
     model = ScriptedChatModel(
         [
             ToolCallsTurn(
-                calls=[{"name": "get_player_profile", "args": {}, "id": "legacy-defaults"}]
+                calls=[{"name": "get_player_profile", "args": {"sections": ["Body", "Goals"]}, "id": "legacy-defaults"}]
             ),
             "Your saved values include male, age 25, 75 kg, 175 cm, and hypertrophy.",
         ]
@@ -946,7 +1353,7 @@ def test_explicit_none_limitations_answer_is_reported_as_none(api, monkeypatch):
     model = ScriptedChatModel(
         [
             ToolCallsTurn(
-                calls=[{"name": "get_player_profile", "args": {}, "id": "none-answer"}]
+                calls=[{"name": "get_player_profile", "args": {"sections": ["Limitations"]}, "id": "none-answer"}]
             ),
             "You reported no injuries or limitations.",
         ]
@@ -1136,7 +1543,7 @@ def test_partial_profile_update_does_not_expose_storage_defaults(api, monkeypatc
     model = ScriptedChatModel(
         [
             ToolCallsTurn(
-                calls=[{"name": "get_player_profile", "args": {}, "id": "partial-profile"}]
+                calls=[{"name": "get_player_profile", "args": {"sections": ["Body", "Goals", "Training setup"]}, "id": "partial-profile"}]
             ),
             "Your saved goal is strength; other profile details are not set.",
         ]
@@ -1194,7 +1601,7 @@ def test_tool_timeout_returns_unavailable_and_turn_continues(api, monkeypatch):
     client, _db = api
     headers = _authed(_register(client, "slow-profile-tool")["access_token"])
 
-    def slow_profile(_ledger):
+    def slow_profile(_ledger, _args):
         time.sleep(0.05)
         return {"status": "ok"}
 
@@ -1202,7 +1609,7 @@ def test_tool_timeout_returns_unavailable_and_turn_continues(api, monkeypatch):
         player_tools,
         "PLAYER_READ_TOOL_REGISTRY",
         tuple(
-            replace(definition, reader=slow_profile, timeout_seconds=0.005)
+            replace(definition, args_reader=slow_profile, timeout_seconds=0.005)
             if definition.name == "get_player_profile"
             else definition
             for definition in player_tools.PLAYER_READ_TOOL_REGISTRY
@@ -1242,7 +1649,7 @@ def test_oversized_tool_result_is_capped_at_four_kilobytes(api, monkeypatch):
     model = ScriptedChatModel(
         [
             ToolCallsTurn(
-                calls=[{"name": "get_player_profile", "args": {}, "id": "large-profile"}]
+                calls=[{"name": "get_player_profile", "args": {"sections": ["Limitations"]}, "id": "large-profile"}]
             ),
             "The profile result was too large to include.",
         ]
@@ -1266,15 +1673,19 @@ def test_tool_result_keeps_followup_payload_under_the_prompt_ceiling(api, monkey
     username = "prompt-ceiling-tool"
     headers = _authed(_register(client, username)["access_token"])
     with db.open_ledger(username) as ledger:
-        for _ in range(9):
+        for _ in range(4):
             ledger.add_chat_message("assistant", "Earlier answer. " + "x" * 2_900)
+        # #524 trims the first four replies to 600 chars. Enlarging the five
+        # recent replies keeps the initial prompt within 4 bytes of its old size.
+        for _ in range(5):
+            ledger.add_chat_message("assistant", "Earlier answer. " + "x" * 4_752)
         ledger.upsert_player_profile(
             {"injuries_or_limitations": "PLAYER_LIMITATION " + "knee pain " * 260}
         )
     model = ScriptedChatModel(
         [
             ToolCallsTurn(
-                calls=[{"name": "get_player_profile", "args": {}, "id": "ceiling-profile"}]
+                calls=[{"name": "get_player_profile", "args": {"sections": ["Limitations"]}, "id": "ceiling-profile"}]
             ),
             "The remaining profile details were omitted to fit this turn.",
         ]
@@ -1296,6 +1707,7 @@ def test_tool_result_keeps_followup_payload_under_the_prompt_ceiling(api, monkey
 
 
 def test_active_program_tool_returns_weekly_muscle_totals_and_scoped_day():
+    # #526 production regression: an unscoped read must answer weekly bi/tri sets.
     exercises = [
         ProgramExerciseSchema(exercise_id="curl", exercise_name="Curl", target_sets=4,
                               target_reps_min=8, target_reps_max=12, target_rpe=8,
@@ -1316,14 +1728,17 @@ def test_active_program_tool_returns_weekly_muscle_totals_and_scoped_day():
         get_active_program=lambda: program,
         volume_review_exercise_targets=lambda _ids: {"curl": "Biceps", "pushdown": "Triceps"},
     )
-    tool = next(item for item in player_tools.PLAYER_READ_TOOL_REGISTRY
+    tools, _ = player_tools.build_player_read_tools(ledger)
+    tool = next(item for item in tools
                 if item.name == "get_active_program")
-    result = tool.args_reader(ledger, player_tools.ActiveProgramArgs())
+    result = json.loads(tool.invoke({}))
     assert result["weekly_sets_by_muscle"]["biceps"] == 4
     assert result["weekly_sets_by_muscle"]["triceps"] == 3
     assert result["message"]
     assert "day_name" in result["message"]
-    scoped = tool.args_reader(ledger, player_tools.ActiveProgramArgs(day_name="pull"))
+    assert result["days"] == [{"day": "Pull", "muscles": ["biceps", "triceps", "not set"]}]
+    assert "Curl" not in json.dumps(result)
+    scoped = json.loads(tool.invoke({"day_name": "pull"}))
     assert scoped["days"][0]["day"] == "Pull"
     assert "weekly_sets_by_muscle" not in scoped
     for exercise in scoped["days"][0]["exercises"]:
@@ -1334,9 +1749,6 @@ def test_active_program_tool_returns_weekly_muscle_totals_and_scoped_day():
         {"sets": 2, "reps_min": 6, "reps_max": 8, "rir": 1.0},
     ]
     assert scoped["days"][0]["exercises"][0]["rest_seconds"] == 90
-    encoded = player_tools._encode_tool_result({**result, "days": result["days"] * 100})
-    assert len(encoded.encode("utf-8")) <= player_tools.MAX_TOOL_RESULT_BYTES
-    assert json.loads(encoded)["status"] == "summary_only"
 
 
 def test_active_program_totals_default_to_current_week_and_allow_explicit_week():
@@ -1367,10 +1779,10 @@ def test_active_program_totals_default_to_current_week_and_allow_explicit_week()
 
     current = tool.args_reader(ledger, player_tools.ActiveProgramArgs())
     assert current["weekly_sets_by_muscle"]["biceps"] == 4
-    assert current["days"][0]["w"] == 2
+    assert current["week_order"] == 2
     explicit = tool.args_reader(ledger, player_tools.ActiveProgramArgs(week_order=1))
     assert explicit["weekly_sets_by_muscle"]["biceps"] == 2
-    assert explicit["days"][0]["w"] == 1
+    assert explicit["week_order"] == 1
 
 
 def test_active_program_day_can_be_narrowed_to_one_complete_exercise():
@@ -1397,7 +1809,120 @@ def test_active_program_day_can_be_narrowed_to_one_complete_exercise():
     assert len(scoped["days"][0]["exercises"][0]["set_groups"]) == 3
 
 
-def test_active_program_summary_fallback_preserves_unmapped_muscle_totals():
+@pytest.mark.parametrize("scope,expected", [
+    ({"day_name": " pull "}, {"Pull": ["Curl", "Row", "Rear Fly"]}),
+    ({"exercise_name": " curl "}, {"Pull": ["Curl"], "Arms": ["Curl"]}),
+    ({"exercise_id": "curl-2"}, {"Arms": ["Curl"]}),
+    ({"muscle": " BICEPS "}, {"Pull": ["Curl"], "Arms": ["Curl"]}),
+    ({"muscle": "back"}, {"Pull": ["Row"]}),
+    ({"muscle": "upper back"}, {"Pull": ["Row"]}),
+    ({"muscle": "shoulders"}, {"Pull": ["Rear Fly"], "Arms": ["Lateral Raise"]}),
+    ({"muscle": "side_delts"}, {"Arms": ["Lateral Raise"]}),
+    ({"day_name": "Arms", "muscle": "biceps"}, {"Arms": ["Curl"]}),
+    ({"day_name": "Pull", "exercise_id": "curl-2"}, {}),
+    ({"muscle": "glutes"}, {}),
+    ({"exercise_name": "Not in this program"}, {}),
+])
+def test_active_program_scope_returns_only_matching_prescriptions(scope, expected):
+    program = PersistedProgramSchema(
+        program_name="Plan", split_type="Custom", weekly_frequency=2,
+        days=[
+            PersistedProgramDaySchema(day_order=order, day_name=name, exercises=[
+                PersistedProgramExerciseSchema(exercise_id=eid, exercise_name=ename, target_reps_min=8, target_reps_max=12)
+                for eid, ename in exercises
+            ])
+            for order, name, exercises in [
+                (2, "Arms", [("curl-2", "Curl"), ("pushdown", "Pushdown"), ("lateral", "Lateral Raise")]),
+                (1, "Pull", [("curl-1", "Curl"), ("row", "Row"), ("rear", "Rear Fly")]),
+            ]
+        ],
+    )
+    ledger = SimpleNamespace(
+        get_active_program=lambda: program,
+        volume_review_exercise_targets=lambda _ids: {
+            "curl-1": "Biceps", "curl-2": "Biceps", "pushdown": "Triceps",
+            "row": "Upper Back", "rear": "Rear Delts", "lateral": "Side Delts",
+        },
+    )
+    tools, _ = player_tools.build_player_read_tools(ledger)
+    tool = next(tool for tool in tools if tool.name == "get_active_program")
+
+    decoded = json.loads(tool.invoke(scope))
+
+    assert {day["day"]: [ex["name"] for ex in day["exercises"]] for day in decoded["days"]} == expected
+    assert all("sets" in ex and "rest_seconds" in ex for day in decoded["days"] for ex in day["exercises"])
+    assert "weekly_sets_by_muscle" not in decoded
+    assert [day["day"] for day in decoded["days"]] == list(expected)
+
+
+def test_active_program_overview_bounds_repeated_restriction_skips_to_selected_week():
+    skips = [
+        {"restriction": restriction, "slot": slot}
+        for restriction, rule in MOVEMENT_RESTRICTIONS.items() for slot in sorted(rule["slots"])
+    ]
+    program = PersistedProgramSchema(
+        program_name="Twelve weeks", split_type="Custom", weekly_frequency=5,
+        days=[
+            PersistedProgramDaySchema(day_order=order, week_order=week, day_name=f"Day {order}",
+                                      exercises=[PersistedProgramExerciseSchema(exercise_id="curl", exercise_name="Curl", target_reps_min=8, target_reps_max=12)])
+            for week in range(1, MAX_PROGRAM_WEEKS + 1) for order in range(5, 0, -1)
+        ],
+        program_rationale={"days": [
+            {"week_order": week, "day_order": order,
+             "skipped": skips + ([{"restriction": "Wrist loading", "slot": "first-week-only"}] if week == 1 else [])}
+            for week in range(1, MAX_PROGRAM_WEEKS + 1) for order in range(1, 6)
+        ]},
+    )
+    ledger = SimpleNamespace(
+        get_active_program=lambda: program,
+        get_program_position=lambda _program: SimpleNamespace(current_week=MAX_PROGRAM_WEEKS),
+        get_player_profile=lambda: {"movement_restrictions": list(MOVEMENT_RESTRICTIONS)},
+        volume_review_exercise_targets=lambda _ids: {"curl": "Biceps"},
+    )
+    tools, _ = player_tools.build_player_read_tools(ledger)
+    tool = next(tool for tool in tools if tool.name == "get_active_program")
+
+    encoded = tool.invoke({})
+    decoded = json.loads(encoded)
+
+    assert len(encoded.encode("utf-8")) <= player_tools.MAX_TOOL_RESULT_BYTES
+    assert decoded["status"] == "ok"
+    assert [day["day"] for day in decoded["days"]] == [f"Day {order}" for order in range(1, 6)]
+    assert decoded["movement_restrictions"] == list(MOVEMENT_RESTRICTIONS)
+    assert decoded["skipped_restricted_slots"] == {
+        restriction: sorted(rule["slots"])
+        for restriction, rule in MOVEMENT_RESTRICTIONS.items() if rule["slots"]
+    }
+    first_week = json.loads(tool.invoke({"week_order": 1}))
+    assert "first-week-only" in first_week["skipped_restricted_slots"]["Wrist loading"]
+
+
+def test_active_program_overview_and_scopes_preserve_coach_authority_fields(api):
+    _client, db = api
+    _assigned_player(api, "overview-coach-player")
+    coach_id = db.get_active_account_by_username("coach")["account_id"]
+    player_id = db.get_active_account_by_username("overview-coach-player")["account_id"]
+    with db.open_ledger("overview-coach-player") as ledger:
+        ledger.save_training_program({
+            "program_name": "Coach plan", "split_type": "Full Body", "weekly_frequency": 1,
+            "days": [_day_plan().model_dump()],
+        }, published_by_coach_account_id=coach_id)
+        tools, _ = player_tools.build_player_read_tools(ledger, db, player_id)
+        tool = next(tool for tool in tools if tool.name == "get_active_program")
+        for scope in ({}, {"day_name": "Full A"}, {"exercise_id": "sq"}, {"muscle": "quads"}):
+            decoded = json.loads(tool.invoke(scope))
+            assert decoded["program_authority"] == "coach"
+            assert decoded["coach"] == COACH_USERNAME
+            assert "auth" not in decoded
+        # The generic oversized fallback must preserve the authority field too.
+        oversized = player_tools._encode_tool_result({
+            **json.loads(tool.invoke({})), "days": [{"day": "x" * 5000}],
+        })
+        assert json.loads(oversized)["program_authority"] == "coach"
+        assert json.loads(oversized)["coach"] == COACH_USERNAME
+
+
+def test_active_program_overview_preserves_days_and_unmapped_muscles_with_long_exercise_names():
     exercises = [
         ProgramExerciseSchema(
             exercise_id=f"exercise-{index}", exercise_name=f"Exercise {index} " + "x" * 1000,
@@ -1418,8 +1943,10 @@ def test_active_program_summary_fallback_preserves_unmapped_muscle_totals():
     active_program_tool = next(tool for tool in tools if tool.name == "get_active_program")
 
     decoded = json.loads(active_program_tool.invoke({}))
-    assert decoded["status"] == "summary_only"
+    assert decoded["status"] == "ok"
     assert decoded["other_muscles"] == {"Traps": 2, "Lower Back": 2}
+    assert decoded["days"] == [{"day": "Pull", "muscles": ["Traps", "Lower Back", "not set"]}]
+    assert "Exercise 0" not in json.dumps(decoded)
 
 
 @pytest.mark.parametrize("frequency,split_id,include_focus", PROGRAM_TOOL_CASES)
@@ -1446,12 +1973,15 @@ def test_generated_programs_fit_active_program_tool_cap_and_report_arm_sets(
 
     tool = next(item for item in player_tools.PLAYER_READ_TOOL_REGISTRY
                 if item.name == "get_active_program")
-    tool_result = tool.args_reader(fresh_store.ledger, player_tools.ActiveProgramArgs())
-    encoded = player_tools._encode_tool_result(tool_result)
-    assert len(encoded.encode("utf-8")) <= player_tools.MAX_TOOL_RESULT_BYTES
-    decoded = json.loads(encoded)
-    assert decoded["status"] == "ok"
-    assert set(WEAK_POINT_MUSCLES).issubset(decoded["weekly_sets_by_muscle"])
+    first_day = program.days[0]
+    scoped = json.loads(player_tools._encode_tool_result(tool.args_reader(
+        fresh_store.ledger, player_tools.ActiveProgramArgs(day_name=first_day.day_name))))
+    assert scoped["status"] == "ok"
+    for exercise, row in zip(first_day.exercises, scoped["days"][0]["exercises"], strict=True):
+        if len({group.target_rir for group in exercise.set_groups}) > 1:
+            assert [group["rir"] for group in row["set_groups"]] == [
+                group.target_rir for group in exercise.set_groups
+            ]
 
     exercise_ids = sorted({exercise.exercise_id for day in program.days for exercise in day.exercises})
     targets = fresh_store.ledger.volume_review_exercise_targets(exercise_ids)
@@ -1468,11 +1998,44 @@ def test_generated_programs_fit_active_program_tool_cap_and_report_arm_sets(
                 target = expected_sets if groups else expected_other
                 for key in groups or [muscle]:
                     target[key] = target.get(key, 0) + program_exercise_working_sets(exercise)
-    for muscle, sets in expected_sets.items():
-        assert decoded["weekly_sets_by_muscle"][muscle] == sets
-    assert decoded["other_muscles"] == expected_other
-    assert decoded["weekly_sets_by_muscle"]["biceps"] == expected_sets["biceps"]
-    assert decoded["weekly_sets_by_muscle"]["triceps"] == expected_sets["triceps"]
+    for week_count in range(1, MAX_PROGRAM_WEEKS + 1):
+        multiweek = PersistedProgramSchema(**{
+            **program.model_dump(),
+            "days": [
+                {**day.model_dump(), "week_order": week}
+                for week in range(1, week_count + 1) for day in program.days
+            ],
+        })
+        ledger = SimpleNamespace(
+            get_active_program=lambda: multiweek,
+            get_program_position=lambda _program: SimpleNamespace(current_week=week_count),
+            volume_review_exercise_targets=fresh_store.ledger.volume_review_exercise_targets,
+            get_player_profile=fresh_store.ledger.get_player_profile,
+        )
+        tools, _ = player_tools.build_player_read_tools(ledger)
+        tool = next(tool for tool in tools if tool.name == "get_active_program")
+        for scope in ({}, {"week_order": 1}):
+            encoded = tool.invoke(scope)
+            assert len(encoded.encode("utf-8")) <= player_tools.MAX_TOOL_RESULT_BYTES
+            decoded = json.loads(encoded)
+            assert decoded["status"] == "ok"
+            assert decoded["week_order"] == scope.get("week_order", week_count)
+            assert [day["day"] for day in decoded["days"]] == [day.day_name for day in program.days]
+            assert all(set(day) == {"day", "muscles"} for day in decoded["days"])
+            for day, stored_day in zip(decoded["days"], program.days):
+                expected_muscles = set()
+                for exercise in stored_day.exercises:
+                    muscle = targets.get(exercise.exercise_id)
+                    groups = [group for group, names in FOCUS_REVIEW_MUSCLES.items()
+                              if (muscle or "").casefold() in {name.casefold() for name in names}]
+                    expected_muscles.update(groups or [muscle or "not set"])
+                assert set(day["muscles"]) == expected_muscles
+            assert set(WEAK_POINT_MUSCLES).issubset(decoded["weekly_sets_by_muscle"])
+            for muscle, sets in expected_sets.items():
+                assert decoded["weekly_sets_by_muscle"][muscle] == sets
+            assert decoded["other_muscles"] == expected_other
+            assert decoded["weekly_sets_by_muscle"]["biceps"] == expected_sets["biceps"]
+            assert decoded["weekly_sets_by_muscle"]["triceps"] == expected_sets["triceps"]
     if include_focus:
         assert expected_sets["biceps"] > 0
         assert expected_sets["triceps"] > 0
@@ -2941,7 +3504,7 @@ def test_clinical_fixed_reply_survives_any_recording_failure(api, monkeypatch):
     assert _done_content(body) == assistant_graph.CLINICAL_SAFEGUARD_RESPONSE
 
 
-def test_player_chat_reads_injuries_through_the_read_tool(api, monkeypatch):
+def test_player_chat_reads_injuries_through_limitations_section(api, monkeypatch):
     _force_free_form_coaching_intent(monkeypatch)
     client, db = api
     headers = _authed(_register(client, "injury-tool")['access_token'])
@@ -2950,7 +3513,7 @@ def test_player_chat_reads_injuries_through_the_read_tool(api, monkeypatch):
     model = ScriptedChatModel(
         [
             ToolCallsTurn(
-                calls=[{"name": "get_player_injuries", "args": {}, "id": "injury-read"}]
+                calls=[{"name": "get_player_profile", "args": {"sections": ["Limitations"]}, "id": "injury-read"}]
             ),
             "You reported knee pain during squats; its status is reported.",
         ],
@@ -2975,7 +3538,7 @@ def test_player_chat_reads_injuries_through_the_read_tool(api, monkeypatch):
         body = response.read().decode("utf-8")
         assert response.status_code == 200
     assert _done_content(body) == "I found your injury record."
-    assert "get_player_injuries" in model.calls[0]["tools"]
+    assert "get_player_injuries" not in model.calls[0]["tools"]
     tool_payload = "\n".join(
         str(getattr(message, "content", message)) for message in model.calls[1]["messages"]
     )
@@ -2983,7 +3546,7 @@ def test_player_chat_reads_injuries_through_the_read_tool(api, monkeypatch):
     assert '"status":"reported"' in tool_payload
 
 
-def test_player_injury_tool_clearances_hide_internal_ids_but_keep_player_wording(api, monkeypatch):
+def test_limitations_clearances_hide_internal_ids_but_keep_player_wording(api, monkeypatch):
     _force_free_form_coaching_intent(monkeypatch)
     client, db = api
     headers = _authed(_register(client, "injury-clearance-tool")['access_token'])
@@ -2993,6 +3556,11 @@ def test_player_injury_tool_clearances_hide_internal_ids_but_keep_player_wording
     )
     db.catalog_conn.commit()
     with db.open_ledger("injury-clearance-tool") as ledger:
+        ledger.upsert_player_profile({
+            "injuries_or_limitations": "LIMITATION_TEXT_PRIVATE",
+            "movement_restrictions": ["Knee flexion"],
+            "weak_points": [{"muscle": "biceps", "source": "named"}],
+        })
         injury, _ = ledger.create_injury_record(
             "knee", "Pain during squats", status="physician_seen"
         )
@@ -3016,7 +3584,7 @@ def test_player_injury_tool_clearances_hide_internal_ids_but_keep_player_wording
     model = ScriptedChatModel(
         [
             ToolCallsTurn(
-                calls=[{"name": "get_player_injuries", "args": {}, "id": "clearance-read"}]
+                calls=[{"name": "get_player_profile", "args": {"sections": ["Limitations"]}, "id": "clearance-read"}]
             ),
             "I found your injury and clearance notes.",
         ]
@@ -3038,6 +3606,12 @@ def test_player_injury_tool_clearances_hide_internal_ids_but_keep_player_wording
     ]
     assert len(tool_messages) == 1
     result = json.loads(tool_messages[0])
+    assert result["profile"] == {
+        "injuries_or_limitations": "LIMITATION_TEXT_PRIVATE",
+        "movement_restrictions": ["Knee flexion"],
+    }
+    assert "biceps" not in tool_messages[0]
+    assert len(tool_messages[0].encode("utf-8")) <= player_tools.MAX_TOOL_RESULT_BYTES
     clearances = result["injuries"][0]["clearances"]
     assert len(clearances) == 2
     expected_fields = {

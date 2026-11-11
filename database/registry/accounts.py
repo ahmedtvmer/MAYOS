@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 CURRENT_TOUR_VERSION = 1
-CURRENT_FEATURE_RELEASE = 5
+CURRENT_FEATURE_RELEASE = 6
 
 _ANALYTICS_ALLOWED_SQL = (
     "COALESCE((SELECT analytics_allowed FROM account_analytics_preferences "
@@ -279,6 +279,7 @@ class RegistryAccountsMixin:
             ).fetchall()
         return [str(row[0]) for row in rows]
 
+    # Also used for owner-recorded objections; retain after the legacy API is removed (#445).
     def set_account_analytics_allowed(
         self,
         account_id: str,

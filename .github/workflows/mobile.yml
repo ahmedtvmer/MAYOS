@@ -66,7 +66,7 @@ jobs:
 
       - name: Upload resolved lockfile
         if: always() && steps.mobile-changes.outputs.changed == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pubspec-lock
           path: mobile/pubspec.lock

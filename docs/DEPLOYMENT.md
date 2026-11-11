@@ -212,10 +212,29 @@ addresses remain per-address. Admin audit entries retain the full caller IP.
 
 Set `MIN_ANDROID_BUILD` to the lowest Android `versionCode` that may use the
 API. The default `0` disables the policy; malformed or negative values also
-disable it. Android requests with a lower `X-MAYOS-Build` receive HTTP 426 and
+disable it.
+Android requests with a lower `X-MAYOS-Build` receive HTTP 426 and
 the configured `ANDROID_STORE_URL`. Health and readiness checks, public account
 pages, `assetlinks.json`, `/app/version-policy`, and `/admin` are exempt.
 Requests without that build header and web clients are not rejected by this policy.
+
+**Legacy analytics preference writes (#445).** Keep `PUT /auth/analytics-preference`
+only for installed older apps while Android build 1 is still supported, so their
+old Settings switch continues to work. New Android and web builds have no switch
+and never call this endpoint. After `MIN_ANDROID_BUILD` reaches `2`, remove the
+route and `AnalyticsPreferenceIn`, along with the endpoint's compatibility tests. Until
+then, retain the committed-preference `analytics_opted_out` person-property
+update from the ADR 040 amendment of 2026-10-04. Keep the stored preference,
+`/auth/me` read path, server/client gates, and account-deletion behavior when
+removing that compatibility code. Retain the registry preference writer and
+`record_opt_out_change`: the owner's **Turn off analytics** action uses them to
+record objections received at the privacy contact address even after older
+Android builds are retired.
+
+Per-set RIR hints (#532) need Android build 2. The code default stays `0` so
+a deploy can never lock out installed apps: publish build 2 first, then the
+owner sets `MIN_ANDROID_BUILD=2` in `/opt/mayos/.env`. Deploy the web client
+with the API change.
 
 ---
 
@@ -540,7 +559,7 @@ services:
       start_period: 120s
 
   cloudflared:
-    image: cloudflare/cloudflared:latest
+    image: cloudflare/cloudflared:2026.10.7
     container_name: mayos_tunnel
     restart: unless-stopped
     command: tunnel --no-autoupdate --url http://mayos-api:8000
@@ -1418,9 +1437,9 @@ ADR 040; event contracts in [ANALYTICS.md](ANALYTICS.md). Analytics stays off
 everywhere until these keys are set, so this can be done at any time.
 
 **Privacy policy.** The live policy (`docs/PRIVACY_POLICY.md`, served at
-`/privacy`, version 1.2) names PostHog and the opt-out; keep it in step with
-ANALYTICS.md whenever what is sent changes. The served page updates with the
-next `fly deploy`.
+`/privacy`, version 1.12) names PostHog and the preserved historical opt-outs;
+keep it in step with ANALYTICS.md whenever what is sent changes. The served
+page updates with the next `fly deploy`.
 
 **1. PostHog project settings** (EU Cloud, project MAYOS):
 - Project settings → **Discard client IP data: ON**.
@@ -1647,6 +1666,9 @@ The deploy script writes the required image tag to the deploy-owned
 ### Deploy (#376)
 
 Run the deploy command from the main checkout, never from a linked git worktree.
+It fetches `origin/master` and refuses unless HEAD equals that exact commit;
+merge a branch through a PR before deploying it to production. `rollback` and
+the server-side `pull` keep their existing commit rules.
 Set `MAYOS_DEPLOY_HOST` in the owner machine's environment or the checkout's
 ignored `.env` file:
 
@@ -1664,10 +1686,11 @@ input to `/opt/mayos/app`, including `data/processed_exercises.csv` and
 mobile outputs, caches, worktrees, and secrets. It never runs `git pull` on the
 server.
 
-Docker builds `api` on the server and reuses its layer cache. The script then
-runs `compose up -d --no-deps api`, leaving the existing `cloudflared` and
-Litestream services running. It polls the API container's `/readyz` for up to
-three minutes and prints the successful response. The last three image tags
+Docker builds `api` on the server and reuses its layer cache. The script first
+runs `compose up -d --no-deps api` and polls the API container's `/readyz` for
+up to three minutes. After readiness succeeds, it also runs Compose for the
+`cloudflared` and Litestream services, applying any changed image tags. The
+last three API image tags
 are kept in `/opt/mayos/state/deploy-history.tsv`; older `mayos-api` images are
 removed while the running image is retained. After a successful deploy, the
 script also prunes Docker build cache older than 168 hours and prints `df -h /`;
@@ -1686,6 +1709,34 @@ image running and explains that Training ledgers may have migrated.
 ./deploy/deploy_server.sh status
 ```
 
+### Cloudflare Tunnel image upgrade and rollback
+
+The production connector image is pinned in `deploy/compose.server.yaml`.
+Staging's API joins the production network and uses that same connector through
+the `api-staging` alias; `deploy/compose.staging.yaml` does not run a second
+tunnel connector.
+
+To upgrade, change the connector to an exact release tag, merge the change to
+`master`, and deploy it to staging first:
+
+```bash
+./deploy/deploy_server.sh staging up
+```
+
+Check staging readiness and the staging route at `https://staging.mayos.online`.
+Staging validation exercises the API through the currently running production
+connector; it does not start a separate tunnel image. After staging passes,
+deploy the merged `master` checkout to production with the command in §14.
+Once the API is ready, the production deploy recreates `cloudflared` with the
+new pinned image. Keep `TUNNEL_TOKEN` and the Cloudflare tunnel configuration
+unchanged.
+
+To roll back the connector, restore its previous exact image tag in
+`deploy/compose.server.yaml`, merge that change to `master`, then deploy the
+merged checkout to production. The successful production deploy applies the
+previous tag to `cloudflared`; the API image rollback command does not change
+the connector tag.
+
 ### Rollback (#376)
 
 Pass a full commit SHA or an unambiguous SHA prefix for one of the last three
@@ -1696,6 +1747,72 @@ refuses the rollback. It then checks `/readyz`:
 ```bash
 ./deploy/deploy_server.sh rollback COMMIT_SHA
 ```
+
+### Staging (#672, ADR 101)
+
+Use the same `MAYOS_DEPLOY_HOST` as production, from any checkout branch
+(linked worktrees are allowed):
+
+```bash
+./deploy/deploy_server.sh staging up
+./deploy/deploy_server.sh staging status
+./deploy/deploy_server.sh staging down
+```
+
+`up` uploads this checkout to `/opt/mayos/state/staging`, builds on the server,
+and waits up to three minutes for `/readyz`. It warns about uncommitted files,
+which are included in the build. Staging uses its own `mayos-staging` Compose
+project, `mayos-api-staging` images (last two kept), lock and history. It does
+not change production containers, `/opt/mayos/app/deploy/.image.env`, production
+history or rollback state. Its API and temporary BuildKit builder are each
+capped at 1536 MB; its builder is removed after building, without pruning the
+production build cache.
+Protected data files missing from the checkout are taken from `/opt/mayos/inputs`.
+
+`status` shows whether the API is running, its commit, container start time and
+auto-stop deadline. `down` stops and removes only the staging API. A systemd
+timer stops it at the first check after four hours (checks every 15 minutes).
+Set a positive whole number `MAYOS_STAGING_TTL_HOURS` in `staging.env` before
+`up` to change that lifetime; each new `up` restarts the clock. Container
+restart is disabled. A failed readiness check leaves staging available for
+inspection until `down` or the timer stops it.
+
+Staging is at `https://staging.mayos.online`. Configure the existing Cloudflare
+tunnel route for that hostname to `http://api-staging:8000`. The production
+project is invoked with `-p mayos` and creates `mayos_default`; staging joins
+that external network with the `api-staging` alias. When staging is off, the
+hostname shows a tunnel error page. No new host port is published.
+
+One-time server setup, run by the owner after merge (not by deploy):
+
+```bash
+sudo install -d -o root -g root -m 0755 /mnt/mayos-data/staging
+if ! sudo test -e /opt/mayos/staging.env; then
+  sudo install -o root -g root -m 0600 /dev/null /opt/mayos/staging.env
+fi
+sudoedit /opt/mayos/staging.env
+```
+
+Set independent
+`JWT_SECRET` and `ANONYMOUS_ID_SECRET`, plus
+`MAYOS_STAGING_HOSTNAME=staging.mayos.online` and any API settings needed for
+the review, such as `LLM_API_KEY`. Do not copy production sign-in secrets.
+The script refuses `up` with a missing settings file or data folder; create
+them using the steps above. Preparing or copying the old staging data from
+`/mnt/mayos-data/staging-data-202611081327` is a separate owner operation.
+
+Compose fixes the staging environment, disables Litestream and Discord
+alerts, and clears `SMTP_HOST` regardless of settings-file values. Emails
+appear in `docker logs` instead of being sent:
+
+```bash
+sudo docker logs mayos-staging-api-1
+```
+
+Install the auto-stop helper and units using the shared unit installation
+steps below. Enable the timer before starting staging; no staging API is
+started by enabling it. If the queue is already installed, run just the new
+staging install lines, `daemon-reload` and the timer enable command.
 
 ### Server-pulled deploy (#590, ADR 098)
 
@@ -1754,10 +1871,14 @@ sudo install -d -o deploy -g factory -m 2770 /opt/mayos/deploy-queue/requests
 sudo install -d -o deploy -g factory -m 2750 /opt/mayos/deploy-queue/results
 sudo -u deploy git clone https://github.com/ahmedtvmer/MYOS.git /opt/mayos/src
 sudo install -D -o root -g root -m 0755 deploy/deploy_queue_runner.sh /usr/local/libexec/mayos/deploy_queue_runner.sh
+sudo install -D -o root -g root -m 0644 deploy/staging_server.bash /usr/local/libexec/mayos/staging_server.bash
 sudo install -o root -g root -m 0644 deploy/systemd/mayos-deploy-queue.path /etc/systemd/system/
 sudo install -o root -g root -m 0644 deploy/systemd/mayos-deploy-queue.service /etc/systemd/system/
+sudo install -o root -g root -m 0644 deploy/systemd/mayos-staging-autostop.timer /etc/systemd/system/
+sudo install -o root -g root -m 0644 deploy/systemd/mayos-staging-autostop.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now mayos-deploy-queue.path
+sudo systemctl enable --now mayos-staging-autostop.timer
 ```
 
 Clone the checkout before enabling the path unit: it supplies the pull script

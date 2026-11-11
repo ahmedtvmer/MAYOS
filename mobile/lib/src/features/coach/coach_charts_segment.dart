@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api_client.dart';
+import '../../core/refetch_on_reconnect.dart';
 import '../../core/connectivity_message.dart';
 import '../../core/display_language/copy_context.dart';
 import '../../core/display_language/nutrition_copy.dart';
@@ -19,7 +20,11 @@ class CoachChartsSegment extends ConsumerStatefulWidget {
   ConsumerState<CoachChartsSegment> createState() => _CoachChartsSegmentState();
 }
 
-class _CoachChartsSegmentState extends ConsumerState<CoachChartsSegment> {
+class _CoachChartsSegmentState extends ConsumerState<CoachChartsSegment>
+    with RefetchOnReconnect<CoachChartsSegment> {
+  @override
+  Future<void> refreshAfterReconnect() => _load();
+
   CoachNutritionState? _state;
   bool _failed = false;
   bool _deciding = false;

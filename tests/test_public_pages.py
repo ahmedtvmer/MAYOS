@@ -331,6 +331,20 @@ def test_privacy_page_is_public_and_cacheable(api):
     assert "the app build you last used" in response.text
 
 
+def test_privacy_page_explains_analytics_legal_basis_and_objection_contact(api, monkeypatch):
+    client, _db = api
+    monkeypatch.setenv("PRIVACY_CONTACT_EMAIL", "privacy-test@example.com")
+    body = client.get("/privacy").text
+    analytics_section = body.split("<h3>Product analytics</h3>", 1)[1].split("<h3>", 1)[0]
+    assert "legitimate interest" in analytics_section
+    assert "GDPR Art. 6(1)(f)" in analytics_section
+    assert "understanding how the app is used so we can improve it" in analytics_section
+    assert "object at any time" in analytics_section
+    assert 'href="mailto:privacy-test@example.com"' in analytics_section
+    assert "turn analytics off for your account permanently" in analytics_section
+    assert "{{PRIVACY_CONTACT}}" not in body
+
+
 def test_privacy_page_discloses_coach_access_hosted_ai_and_retention(api):
     client, _db = api
     body = client.get("/privacy").text
@@ -358,10 +372,12 @@ def test_privacy_page_discloses_coach_access_hosted_ai_and_retention(api):
     # Deletion is offered in-app and at the external URL.
     assert 'href="/account/delete-request"' in body
     assert "Settings &rarr; Profile &rarr; Delete account" in body or "Settings → Profile → Delete account" in body
-    # Analytics: the processor, what is never sent, and the opt-out are named.
+    # Analytics: the processor, minimisation, and permanent historical opt-outs.
     assert "PostHog (EU Cloud)" in body
     assert "never contain free text" in body
-    assert "turn product analytics off" in body
+    assert "turn product analytics off" not in body
+    assert "off permanently" in body
+    assert "The product-analytics setting is no longer in the app" in body
     assert "does not send product analytics" not in body
     # Coach-visible fields from the coach history/roster schemas.
     assert "time zone" in body
@@ -446,9 +462,10 @@ def test_policy_source_file_exists_and_every_section_is_served(api):
     # wraps across lines and bolds its lead-ins.
     flat = " ".join(source.split()).replace("**", "")
     from service import privacy_policy
-    assert privacy_policy.POLICY_VERSION == "1.10"
-    assert privacy_policy.POLICY_EFFECTIVE_DATE == "2026-11-07"
-    assert "Effective date: 2026-11-07 — Policy version 1.10" in body
+    assert privacy_policy.POLICY_VERSION == "1.12"
+    assert privacy_policy.POLICY_EFFECTIVE_DATE == "2026-11-09"
+    assert "Effective date: 2026-11-09 — Policy version 1.12" in body
+    assert "Germany (Contabo)" in flat and "fly.io" not in flat.lower()
     assert "This is the only email sent to you." not in flat
     for phrase in (
         "assignment you explicitly accept",

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/display_language/copy_context.dart';
 import '../../../core/api_client.dart';
+import '../../../core/refetch_on_reconnect.dart';
 import '../../../core/connectivity_message.dart';
 import '../../../core/display_language/catalog.dart';
 import '../../../core/display_language/controller.dart';
@@ -30,7 +31,11 @@ class CheckpointReviewScreen extends ConsumerStatefulWidget {
 }
 
 class _CheckpointReviewScreenState
-    extends ConsumerState<CheckpointReviewScreen> {
+    extends ConsumerState<CheckpointReviewScreen>
+    with RefetchOnReconnect<CheckpointReviewScreen> {
+  @override
+  Future<void> refreshAfterReconnect() => _retry();
+
   late Future<CheckpointReview> _reviewFuture;
 
   @override

@@ -87,6 +87,9 @@ _Avoid_: Persona, coach tone
 A free-text instruction the Player explicitly asks the assistant to remember about how they like to train. The Player can review, edit and delete these private preferences in Settings; the assistant reads them on demand, and a Coach never sees them.
 _Arabic_: تفضيل للمساعد
 
+**Profile section**:
+A named subset of the Player's saved profile facts: Body, Goals, Training setup, Limitations, Focus or Recovery. Limitations brings injury text, injury records with Exercise clearances and confirmed Movement restrictions together. The player assistant reads only requested sections; an unscoped read lists sections without personal values.
+
 **Active account**:
 An account that completed a workout or recorded a coaching action in the previous 30 days. A login alone does not make an account active.
 
@@ -217,6 +220,22 @@ _Avoid_: User database, user DB
 The player's current structured selection of training days and exercises.
 _Arabic_: برنامج تدريبي
 
+**Program overview**:
+The active Training program's selected Program week as ordered day names, the
+muscles each day trains, weekly working sets by muscle, Program authority and
+Movement restriction skips. It contains no Exercise prescriptions; those require
+a named day, Exercise or muscle scope. The selected week defaults to the Player's
+current Program week.
+
+**Context router**:
+Deterministic code that selects the Context pieces needed by a Player's chat
+question before the hosted model runs. It follows the safety and write-intent
+paths; read-only tools remain available to fetch anything it misses.
+
+**Context piece**:
+One scoped read result added to a Player chat turn as a simulated assistant tool
+call and its matching tool result. It contains facts, never system instructions.
+
 **Split**:
 The named arrangement of a Training program's training days across the week, such as Upper/Lower, Anterior/Posterior or PPL × UL, for a given number of training days. Every split includes a leg day.
 _Arabic_: تقسيمة
@@ -235,6 +254,9 @@ _Avoid_: Priority muscle, emphasis muscle
 **Program rationale**:
 The recorded reason for a Training program's Split, its day order, and each exercise's selection, position and prescription, written when generation or a later change makes that decision. The assistant explains a program from it and never invents a reason, including for a Coach's choices.
 _Avoid_: Explanation, reasoning trace
+
+**Test set**:
+The first working set of an exercise in a generated Training program, prescribed at a higher RIR than the following working sets. It counts toward weekly working sets. An exercise with only one set uses the working RIR, and deloads use the deload RIR on every set. This is an internal term, never labelled to the Player.
 
 **Program week**:
 An ordered group of Training program days. A Coach-authored Training program may contain multiple Program weeks; each week has its own ordered days. The Player advances to the next Program week only after committing every day in the current week on the active program version. Calendar dates, missed days, and Schedule pauses do not move the Player between weeks. When a new program version is published, the Player's current `(week_order, day_order)` carries forward and clamps to an existing week/day if edits removed its position. An automatic Training program has one repeating Program week.
@@ -474,6 +496,7 @@ _Arabic_: وجبة
 
 **Staple food**:
 A food MAYOS curates as a default choice for a meal role, such as eggs or ful for a breakfast protein. Each role has an ordered list; the first one the Player's Food restrictions allow is suggested and the next ones are its swaps. It is the food counterpart of a Staple exercise.
+Optional per-food minimum and maximum grams per meal override the meal generator's per-category defaults (#682).
 _Arabic_: طعام أساسي
 
 **Food restriction**:

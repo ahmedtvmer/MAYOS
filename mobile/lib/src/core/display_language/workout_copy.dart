@@ -110,6 +110,8 @@ class WorkoutCopy {
   }
   String get restTime => isArabic ? 'مدة الراحة…' : 'Rest time…';
   String get exerciseNotes => isArabic ? 'ملاحظات التمرين' : 'Exercise notes';
+  String get more => isArabic ? 'المزيد' : 'more';
+  String get less => isArabic ? 'أقل' : 'less';
   String tempoCue(String value) =>
       isArabic ? 'الإيقاع: ${_ltr(value)}' : 'Tempo: $value';
   String restNotificationTitle(String time) =>
