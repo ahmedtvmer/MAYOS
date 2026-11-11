@@ -139,7 +139,9 @@ class AuthRepository {
       if (!await _canPersistRestore(token, revision, dataGeneration)) return;
       await _saveAccountId(session.account.accountId);
       if (!await _canPersistRestore(token, revision, dataGeneration)) return;
-      await saveSession(session, expectedGeneration: dataGeneration);
+      // Not awaited: a slow or unavailable store must not hold up sign-in. The
+      // generation check drops this write if the session ends first.
+      unawaited(saveSession(session, expectedGeneration: dataGeneration));
     } finally {
       _restoreWrites.remove(pending);
       completion.complete();
