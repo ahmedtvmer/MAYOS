@@ -31,13 +31,17 @@ abstract class DraftStore {
 class SecureDraftStore implements DraftStore {
   SecureDraftStore({FlutterSecureStorage? storage, DateTime Function()? now})
       : _store = SecureStore(storage: storage),
+        _usesPlatformStorage = storage == null,
         _now = now ?? DateTime.now;
 
   final SecureStore _store;
+  final bool _usesPlatformStorage;
   final DateTime Function() _now;
   final Set<String> _quarantined = <String>{};
 
   static String _key(String accountId) => 'drafts.$accountId';
+
+  bool get usesPlatformStorage => _usesPlatformStorage;
 
   @override
   bool isQuarantined(String accountId) => _quarantined.contains(accountId);
@@ -186,9 +190,13 @@ abstract class WorkoutCacheStore {
 
 class SecureWorkoutCacheStore implements WorkoutCacheStore {
   SecureWorkoutCacheStore({FlutterSecureStorage? storage})
-      : _store = SecureStore(storage: storage);
+      : _store = SecureStore(storage: storage),
+        _usesPlatformStorage = storage == null;
 
   final SecureStore _store;
+  final bool _usesPlatformStorage;
+
+  bool get usesPlatformStorage => _usesPlatformStorage;
 
   @override
   Future<TrainingProgram?> readProgram(String accountId) async {
