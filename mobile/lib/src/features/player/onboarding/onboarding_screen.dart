@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/refetch_on_reconnect.dart';
 import '../../../core/app_failure.dart';
 import '../../../core/connectivity.dart';
 import '../../../core/connectivity_message.dart';
@@ -63,7 +64,13 @@ class _CoachInviteRedeemDialog extends StatelessWidget {
 
 enum _OnboardingPhase { loading, error, disclosure, answering }
 
-class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
+class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
+    with RefetchOnReconnect<OnboardingScreen> {
+  @override
+  Future<void> refreshAfterReconnect() async {
+    if (_phase == _OnboardingPhase.error) await _load();
+  }
+
   OnboardingIntake? _intake;
   _OnboardingPhase _phase = _OnboardingPhase.loading;
 

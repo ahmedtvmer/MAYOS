@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api_client.dart';
+import '../../core/refetch_on_reconnect.dart';
 import '../../core/app_failure.dart';
 import '../../core/connectivity_message.dart';
 import '../../core/display_language/copy_context.dart';
@@ -18,7 +19,15 @@ class AssistantPreferencesScreen extends ConsumerStatefulWidget {
 }
 
 class _AssistantPreferencesScreenState
-    extends ConsumerState<AssistantPreferencesScreen> {
+    extends ConsumerState<AssistantPreferencesScreen>
+    with RefetchOnReconnect<AssistantPreferencesScreen> {
+  @override
+  Future<void> refreshAfterReconnect() async {
+    if (_writing) return;
+    _reload();
+    await _preferences;
+  }
+
   late Future<List<Map<String, dynamic>>> _preferences;
   bool _writing = false;
   FailureMessage? _writeFailure;

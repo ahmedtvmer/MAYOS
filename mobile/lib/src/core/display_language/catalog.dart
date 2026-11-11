@@ -495,7 +495,7 @@ class MayosCopy {
               ? englishMessage
               : switch (id) {
                   AppFailureId.cannotReachService =>
-                    'تعذر الاتصال بالخدمة. تحقق من اتصالك بالإنترنت.',
+                    'أنت غير متصل بالإنترنت. سنعيد المحاولة عند عودة الاتصال.',
                   AppFailureId.serviceUnavailable =>
                     'الخدمة غير متاحة. حاول مجددًا.',
                   AppFailureId.requestFailed =>

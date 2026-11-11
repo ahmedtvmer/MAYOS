@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/refetch_on_reconnect.dart';
 import '../../../core/display_language/controller.dart';
 import '../../../core/display_language/food_log_copy.dart';
 import '../../../core/food_log_models.dart';
@@ -28,7 +29,11 @@ class FoodSearchScreen extends ConsumerStatefulWidget {
   ConsumerState<FoodSearchScreen> createState() => _FoodSearchScreenState();
 }
 
-class _FoodSearchScreenState extends ConsumerState<FoodSearchScreen> {
+class _FoodSearchScreenState extends ConsumerState<FoodSearchScreen>
+    with RefetchOnReconnect<FoodSearchScreen> {
+  @override
+  Future<void> refreshAfterReconnect() => _search();
+
   final TextEditingController _query = TextEditingController();
   Timer? _debounce;
   int _request = 0;

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/refetch_on_reconnect.dart';
 import '../../../core/app_failure.dart';
 import '../../../core/connectivity_message.dart';
 import '../../../core/display_language/controller.dart';
@@ -67,7 +68,14 @@ class ProfileScreen extends ConsumerStatefulWidget {
   ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends ConsumerState<ProfileScreen> {
+class _ProfileScreenState extends ConsumerState<ProfileScreen>
+    with RefetchOnReconnect<ProfileScreen> {
+  @override
+  Future<void> refreshAfterReconnect() async {
+    // Once loaded, these fields may contain unsaved edits.
+    if (_savedProfile == null && _loadError != null) await _load();
+  }
+
   int _weeklyFrequency = 4;
   String _repPreference = 'balanced';
   String _equipmentAccess = equipmentAccessCommercialGym;

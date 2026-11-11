@@ -2739,6 +2739,7 @@ class ProgramExercise {
     this.restSeconds,
     this.tempo,
     this.notes,
+    this.notesAreTechnique = false,
     this.bodyPart,
     this.note,
     this.videoUrl,
@@ -2783,6 +2784,7 @@ class ProgramExercise {
         restSeconds: (json['rest_seconds'] as num?)?.toInt(),
         tempo: json['tempo'] as String?,
         notes: json['notes'] as String?,
+        notesAreTechnique: json['notes_are_technique'] as bool? ?? false,
         bodyPart: json['body_part'] as String?,
         note: json['note'] as String? ?? json['exercise_note'] as String?,
         videoUrl: json['video_url'] as String?,
@@ -2830,6 +2832,7 @@ class ProgramExercise {
   final int? restSeconds;
   final String? tempo;
   final String? notes;
+  final bool notesAreTechnique;
   final String? bodyPart;
   final String? note;
   final String? videoUrl;
@@ -2885,6 +2888,7 @@ class ProgramExercise {
         restSeconds: restSeconds,
         tempo: tempo,
         notes: notes,
+        notesAreTechnique: notesAreTechnique,
         bodyPart: bodyPart,
         note: note,
         videoUrl: videoUrl,
@@ -2939,6 +2943,7 @@ class ProgramExercise {
       json['rest_seconds'] = restSeconds;
     }
     json['notes'] = notes;
+    if (notesAreTechnique) json['notes_are_technique'] = true;
     if (load != null) json['load'] = load!.toJson();
     if (tempo != null) {
       json['tempo'] = tempo;

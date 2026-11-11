@@ -1034,6 +1034,89 @@ void main() {
     expect(find.text('Log at least one set'), findsOneWidget);
   });
 
+  for (final String languageCode in <String>['en', 'ar']) {
+    testWidgets('$languageCode Coach note expands from one line with more (#534)',
+        (WidgetTester tester) async {
+      final bool arabic = languageCode == 'ar';
+      final String note = arabic
+          ? 'توقف قليلًا عند الصدر، ثم ارفع الحمل بحركة هادئة.\n'
+              'حافظ على ثبات القدمين وخذ راحة كاملة قبل المجموعة التالية.'
+          : 'Pause on the chest, then press with a controlled movement.\n'
+              'Keep both feet planted and take the full rest before the next set.';
+      // An older payload has no classification field; its Coach cue survives.
+      final ProgramDay day = ProgramDay.fromJson(<String, dynamic>{
+        'day_name': 'Upper',
+        'day_order': 1,
+        'exercises': <Map<String, dynamic>>[
+          <String, dynamic>{..._benchJson, 'notes': note},
+        ],
+      });
+      await _openLogger(
+        tester,
+        day: day,
+        languageCode: languageCode,
+        roundTripStoredWorkout: true,
+      );
+      final Finder noteText = find.text(
+          '${arabic ? 'ملاحظات التمرين' : 'Exercise notes'}: $note');
+      expect(noteText, findsOneWidget);
+      expect(tester.widget<Text>(noteText).maxLines, 1);
+      final double collapsedHeight = tester.getSize(noteText).height;
+      expect(Directionality.of(tester.element(noteText)),
+          arabic ? TextDirection.rtl : TextDirection.ltr);
+
+      await tester.tap(
+          find.widgetWithText(TextButton, arabic ? 'المزيد' : 'more'));
+      await tester.pumpAndSettle();
+
+      expect(tester.widget<Text>(noteText).maxLines, isNull);
+      expect(tester.getSize(noteText).height, greaterThan(collapsedHeight));
+      await tester.tap(find.widgetWithText(TextButton, arabic ? 'أقل' : 'less'));
+      await tester.pumpAndSettle();
+      expect(tester.widget<Text>(noteText).maxLines, 1);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets(
+        '$languageCode copied technique is hidden and detail reads the catalog (#534)',
+        (WidgetTester tester) async {
+      const String legacyTechnique = 'Legacy catalog execution steps.';
+      final ProgramDay day = ProgramDay.fromJson(<String, dynamic>{
+        'day_name': 'Upper',
+        'day_order': 1,
+        'exercises': <Map<String, dynamic>>[
+          <String, dynamic>{
+            ..._benchJson,
+            'notes': legacyTechnique,
+            'notes_are_technique': true,
+          },
+        ],
+      });
+      final InMemoryActiveWorkoutStore store = await _openLogger(
+        tester,
+        day: day,
+        languageCode: languageCode,
+        roundTripStoredWorkout: true,
+      );
+
+      expect(find.textContaining(legacyTechnique), findsNothing);
+      expect(find.text(languageCode == 'ar' ? 'المزيد' : 'more'), findsNothing);
+      expect((await store.read(_account))!.exercises.first.exercise['notes'],
+          legacyTechnique);
+
+      await tester.tap(find.text('Bench Press'));
+      await _pumpUntilFound(tester, find.byType(ExerciseDetailScreen));
+      final Finder techniqueTab =
+          find.text(languageCode == 'ar' ? 'الأسلوب' : 'Technique');
+      await _pumpUntilFound(tester, techniqueTab);
+      await tester.tap(techniqueTab);
+      await _pumpUntilFound(tester, find.textContaining('Lie on a flat bench'));
+
+      expect(find.textContaining('Lie on a flat bench'), findsOneWidget);
+      expect(find.textContaining(legacyTechnique), findsNothing);
+    });
+  }
+
   testWidgets('logger carries tempo, notes, warm-up sets, and day blocks',
       (tester) async {
     final InMemoryActiveWorkoutStore store = await _openLogger(

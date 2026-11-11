@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api_client.dart';
+import '../../core/refetch_on_reconnect.dart';
 import '../../core/app_failure.dart';
 import '../../core/connectivity_message.dart';
 import '../../core/display_language/coach_copy.dart';
@@ -28,7 +29,14 @@ class CoachProgramTemplatesScreen extends ConsumerStatefulWidget {
 }
 
 class _CoachProgramTemplatesScreenState
-    extends ConsumerState<CoachProgramTemplatesScreen> {
+    extends ConsumerState<CoachProgramTemplatesScreen>
+    with RefetchOnReconnect<CoachProgramTemplatesScreen> {
+  @override
+  Future<void> refreshAfterReconnect() async {
+    if (_loading || _busyTemplateId != null) return;
+    await _load();
+  }
+
   bool _loading = true;
   bool _showArchived = false;
   String? _busyTemplateId;
