@@ -81,6 +81,15 @@ Future<void> _primePlayerCache({
       await api.prescription(1);
       await api.nutrition();
       await api.foodLogDay();
+      // Live responses do not wait for best-effort snapshot writes. Let the
+      // final response finish saving before simulating another process.
+      await Future<void>.delayed(Duration.zero);
+      final Map<String, dynamic>? savedFoodLog = await container
+          .read(savedPlayerDataStoreProvider)
+          .read('account-alice', '/nutrition/food-log');
+      expect(savedFoodLog, isNotNull);
+      expect(savedFoodLog!['day'], _today());
+      expect(savedFoodLog['body']['date'], fake.foodLogToday);
     } finally {
       container.dispose();
     }
@@ -192,7 +201,10 @@ void main() {
         expect(find.text('2345'), findsOneWidget);
         expect(find.text(copy.offlineSavedData), findsOneWidget);
 
+        // Nutrition can mount CopyFoodMealButton on the last pumped frame.
+        await tester.pump(Duration.zero);
         await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(Duration.zero);
       });
     }
   }
@@ -201,93 +213,104 @@ void main() {
     testWidgets('${androidEvents ? 'Android' : 'browser'} connectivity regain confirms session and refreshes Home',
         (WidgetTester tester) async {
       const MethodChannel networkChannel = MethodChannel('com.mayos/connectivity');
-      if (androidEvents) {
-        debugDefaultTargetPlatformOverride = TargetPlatform.android;
-        addTearDown(() => debugDefaultTargetPlatformOverride = null);
-        tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-          networkChannel,
-          (MethodCall call) async => call.method == 'startListening' ? false : null,
+      final TargetPlatform? originalPlatform = debugDefaultTargetPlatformOverride;
+      try {
+        if (androidEvents) {
+          debugDefaultTargetPlatformOverride = TargetPlatform.android;
+          tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+            networkChannel,
+            (MethodCall call) async => call.method == 'startListening' ? false : null,
+          );
+          addTearDown(() => tester.binding.defaultBinaryMessenger
+              .setMockMethodCallHandler(networkChannel, null));
+        }
+        final FakeMayosApi fake = FakeMayosApi();
+        final InMemoryTokenStore tokens = InMemoryTokenStore();
+        final InMemoryBrowserKeyValueStore storage =
+            InMemoryBrowserKeyValueStore();
+        final StreamController<bool> browserEvents =
+            StreamController<bool>.broadcast();
+        addTearDown(browserEvents.close);
+        await _primePlayerCache(
+          tester: tester,
+          fake: fake,
+          tokens: tokens,
+          storage: storage,
+          language: 'en',
         );
-        addTearDown(() => tester.binding.defaultBinaryMessenger
-            .setMockMethodCallHandler(networkChannel, null));
-      }
-      final FakeMayosApi fake = FakeMayosApi();
-      final InMemoryTokenStore tokens = InMemoryTokenStore();
-      final InMemoryBrowserKeyValueStore storage =
-          InMemoryBrowserKeyValueStore();
-      final StreamController<bool> browserEvents =
-          StreamController<bool>.broadcast();
-      addTearDown(browserEvents.close);
-      await _primePlayerCache(
-        tester: tester,
-        fake: fake,
-        tokens: tokens,
-        storage: storage,
-        language: 'en',
-      );
-      fake.allRequestsOffline = true;
+        fake.allRequestsOffline = true;
 
-      await tester.pumpWidget(authApp(
-        fake,
-        tokens,
-        savedPlayerDataBrowser: storage,
-        extraOverrides: <Override>[
-          if (!androidEvents) browserConnectivityEventsProvider.overrideWithValue(
-            browserEvents.stream,
-          ),
-        ],
-      ));
-      await _pumpUntilFound(tester, find.text(MayosCopy('en').offlineSavedData));
-      if (!androidEvents) {
-        browserEvents.add(false);
-        await tester.pump(Duration.zero);
-      }
-      final int previousVolumeReads = fake.adapter.requests
-          .where((FakeRequest request) => request.path == '/dashboard/volume')
-          .length;
-
-      fake.allRequestsOffline = false;
-      fake.volumeByDays = <int, Map<String, dynamic>>{
-        7: <String, dynamic>{'Chest': 99.0},
-      };
-      if (androidEvents) {
-        tester.binding.channelBuffers.push(
-          networkChannel.name,
-          const StandardMethodCodec().encodeMethodCall(const MethodCall('changed', true)),
-          (_) {},
-        );
-      } else {
-        browserEvents.add(true);
-      }
-      for (int attempt = 0; attempt < 10; attempt++) {
-        await tester.pump(const Duration(milliseconds: 100));
-        final int currentVolumeReads = fake.adapter.requests
+        await tester.pumpWidget(authApp(
+          fake,
+          tokens,
+          savedPlayerDataBrowser: storage,
+          extraOverrides: <Override>[
+            if (!androidEvents) browserConnectivityEventsProvider.overrideWithValue(
+              browserEvents.stream,
+            ),
+          ],
+        ));
+        await _pumpUntilFound(tester, find.text(MayosCopy('en').offlineSavedData));
+        if (!androidEvents) {
+          browserEvents.add(false);
+          await tester.pump(Duration.zero);
+        }
+        final int previousVolumeReads = fake.adapter.requests
             .where((FakeRequest request) => request.path == '/dashboard/volume')
             .length;
-        if (currentVolumeReads > previousVolumeReads) break;
+
+        fake.allRequestsOffline = false;
+        fake.volumeByDays = <int, Map<String, dynamic>>{
+          7: <String, dynamic>{'Chest': 99.0},
+        };
+        if (androidEvents) {
+          tester.binding.channelBuffers.push(
+            networkChannel.name,
+            const StandardMethodCodec().encodeMethodCall(const MethodCall('changed', true)),
+            (_) {},
+          );
+        } else {
+          browserEvents.add(true);
+        }
+        for (int attempt = 0; attempt < 10; attempt++) {
+          await tester.pump(const Duration(milliseconds: 100));
+          final int currentVolumeReads = fake.adapter.requests
+              .where((FakeRequest request) => request.path == '/dashboard/volume')
+              .length;
+          if (currentVolumeReads > previousVolumeReads) break;
+        }
+
+        final ProviderContainer container = ProviderScope.containerOf(
+          tester.element(find.byType(MayosApp)),
+          listen: false,
+        );
+        expect(container.read(authControllerProvider).isOffline, isFalse);
+        expect(find.text(MayosCopy('en').offlineSavedData), findsNothing);
+        expect(find.byKey(const Key('login_username')), findsNothing);
+        await tester.scrollUntilVisible(find.text('99'), 250,
+          scrollable: find.descendant(
+            of: find.byType(DashboardTab), matching: find.byType(Scrollable),
+          ).first,
+        );
+        expect(find.text('99'), findsOneWidget);
+        expect(
+          fake.adapter.requests
+              .where((FakeRequest request) => request.path == '/dashboard/volume')
+              .length,
+          greaterThan(previousVolumeReads),
+        );
+      } finally {
+        try {
+          // Scrolling mounts CopyFoodMealButton, which starts a Dio request.
+          // Complete its zero-duration interceptor timers while providers live.
+          await tester.pump(Duration.zero);
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pump(Duration.zero);
+        } finally {
+          // Flutter checks foundation globals before addTearDown callbacks.
+          debugDefaultTargetPlatformOverride = originalPlatform;
+        }
       }
-
-      final ProviderContainer container = ProviderScope.containerOf(
-        tester.element(find.byType(MayosApp)),
-        listen: false,
-      );
-      expect(container.read(authControllerProvider).isOffline, isFalse);
-      expect(find.text(MayosCopy('en').offlineSavedData), findsNothing);
-      expect(find.byKey(const Key('login_username')), findsNothing);
-      await tester.scrollUntilVisible(find.text('99'), 250,
-        scrollable: find.descendant(
-          of: find.byType(DashboardTab), matching: find.byType(Scrollable),
-        ).first,
-      );
-      expect(find.text('99'), findsOneWidget);
-      expect(
-        fake.adapter.requests
-            .where((FakeRequest request) => request.path == '/dashboard/volume')
-            .length,
-        greaterThan(previousVolumeReads),
-      );
-
-      await tester.pumpWidget(const SizedBox.shrink());
     });
   }
 
