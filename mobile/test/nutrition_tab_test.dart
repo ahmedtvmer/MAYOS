@@ -42,7 +42,7 @@ void main() {
     });
   }
 
-  testWidgets('setup saves activity and shows plate targets', (WidgetTester tester) async {
+  testWidgets('setup saves activity and shows the empty Food log', (WidgetTester tester) async {
     final FakeMayosApi fake = _fake()
       ..nutritionState = <String, dynamic>{'state': 'not_started', 'targets': null,
         'adherence_days': List<Map<String, dynamic>>.generate(7, (int index) => <String, dynamic>{
@@ -61,7 +61,7 @@ void main() {
     await tester.tap(find.text('Show my targets'));
     await tester.pumpAndSettle();
     expect(find.text('2000'), findsOneWidget);
-    expect(find.text('Protein'), findsOneWidget);
+    expect(find.text('Protein left'), findsOneWidget);
     await tester.drag(find.byType(ListView), const Offset(0, -1200));
     await tester.pumpAndSettle();
     expect(tester.widgetList<Tooltip>(find.byType(Tooltip))
@@ -116,9 +116,11 @@ void main() {
       };
     await tester.pumpWidget(_app(fake, 'ar', ThemeData.dark()));
     await tester.pumpAndSettle();
+    await _openTargets(tester);
     expect(find.text('التغذية'), findsOneWidget);
     expect(find.text('البروتين'), findsOneWidget);
     expect(find.text('الماكروز'), findsOneWidget);
+    expect(find.text('بناءً على هدفك: fat loss'), findsOneWidget);
     expect(find.textContaining('هدف التغذية'), findsNothing);
     expect(find.textContaining('تم اختيار هدف التغذية'), findsNothing);
     expect(find.textContaining('اخترت هدف التغذية'), findsNothing);
@@ -154,6 +156,7 @@ void main() {
         'targets': <String, dynamic>{'calories': 2000, 'protein_g': 140, 'carbs_g': 220, 'fat_g': 70}};
     await tester.pumpWidget(_app(fake, 'en', ThemeData.light()));
     await tester.pumpAndSettle();
+    await _openTargets(tester);
     await tester.tap(find.text('Daily activity'));
     await tester.pumpAndSettle();
     await tester.tap(find.byType(DropdownButtonFormField<String>).last);
@@ -175,6 +178,7 @@ void main() {
         'targets': <String, dynamic>{'calories': 2000, 'protein_g': 140, 'carbs_g': 220, 'fat_g': 70}};
     await tester.pumpWidget(_app(fake, 'en', ThemeData.light()));
     await tester.pumpAndSettle();
+    await _openTargets(tester);
     expect(find.text('Set by your coach'), findsOneWidget);
     await tester.tap(find.text('Daily activity'));
     await tester.pumpAndSettle();
@@ -192,6 +196,7 @@ void main() {
     };
     await tester.pumpWidget(_app(fake, 'en', ThemeData.light()));
     await tester.pumpAndSettle();
+    await _openTargets(tester);
     expect(find.text('Pace check proposal'), findsOneWidget);
     expect(find.text('Apply'), findsOneWidget);
     expect(find.text('Keep targets'), findsOneWidget);
@@ -215,6 +220,7 @@ void main() {
     };
     await tester.pumpWidget(_app(fake, 'en', ThemeData.light()));
     await tester.pumpAndSettle();
+    await _openTargets(tester);
     expect(find.text('Apply'), findsNothing);
     expect(find.text('Keep targets'), findsOneWidget);
     await tester.tap(find.text('Keep targets'));
@@ -271,6 +277,7 @@ void main() {
     };
     await tester.pumpWidget(_app(fake, 'ar', ThemeData.light()));
     await tester.pumpAndSettle();
+    await _openTargets(tester);
     expect(find.textContaining('+0.3٪'), findsOneWidget);
     expect(find.textContaining('+250 سعرة'), findsOneWidget);
   });
@@ -517,6 +524,7 @@ void main() {
       };
       await tester.pumpWidget(_app(fake, language, ThemeData.light()));
       await tester.pumpAndSettle();
+      await _openTargets(tester);
       await tester.ensureVisible(find.text(language == 'en' ? 'Macros' : 'الماكروز'));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
@@ -526,6 +534,8 @@ void main() {
       expect(find.text(language == 'en' ? 'Water target' : 'هدف الماء'), findsOneWidget);
       expect(find.text(language == 'en' ? '32 g' : '32 جم'), findsOneWidget);
       expect(find.text(language == 'en' ? '3.00 L · 12 glasses' : '3.00 لتر · 12 كوبًا'), findsOneWidget);
+      await tester.pageBack();
+      await tester.pumpAndSettle();
     }
   });
 
@@ -563,6 +573,7 @@ void main() {
         'targets': <String, dynamic>{'calories': 2000, 'protein_g': 140, 'carbs_g': 220, 'fat_g': 70}};
     await tester.pumpWidget(_app(fake, 'en', ThemeData.light()));
     await tester.pumpAndSettle();
+    await _openTargets(tester);
     await tester.tap(find.text('Adjust'));
     await tester.pumpAndSettle();
     expect(find.text('Lose · Aggressive'), findsOneWidget);
@@ -593,12 +604,15 @@ void main() {
           'carbs_g': 258, 'fat_g': 70, 'fiber_g': 30, 'water_ml': 2500}};
     await tester.pumpWidget(_app(fake, 'en', ThemeData.light()));
     await tester.pumpAndSettle();
+    await _openTargets(tester);
     expect(find.text('Cardio burned ~301 kcal'), findsOneWidget);
     expect(find.text('Cardio target adjustment +150 kcal'), findsOneWidget);
     expect(find.text('2150'), findsOneWidget);
-
+    await tester.pageBack();
+    await tester.pumpAndSettle();
     await tester.pumpWidget(_app(fake, 'ar', ThemeData.light()));
     await tester.pumpAndSettle();
+    await _openTargets(tester);
     expect(find.text('السعرات المحروقة بالكارديو ~301 سعرة'), findsOneWidget);
     expect(find.text('تعديل الهدف بسبب الكارديو +150 سعرة'), findsOneWidget);
     expect(tester.widget<Directionality>(find.byType(Directionality).last).textDirection,
@@ -614,6 +628,7 @@ void main() {
           'carbs_g': 220, 'fat_g': 70, 'fiber_g': 30, 'water_ml': 2500}};
     await tester.pumpWidget(_app(fake, 'en', ThemeData.light()));
     await tester.pumpAndSettle();
+    await _openTargets(tester);
     expect(find.text('Cardio burned ~203 kcal'), findsOneWidget);
     expect(find.text('Cardio target adjustment +0 kcal'), findsNothing);
     expect(find.text('2000'), findsOneWidget);
@@ -627,6 +642,7 @@ void main() {
           'protein_g': 140, 'carbs_g': 220, 'fat_g': 70}};
     await tester.pumpWidget(_app(fake, 'en', ThemeData.light()));
     await tester.pumpAndSettle();
+    await _openTargets(tester);
     expect(find.text('Your goal changed. Update your Nutrition goal?'), findsOneWidget);
     await tester.tap(find.text('Update').first);
     await tester.pumpAndSettle();
@@ -650,6 +666,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
     await tester.pumpWidget(_app(dismissFake, 'en', ThemeData.light()));
     await tester.pumpAndSettle();
+    await _openTargets(tester);
     expect(find.text('Your goal changed. Update your Nutrition goal?'), findsOneWidget);
     await tester.tap(find.text('Later'));
     await tester.pumpAndSettle();
@@ -657,6 +674,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
     await tester.pumpWidget(_app(dismissFake, 'en', ThemeData.light()));
     await tester.pumpAndSettle();
+    await _openTargets(tester);
     expect(find.text('Your goal changed. Update your Nutrition goal?'), findsNothing);
   });
 
@@ -668,6 +686,7 @@ void main() {
         'targets': <String, dynamic>{'calories': 2000, 'protein_g': 140, 'carbs_g': 220, 'fat_g': 70}};
     await tester.pumpWidget(_app(fake, 'ar', ThemeData.light()));
     await tester.pumpAndSettle();
+    await _openTargets(tester);
     expect(find.text('حدّدها مدربك'), findsOneWidget);
     expect(find.text('تعديل'), findsNothing);
     expect(find.textContaining('تغير هدفك'), findsNothing);
@@ -678,6 +697,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
     await tester.pumpWidget(_app(englishFake, 'en', ThemeData.light()));
     await tester.pumpAndSettle();
+    await _openTargets(tester);
     expect(find.text('Set by your coach'), findsOneWidget);
   });
 
@@ -688,6 +708,7 @@ void main() {
         'targets': <String, dynamic>{'calories': 2000, 'protein_g': 140, 'carbs_g': 220, 'fat_g': 70}};
     await tester.pumpWidget(_app(fake, 'ar', ThemeData.light()));
     await tester.pumpAndSettle();
+    await _openTargets(tester);
     await tester.tap(find.text('تعديل'));
     await tester.pumpAndSettle();
     expect(find.text('خسارة الوزن · قوي'), findsOneWidget);
@@ -703,6 +724,13 @@ void main() {
 
 Finder _coachField(WidgetTester tester, String label) => find.byWidgetPredicate(
     (Widget widget) => widget is TextField && widget.decoration?.labelText == label);
+
+Future<void> _openTargets(WidgetTester tester) async {
+  final Finder targets = find.byKey(const Key('nutrition_targets'));
+  await tester.scrollUntilVisible(targets, 200, scrollable: find.byType(Scrollable).first);
+  await tester.tap(targets);
+  await tester.pumpAndSettle();
+}
 
 // The Food log bars leave less room, so the lazy list may not have built the Water log yet.
 Future<void> _showWaterLog(WidgetTester tester, String addGlass) async {

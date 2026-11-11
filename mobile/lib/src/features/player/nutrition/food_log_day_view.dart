@@ -16,14 +16,12 @@ import 'quick_add_screen.dart';
 
 class FoodLogDayView extends ConsumerStatefulWidget {
   const FoodLogDayView({
-    required this.targetsView,
-    required this.adherence,
+    required this.dailyControls,
     required this.targets,
     required this.onShowTargets,
     super.key,
   });
-  final Widget targetsView;
-  final Widget adherence;
+  final Widget dailyControls;
   final Map<String, dynamic>? targets;
   final VoidCallback onShowTargets;
 
@@ -206,10 +204,6 @@ class _FoodLogDayViewState extends ConsumerState<FoodLogDayView>
           else
             TourTarget(id: 'food_log', child: _navigation(day, copy)),
         Expanded(child: _body(copy)),
-        if (day != null && day.date == day.today)
-          CopyFoodMealButton(key: ValueKey<String>('copy_${_dateKey(day.date)}'),
-            day: _dateKey(day.date), revision: _request,
-            enabled: !_loading && !_deleting && _error == null, onCopied: _load, onStale: () => _load(background: true)),
         if (day != null && day.editable)
           SafeArea(
             top: false,
@@ -290,7 +284,6 @@ class _FoodLogDayViewState extends ConsumerState<FoodLogDayView>
         ),
       );
     final FoodLogDay day = _day!;
-    if (day.date == day.today && day.entries.isEmpty) return widget.targetsView;
     return ListView(
       padding: const EdgeInsets.all(16),
       children: <Widget>[
@@ -342,7 +335,18 @@ class _FoodLogDayViewState extends ConsumerState<FoodLogDayView>
         if (day.entries.isEmpty)
           Padding(
             padding: const EdgeInsets.all(20),
-            child: Text(copy.noEntries),
+            child: Column(children: <Widget>[
+              Text(day.date == day.today ? copy.startDay : copy.noEntries,
+                textAlign: TextAlign.center),
+              if (day.editable) Wrap(alignment: WrapAlignment.center, spacing: 8,
+                children: <Widget>[
+                  FilledButton.icon(onPressed: _deleting ? null : _search,
+                    key: const Key('empty_day_search'),
+                    icon: const Icon(Icons.search), label: Text(copy.searchFoods)),
+                  TextButton(onPressed: _deleting ? null : _quickAdd,
+                    child: Text(copy.quickAdd)),
+                ]),
+            ]),
           ),
         for (final FoodLogEntry entry in day.entries)
           Card(
@@ -376,12 +380,18 @@ class _FoodLogDayViewState extends ConsumerState<FoodLogDayView>
             ),
           ),
         if (day.date == day.today) ...<Widget>[
+          CopyFoodMealButton(key: ValueKey<String>('copy_${_dateKey(day.date)}'),
+            day: _dateKey(day.date), revision: _request,
+            enabled: !_deleting, onCopied: _load,
+            onStale: () => _load(background: true)),
           const SizedBox(height: 16),
-          widget.adherence,
+          widget.dailyControls,
         ],
-        TextButton(
-          onPressed: widget.onShowTargets,
-          child: Text(copy.targetsTitle),
+        ListTile(
+          key: const Key('nutrition_targets'),
+          onTap: widget.onShowTargets,
+          title: Text(copy.targetsTitle),
+          trailing: Icon(copy.isArabic ? Icons.chevron_left : Icons.chevron_right),
         ),
       ],
     );
