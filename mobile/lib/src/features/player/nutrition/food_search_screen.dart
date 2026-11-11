@@ -7,23 +7,27 @@ import '../../../core/api_client.dart';
 import '../../../core/refetch_on_reconnect.dart';
 import '../../../core/display_language/controller.dart';
 import '../../../core/display_language/food_log_copy.dart';
+import '../../../core/display_language/meal_setup_copy.dart';
 import '../../../core/food_log_models.dart';
 import '../../../providers.dart';
 import 'food_amount_screen.dart';
 import 'copy_food_meal_button.dart';
 import 'personal_food_screen.dart';
 import 'quick_add_screen.dart';
+import 'food_restriction_badge.dart';
 
 class FoodSearchScreen extends ConsumerStatefulWidget {
   const FoodSearchScreen({
     required this.day,
     required this.kcalLeft,
     required this.mealLabel,
+    this.selectOnly = false,
     super.key,
   });
   final String day;
   final double? kcalLeft;
   final String mealLabel;
+  final bool selectOnly;
 
   @override
   ConsumerState<FoodSearchScreen> createState() => _FoodSearchScreenState();
@@ -89,6 +93,10 @@ class _FoodSearchScreenState extends ConsumerState<FoodSearchScreen>
   }
 
   Future<void> _open(FoodLibraryItem food) async {
+    if (widget.selectOnly) {
+      Navigator.of(context).pop(food);
+      return;
+    }
     final bool? added = await Navigator.of(context).push<bool>(
       MaterialPageRoute<bool>(
         builder: (_) => FoodAmountScreen(
@@ -131,8 +139,8 @@ class _FoodSearchScreenState extends ConsumerState<FoodSearchScreen>
             icon: const Icon(Icons.close),
             onPressed: () => Navigator.of(context).pop(),
           ),
-          title: Text(copy.addTo(widget.mealLabel)),
-          actions: <Widget>[TextButton(onPressed: _quickAdd, child: Text(copy.quickAdd))],
+          title: Text(widget.selectOnly ? MealSetupCopy(copy.languageCode).addDislike : copy.addTo(widget.mealLabel)),
+          actions: <Widget>[if (!widget.selectOnly) TextButton(onPressed: _quickAdd, child: Text(copy.quickAdd))],
         ),
         body: Column(
           children: <Widget>[
@@ -154,7 +162,7 @@ class _FoodSearchScreenState extends ConsumerState<FoodSearchScreen>
                 padding: const EdgeInsets.all(8),
                 child: Text(copy.recentFoods),
               ),
-            if (_query.text.trim().isEmpty)
+            if (_query.text.trim().isEmpty && !widget.selectOnly)
               CopyFoodMealButton(day: widget.day,
                 onCopied: () => Navigator.of(context).pop(true)),
             Expanded(child: _results(copy)),
@@ -178,7 +186,7 @@ class _FoodSearchScreenState extends ConsumerState<FoodSearchScreen>
       );
     return ListView.builder(
       padding: const EdgeInsets.all(12),
-      itemCount: _foods.length + (_foods.isEmpty ? 2 : 1),
+      itemCount: _foods.length + (_foods.isEmpty ? 1 : 0) + (widget.selectOnly ? 0 : 1),
       itemBuilder: (BuildContext context, int index) {
         if (_foods.isEmpty && index == 0) return Padding(
           padding: const EdgeInsets.all(24),
@@ -209,6 +217,9 @@ class _FoodSearchScreenState extends ConsumerState<FoodSearchScreen>
                     label: Text(copy.staple),
                     visualDensity: VisualDensity.compact,
                   ),
+                if (food.restrictionReasons.isNotEmpty)
+                  FoodRestrictionBadge(reasons: food.restrictionReasons,
+                    copy: MealSetupCopy(copy.languageCode)),
               ],
             ),
             subtitle: Text(detail),

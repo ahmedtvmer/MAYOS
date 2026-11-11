@@ -11,6 +11,8 @@ import '../../nutrition/pace_proposal_card.dart';
 import '../tour/tour_targets.dart';
 import 'nutrition_pace_dial.dart';
 import 'food_log_day_view.dart';
+import 'meal_setup_screen.dart';
+import 'food_swap_requests.dart';
 
 class NutritionTab extends ConsumerStatefulWidget {
   const NutritionTab({this.targetsOnly = false, super.key});
@@ -165,6 +167,10 @@ class _NutritionTabState extends ConsumerState<NutritionTab>
             child: Text(copy.setup,
                 style: Theme.of(context).textTheme.headlineMedium),
           ),
+          const Row(children: <Widget>[
+            Expanded(child: MealSetupEntry()),
+            FoodSwapRequestsEntry(),
+          ]),
           const SizedBox(height: 16),
           _sexConfirmation(copy),
           const SizedBox(height: 16),
@@ -224,6 +230,7 @@ class _NutritionTabState extends ConsumerState<NutritionTab>
     if (widget.targetsOnly) return _targetDetails(context, copy, colors, text);
     return FoodLogDayView(targets: _plan!.targets,
       targetsView: _targetDetails(context, copy, colors, text), adherence: _adherenceControl(copy),
+      emptyDayBuilder: (Widget meals) => _targetDetails(context, copy, colors, text, meals: meals),
       onShowTargets: () async {
         await Navigator.of(context).push<void>(MaterialPageRoute<void>(builder: (_) =>
           Scaffold(appBar: AppBar(title: Text(copy.tab)), body: const NutritionTab(targetsOnly: true))));
@@ -242,7 +249,7 @@ class _NutritionTabState extends ConsumerState<NutritionTab>
       ]),
     ]);
 
-  Widget _targetDetails(BuildContext context, NutritionCopy copy, ColorScheme colors, TextTheme text) {
+  Widget _targetDetails(BuildContext context, NutritionCopy copy, ColorScheme colors, TextTheme text, {Widget? meals}) {
     final Map<String, dynamic> targets = _plan!.targets ?? <String, dynamic>{};
     final List<(String, String, Color)> macroCards = <(String, String, Color)>[
       (copy.protein, 'protein_g', colors.primary),
@@ -277,6 +284,8 @@ class _NutritionTabState extends ConsumerState<NutritionTab>
             if (saved != null && mounted) setState(() => _plan = saved);
           }, icon: const Icon(Icons.tune), label: Text(copy.adjust))),
         _activityRow(copy),
+        const MealSetupEntry(),
+        if (meals != null) meals,
         if (_plan!.cardioBurnedKcal > 0)
           Padding(padding: const EdgeInsets.only(top: 8),
             child: Text(copy.cardioBurned(_plan!.cardioBurnedKcal), style: text.bodyMedium)),

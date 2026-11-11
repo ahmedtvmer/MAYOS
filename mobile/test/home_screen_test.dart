@@ -1494,6 +1494,9 @@ void main() {
           'brand-mayos' => find.byKey(MayosAppHeader.brandKey),
           'workout_share_card' || 'duration_check' => find.text('Log workout'),
           'food_log' => find.byKey(const Key('food_log_entry_point')),
+          'meal_setup' => find.byKey(const Key('meal_setup_entry')),
+          'food_swap_requests' => find.byKey(const Key('food_swap_requests_entry')),
+          'assistant_meals' => find.byTooltip('Assistant'),
           _ => find.text(entry.titleEn),
         };
         expect(realControl, findsOneWidget, reason: entry.id);
@@ -1585,6 +1588,9 @@ void main() {
           'brand-mayos' => find.byKey(MayosAppHeader.brandKey),
           'workout_share_card' || 'duration_check' => find.text('Log workout'),
           'food_log' => find.byKey(const Key('food_log_entry_point')),
+          'meal_setup' => find.byKey(const Key('meal_setup_entry')),
+          'food_swap_requests' => find.byKey(const Key('food_swap_requests_entry')),
+          'assistant_meals' => find.byTooltip('Assistant'),
           _ => find.text(entry.titleEn),
         };
         expect(realControl, findsOneWidget, reason: entry.id);

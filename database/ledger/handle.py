@@ -31,6 +31,7 @@ from database.ledger.debriefs import LedgerDebriefsMixin
 from database.ledger.onboarding import LedgerOnboardingMixin
 from database.ledger.nutrition import LedgerNutritionMixin
 from database.ledger.food_log import LedgerFoodLogMixin
+from database.ledger.meal_setup import LedgerMealSetupMixin
 from database.ledger.profile import LedgerProfileMixin
 from database.ledger.schedule import LedgerScheduleMixin
 from database.ledger.training_program import LedgerTrainingProgramMixin
@@ -51,6 +52,7 @@ class TrainingLedger(
     LedgerDebriefsMixin,
     LedgerNutritionMixin,
     LedgerFoodLogMixin,
+    LedgerMealSetupMixin,
 ):
     """One player's ledger: a single connection plus the ledger operations on it."""
 

@@ -11,6 +11,7 @@ import 'package:mayos_mobile/src/providers.dart';
 
 import 'support/fake_mayos_api.dart';
 import 'support/fake_api_adapter.dart';
+import 'support/scroll_to_control.dart';
 
 void main() {
   for (final String language in <String>['en', 'ar']) {
@@ -60,6 +61,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Show my targets'));
     await tester.pumpAndSettle();
+    await scrollToControl(tester, find.text('2000'));
     expect(find.text('2000'), findsOneWidget);
     expect(find.text('Protein'), findsOneWidget);
     await tester.drag(find.byType(ListView), const Offset(0, -1200));
@@ -117,6 +119,7 @@ void main() {
     await tester.pumpWidget(_app(fake, 'ar', ThemeData.dark()));
     await tester.pumpAndSettle();
     expect(find.text('التغذية'), findsOneWidget);
+    await scrollToControl(tester, find.text('الماكروز'));
     expect(find.text('البروتين'), findsOneWidget);
     expect(find.text('الماكروز'), findsOneWidget);
     expect(find.textContaining('هدف التغذية'), findsNothing);
@@ -308,12 +311,15 @@ void main() {
     expect(find.text('2500'), findsOneWidget);
     await tester.enterText(_coachField(tester, 'Fiber'), '40');
     await tester.enterText(_coachField(tester, 'Water'), '4000');
+    await scrollToControl(tester, find.text('Save targets'));
     await tester.tap(find.text('Save targets'));
     await tester.pumpAndSettle();
     expect(fake.coachNutritionSaveRequests.last['targets'], containsPair('fiber_g', 40));
     expect(fake.coachNutritionSaveRequests.last['targets'], containsPair('water_ml', 4000));
+    await scrollToControl(tester, _coachField(tester, 'Fiber'), delta: -200);
     await tester.enterText(_coachField(tester, 'Fiber'), '81');
     fake.coachNutritionSaveError = 'fiber_g must be between 10 and 80.';
+    await scrollToControl(tester, find.text('Save targets'));
     await tester.tap(find.text('Save targets'));
     await tester.pumpAndSettle();
     expect(find.text('Fiber must be between 10 and 80 g.'), findsOneWidget);
@@ -517,12 +523,12 @@ void main() {
       };
       await tester.pumpWidget(_app(fake, language, ThemeData.light()));
       await tester.pumpAndSettle();
-      await tester.ensureVisible(find.text(language == 'en' ? 'Macros' : 'الماكروز'));
+      await scrollToControl(tester, find.text(language == 'en' ? 'Macros' : 'الماكروز'));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
       expect(find.text(language == 'en' ? 'Protein' : 'البروتين'), findsOneWidget);
       expect(find.text(language == 'en' ? 'Fat' : 'الدهون'), findsOneWidget);
-      await tester.ensureVisible(find.text(language == 'en' ? 'Fiber target' : 'هدف الألياف'));
+      await scrollToControl(tester, find.text(language == 'en' ? 'Fiber target' : 'هدف الألياف'));
       expect(find.text(language == 'en' ? 'Water target' : 'هدف الماء'), findsOneWidget);
       expect(find.text(language == 'en' ? '32 g' : '32 جم'), findsOneWidget);
       expect(find.text(language == 'en' ? '3.00 L · 12 glasses' : '3.00 لتر · 12 كوبًا'), findsOneWidget);
@@ -593,12 +599,14 @@ void main() {
           'carbs_g': 258, 'fat_g': 70, 'fiber_g': 30, 'water_ml': 2500}};
     await tester.pumpWidget(_app(fake, 'en', ThemeData.light()));
     await tester.pumpAndSettle();
+    await scrollToControl(tester, find.text('Cardio burned ~301 kcal'));
     expect(find.text('Cardio burned ~301 kcal'), findsOneWidget);
     expect(find.text('Cardio target adjustment +150 kcal'), findsOneWidget);
     expect(find.text('2150'), findsOneWidget);
 
     await tester.pumpWidget(_app(fake, 'ar', ThemeData.light()));
     await tester.pumpAndSettle();
+    await scrollToControl(tester, find.text('السعرات المحروقة بالكارديو ~301 سعرة'));
     expect(find.text('السعرات المحروقة بالكارديو ~301 سعرة'), findsOneWidget);
     expect(find.text('تعديل الهدف بسبب الكارديو +150 سعرة'), findsOneWidget);
     expect(tester.widget<Directionality>(find.byType(Directionality).last).textDirection,
@@ -614,6 +622,7 @@ void main() {
           'carbs_g': 220, 'fat_g': 70, 'fiber_g': 30, 'water_ml': 2500}};
     await tester.pumpWidget(_app(fake, 'en', ThemeData.light()));
     await tester.pumpAndSettle();
+    await scrollToControl(tester, find.text('Cardio burned ~203 kcal'));
     expect(find.text('Cardio burned ~203 kcal'), findsOneWidget);
     expect(find.text('Cardio target adjustment +0 kcal'), findsNothing);
     expect(find.text('2000'), findsOneWidget);

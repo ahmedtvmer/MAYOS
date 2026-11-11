@@ -52,7 +52,7 @@ Future<List<ProgramRequest>?> _loadPendingRequests(
 ) async {
   try {
     return (await api.coachProgramRequests(assignmentId))
-        .where((ProgramRequest request) => request.isPending)
+        .where((ProgramRequest request) => request.isPending && !request.isFoodSwap)
         .toList(growable: false);
   } on ApiException catch (error) {
     onRequestsLoadError(error);

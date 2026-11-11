@@ -13,6 +13,7 @@ import 'food_amount_screen.dart';
 import 'food_search_screen.dart';
 import 'copy_food_meal_button.dart';
 import 'quick_add_screen.dart';
+import 'today_meals.dart';
 
 class FoodLogDayView extends ConsumerStatefulWidget {
   const FoodLogDayView({
@@ -20,12 +21,14 @@ class FoodLogDayView extends ConsumerStatefulWidget {
     required this.adherence,
     required this.targets,
     required this.onShowTargets,
+    this.emptyDayBuilder,
     super.key,
   });
   final Widget targetsView;
   final Widget adherence;
   final Map<String, dynamic>? targets;
   final VoidCallback onShowTargets;
+  final Widget Function(Widget meals)? emptyDayBuilder;
 
   @override
   ConsumerState<FoodLogDayView> createState() => _FoodLogDayViewState();
@@ -290,10 +293,12 @@ class _FoodLogDayViewState extends ConsumerState<FoodLogDayView>
         ),
       );
     final FoodLogDay day = _day!;
-    if (day.date == day.today && day.entries.isEmpty) return widget.targetsView;
+    final Widget meals = TodayMeals(revision: _request, onLogged: () => _load(background: true));
+    if (day.date == day.today && day.entries.isEmpty) return widget.emptyDayBuilder?.call(meals) ?? widget.targetsView;
     return ListView(
       padding: const EdgeInsets.all(16),
       children: <Widget>[
+        if (day.date == day.today) meals,
         if (day.remaining != null) ...<Widget>[
           TourTarget(
             id: 'nutrition',
@@ -350,8 +355,8 @@ class _FoodLogDayViewState extends ConsumerState<FoodLogDayView>
               leading: Text(entry.loggedTime),
               title: Text(entry.kind == 'quick_add' ? copy.quickAdd : entry.food.displayName(copy.isArabic)),
               subtitle: Text(entry.kind == 'quick_add'
-                  ? '${copy.mealLabel(entry.mealLabel)}\n${_quickMacros(entry, copy)}'
-                  : '${copy.amountLabel(entry.quantity, entry.unit, entry.food.portionLabel)} · ${copy.mealLabel(entry.mealLabel)}'),
+                  ? '${copy.mealLabel(entry.mealSlot ?? entry.mealLabel)}\n${_quickMacros(entry, copy)}'
+                  : '${copy.amountLabel(entry.quantity, entry.unit, entry.food.portionLabel)} · ${copy.mealLabel(entry.mealSlot ?? entry.mealLabel)}'),
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: <Widget>[
@@ -379,10 +384,10 @@ class _FoodLogDayViewState extends ConsumerState<FoodLogDayView>
           const SizedBox(height: 16),
           widget.adherence,
         ],
-        TextButton(
+        TourTarget(id: 'meal_setup', child: TextButton(
           onPressed: widget.onShowTargets,
           child: Text(copy.targetsTitle),
-        ),
+        )),
       ],
     );
   }

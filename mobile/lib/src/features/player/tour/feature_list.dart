@@ -6,7 +6,7 @@ import 'tour_targets.dart';
 
 /// The shared Feature list used by the Tour and later discovery surfaces.
 const int tourCurrentVersion = 1;
-const int currentFeatureRelease = 6;
+const int currentFeatureRelease = 7;
 const int kReleaseShareCard = 3;
 const int kReleasePrCelebration = 3;
 const int kReleaseDurationCheck = 4;
@@ -154,6 +154,39 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
     target: 'food_log',
     location: TourShellTabLocation(tabIndex: 2),
     release: 5,
+    audience: 'lifter',
+  ),
+  FeatureEntry(
+    id: 'meal_setup',
+    titleEn: 'Meal setup and Food restrictions',
+    sentenceEn: 'Choose Meal slots, training time and Food restrictions, generate meals from reviewed Staple foods with target differences, swap foods in your own plan or follow meals and notes set by your coach, and log a planned meal with one tap.',
+    titleAr: 'إعداد الوجبات والقيود الغذائية',
+    sentenceAr: 'اختر وجباتك ووقت تدريبك وقيودك الغذائية، وأنشئ وجبات من أطعمة أساسية معتمدة مع توضيح الفرق عن الأهداف وبدّل الأطعمة في خطتك أو اتبع وجبات وملاحظات حددها مدربك، وسجّل الوجبة المخططة بلمسة واحدة.',
+    target: 'meal_setup',
+    location: TourShellTabLocation(tabIndex: 2),
+    release: 7,
+    audience: 'lifter',
+  ),
+  FeatureEntry(
+    id: 'food_swap_requests',
+    titleEn: 'Food swap requests',
+    sentenceEn: 'Ask your coach to swap a food in your Nutrition plan, and open your request history from Nutrition to see each status and reply.',
+    titleAr: 'طلبات تبديل الطعام',
+    sentenceAr: 'اطلب من مدربك تبديل طعام في خطة التغذية، وافتح سجل طلباتك من التغذية لمتابعة حالة كل طلب ورد المدرب.',
+    target: 'food_swap_requests',
+    location: TourShellTabLocation(tabIndex: 2),
+    release: 7,
+    audience: 'lifter',
+  ),
+  FeatureEntry(
+    id: 'assistant_meals',
+    titleEn: 'Ask about planned meals',
+    sentenceEn: 'Ask the assistant to explain your planned meals or suggest which food to swap, then use the swap action in Nutrition or send your coach a Food swap request.',
+    titleAr: 'اسأل عن وجباتك المخططة',
+    sentenceAr: 'اطلب من المساعد شرح وجباتك المخططة أو اقتراح طعام لتبديله، ثم استخدم إجراء تبديل الطعام في التغذية أو أرسل طلب تبديل إلى مدربك.',
+    target: 'assistant',
+    location: TourShellTabLocation(tabIndex: 0),
+    release: 7,
     audience: 'lifter',
   ),
   FeatureEntry(

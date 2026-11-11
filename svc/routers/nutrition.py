@@ -8,7 +8,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from service import analytics, nutrition as nutrition_service
-from service import nutrition_alerts
+from service import nutrition_alerts, meals
 from service.weight_history import player_local_date
 from svc.dependencies import account_id_of, get_db, get_ledger, get_verified_player
 from svc.schemas import (
@@ -18,10 +18,67 @@ from svc.schemas import (
     NutritionPaceIn,
     NutritionPaceProposalDecisionIn,
     NutritionSetupIn,
+    LogPlannedMealIn,
 )
 
 router = APIRouter(prefix="/nutrition", tags=["nutrition"])
 logger = logging.getLogger(__name__)
+
+
+@router.get("/meals")
+async def read_meals(request: Request,
+                     player: Annotated[Any, Depends(get_verified_player)],
+                     ledger: Annotated[Any, Depends(get_ledger)],
+                     db: Annotated[Any, Depends(get_db)]):
+    today, assignment, _language = _player_context(player, ledger, db, request)
+    state = await asyncio.to_thread(meals.read, ledger, today)
+    _apply_meal_permissions(state, ledger, assignment)
+    return state
+
+
+@router.post("/meals/enable")
+async def enable_meals(request: Request,
+                       player: Annotated[Any, Depends(get_verified_player)],
+                       ledger: Annotated[Any, Depends(get_ledger)],
+                       db: Annotated[Any, Depends(get_db)]):
+    today, assignment, _language = _player_context(player, ledger, db, request)
+    _require_player_authority(ledger, assignment)
+    previous = ledger.get_active_nutrition_plan()
+    try:
+        state = await asyncio.to_thread(meals.enable, ledger, today)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from None
+    if previous is not None and previous["id"] != state["plan_version_id"]:
+        analytics.capture_for_request(request, analytics.AnalyticsEvent(
+            account_id=account_id_of(player), event="nutrition_meals_turned_on",
+            domain_key=f"{player}:meals:{state['plan_version_id']}", role="player", properties={},
+        ))
+    _apply_meal_permissions(state, ledger, assignment)
+    return state
+
+
+def _apply_meal_permissions(state, ledger, assignment):
+    state["can_enable"] = not _coach_holds_authority(ledger.get_active_nutrition_plan(), assignment)
+    state["can_request_swap"] = not state["can_enable"] and state["status"] == "ready"
+
+
+@router.post("/meals/log", status_code=201)
+async def log_planned_meal(request: Request, body: LogPlannedMealIn,
+                           player: Annotated[Any, Depends(get_verified_player)],
+                           ledger: Annotated[Any, Depends(get_ledger)]):
+    today = player_local_date(ledger, str(player))
+    try:
+        entries = await asyncio.to_thread(meals.log_meal, ledger, meals.LogMealCommand(
+            body.slot, body.plan_version_id, body.entry_date, today))
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from None
+    for entry in entries:
+        analytics.capture_for_request(request, analytics.AnalyticsEvent(
+            account_id=account_id_of(player), event="food_logged", role="player",
+            domain_key=f"{player}:food:{entry['id']}",
+            properties={"food_kind": entry["kind"], "meal_label": entry["meal_label"]},
+        ))
+    return {"entries": entries}
 
 
 def _player_context(player: Any, ledger: Any, db: Any, request: Request | None = None):

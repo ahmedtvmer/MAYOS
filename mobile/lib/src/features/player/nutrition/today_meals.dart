@@ -1,0 +1,163 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../core/api_client.dart';
+import '../../../core/display_language/controller.dart';
+import '../../../core/display_language/planned_meals_copy.dart';
+import '../../../core/planned_meals_models.dart';
+import '../../../core/food_swap_models.dart';
+import '../../../core/display_language/food_swap_copy.dart';
+import '../../../providers.dart';
+import 'meal_setup_screen.dart';
+import 'food_swap_sheet.dart';
+import 'food_swap_requests.dart';
+import '../../../core/display_language/food_swap_request_copy.dart';
+
+class TodayMeals extends ConsumerStatefulWidget {
+  const TodayMeals({required this.onLogged, this.revision = 0, super.key});
+  final VoidCallback onLogged;
+  final int revision;
+
+  @override
+  ConsumerState<TodayMeals> createState() => _TodayMealsState();
+}
+
+class _TodayMealsState extends ConsumerState<TodayMeals> {
+  PlannedMeals? _plan;
+  String? _error;
+  bool _busy = false;
+  int _request = 0;
+  int _swapRequestsRevision = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void didUpdateWidget(TodayMeals oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.revision != widget.revision) _load();
+  }
+
+  Future<void> _load({bool enable = false}) async {
+    final int request = ++_request;
+    setState(() { _busy = true; _error = null; });
+    try {
+      final PlannedMeals plan = await ref.read(apiClientProvider).plannedMeals(enable: enable);
+      if (mounted && request == _request) setState(() => _plan = plan);
+    } on ApiException catch (error) {
+      if (mounted && request == _request) setState(() => _error = error.message);
+    } finally {
+      if (mounted && request == _request) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _log(String slot, PlannedMealsCopy copy) async {
+    if (_busy || _plan == null) return;
+    setState(() { _busy = true; _error = null; });
+    try {
+      await ref.read(apiClientProvider).logPlannedMeal(_plan!, slot);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(copy.logged)));
+      widget.onLogged();
+    } on ApiException catch (error) {
+      if (mounted) setState(() => _error = error.message);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _setup() async {
+    await Navigator.of(context).push<bool>(MaterialPageRoute<bool>(builder: (_) => const MealSetupScreen()));
+    if (mounted) await _load();
+  }
+
+  Future<void> _swap(PlannedMeal meal, PlannedFood food) async {
+    final FoodSwapCopy copy = FoodSwapCopy(ref.read(displayLanguageProvider));
+    final FoodSwapTarget target = FoodSwapTarget(plan: _plan!, slot: meal.slot, role: food.role);
+    final bool? saved = await showModalBottomSheet<bool>(context: context,
+      isScrollControlled: true, isDismissible: false, enableDrag: false,
+      builder: (_) => FoodSwapSheet(target: target));
+    if (!mounted) return;
+    if (saved == true) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(copy.saved)));
+    await _load();
+  }
+
+  Future<void> _requestSwap(PlannedMeal meal, int foodIndex) async {
+    final bool? sent = await showDialog<bool>(context: context, barrierDismissible: false,
+      builder: (_) => RequestFoodSwapDialog(plan: _plan!, meal: meal, foodIndex: foodIndex));
+    if (!mounted || sent != true) return;
+    setState(() => _swapRequestsRevision++);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+      FoodSwapRequestCopy(ref.read(displayLanguageProvider)).sent)));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final PlannedMealsCopy copy = PlannedMealsCopy(ref.watch(displayLanguageProvider));
+    return Directionality(textDirection: copy.arabic ? TextDirection.rtl : TextDirection.ltr,
+      child: Card(child: Padding(padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
+          Text(copy.title, style: Theme.of(context).textTheme.titleLarge),
+          if (_busy) const LinearProgressIndicator(),
+          if (_error != null) ...<Widget>[
+            Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            TextButton(onPressed: _busy ? null : _load, child: Text(copy.retry)),
+          ],
+          if (_plan != null) ..._contents(copy),
+          PlayerFoodSwapRequests(
+            revision: _swapRequestsRevision + widget.revision, onRefresh: () => _load()),
+        ]))));
+  }
+
+  List<Widget> _contents(PlannedMealsCopy copy) {
+    final PlannedMeals plan = _plan!;
+    return <Widget>[
+      if (plan.author == 'Coach') Text(copy.coach),
+      if (plan.targetsChanged) Text(copy.targetsChanged),
+      if (plan.status == 'unavailable') Text(plan.reason == 'targets' ? copy.targetsNeeded
+        : plan.reason == 'coach' ? copy.coachTargetsOnly : copy.unavailable),
+      if (plan.status == 'disabled') ...<Widget>[
+        Text(copy.introduction),
+        if (plan.canEnable) FilledButton(key: const Key('enable_meals'),
+          onPressed: _busy ? null : () => _load(enable: true), child: Text(copy.turnOn)),
+      ],
+      if (plan.status == 'ready') ...<Widget>[
+        Text(plan.dayType == 'training_day' ? copy.trainingDay : copy.restDay),
+        if (plan.author == 'Player' && plan.gapNote[copy.language] != null)
+          Text(plan.gapNote[copy.language]!),
+        for (final PlannedMeal meal in plan.meals) _meal(meal, copy),
+      ],
+      TextButton(onPressed: _busy ? null : _setup, child: Text(copy.setup)),
+    ];
+  }
+
+  Widget _meal(PlannedMeal meal, PlannedMealsCopy copy) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 8),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
+      Text('${meal.name.isEmpty ? copy.slot(meal.slot) : meal.name} · ${copy.calories(meal.calories)}',
+        style: Theme.of(context).textTheme.titleMedium),
+      if (meal.note.isNotEmpty) Text(meal.note),
+      if (_plan!.author == 'Player') Text(copy.cookedWeights),
+      if (_plan!.author == 'Coach' && meal.targetDeviation.isNotEmpty)
+        Text(copy.deviation(meal.targetDeviation)),
+      for (final (int index, PlannedFood food) in meal.foods.indexed)
+        Row(children: <Widget>[
+          Expanded(child: Text('${copy.arabic ? food.arabicName ?? food.name : food.name} · ${copy.amount(food.grams)}'
+            '${food.portionGrams == null ? '' : ' (${(food.grams / food.portionGrams!).toStringAsFixed(1)} ${food.portionLabel})'}')),
+          if (_plan!.canSwap && _plan!.author == 'Player' && food.role.isNotEmpty)
+            IconButton(key: Key('swap_${meal.slot}_${food.role}'),
+              tooltip: FoodSwapCopy(copy.language).swap,
+              onPressed: _busy ? null : () => _swap(meal, food), icon: const Icon(Icons.swap_horiz)),
+          if (_plan!.canRequestSwap)
+            IconButton(key: Key('request_swap_${meal.slot}_$index'),
+              tooltip: FoodSwapRequestCopy(copy.language).request,
+              onPressed: _busy ? null : () => _requestSwap(meal, index), icon: const Icon(Icons.question_answer_outlined)),
+        ]),
+      OutlinedButton(key: Key('log_planned_${meal.slot}'),
+        onPressed: _busy ? null : () => _log(meal.slot, copy), child: Text(copy.log)),
+    ]),
+  );
+}

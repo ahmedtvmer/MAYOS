@@ -63,6 +63,8 @@ class FoodLogCopy extends NutritionCopy {
     'breakfast' => isArabic ? 'الإفطار' : 'Breakfast',
     'lunch' => isArabic ? 'الغداء' : 'Lunch',
     'dinner' => isArabic ? 'العشاء' : 'Dinner',
+    'morning_snack' => isArabic ? 'وجبة خفيفة صباحية' : 'Morning snack',
+    'afternoon_snack' => isArabic ? 'وجبة خفيفة بعد الظهر' : 'Afternoon snack',
     _ => isArabic ? 'وجبة خفيفة' : 'Snack',
   };
   String addTo(String meal) =>

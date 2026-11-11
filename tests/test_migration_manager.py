@@ -145,6 +145,39 @@ def test_fresh_ledger_has_private_personal_food_storage(temp_db_env):
     ).fetchone() is None
 
 
+def test_v55_meal_stack_upgrades_to_the_fresh_schema_without_changing_plan_versions(temp_db_env):
+    db, ledgers_dir, backups_dir = temp_db_env
+    conn = db.conn
+    fresh_tables = {name: conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name=?", (name,)
+    ).fetchone()[0] for name in ("meal_setup", "nutrition_plan_drafts")}
+    conn.execute("DROP TABLE nutrition_plan_drafts")
+    conn.execute("DROP TABLE meal_setup")
+    conn.execute("ALTER TABLE nutrition_plan_versions DROP COLUMN meals_json")
+    conn.execute(
+        "INSERT INTO nutrition_plan_versions(author,provenance,goal,goal_reason_data_json,"
+        "daily_activity,targets_json,created_at) VALUES('Player','player_consented','maintain',"
+        "'{}','mostly_sitting','{\"calories\":2000}','2026-11-08')"
+    )
+    before = [tuple(row) for row in conn.execute("SELECT * FROM nutrition_plan_versions")]
+    set_ledger_schema_version(conn, 55)
+    conn.commit()
+
+    apply_lazy_migrations(conn, "meal-stack-v55", ledgers_dir, backups_dir)
+    apply_lazy_migrations(conn, "meal-stack-v55", ledgers_dir, backups_dir)
+
+    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION
+    assert set(range(55, CURRENT_LEDGER_SCHEMA_VERSION)) <= MIGRATION_REGISTRY.keys()
+    assert [tuple(row) for row in conn.execute("SELECT * FROM nutrition_plan_versions")] == [
+        row + (None,) for row in before]
+    for name, ddl in fresh_tables.items():
+        assert conn.execute("SELECT sql FROM sqlite_master WHERE name=?", (name,)).fetchone()[0] == ddl
+    assert "meals_json" in {row[1] for row in conn.execute("PRAGMA table_info(nutrition_plan_versions)")}
+    catalog_tables = {row[0] for row in db.catalog_conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    assert {"food_swap_requests", "nutrition_templates"} <= catalog_tables
+    assert not {"meal_setup", "nutrition_plan_drafts"} & catalog_tables
+
+
 def test_v47_scopes_existing_regeneration_decisions_to_design_v2():
     conn = sqlite3.connect(":memory:")
     conn.execute("CREATE TABLE program_design_offer (id INTEGER PRIMARY KEY, decision TEXT, reason TEXT)")

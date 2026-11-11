@@ -6,10 +6,11 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 
-from service import analytics, food_log
+from service import analytics, food_log, meal_setup
 from service.weight_history import player_local_date
 from svc.dependencies import account_id_of, get_db, get_ledger, get_verified_player
 from svc.schemas import CopyMealIn, FoodLogAmountIn, FoodLogEntryIn, PersonalFoodIn, QuickAddEntryIn, QuickAddIn
+from svc.schemas import MealSetupIn
 
 router = APIRouter(prefix="/nutrition", tags=["nutrition"])
 Player = Annotated[Any, Depends(get_verified_player)]
@@ -21,6 +22,19 @@ def _http_error(error):
     status = 404 if isinstance(error, food_log.FoodLogNotFound) else (
         403 if isinstance(error, food_log.FoodLogReadOnly) else 400)
     return HTTPException(status_code=status, detail=str(error))
+
+
+@router.get("/meal-setup")
+async def read_meal_setup(player: Player, ledger: Ledger, db: Store):
+    return await asyncio.to_thread(meal_setup.read, db, ledger)
+
+
+@router.put("/meal-setup")
+async def save_meal_setup(body: MealSetupIn, player: Player, ledger: Ledger, db: Store):
+    try:
+        return await asyncio.to_thread(meal_setup.save, db, ledger, body.model_dump())
+    except ValueError as error:
+        raise _http_error(error) from None
 
 
 @router.get("/foods")

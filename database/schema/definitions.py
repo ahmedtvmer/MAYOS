@@ -10,7 +10,7 @@ from agent.prompts import DEFAULT_ASSISTANT_STYLE
 from database.exercise_library.curation import apply_exercise_curation
 from database.food_library.seeding import ensure_food_meal_limits_schema, ensure_food_search_schema
 from database.migration_manager import CURRENT_LEDGER_SCHEMA_VERSION
-from database.migration_manager import CHAT_HISTORY_FTS_DDL, FOOD_LOG_DDL, PERSONAL_FOODS_DDL
+from database.migration_manager import CHAT_HISTORY_FTS_DDL, FOOD_LOG_DDL, MEAL_SETUP_DDL, PERSONAL_FOODS_DDL
 from database.migration_manager import (
     ASSISTANT_GOAL_WEAK_POINT_PENDING_DDL,
     ASSISTANT_PREFERENCES_DDL,
@@ -20,6 +20,7 @@ from database.migration_manager import PROGRAM_EXERCISE_LOAD_COLUMN, PROGRAM_EXE
 from database.migration_manager import VOLUME_REVIEWS_DDL
 from database.migration_manager import EQUIPMENT_ACCESS_DDL
 from database.migration_manager import CHECKPOINT_REVIEWS_DDL
+from database.ledger.nutrition_drafts import NUTRITION_DRAFTS_DDL
 from database.migration_manager import DELOAD_CHOICES_DDL
 from database.migration_manager import INTAKE_DDL
 from database.migration_manager import INJURY_RECORDS_DDL
@@ -35,6 +36,8 @@ from database.migration_manager import WEIGHT_HISTORY_DDL
 from database.migration_manager import get_ledger_schema_version
 from database.migration_manager import set_ledger_schema_version
 from database.program_cache import ensure_revision_schema
+from database.food_swap_requests import ensure_schema as ensure_food_swap_request_schema
+from database.registry.nutrition_templates import NUTRITION_TEMPLATES_DDL
 
 EMBEDDING_DIM = 384
 
@@ -181,6 +184,7 @@ class SchemaMixin:
                 daily_activity TEXT NOT NULL,
                 targets_json TEXT NOT NULL,
                 authority_assignment_id TEXT,
+                meals_json TEXT,
                 created_at TEXT NOT NULL
             );
             CREATE TABLE IF NOT EXISTS nutrition_screening (
@@ -430,6 +434,8 @@ class SchemaMixin:
                 *FOOD_LOG_DDL,
                 *PERSONAL_FOODS_DDL,
                 *CHAT_HISTORY_FTS_DDL,
+                *MEAL_SETUP_DDL,
+                NUTRITION_DRAFTS_DDL,
                 *EQUIPMENT_ACCESS_DDL,
                 *ASSISTANT_PREFERENCES_DDL,
                 *ASSISTANT_GOAL_WEAK_POINT_PENDING_DDL,
@@ -925,6 +931,7 @@ class SchemaMixin:
                 CREATE INDEX IF NOT EXISTS idx_linked_sign_ins_account
                     ON linked_sign_ins(account_id);
             """)
+            self.catalog_conn.executescript(NUTRITION_TEMPLATES_DDL)
             # ADR 056 removes claim-code credential material with the claim flow.
             self.catalog_conn.execute("DROP TABLE IF EXISTS account_claim_codes")
             self._create_coach_alerts_schema()
@@ -951,6 +958,7 @@ class SchemaMixin:
             self._ensure_linked_sign_in_account_provider()
             self._ensure_google_email_and_product_contact()
             self._ensure_program_request_week_columns()
+            ensure_food_swap_request_schema(self.catalog_conn)
             self._ensure_coach_invites_revoked_at()
             self.catalog_conn.execute("DROP TRIGGER IF EXISTS first_touch_acquisition_no_update")
             self.catalog_conn.execute(
