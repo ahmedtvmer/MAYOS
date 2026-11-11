@@ -278,7 +278,10 @@ class AuthRepository {
       return null;
     }
     try {
-      final AccountSession session = await _currentSession();
+      // AuthController owns confirmation backoff and the saved-session fallback.
+      // Do not stack the API client's GET retry timers inside each attempt.
+      final AccountSession session =
+          await _currentSession(retryTransportFailures: false);
       if (!await _canPersistRestore(token, revision, dataGeneration)) {
         return null;
       }
@@ -626,10 +629,17 @@ class AuthRepository {
     return session;
   }
 
-  Future<AccountSession> _currentSession() async {
-    final Account account = await _api.currentAccount();
-    final bool onboarded = await _api.hasProfile();
-    final String? email = (await _api.recoveryEmailDetails()).email;
+  Future<AccountSession> _currentSession(
+      {bool retryTransportFailures = true}) async {
+    final Account account = await _api.currentAccount(
+      retryTransportFailures: retryTransportFailures,
+    );
+    final bool onboarded = await _api.hasProfile(
+      retryTransportFailures: retryTransportFailures,
+    );
+    final String? email = (await _api.recoveryEmailDetails(
+      retryTransportFailures: retryTransportFailures,
+    )).email;
     return AccountSession(
       account: account,
       onboarded: onboarded,

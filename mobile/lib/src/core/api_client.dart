@@ -149,7 +149,7 @@ class ApiClient {
         _clientHeader = (clientHeaderLoader ?? _loadClientHeader)(),
         _buildHeader = (buildHeaderLoader ?? _loadBuildHeader)(),
         _displayLanguageLoader = displayLanguageLoader ?? (() => 'en'),
-        _retryDelay = retryDelay ?? Future<void>.delayed {
+        _retryDelay = retryDelay {
     _dio = Dio(
       BaseOptions(
         baseUrl: baseUrl,
@@ -258,12 +258,17 @@ class ApiClient {
   final String _clientHeader;
   final String? _buildHeader;
   final String Function() _displayLanguageLoader;
-  final Future<void> Function(Duration) _retryDelay;
+  final Future<void> Function(Duration)? _retryDelay;
   final Random _retryRandom = Random();
   late final Dio _dio;
   final Set<CancelToken> _sessionRequestTokens = <CancelToken>{};
   final Map<CancelToken, Completer<void>> _sessionRequestCompletions =
       <CancelToken, Completer<void>>{};
+  final Map<Timer, ({Completer<void> completion, RequestOptions request})>
+      _readRetryWaits =
+      <Timer, ({Completer<void> completion, RequestOptions request})>{};
+  int _sessionRequestRevision = 0;
+  bool _disposed = false;
 
   /// Invoked when an authenticated request fails with 401.
   void Function()? onUnauthorized;
@@ -286,6 +291,12 @@ class ApiClient {
 
   /// Cancels requests that belonged to the session that just ended.
   Future<void> cancelAuthenticatedRequests() async {
+    _sessionRequestRevision++;
+    for (final wait in _readRetryWaits.entries) {
+      if (_belongsToSession(wait.value.request)) {
+        _cancelReadRetryWait(wait.key, wait.value.completion);
+      }
+    }
     final List<Future<void>> completions = <Future<void>>[];
     for (final CancelToken token
         in List<CancelToken>.of(_sessionRequestTokens)) {
@@ -296,6 +307,15 @@ class ApiClient {
     _sessionRequestTokens.clear();
     // Let Dio finish the canceled request chains before session cleanup ends.
     await Future.wait<void>(completions);
+  }
+
+  void dispose() {
+    _disposed = true;
+    for (final wait in _readRetryWaits.entries) {
+      _cancelReadRetryWait(wait.key, wait.value.completion);
+    }
+    unawaited(cancelAuthenticatedRequests());
+    _dio.close(force: true);
   }
 
   Future<void> _attachToken(
@@ -339,6 +359,9 @@ class ApiClient {
   CancelToken? _sessionRequestTokenFor(RequestOptions options) {
     if (options.extra[_allowRequestAfterSessionEnd] == true) return null;
     final CancelToken requestToken = options.cancelToken ??= CancelToken();
+    // Dio normally binds this during Options.compose, before this interceptor
+    // creates the token. Cancellation must still carry the tracked request.
+    requestToken.requestOptions = options;
     options.extra[_sessionRequestToken] = requestToken;
     _sessionRequestTokens.add(requestToken);
     _sessionRequestCompletions[requestToken] = Completer<void>();
@@ -446,12 +469,16 @@ class ApiClient {
 
   Future<Response<dynamic>> _send(
       Future<Response<dynamic>> Function() run) async {
+    final int sessionRevision = _sessionRequestRevision;
     int retries = 0;
     while (true) {
       try {
         return await run();
       } on DioException catch (error) {
-        if (retries == 3 || !_canRetryRead(error)) {
+        if (_disposed ||
+            retries == 3 ||
+            !_canRetryRead(error) ||
+            _sessionEndedFor(error.requestOptions, sessionRevision)) {
           // Cleanup may wait for work that needs this error to reach its caller.
           await _waitForDioErrorHandling(error);
           throw _toApiException(error);
@@ -462,7 +489,15 @@ class ApiClient {
             (1000 * (1 << retries) * (0.8 + _retryRandom.nextDouble() * 0.4))
                 .round();
         retries += 1;
-        await _retryDelay(Duration(milliseconds: milliseconds));
+        await _waitBeforeReadRetry(
+          Duration(milliseconds: milliseconds),
+          error.requestOptions,
+        );
+        if (_disposed ||
+            _sessionEndedFor(error.requestOptions, sessionRevision) ||
+            error.requestOptions.cancelToken?.isCancelled == true) {
+          throw _toApiException(error);
+        }
       }
     }
   }
@@ -470,10 +505,43 @@ class ApiClient {
   bool _canRetryRead(DioException error) =>
       error.requestOptions.method.toUpperCase() == 'GET' &&
       error.requestOptions.extra[skipReadRetry] != true &&
+      error.requestOptions.cancelToken?.isCancelled != true &&
       error.response == null &&
       (error.type == DioExceptionType.connectionError ||
           error.type == DioExceptionType.connectionTimeout ||
           error.type == DioExceptionType.receiveTimeout);
+
+  static bool _belongsToSession(RequestOptions request) =>
+      request.extra[_skipAuth] != true &&
+      request.extra[_allowRequestAfterSessionEnd] != true;
+
+  bool _sessionEndedFor(RequestOptions request, int revision) =>
+      _belongsToSession(request) && revision != _sessionRequestRevision;
+
+  Future<void> _waitBeforeReadRetry(
+      Duration duration, RequestOptions request) async {
+    final Future<void> Function(Duration)? injectedDelay = _retryDelay;
+    if (injectedDelay != null) return injectedDelay(duration);
+    final Completer<void> completion = Completer<void>();
+    final Timer timer = Timer(duration, completion.complete);
+    // A failed attempt has already left Dio's in-flight set. Keep its backoff
+    // cancellable so it cannot restart a request under a later session.
+    _readRetryWaits[timer] = (completion: completion, request: request);
+    request.cancelToken?.whenCancel.then<void>((_) {
+      _cancelReadRetryWait(timer, completion);
+    });
+    try {
+      await completion.future;
+    } finally {
+      timer.cancel();
+      _readRetryWaits.remove(timer);
+    }
+  }
+
+  void _cancelReadRetryWait(Timer timer, Completer<void> completion) {
+    timer.cancel();
+    if (!completion.isCompleted) completion.complete();
+  }
 
   /// Reads the public minimum Android build policy. A malformed or failed
   /// response is surfaced to the caller, which treats the check as best-effort.
@@ -690,8 +758,13 @@ class ApiClient {
     return AuthTokens.fromJson(response.data as Map<String, dynamic>);
   }
 
-  Future<Account> currentAccount() async {
-    final response = await _send(() => _dio.get<dynamic>('/auth/me'));
+  Future<Account> currentAccount({bool retryTransportFailures = true}) async {
+    final response = await _send(() => _dio.get<dynamic>(
+          '/auth/me',
+          options: Options(extra: <String, dynamic>{
+            skipReadRetry: !retryTransportFailures,
+          }),
+        ));
     return _parseAccount(response.data);
   }
 
@@ -2170,8 +2243,14 @@ class ApiClient {
   }
 
   /// Reads the current verified address and any address awaiting verification.
-  Future<RecoveryEmailDetails> recoveryEmailDetails() async {
-    final response = await _send(() => _dio.get<dynamic>('/auth/email'));
+  Future<RecoveryEmailDetails> recoveryEmailDetails(
+      {bool retryTransportFailures = true}) async {
+    final response = await _send(() => _dio.get<dynamic>(
+          '/auth/email',
+          options: Options(extra: <String, dynamic>{
+            skipReadRetry: !retryTransportFailures,
+          }),
+        ));
     final Map<String, dynamic> body = response.data as Map<String, dynamic>;
     return (
       email: body['email'] as String?,
@@ -2272,9 +2351,14 @@ class ApiClient {
   }
 
   /// True when the account has completed onboarding (a profile exists).
-  Future<bool> hasProfile() async {
+  Future<bool> hasProfile({bool retryTransportFailures = true}) async {
     try {
-      await _send(() => _dio.get<dynamic>('/profile'));
+      await _send(() => _dio.get<dynamic>(
+            '/profile',
+            options: Options(extra: <String, dynamic>{
+              skipReadRetry: !retryTransportFailures,
+            }),
+          ));
       return true;
     } on ApiException catch (error) {
       if (error.statusCode == 404) {

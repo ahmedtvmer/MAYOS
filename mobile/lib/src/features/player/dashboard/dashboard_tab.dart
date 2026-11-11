@@ -219,7 +219,11 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
 
   Future<void> _prefetchPrescription(ApiClient api, ProgramDay day) async {
     try {
-      await api.prescription(day.dayOrder, weekOrder: day.weekOrder);
+      await api.prescription(
+        day.dayOrder,
+        weekOrder: day.weekOrder,
+        retryTransportFailures: false,
+      );
     } on ApiException {
       // Home stays usable if today's targets cannot be saved yet.
     }

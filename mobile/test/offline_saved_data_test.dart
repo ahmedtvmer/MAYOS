@@ -94,6 +94,20 @@ Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
   }
 }
 
+Future<T> _waitWithPumps<T>(WidgetTester tester, Future<T> operation) async {
+  bool completed = false;
+  operation.then<void>((_) {
+    completed = true;
+  }, onError: (Object error) {
+    completed = true;
+  });
+  for (int attempt = 0; attempt < 120 && !completed; attempt++) {
+    await tester.pump(const Duration(milliseconds: 100));
+  }
+  expect(completed, isTrue, reason: 'The saved Player read did not complete');
+  return operation;
+}
+
 void main() {
   setUp(() => FlutterSecureStorage.setMockInitialValues(<String, String>{}));
 
@@ -144,13 +158,17 @@ void main() {
           listen: false,
         );
         final ApiClient api = container.read(apiClientProvider);
-        await tester.runAsync(() async {
-          expect((await api.volume())['Chest'], 12.5);
-          expect((await api.activeProgram())?.programName, 'Upper/Lower 4x');
-          expect((await api.prescription(1)).targets, isNotEmpty);
-          expect((await api.nutrition()).targets?['calories'], 2345);
-          expect((await api.foodLogDay()).date, DateTime.parse(_today()));
-        });
+        // This store's queue was created by startup on the fake clock.
+        // runAsync would pause that queue while waiting for its reads.
+        expect((await _waitWithPumps(tester, api.volume()))['Chest'], 12.5);
+        expect((await _waitWithPumps(tester, api.activeProgram()))?.programName,
+            'Upper/Lower 4x');
+        expect((await _waitWithPumps(tester, api.prescription(1))).targets,
+            isNotEmpty);
+        expect((await _waitWithPumps(tester, api.nutrition())).targets?['calories'],
+            2345);
+        expect((await _waitWithPumps(tester, api.foodLogDay())).date,
+            DateTime.parse(_today()));
 
         await tester.tap(find.text(copy.nutritionTab).last);
         await _pumpUntilFound(tester, find.text('2345'));
@@ -475,8 +493,12 @@ void main() {
         await releaseResponse.future;
       }
     };
-    final Future<Map<String, double>> oldRead =
-        container.read(apiClientProvider).volume();
+    // Logout cancels this request; observe the rejection before teardown so it
+    // cannot become an unhandled error while the next session signs in.
+    final Future<void> oldRead = expectLater(
+      container.read(apiClientProvider).volume(),
+      throwsA(isA<ApiException>()),
+    );
     await requestStarted.future;
     await auth.logout();
     await auth.login(username: 'alice', password: 'password-123');

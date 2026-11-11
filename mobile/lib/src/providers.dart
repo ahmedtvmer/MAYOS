@@ -107,6 +107,7 @@ final Provider<ApiClient> apiClientProvider = Provider<ApiClient>((ref) {
     baseUrl: apiBaseUrl,
     displayLanguageLoader: () => ref.read(displayLanguageProvider),
   );
+  ref.onDispose(client.dispose);
   client.dio.interceptors.add(
     SavedPlayerReads(tokens, ref.watch(savedPlayerDataStoreProvider)),
   );

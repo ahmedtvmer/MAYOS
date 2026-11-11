@@ -416,11 +416,13 @@ class _PlayerShellState extends ConsumerState<PlayerShell> {
       activeWorkoutControllerProvider,
       (_, ActiveWorkoutState next) => _offerResume(next),
     );
-    final int index = ref.watch(playerShellTabProvider);
-    final bool isCoach =
-        ref.watch(authControllerProvider).session?.account.isCoach ?? false;
     final Account? account =
         ref.watch(authControllerProvider).session?.account;
+    // The router redirects on the next frame. Do not recreate the keyed tabs
+    // for a null account and start fresh reads after session cleanup.
+    if (account == null) return const SizedBox.shrink();
+    final int index = ref.watch(playerShellTabProvider);
+    final bool isCoach = account.isCoach;
     final MayosCopy copy = MayosCopy(ref.watch(displayLanguageProvider));
     final String settingsLabel = copy.settings;
     final ActiveWorkoutState workout =
@@ -471,7 +473,7 @@ class _PlayerShellState extends ConsumerState<PlayerShell> {
         ),
       ),
       body: IndexedStack(
-            key: ValueKey<String>('${account?.accountId}:$_confirmedDataRevision'),
+            key: ValueKey<String>('${account.accountId}:$_confirmedDataRevision'),
             index: index,
             children: <Widget>[
               TickerMode(enabled: index == 0, child: const DashboardTab()),
