@@ -89,6 +89,7 @@ from agent.player_tools import (
     cap_tool_results_for_prompt,
     run_player_tool_calls,
 )
+from agent.context_router import RoutedContext, route_player_context
 from agent.telemetry_reconciler import (
     clean_movement_stem,
     extract_ledger_exercise_name,
@@ -5137,23 +5138,30 @@ def _invoke_player_tool_loop(
     ledger, _store = _graph_context(config)
     tools, definitions = build_player_read_tools(ledger, _store, state.get("player_account_id"))
     bound_model = llm.bind_tools(tools)
-    messages = list(payload)
-    for _round in range(MAX_PLAYER_TOOL_ROUNDS):
-        response = bound_model.invoke(messages)
-        tool_calls = list(getattr(response, "tool_calls", ()) or ())
-        if not tool_calls:
-            return response
-        _ensure_tool_call_ids(tool_calls)
-        response = response.model_copy(update={"tool_calls": tool_calls})
-        tool_messages, _telemetry = run_player_tool_calls(
-            tool_calls,
-            tools=tools,
-            definitions=definitions,
-            language=_tool_reply_language(state),
-        )
-        tool_messages = cap_tool_results_for_prompt([*messages, response], tool_messages)
-        messages.extend([response, *tool_messages])
-    return llm.invoke(messages)
+    context = RoutedContext(list(payload))
+    if (state.get("intent") or "coaching_qa") == "coaching_qa":
+        context = route_player_context(payload, ledger, _store, {
+            "tools": tools, "definitions": definitions, "language": _tool_reply_language(state),
+        })
+    messages = context.messages
+    model_fetched_more = False
+    try:
+        for _round in range(MAX_PLAYER_TOOL_ROUNDS):
+            response = bound_model.invoke(messages)
+            tool_calls = list(getattr(response, "tool_calls", ()) or ())
+            if not tool_calls:
+                return response
+            model_fetched_more = True
+            _ensure_tool_call_ids(tool_calls)
+            response = response.model_copy(update={"tool_calls": tool_calls})
+            tool_messages, _telemetry = run_player_tool_calls(
+                tool_calls, tools=tools, definitions=definitions, language=_tool_reply_language(state),
+            )
+            tool_messages = cap_tool_results_for_prompt([*messages, response], tool_messages)
+            messages.extend([response, *tool_messages])
+        return llm.invoke(messages)
+    finally:
+        _record_context_retrieval(context, model_fetched_more)
 
 
 def _ensure_tool_call_ids(tool_calls: list[dict[str, Any]]) -> None:
@@ -5476,6 +5484,14 @@ def _record_telemetry_event(
     _telemetry_handler.flush()
 
 
+def _record_context_retrieval(context: RoutedContext, model_fetched_more: bool) -> None:
+    """Only fixed topic/piece labels and a fallback flag cross the telemetry boundary."""
+    logger.info("Context router topics=%s pieces=%s model_fetched_more=%s",
+                ",".join(context.topics) or "none", ",".join(context.pieces) or "none",
+                model_fetched_more)
+    _telemetry_handler.flush()
+
+
 def _can_append_physician_followup(
     intent: str,
     content: str,
@@ -5543,6 +5559,8 @@ def stream_assistant_turn(
     intent = "coaching_qa"
     router_ms = 0.0
     telemetry_recorded = False
+    routed_context = None
+    model_fetched_more = False
     query = _get_message_text(original_messages[-1]) if original_messages else ""
     pending_area_clarification = False
     try:
@@ -5593,7 +5611,13 @@ def stream_assistant_turn(
             payload = build_prompt_payload(state)
             tools, definitions = build_player_read_tools(ledger, store, state.get("player_account_id"))
             bound_model = llm.bind_tools(tools)
-            model_messages = list(payload)
+            routed_context = RoutedContext(list(payload))
+            if intent == "coaching_qa":
+                routed_context = route_player_context(payload, ledger, store, {
+                    "tools": tools, "definitions": definitions,
+                    "language": _tool_reply_language(state), "status_callback": status_callback,
+                })
+            model_messages = routed_context.messages
 
             for _round_index in range(MAX_PLAYER_TOOL_ROUNDS):
                 streamed_answer = yield from _stream_player_answer(
@@ -5603,6 +5627,7 @@ def stream_assistant_turn(
                 if not streamed_answer.tool_calls:
                     telemetry = streamed_answer.telemetry
                     break
+                model_fetched_more = True
                 _ensure_tool_call_ids(streamed_answer.tool_calls)
                 response_message = streamed_answer.message.model_copy(
                     update={"tool_calls": streamed_answer.tool_calls}
@@ -5668,6 +5693,9 @@ def stream_assistant_turn(
                 visible.append(stream_output.pending_output)
                 yield stream_output.pending_output
         result = _response(PIPELINE_ERROR_RESPONSE, bool(result and result.get("program_updated")))
+    finally:
+        if routed_context is not None:
+            _record_context_retrieval(routed_context, model_fetched_more)
     if result is not None:
         cleaned = finalize_coach_output(result.get("response_content") or "")
         piece = ("\n\n" if visible else "") + cleaned

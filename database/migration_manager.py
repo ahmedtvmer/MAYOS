@@ -18,7 +18,12 @@ from utils.equipment_access import (
 logger = MayosLogger().get_logger(__name__)
 
 # Current target schema version for all user ledgers
-CURRENT_LEDGER_SCHEMA_VERSION: int = 55
+CURRENT_LEDGER_SCHEMA_VERSION: int = 57
+
+CHAT_HISTORY_FTS_DDL: tuple[str, ...] = (
+    "CREATE VIRTUAL TABLE IF NOT EXISTS chat_history_fts USING fts5("
+    "message_id UNINDEXED, search_text, tokenize='unicode61 remove_diacritics 2')",
+)
 
 PERSONAL_FOODS_DDL: tuple[str, ...] = (
     "CREATE TABLE IF NOT EXISTS personal_foods ("
@@ -1266,6 +1271,30 @@ def _migrate_v54_to_v55(conn: sqlite3.Connection) -> None:
         conn.execute(statement)
 
 
+def _migrate_v55_to_v56(conn: sqlite3.Connection) -> None:
+    """Keeps the v56 slot available for the concurrently landing ledger change."""
+
+
+def _migrate_v56_to_v57(conn: sqlite3.Connection) -> None:
+    from database.ledger.chat import _chat_search_text
+
+    for statement in CHAT_HISTORY_FTS_DDL:
+        conn.execute(statement)
+    conn.execute("DELETE FROM chat_history_fts")
+    tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    if "chat_history" not in tables:
+        return
+    rows = conn.execute("SELECT id, role, content FROM chat_history").fetchall()
+    conn.executemany(
+        "INSERT INTO chat_history_fts (message_id, search_text) VALUES (?, ?)",
+        [
+            (row[0], search_text)
+            for row in rows
+            if (search_text := _chat_search_text(row[1], row[2])) is not None
+        ],
+    )
+
+
 def get_ledger_schema_version(conn: sqlite3.Connection) -> int:
     """Reads the current user_version PRAGMA from the SQLite connection."""
     cursor = conn.cursor()
@@ -1417,6 +1446,8 @@ MIGRATION_REGISTRY: dict[int, MigrationCallable] = {
     52: _migrate_v52_to_v53,
     53: _migrate_v53_to_v54,
     54: _migrate_v54_to_v55,
+    55: _migrate_v55_to_v56,
+    56: _migrate_v56_to_v57,
 }
 
 

@@ -8,7 +8,7 @@ from core.weak_points import WEAK_POINT_MUSCLES
 
 # Specific phrases precede broad terms so upper chest and side delts stay
 # distinct from chest and shoulders.
-_MUSCLE_WORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
+WEAK_POINT_ALIASES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("upper_chest", ("upper chest", "upper pecs", "أعلى الصدر", "الجزء العلوي من الصدر")),
     ("side_delts", ("side delts", "lateral delts", "side shoulders", "الأكتاف الجانبية", "الكتف الجانبي", "كتف جانبي")),
     ("chest", ("chest", "chests", "pec", "pecs", "صدر", "الصدر", "صدري", "صدور")),
@@ -48,7 +48,7 @@ def suggest_weak_points(goal_text: str | None) -> list[str]:
     text = _BACK_IDIOM.sub(lambda match: " " * len(match.group()), text)
     matches: list[tuple[int, int, str]] = []
     aliases: list[tuple[int, int, str]] = []
-    for muscle, words in _MUSCLE_WORDS:
+    for muscle, words in WEAK_POINT_ALIASES:
         for word in words:
             normalized = _normalize(word)
             forms = (normalized, "و" + normalized) if "\u0600" <= normalized[0] <= "\u06ff" else (normalized,)
