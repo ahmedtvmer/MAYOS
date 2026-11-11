@@ -1,6 +1,7 @@
 module.exports = {
   globDirectory: 'build/web/',
   globPatterns: [
+    'index.html',
     'flutter_bootstrap.js',
     'main.dart.js',
     'manifest.json',
@@ -9,6 +10,8 @@ module.exports = {
     'mayos-icon-*.png',
     'mayos-loading-wallpaper.jpg',
     'mayos-lockup-white.png',
+    'safe_area.js',
+    'posthog_init.js',
     'pwa_bridge.js',
     'offline.html',
     'offline.js',
@@ -21,7 +24,6 @@ module.exports = {
     'assets/**/*.{ttf,otf,woff,woff2,png,jpg,jpeg,webp,svg}',
   ],
   globIgnores: [
-    'index.html',
     'service-worker.js',
     'workbox-*.js',
     '**/*.symbols',
@@ -35,10 +37,13 @@ module.exports = {
   clientsClaim: true,
   skipWaiting: false,
   cleanupOutdatedCaches: true,
-  // Documents are fetched live; the precached fallback handles timeouts/errors.
+  // Keep navigations live-first while allowing a closed app to cold-start offline.
   runtimeCaching: [
     {
-      urlPattern: ({request}) => request.mode === 'navigate',
+      urlPattern: ({url, request}) =>
+        request.mode === 'navigate' &&
+        url.origin === self.location.origin &&
+        url.pathname.startsWith('/app/'),
       handler: 'NetworkOnly',
       options: {
         // Workbox 7.3's generateSW validator rejects networkTimeoutSeconds for
@@ -58,8 +63,19 @@ module.exports = {
           fetchDidFail: async ({state}) => {
             clearTimeout(state.navigationTimeout);
           },
+          handlerDidError: async () => {
+            const precacheName = (await caches.keys()).find(name => name.includes('precache'));
+            if (!precacheName) return;
+
+            const precache = await caches.open(precacheName);
+            const appDocumentUrl = new URL('index.html', self.registration.scope);
+            const appDocument = await precache.match(appDocumentUrl.href, {ignoreSearch: true});
+            if (appDocument) return appDocument;
+
+            const offlinePageUrl = new URL('offline.html', self.registration.scope);
+            return precache.match(offlinePageUrl.href, {ignoreSearch: true});
+          },
         }],
-        precacheFallback: {fallbackURL: 'offline.html'},
       },
     },
   ],

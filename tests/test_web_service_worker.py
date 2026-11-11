@@ -10,12 +10,17 @@ from scripts.assemble_web import assemble
 import pytest
 
 
-def test_generated_worker_must_not_precache_api_origin_or_document():
+def test_generated_worker_precaches_document_but_not_api_or_cross_origin_data():
     api = "https://api.mayos.online"
-    assert_service_worker_safe('self.__WB_MANIFEST = [{"url":"main.dart.js"}]', api)
+    assert_service_worker_safe(
+        'self.__WB_MANIFEST = [{"url":"main.dart.js"},{"url":"index.html"},'
+        '{"url":"offline.html"}]', api
+    )
     for worker in (
         f'self.__WB_MANIFEST = [{{"url":"{api}/v1/me"}}]',
-        'self.__WB_MANIFEST = [{"url":"index.html"}]',
+        'self.__WB_MANIFEST = [{"url":"https://analytics.example/event"},'
+        '{"url":"index.html"},{"url":"offline.html"}]',
+        'self.__WB_MANIFEST = [{"url":"main.dart.js"}]',
     ):
         try:
             assert_service_worker_safe(worker, api)
@@ -27,7 +32,9 @@ def test_generated_worker_must_not_precache_api_origin_or_document():
 
 def test_generated_precache_excludes_canvas_kit_symbols_and_notices():
     worker = (
-        'precacheAndRoute([{url:"main.dart.js"},{url:"canvaskit/canvaskit.js"},'
+        'precacheAndRoute([{url:"index.html"},{url:"offline.html"},'
+        '{url:"main.dart.js"},'
+        '{url:"canvaskit/canvaskit.js"},'
         '{url:"canvaskit/skwasm.js"},'
         '{url:"assets/example.symbols"},{url:"assets/NOTICES"}]);'
     )
@@ -39,7 +46,7 @@ def test_generated_precache_excludes_canvas_kit_symbols_and_notices():
         raise AssertionError("oversized precache entries were accepted")
 
 
-def test_workbox_generated_and_assembled_manifest_has_required_assets_and_routes(
+def test_issue_708_generated_worker_falls_back_offline_and_assembles_manifest(
     tmp_path, monkeypatch
 ):
     node = shutil.which("node")
@@ -57,7 +64,8 @@ def test_workbox_generated_and_assembled_manifest_has_required_assets_and_routes
     files = [
         "index.html", "flutter.js", "flutter_bootstrap.js", "main.dart.js",
         "manifest.json", "favicon.png", "apple-touch-icon.png", "mayos-icon-192.png",
-        "mayos-loading-wallpaper.jpg", "mayos-lockup-white.png", "pwa_bridge.js",
+        "mayos-loading-wallpaper.jpg", "mayos-lockup-white.png", "safe_area.js",
+        "posthog_init.js", "pwa_bridge.js",
         "offline.html", "offline.js", "canvaskit/canvaskit.js",
         "canvaskit/canvaskit.wasm", "canvaskit/chromium/canvaskit.js",
         "canvaskit/chromium/canvaskit.wasm", "canvaskit/skwasm.js",
@@ -70,7 +78,14 @@ def test_workbox_generated_and_assembled_manifest_has_required_assets_and_routes
     for relative in files:
         destination = build / relative
         destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_text("fixture", encoding="utf-8")
+        contents = (
+            '<script src="safe_area.js"></script>'
+            '<script src="posthog_init.js"></script>'
+            '<script src="pwa_bridge.js"></script>'
+            '<script src="flutter_bootstrap.js"></script>'
+            if relative == "index.html" else "fixture"
+        )
+        destination.write_text(contents, encoding="utf-8")
 
     env = os.environ.copy()
     env.setdefault("NPM_CONFIG_CACHE", str(tmp_path / "npm-cache"))
@@ -100,8 +115,12 @@ def test_workbox_generated_and_assembled_manifest_has_required_assets_and_routes
     worker = (build / "service-worker.js").read_text(encoding="utf-8")
     urls = re.findall(r'''["']?url["']?\s*:\s*["']([^"']+)''', worker)
     assert {
+        "index.html",
         "flutter_bootstrap.js",
         "main.dart.js",
+        "safe_area.js",
+        "posthog_init.js",
+        "pwa_bridge.js",
         "manifest.json",
         "apple-touch-icon.png",
         "offline.html",
@@ -118,8 +137,7 @@ def test_workbox_generated_and_assembled_manifest_has_required_assets_and_routes
         "canvaskit/chromium/canvaskit.wasm",
     }.issubset(urls)
     assert not any(
-        "index.html" in url
-        or "skwasm" in url
+        "skwasm" in url
         or "wimp" in url
         or "webparagraph" in url
         or url in ("flutter.js", "assets/AssetManifest.bin")
@@ -129,9 +147,193 @@ def test_workbox_generated_and_assembled_manifest_has_required_assets_and_routes
         for url in urls
     )
     assert "NetworkOnly" in worker and "1e4" in worker and "AbortController" in worker
-    assert "fallbackURL:\"offline.html\"" in worker
+    assert "caches.keys()" in worker and "offline.html" in worker
     assert '"SKIP_WAITING"' in worker
     assert worker.index('"SKIP_WAITING"') < worker.index("self.skipWaiting()")
+
+    harness = textwrap.dedent("""
+      const fs = require('node:fs');
+      const path = require('node:path');
+      const vm = require('node:vm');
+      const {URL} = require('node:url');
+      const workerPath = process.env.SERVICE_WORKER_PATH;
+      const workerSource = fs.readFileSync(workerPath, 'utf8');
+      const moduleSpecifier = workerSource.match(/define\\(\\s*\\[\\s*['\"](\\.\\/workbox-[^'\"]+)['\"]/)?.[1];
+      if (!moduleSpecifier) throw new Error('generated worker has no Workbox module dependency');
+      const modulePath = path.resolve(path.dirname(workerPath), moduleSpecifier);
+      const resolvedModulePath = fs.existsSync(modulePath) ? modulePath : `${modulePath}.js`;
+      if (!fs.existsSync(resolvedModulePath)) throw new Error(`Workbox module is missing: ${moduleSpecifier}`);
+      const origin = 'https://mayos.example';
+      const scope = `${origin}/app/`;
+      let fetchAttempts = 0;
+      class ServiceWorkerRequest {
+        constructor(input, options = {}) {
+          const source = input instanceof ServiceWorkerRequest ? input : null;
+          this.url = source ? source.url : new URL(input, scope).href;
+          this.mode = options.mode || (source && source.mode) || 'navigate';
+          this.method = options.method || (source && source.method) || 'GET';
+          this.signal = options.signal || (source && source.signal);
+          this.headers = options.headers || (source && source.headers) || {};
+        }
+      }
+      class ServiceWorkerResponse {
+        constructor(body) { this.body = body; this.status = 200; }
+        clone() { return new ServiceWorkerResponse(this.body); }
+        async text() { return this.body; }
+      }
+      const cacheEntries = new Map([
+        [`${scope}index.html?__WB_REVISION__=abc`, new ServiceWorkerResponse('app document')],
+        [`${scope}offline.html?__WB_REVISION__=def`, new ServiceWorkerResponse('offline page')],
+      ]);
+      const makeCache = entries => ({
+        async match(request, options = {}) {
+          const wanted = new URL(request.url || request, scope);
+          for (const [key, response] of entries) {
+            const cached = new URL(key);
+            if (cached.href === wanted.href || (options.ignoreSearch && cached.origin === wanted.origin && cached.pathname === wanted.pathname)) {
+              return response.clone();
+            }
+          }
+          return undefined;
+        },
+      });
+      const cacheStorage = new Map([
+        ['runtime-cache', makeCache(new Map([[`${scope}index.html`, new ServiceWorkerResponse('wrong runtime copy')]]))],
+        ['workbox-precache-v2-mayos', makeCache(cacheEntries)],
+      ]);
+      const sandbox = {
+        URL,
+        Request: ServiceWorkerRequest,
+        Response: ServiceWorkerResponse,
+        AbortController,
+        setTimeout,
+        clearTimeout,
+        console,
+        caches: {
+          async keys() { return [...cacheStorage.keys()]; },
+          async open(name) { return cacheStorage.get(name); },
+        },
+        async fetch() {
+          fetchAttempts++;
+          throw new TypeError('offline');
+        },
+        addEventListener() {},
+        registration: {scope},
+        location: {origin, href: scope},
+        clients: {claim: async () => {}},
+        skipWaiting: async () => {},
+      };
+      sandbox.self = sandbox;
+      const context = vm.createContext(sandbox);
+      context.self = context;
+      let workboxModule;
+      const moduleRegistry = new Map();
+      context.define = (nameOrDependencies, dependenciesOrFactory, maybeFactory) => {
+        let name = null;
+        let dependencies = [];
+        let factory;
+        if (typeof nameOrDependencies === 'string') {
+          name = nameOrDependencies;
+          if (Array.isArray(dependenciesOrFactory)) {
+            dependencies = dependenciesOrFactory;
+            factory = maybeFactory;
+          } else {
+            factory = dependenciesOrFactory;
+          }
+        } else if (Array.isArray(nameOrDependencies)) {
+          dependencies = nameOrDependencies;
+          factory = dependenciesOrFactory;
+        } else {
+          factory = nameOrDependencies;
+        }
+        const moduleExports = {};
+        const module = {exports: moduleExports};
+        const imports = dependencies.map(dependency => {
+          if (dependency === 'exports') return moduleExports;
+          if (dependency === 'module') return module;
+          if (dependency === 'require') return imported => moduleRegistry.get(imported);
+          return moduleRegistry.get(dependency);
+        });
+        const exported = typeof factory === 'function' ? factory(...imports) : factory;
+        workboxModule = exported === undefined ? module.exports : exported;
+        if (name) moduleRegistry.set(name, workboxModule);
+      };
+      context.define.amd = {};
+      vm.runInContext(fs.readFileSync(resolvedModulePath, 'utf8'), context, {filename: resolvedModulePath});
+      if (!workboxModule) throw new Error('Workbox module did not export its runtime');
+
+      const registrations = [];
+      const overrides = {
+        clientsClaim: () => {},
+        cleanupOutdatedCaches: () => {},
+        precacheAndRoute: () => {},
+        setConfig: () => {},
+        registerRoute: (matcher, strategy) => registrations.push({matcher, strategy}),
+        NetworkOnly: class { constructor(options) { this.plugins = options.plugins; } },
+      };
+      const exposeWorkbox = module => new Proxy(module, {
+        get(target, property) {
+          if (Object.prototype.hasOwnProperty.call(overrides, property)) return overrides[property];
+          const exported = Reflect.get(target, property, target);
+          return exported && typeof exported === 'object' ? exposeWorkbox(exported) :
+            typeof exported === 'function' ? exported.bind(target) : exported;
+        },
+      });
+      context.define = (dependencies, factory) => {
+        const imports = dependencies.map(dependency => {
+          if (dependency !== moduleSpecifier) throw new Error(`unexpected generated dependency: ${dependency}`);
+          return exposeWorkbox(workboxModule.default || workboxModule);
+        });
+        factory(...imports);
+      };
+      vm.runInContext(workerSource, context, {filename: workerPath});
+
+      const runOfflineNavigation = async route => {
+        const request = new ServiceWorkerRequest(new URL(route, origin), {mode: 'navigate'});
+        const matchedRoute = registrations.find(({matcher}) => matcher({url: new URL(request.url), request}));
+        if (!matchedRoute) throw new Error(`app route was not registered: ${route}`);
+        let activeRequest = request;
+        const state = {};
+        for (const plugin of matchedRoute.strategy.plugins) {
+          if (plugin.requestWillFetch) activeRequest = await plugin.requestWillFetch({request: activeRequest, state});
+        }
+        try {
+          return await sandbox.fetch(activeRequest);
+        } catch (error) {
+          for (const plugin of matchedRoute.strategy.plugins) {
+            if (plugin.fetchDidFail) await plugin.fetchDidFail({request: activeRequest, state, error});
+          }
+          for (const plugin of matchedRoute.strategy.plugins) {
+            if (plugin.handlerDidError) {
+              const fallback = await plugin.handlerDidError({request: activeRequest, state, error});
+              if (fallback) return fallback;
+            }
+          }
+          throw error;
+        }
+      };
+      (async () => {
+        for (const route of ['/landing/', 'https://api.mayos.online/v1/me']) {
+          const request = new ServiceWorkerRequest(new URL(route, origin), {mode: 'navigate'});
+          if (registrations.some(({matcher}) => matcher({url: new URL(request.url), request}))) {
+            throw new Error(`non-app route was registered: ${route}`);
+          }
+        }
+        for (const route of ['/app/', '/app/coach/players/12']) {
+          const response = await runOfflineNavigation(route);
+          if (await response.text() !== 'app document') throw new Error(`wrong offline response for ${route}`);
+        }
+        cacheEntries.delete(`${scope}index.html?__WB_REVISION__=abc`);
+        const offlineResponse = await runOfflineNavigation('/app/coach/players/12');
+        if (await offlineResponse.text() !== 'offline page') throw new Error('offline page was not returned when index.html was missing');
+        if (fetchAttempts !== 3) throw new Error(`expected three failed network requests, got ${fetchAttempts}`);
+      })().catch(error => { console.error(error); process.exitCode = 1; });
+    """)
+    env["SERVICE_WORKER_PATH"] = str(build / "service-worker.js")
+    result = subprocess.run(
+        [node, "-e", harness], env=env, capture_output=True, text=True, timeout=30
+    )
+    assert result.returncode == 0, result.stderr
 
     landing = tmp_path / "landing"
     landing.mkdir()
@@ -367,7 +569,7 @@ def test_assembly_serves_worker_and_offline_fallback_under_app_with_no_cache(tmp
     flutter.mkdir()
     (flutter / "index.html").write_text('<base href="/app/">')
     (flutter / "service-worker.js").write_text(
-        'precacheAndRoute([{url:"main.dart.js"}]);'
+        'precacheAndRoute([{url:"index.html"},{url:"offline.html"}]);'
     )
     (flutter / "offline.html").write_text("offline")
     (flutter / "_headers").write_text(
