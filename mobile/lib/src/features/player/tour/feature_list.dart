@@ -122,9 +122,11 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
   FeatureEntry(
     id: 'nutrition',
     titleEn: 'Nutrition',
-    sentenceEn: 'Review your targets, log water, and track body weight.',
+    sentenceEn:
+        'Review each day’s calories, meals and Food log, log water and Nutrition adherence together, and open Targets beside the date for your goals and weight.',
     titleAr: 'التغذية',
-    sentenceAr: 'راجع أهدافك وسجّل الماء وتابع وزن جسمك.',
+    sentenceAr:
+        'راجع سعرات كل يوم ووجباته وسجل الطعام، وسجّل الماء والالتزام الغذائي معًا، وافتح الأهداف بجانب التاريخ لمراجعة أهدافك ووزنك.',
     target: 'nutrition',
     location: TourShellTabLocation(tabIndex: 2),
     release: 0,
@@ -144,9 +146,11 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
   FeatureEntry(
     id: 'meal_setup',
     titleEn: 'Meal setup and Food restrictions',
-    sentenceEn: 'Choose Meal slots, training time and Food restrictions, generate meals from reviewed Staple foods with target differences, swap foods in your own plan or follow meals and notes set by your coach, and log a planned meal with one tap.',
+    sentenceEn:
+        'Open Targets beside the date to switch meals on or off, open Meals or Food restrictions to choose Meal slots and training time, swap foods in your own plan or follow your coach, and log a planned meal with one tap.',
     titleAr: 'إعداد الوجبات والقيود الغذائية',
-    sentenceAr: 'اختر وجباتك ووقت تدريبك وقيودك الغذائية، وأنشئ وجبات من أطعمة أساسية معتمدة مع توضيح الفرق عن الأهداف وبدّل الأطعمة في خطتك أو اتبع وجبات وملاحظات حددها مدربك، وسجّل الوجبة المخططة بلمسة واحدة.',
+    sentenceAr:
+        'افتح الأهداف بجانب التاريخ لتفعيل الوجبات أو إيقافها، وافتح الوجبات أو القيود الغذائية لاختيار وجباتك ووقت تدريبك، وبدّل الأطعمة في خطتك أو اتبع مدربك، وسجّل الوجبة المخططة بلمسة واحدة.',
     target: 'meal_setup',
     location: TourShellTabLocation(tabIndex: 2),
     release: 6,
@@ -155,11 +159,13 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
   FeatureEntry(
     id: 'food_swap_requests',
     titleEn: 'Food swap requests',
-    sentenceEn: 'Ask your coach to swap a food in your Nutrition plan, and open your request history from Nutrition to see each status and reply.',
+    sentenceEn:
+        'Ask your coach to swap a food in your Nutrition plan, and open request history from Targets or the Feature guide to see each status and reply.',
     titleAr: 'طلبات تبديل الطعام',
-    sentenceAr: 'اطلب من مدربك تبديل طعام في خطة التغذية، وافتح سجل طلباتك من التغذية لمتابعة حالة كل طلب ورد المدرب.',
+    sentenceAr:
+        'اطلب من مدربك تبديل طعام في خطة التغذية، وافتح سجل الطلبات من الأهداف أو دليل الميزات لمتابعة حالة كل طلب ورد المدرب.',
     target: 'food_swap_requests',
-    location: TourShellTabLocation(tabIndex: 2),
+    location: TourRouteLocation(foodSwapRequestsPath),
     release: 6,
     audience: 'lifter',
   ),

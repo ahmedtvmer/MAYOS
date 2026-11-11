@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/display_language/controller.dart';
+import 'package:mayos_mobile/src/core/display_language/nutrition_copy.dart';
+import 'package:mayos_mobile/src/core/theme/mayos_theme.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/features/player/nutrition/nutrition_tab.dart';
 import 'package:mayos_mobile/src/features/coach/coach_nutrition_segment.dart';
@@ -15,78 +17,124 @@ import 'support/scroll_to_control.dart';
 
 void main() {
   for (final String language in <String>['en', 'ar']) {
-    testWidgets('yesterday computed adherence can be answered in $language', (WidgetTester tester) async {
-      final FakeMayosApi fake = _fake()..nutritionState = <String, dynamic>{
-        'state': 'ready', 'goal': 'maintain',
-        'targets': <String, dynamic>{'calories': 2000, 'protein_g': 100, 'carbs_g': 250, 'fat_g': 67},
-        'adherence_days': <Map<String, dynamic>>[
-          <String, dynamic>{'date': '2026-11-03', 'value': 'off', 'source': 'computed'},
-          <String, dynamic>{'date': '2026-11-04', 'value': 'off', 'source': 'computed'},
-          <String, dynamic>{'date': '2026-11-05', 'value': null, 'source': null},
-        ],
-      };
-      await tester.pumpWidget(_app(fake, language, ThemeData.light(), home: const NutritionTab(targetsOnly: true)));
+    testWidgets('yesterday computed adherence can be answered in $language',
+        (WidgetTester tester) async {
+      final FakeMayosApi fake = _fake()
+        ..nutritionState = <String, dynamic>{
+          'state': 'ready',
+          'goal': 'maintain',
+          'targets': <String, dynamic>{
+            'calories': 2000,
+            'protein_g': 100,
+            'carbs_g': 250,
+            'fat_g': 67
+          },
+          'adherence_days': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'date': '2026-11-03',
+              'value': 'off',
+              'source': 'computed'
+            },
+            <String, dynamic>{
+              'date': '2026-11-04',
+              'value': 'off',
+              'source': 'computed'
+            },
+            <String, dynamic>{
+              'date': '2026-11-05',
+              'value': null,
+              'source': null
+            },
+          ],
+        };
+      await tester.pumpWidget(
+          _app(fake, language, ThemeData.light(), home: const NutritionTab()));
       await tester.pumpAndSettle();
       final String off = language == 'ar' ? 'بعيد عن الهدف' : 'Off';
       final Finder yesterday = find.byTooltip('2026-11-04: $off');
-      await tester.scrollUntilVisible(yesterday, 300, scrollable: find.byType(Scrollable).first);
-      await tester.tap(yesterday);
+      final Finder yesterdayAction = find.byKey(const Key('answer_yesterday'));
+      await scrollToControl(tester, yesterdayAction);
+      expect(yesterday, findsOneWidget);
+      expect(yesterdayAction.hitTestable(), findsOneWidget);
+      await tester.tap(yesterdayAction);
       await tester.pumpAndSettle();
       expect(find.byType(SimpleDialog), findsOneWidget);
       final String onTarget = language == 'ar' ? 'على الهدف' : 'On target';
-      await tester.tap(find.descendant(of: find.byType(SimpleDialog), matching: find.text(onTarget)));
+      await tester.tap(find.descendant(
+          of: find.byType(SimpleDialog), matching: find.text(onTarget)));
       await tester.pumpAndSettle();
-      final FakeRequest written = fake.adapter.requests.lastWhere((FakeRequest request) => request.path == '/nutrition/adherence');
-      expect(written.body, <String, dynamic>{'entry_date': '2026-11-04', 'value': 'on_target'});
+      final FakeRequest written = fake.adapter.requests.lastWhere(
+          (FakeRequest request) => request.path == '/nutrition/adherence');
+      expect(written.body,
+          <String, dynamic>{'entry_date': '2026-11-04', 'value': 'on_target'});
       expect(fake.nutritionState['today_adherence'], isNull);
       expect(find.byTooltip('2026-11-04: $onTarget'), findsOneWidget);
     });
   }
 
-  testWidgets('setup saves activity and shows plate targets', (WidgetTester tester) async {
+  testWidgets('setup saves activity and shows plate targets',
+      (WidgetTester tester) async {
     final FakeMayosApi fake = _fake()
-      ..nutritionState = <String, dynamic>{'state': 'not_started', 'targets': null,
-        'adherence_days': List<Map<String, dynamic>>.generate(7, (int index) => <String, dynamic>{
-          'date': '2026-10-${24 - index}', 'value': index == 0 ? 'roughly' : null}),
-        'latest_weight': 70.0, 'target_weight': 65.0, 'coach_sees_adherence': true};
+      ..nutritionState = <String, dynamic>{
+        'state': 'not_started',
+        'targets': null,
+        'adherence_days': List<Map<String, dynamic>>.generate(
+            7,
+            (int index) => <String, dynamic>{
+                  'date': DateTime(2026, 11, 5 - index)
+                      .toIso8601String()
+                      .substring(0, 10),
+                  'value': index == 0 ? 'roughly' : null
+                }),
+        'latest_weight': 70.0,
+        'target_weight': 65.0,
+        'coach_sees_adherence': true
+      };
     await tester.pumpWidget(_app(fake, 'en', ThemeData.light()));
     await tester.pumpAndSettle();
     expect(find.text('Choose your sex for Nutrition targets.'), findsOneWidget);
     expect(find.text('What is your Daily activity?'), findsOneWidget);
     expect(find.text('I confirm'), findsNothing);
     expect(find.byType(CheckboxListTile), findsNWidgets(3));
-    await tester.tap(find.byType(DropdownButtonFormField<String>).first);
+    await tester.tap(find.text('Male'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Male').last);
+    await scrollToControl(tester, find.text('On my feet'));
+    await tester.tap(find.text('On my feet'));
     await tester.pumpAndSettle();
+    await scrollToControl(tester, find.text('Show my targets'));
     await tester.tap(find.text('Show my targets'));
     await tester.pumpAndSettle();
     await scrollToControl(tester, find.text('2000'));
     expect(find.text('2000'), findsOneWidget);
-    expect(find.text('Protein'), findsOneWidget);
+    expect(find.text('Protein'), findsNWidgets(2));
     await tester.drag(find.byType(ListView), const Offset(0, -1200));
     await tester.pumpAndSettle();
-    expect(tester.widgetList<Tooltip>(find.byType(Tooltip))
-      .where((Tooltip tooltip) => tooltip.message?.startsWith('2026-10-') ?? false), hasLength(7));
-    expect(find.text('Your coach sees your Nutrition adherence.'), findsNothing);
+    expect(
+        find.text('Your coach sees your Nutrition adherence.'), findsNothing);
     expect(find.textContaining('Set to '), findsNothing);
     expect(find.textContaining('70.0'), findsOneWidget);
     expect(find.textContaining('65.0'), findsOneWidget);
     expect(find.textContaining('Training profile'), findsNothing);
     expect(fake.lastNutritionSetupBody?['sex'], 'male');
+    expect(fake.lastNutritionSetupBody?['daily_activity'], 'on_feet');
     expect(fake.lastNutritionSetupBody?['sex_confirmed'], isTrue);
   });
 
-  testWidgets('positive screening shows referral and no targets', (WidgetTester tester) async {
+  testWidgets('positive screening shows referral and no targets',
+      (WidgetTester tester) async {
     final FakeMayosApi fake = _fake();
     await tester.pumpWidget(_app(fake, 'en', ThemeData.dark()));
     await tester.pumpAndSettle();
     expect(find.text('I confirm'), findsNothing);
+    await scrollToControl(
+        tester, find.text('Are you pregnant or breastfeeding?'));
     await tester.tap(find.text('Are you pregnant or breastfeeding?'));
     await tester.pumpAndSettle();
+    await scrollToControl(tester, find.text('Show my targets'));
     await tester.tap(find.text('Show my targets'));
     await tester.pumpAndSettle();
-    expect(fake.lastNutritionSetupBody?['screening'], containsPair('pregnant_or_breastfeeding', true));
+    expect(fake.lastNutritionSetupBody?['screening'],
+        containsPair('pregnant_or_breastfeeding', true));
     expect(find.textContaining('registered dietitian'), findsOneWidget);
     expect(find.text('2000'), findsNothing);
     expect(fake.lastNutritionSetupBody?['sex_confirmed'], isTrue);
@@ -109,23 +157,34 @@ void main() {
     expect(direction.textDirection, TextDirection.rtl);
   });
 
-  testWidgets('saved plate renders in dark theme and Arabic', (WidgetTester tester) async {
+  testWidgets('saved plate renders in dark theme and Arabic',
+      (WidgetTester tester) async {
     final FakeMayosApi fake = _fake()
       ..nutritionState = <String, dynamic>{
-      'state': 'ready', 'goal': 'lose', 'goal_reason': <String, dynamic>{'code': 'current_goal', 'goal_text': 'fat loss'},
-        'targets': <String, dynamic>{'calories': 1800, 'protein_g': 140,
-          'carbs_g': 170, 'fat_g': 60},
+        'state': 'ready',
+        'goal': 'lose',
+        'goal_reason': <String, dynamic>{
+          'code': 'current_goal',
+          'goal_text': 'fat loss'
+        },
+        'targets': <String, dynamic>{
+          'calories': 1800,
+          'protein_g': 140,
+          'carbs_g': 170,
+          'fat_g': 60
+        },
       };
     await tester.pumpWidget(_app(fake, 'ar', ThemeData.dark()));
     await tester.pumpAndSettle();
-    expect(find.text('التغذية'), findsOneWidget);
+    expect(find.text(const NutritionCopy('ar').coachGoal), findsOneWidget);
     await scrollToControl(tester, find.text('الماكروز'));
-    expect(find.text('البروتين'), findsOneWidget);
+    expect(find.text(const NutritionCopy('ar').protein), findsNWidgets(2));
     expect(find.text('الماكروز'), findsOneWidget);
-    expect(find.textContaining('هدف التغذية'), findsNothing);
     expect(find.textContaining('تم اختيار هدف التغذية'), findsNothing);
     expect(find.textContaining('اخترت هدف التغذية'), findsNothing);
-    expect(find.textContaining('1800'), findsOneWidget);
+    await scrollToControl(tester, find.text('1800'), delta: -200);
+    expect(find.text('1800'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('nutrition load error offers retry without referral', (WidgetTester tester) async {
@@ -150,13 +209,24 @@ void main() {
     expect(find.text('Confirm your sex for Nutrition targets.'), findsNothing);
   });
 
-  testWidgets('ready targets let the Player change Daily activity', (WidgetTester tester) async {
+  testWidgets('ready targets let the Player change Daily activity',
+      (WidgetTester tester) async {
     final FakeMayosApi fake = _fake()
-      ..nutritionState = <String, dynamic>{'state': 'ready', 'goal': 'maintain',
-        'goal_reason': <String, dynamic>{'code': 'default'}, 'daily_activity': 'mostly_sitting',
-        'targets': <String, dynamic>{'calories': 2000, 'protein_g': 140, 'carbs_g': 220, 'fat_g': 70}};
+      ..nutritionState = <String, dynamic>{
+        'state': 'ready',
+        'goal': 'maintain',
+        'goal_reason': <String, dynamic>{'code': 'default'},
+        'daily_activity': 'mostly_sitting',
+        'targets': <String, dynamic>{
+          'calories': 2000,
+          'protein_g': 140,
+          'carbs_g': 220,
+          'fat_g': 70
+        }
+      };
     await tester.pumpWidget(_app(fake, 'en', ThemeData.light()));
     await tester.pumpAndSettle();
+    await scrollToControl(tester, find.text('Daily activity'));
     await tester.tap(find.text('Daily activity'));
     await tester.pumpAndSettle();
     await tester.tap(find.byType(DropdownButtonFormField<String>).last);
@@ -169,16 +239,28 @@ void main() {
     expect(find.text('Physical job'), findsOneWidget);
   });
 
-  testWidgets('Coach-held targets show a badge and make Daily activity read-only',
+  testWidgets(
+      'Coach-held targets show a badge and make Daily activity read-only',
       (WidgetTester tester) async {
     final FakeMayosApi fake = _fake()
-      ..nutritionState = <String, dynamic>{'state': 'ready', 'goal': 'maintain',
-        'goal_reason': <String, dynamic>{'code': 'default'}, 'daily_activity': 'mostly_sitting',
-        'authority': 'coach', 'coach_sees_adherence': true,
-        'targets': <String, dynamic>{'calories': 2000, 'protein_g': 140, 'carbs_g': 220, 'fat_g': 70}};
+      ..nutritionState = <String, dynamic>{
+        'state': 'ready',
+        'goal': 'maintain',
+        'goal_reason': <String, dynamic>{'code': 'default'},
+        'daily_activity': 'mostly_sitting',
+        'authority': 'coach',
+        'coach_sees_adherence': true,
+        'targets': <String, dynamic>{
+          'calories': 2000,
+          'protein_g': 140,
+          'carbs_g': 220,
+          'fat_g': 70
+        }
+      };
     await tester.pumpWidget(_app(fake, 'en', ThemeData.light()));
     await tester.pumpAndSettle();
     expect(find.text('Set by your coach'), findsOneWidget);
+    await scrollToControl(tester, find.text('Daily activity'));
     await tester.tap(find.text('Daily activity'));
     await tester.pumpAndSettle();
     expect(find.text('Update Nutrition targets'), findsNothing);
@@ -340,35 +422,64 @@ void main() {
     expect(tester.widget<TextField>(_coachField(tester, 'الماء')).decoration!.suffixText, 'مل');
   });
 
-  testWidgets('Player water log adds and undoes a glass in Arabic RTL', (WidgetTester tester) async {
-    final FakeMayosApi fake = _fake()..waterGlasses = 1..nutritionState = <String, dynamic>{
-      'state': 'ready', 'goal': 'maintain', 'targets': <String, dynamic>{
-        'calories': 2000, 'protein_g': 140, 'carbs_g': 220, 'fat_g': 70,
-        'fiber_g': 28, 'water_ml': 2500}, 'today_water_glasses': 1,
-    };
-    await tester.pumpWidget(_app(fake, 'ar', ThemeData.light()));
+  testWidgets('Player water log adds and undoes a glass in Arabic RTL',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _fake()
+      ..waterGlasses = 0
+      ..nutritionState = <String, dynamic>{
+        'state': 'ready',
+        'goal': 'maintain',
+        'targets': <String, dynamic>{
+          'calories': 2000,
+          'protein_g': 140,
+          'carbs_g': 220,
+          'fat_g': 70,
+          'fiber_g': 28,
+          'water_ml': 2500
+        },
+        'today_water_glasses': 0,
+      };
+    await tester.pumpWidget(
+        _app(fake, 'ar', ThemeData.light(), home: const NutritionTab()));
     await tester.pumpAndSettle();
-    await _showWaterLog(tester, '+ كوب');
-    expect(find.text('سجل الماء: أكواب اليوم 1'), findsOneWidget);
-    expect(find.text('+ كوب'), findsOneWidget);
-    expect(tester.widgetList<Directionality>(find.byType(Directionality))
-        .map((Directionality value) => value.textDirection), contains(TextDirection.rtl));
-    await tester.ensureVisible(find.text('+ كوب'));
+    await _showWaterLog(tester);
+    expect(find.text(const NutritionCopy('ar').waterProgress(0, 2500)),
+        findsOneWidget);
+    expect(find.byKey(const Key('add_water_glass')), findsOneWidget);
+    expect(tester.widget<IconButton>(find.byKey(const Key('remove_water_glass'))).onPressed, isNull);
+    expect(
+        tester
+            .widgetList<Directionality>(find.byType(Directionality))
+            .map((Directionality value) => value.textDirection),
+        contains(TextDirection.rtl));
+    await tester.ensureVisible(find.byKey(const Key('add_water_glass')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('+ كوب'));
+    await tester.tap(find.byKey(const Key('add_water_glass')));
     await tester.pumpAndSettle();
-    expect(find.text('سجل الماء: أكواب اليوم 2'), findsOneWidget);
-    await tester.tap(find.text('تراجع'));
+    expect(find.text(const NutritionCopy('ar').waterProgress(1, 2500)),
+        findsOneWidget);
+    await tester.tap(find.byKey(const Key('remove_water_glass')));
     await tester.pumpAndSettle();
-    expect(find.text('سجل الماء: أكواب اليوم 1'), findsOneWidget);
+    expect(find.text(const NutritionCopy('ar').waterProgress(0, 2500)),
+        findsOneWidget);
   });
 
-  testWidgets('Player water requests cannot overlap', (WidgetTester tester) async {
-    final FakeMayosApi fake = _fake()..waterGlasses = 1..nutritionState = <String, dynamic>{
-      'state': 'ready', 'targets': <String, dynamic>{'calories': 2000, 'protein_g': 120,
-        'carbs_g': 220, 'fat_g': 70, 'fiber_g': 28, 'water_ml': 2500},
-      'today_water_glasses': 1,
-    };
+  testWidgets('Player water requests cannot overlap',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _fake()
+      ..waterGlasses = 1
+      ..nutritionState = <String, dynamic>{
+        'state': 'ready',
+        'targets': <String, dynamic>{
+          'calories': 2000,
+          'protein_g': 120,
+          'carbs_g': 220,
+          'fat_g': 70,
+          'fiber_g': 28,
+          'water_ml': 2500
+        },
+        'today_water_glasses': 1,
+      };
     bool holdFirstWaterRequest = true;
     fake.adapter.beforeRespond = (FakeRequest request) async {
       if (request.path == '/nutrition/water' && holdFirstWaterRequest) {
@@ -376,51 +487,86 @@ void main() {
         await Future<void>.delayed(const Duration(milliseconds: 150));
       }
     };
-    await tester.pumpWidget(_app(fake, 'en', ThemeData.light()));
+    await tester.pumpWidget(
+        _app(fake, 'en', ThemeData.light(), home: const NutritionTab()));
     await tester.pumpAndSettle();
-    await _showWaterLog(tester, '+1 glass');
+    await _showWaterLog(tester);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('+1 glass'));
+    await tester.tap(find.byKey(const Key('add_water_glass')));
     await tester.pump(const Duration(milliseconds: 20));
-    expect(tester.widget<TextButton>(find.ancestor(
-      of: find.text('+1 glass'), matching: find.byType(TextButton))).onPressed, isNull);
+    expect(
+        tester
+            .widget<IconButton>(find.byKey(const Key('add_water_glass')))
+            .onPressed,
+        isNull);
     await tester.pumpAndSettle();
-    expect(find.text('Water log: Glasses today 2'), findsOneWidget);
-    expect(fake.adapter.requests.where((FakeRequest request) => request.path == '/nutrition/water'), hasLength(1));
+    expect(find.text(const NutritionCopy('en').waterProgress(2, 2500)),
+        findsOneWidget);
+    expect(
+        fake.adapter.requests
+            .where((FakeRequest request) => request.path == '/nutrition/water'),
+        hasLength(1));
   });
 
-  testWidgets('Player water increment is disabled at thirty without hiding targets', (WidgetTester tester) async {
-    final FakeMayosApi fake = _fake()..waterGlasses = 30..nutritionState = <String, dynamic>{
-      'state': 'ready', 'targets': <String, dynamic>{'calories': 2000, 'protein_g': 120,
-        'carbs_g': 220, 'fat_g': 70, 'fiber_g': 28, 'water_ml': 2500},
-      'today_water_glasses': 30,
-    };
-    await tester.pumpWidget(_app(fake, 'en', ThemeData.light()));
-    await tester.pumpAndSettle();
-    await _showWaterLog(tester, '+1 glass');
-    final TextButton addButton = tester.widget(find.ancestor(
-      of: find.text('+1 glass'), matching: find.byType(TextButton)));
-    expect(addButton.onPressed, isNull);
-    expect(find.textContaining('Water target'), findsOneWidget);
-    expect(find.text('Water log: Glasses today 30'), findsOneWidget);
-  });
-
-  testWidgets('Water API conflict keeps Nutrition targets visible', (WidgetTester tester) async {
-    final FakeMayosApi fake = _fake()..waterGlasses = 29..waterChangeFails = true
+  testWidgets(
+      'Player water increment is disabled at thirty without hiding targets',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _fake()
+      ..waterGlasses = 30
       ..nutritionState = <String, dynamic>{
-        'state': 'ready', 'targets': <String, dynamic>{'calories': 2000, 'protein_g': 120,
-          'carbs_g': 220, 'fat_g': 70, 'fiber_g': 28, 'water_ml': 2500},
+        'state': 'ready',
+        'targets': <String, dynamic>{
+          'calories': 2000,
+          'protein_g': 120,
+          'carbs_g': 220,
+          'fat_g': 70,
+          'fiber_g': 28,
+          'water_ml': 2500
+        },
+        'today_water_glasses': 30,
+      };
+    await tester.pumpWidget(
+        _app(fake, 'en', ThemeData.light(), home: const NutritionTab()));
+    await tester.pumpAndSettle();
+    await _showWaterLog(tester);
+    final IconButton addButton =
+        tester.widget(find.byKey(const Key('add_water_glass')));
+    expect(addButton.onPressed, isNull);
+    expect(find.byKey(const Key('water_progress')), findsOneWidget);
+    expect(find.text(const NutritionCopy('en').waterProgress(30, 2500)),
+        findsOneWidget);
+  });
+
+  testWidgets('Water API conflict keeps Nutrition targets visible',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _fake()
+      ..waterGlasses = 29
+      ..waterChangeFails = true
+      ..nutritionState = <String, dynamic>{
+        'state': 'ready',
+        'targets': <String, dynamic>{
+          'calories': 2000,
+          'protein_g': 120,
+          'carbs_g': 220,
+          'fat_g': 70,
+          'fiber_g': 28,
+          'water_ml': 2500
+        },
         'today_water_glasses': 29,
       };
-    await tester.pumpWidget(_app(fake, 'en', ThemeData.light()));
+    await tester.pumpWidget(
+        _app(fake, 'en', ThemeData.light(), home: const NutritionTab()));
     await tester.pumpAndSettle();
-    await _showWaterLog(tester, '+1 glass');
+    await _showWaterLog(tester);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('+1 glass'));
+    await tester.tap(find.byKey(const Key('add_water_glass')));
     await tester.pumpAndSettle();
-    expect(find.text('Water log: Glasses today 29'), findsOneWidget);
-    expect(find.text('Water target'), findsOneWidget);
-    expect(find.text('Could not update the Water log: Water glass count limit.'), findsOneWidget);
+    expect(find.text(const NutritionCopy('en').waterProgress(29, 2500)),
+        findsOneWidget);
+    expect(find.byKey(const Key('water_progress')), findsOneWidget);
+    expect(
+        find.text('Could not update the Water log: Water glass count limit.'),
+        findsOneWidget);
   });
 
   testWidgets('Coach Nutrition shows today water and the fourteen day strip', (WidgetTester tester) async {
@@ -444,37 +590,96 @@ void main() {
     expect(find.text('Fiber eaten'), findsNothing);
   });
 
-  for (final ThemeData theme in <ThemeData>[ThemeData.light(), ThemeData.dark()]) {
-    testWidgets('adherence control and seven-day strip render in both themes', (WidgetTester tester) async {
+  for (final ThemeData theme in <ThemeData>[
+    ThemeData.light(),
+    ThemeData.dark()
+  ]) {
+    testWidgets('adherence control and seven-day strip render in both themes',
+        (WidgetTester tester) async {
       final FakeMayosApi fake = _fake()
-        ..nutritionState = <String, dynamic>{'state': 'ready', 'goal': 'maintain',
-          'goal_reason': <String, dynamic>{'code': 'default'}, 'daily_activity': 'mostly_sitting',
-          'targets': <String, dynamic>{'calories': 2000, 'protein_g': 140, 'carbs_g': 220, 'fat_g': 70},
-          'adherence_days': List<Map<String, dynamic>>.generate(7, (int index) => <String, dynamic>{
-            'date': '2026-10-${24 - index}', 'value': <String?>['on_target', 'roughly', 'off', null][index % 4],
-          }),
-          'latest_weight': 70.5, 'target_weight': 65, 'coach_sees_adherence': true};
-      await tester.pumpWidget(_app(fake, 'en', theme));
+        ..nutritionState = <String, dynamic>{
+          'state': 'ready',
+          'goal': 'maintain',
+          'goal_reason': <String, dynamic>{'code': 'default'},
+          'daily_activity': 'mostly_sitting',
+          'targets': <String, dynamic>{
+            'calories': 2000,
+            'protein_g': 140,
+            'carbs_g': 220,
+            'fat_g': 70
+          },
+          'adherence_days': List<Map<String, dynamic>>.generate(
+              7,
+              (int index) => <String, dynamic>{
+                    'date': DateTime(2026, 11, 5 - index)
+                        .toIso8601String()
+                        .substring(0, 10),
+                    'value': <String?>[
+                      'on_target',
+                      'roughly',
+                      'off',
+                      null
+                    ][index % 4],
+                  }),
+          'latest_weight': 70.5,
+          'target_weight': 65,
+          'coach_sees_adherence': true
+        };
+      await tester
+          .pumpWidget(_app(fake, 'en', theme, home: const NutritionTab()));
       await tester.pumpAndSettle();
       await tester.drag(find.byType(ListView), const Offset(0, -1200));
       await tester.pumpAndSettle();
-      final List<Tooltip> adherenceTooltips = tester.widgetList<Tooltip>(find.byType(Tooltip))
-          .where((Tooltip tooltip) => tooltip.message?.startsWith('2026-10-') ?? false).toList();
+      final List<Tooltip> adherenceTooltips = tester
+          .widgetList<Tooltip>(find.byType(Tooltip))
+          .where((Tooltip tooltip) =>
+              tooltip.message?.startsWith('2026-') ?? false)
+          .toList();
       expect(adherenceTooltips, hasLength(7));
-      expect(adherenceTooltips.map((Tooltip tooltip) => tooltip.message), contains('2026-10-24: On target'));
-      expect(adherenceTooltips.map((Tooltip tooltip) => tooltip.message), contains('2026-10-21: Unlogged'));
+      expect(adherenceTooltips.map((Tooltip tooltip) => tooltip.message),
+          contains('2026-11-05: On target'));
+      expect(adherenceTooltips.map((Tooltip tooltip) => tooltip.message),
+          contains('2026-11-02: Unlogged'));
       expect(find.byIcon(Icons.circle), findsAtLeastNWidgets(1));
       expect(find.byIcon(Icons.change_history), findsAtLeastNWidgets(1));
       expect(find.byIcon(Icons.square), findsAtLeastNWidgets(1));
       expect(find.byIcon(Icons.circle_outlined), findsAtLeastNWidgets(1));
-      expect(tester.widgetList<Icon>(find.byIcon(Icons.circle)).every(
-        (Icon mark) => mark.color == theme.colorScheme.primary), isTrue);
-      expect(tester.widgetList<Icon>(find.byIcon(Icons.change_history)).every(
-        (Icon mark) => mark.color == theme.colorScheme.tertiary), isTrue);
-      expect(tester.widgetList<Icon>(find.byIcon(Icons.square)).every(
-        (Icon mark) => mark.color == theme.colorScheme.error), isTrue);
-      expect(tester.widgetList<Icon>(find.byIcon(Icons.circle_outlined)).every(
-        (Icon mark) => mark.color == theme.colorScheme.outlineVariant), isTrue);
+      expect(
+          tester.widgetList<Icon>(find.byIcon(Icons.circle)).every(
+              (Icon mark) =>
+                  mark.color ==
+                  (theme.brightness == Brightness.dark
+                          ? MayosThemeExtension.dark
+                          : MayosThemeExtension.light)
+                      .accent),
+          isTrue);
+      expect(
+          tester.widgetList<Icon>(find.byIcon(Icons.change_history)).every(
+              (Icon mark) =>
+                  mark.color ==
+                  (theme.brightness == Brightness.dark
+                          ? MayosThemeExtension.dark
+                          : MayosThemeExtension.light)
+                      .success),
+          isTrue);
+      expect(
+          tester.widgetList<Icon>(find.byIcon(Icons.square)).every(
+              (Icon mark) =>
+                  mark.color ==
+                  (theme.brightness == Brightness.dark
+                          ? MayosThemeExtension.dark
+                          : MayosThemeExtension.light)
+                      .warning),
+          isTrue);
+      expect(
+          tester.widgetList<Icon>(find.byIcon(Icons.circle_outlined)).every(
+              (Icon mark) =>
+                  mark.color ==
+                  (theme.brightness == Brightness.dark
+                          ? MayosThemeExtension.dark
+                          : MayosThemeExtension.light)
+                      .borderStrong),
+          isTrue);
       expect(find.text('How did today go?'), findsOneWidget);
       expect(find.text('On target'), findsOneWidget);
       expect(find.text('Roughly'), findsOneWidget);
@@ -483,66 +688,96 @@ void main() {
       await tester.tap(find.text('Off'));
       await tester.pumpAndSettle();
       expect(fake.nutritionAdherenceValues, <String>['off']);
-      await tester.scrollUntilVisible(find.widgetWithText(ChoiceChip, 'Off'), 200,
-        scrollable: find.descendant(of: find.byType(ListView),
-          matching: find.byType(Scrollable)).first);
-      await tester.pumpAndSettle();
-      expect(tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Off')).selected, isTrue);
-      await tester.ensureVisible(find.widgetWithText(ChoiceChip, 'On target'));
-      await tester.tap(find.text('On target'));
-      await tester.pumpAndSettle();
-      await tester.scrollUntilVisible(find.widgetWithText(ChoiceChip, 'On target'), 200,
-        scrollable: find.descendant(of: find.byType(ListView),
-          matching: find.byType(Scrollable)).first);
+      expect(fake.nutritionState['today_adherence'], 'off');
+      await tester.ensureVisible(find.byKey(const Key('adherence_on_target')));
+      await tester.tap(find.byKey(const Key('adherence_on_target')));
       await tester.pumpAndSettle();
       expect(fake.nutritionAdherenceValues, <String>['off', 'on_target']);
-      expect(tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'On target')).selected, isTrue);
-      expect(tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Off')).selected, isFalse);
-      expect(find.text('Your coach sees your Nutrition adherence.'), findsNothing);
+      expect(fake.nutritionState['today_adherence'], 'on_target');
+      expect(
+          find.text('Your coach sees your Nutrition adherence.'), findsNothing);
       expect(find.textContaining('Set to '), findsNothing);
       expect(find.textContaining('You chose '), findsNothing);
+      await tester.tap(find.byKey(const Key('nutrition_targets')));
+      await tester.pumpAndSettle();
       await tester.scrollUntilVisible(find.textContaining('70.5'), 200,
-        scrollable: find.descendant(of: find.byType(ListView),
-          matching: find.byType(Scrollable)).first);
+          scrollable: find
+              .descendant(
+                  of: find.byType(ListView), matching: find.byType(Scrollable))
+              .first);
       await tester.pumpAndSettle();
       expect(find.textContaining('70.5'), findsOneWidget);
       expect(find.textContaining('65'), findsOneWidget);
     });
   }
 
-  testWidgets('macro cards fit at 360 dp in English and Arabic', (WidgetTester tester) async {
+  testWidgets('macro cards fit at 360 dp in English and Arabic',
+      (WidgetTester tester) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(360, 800);
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     for (final String language in <String>['en', 'ar']) {
-      final FakeMayosApi fake = _fake()..nutritionState = <String, dynamic>{
-        'state': 'ready', 'goal': 'maintain',
-        'targets': <String, dynamic>{'calories': 2000, 'protein_g': 140, 'carbs_g': 220,
-          'fat_g': 70, 'fiber_g': 32, 'water_ml': 3000},
-      };
+      final FakeMayosApi fake = _fake()
+        ..nutritionState = <String, dynamic>{
+          'state': 'ready',
+          'goal': 'maintain',
+          'targets': <String, dynamic>{
+            'calories': 2000,
+            'protein_g': 140,
+            'carbs_g': 220,
+            'fat_g': 70,
+            'fiber_g': 32,
+            'water_ml': 3000
+          },
+        };
       await tester.pumpWidget(_app(fake, language, ThemeData.light()));
       await tester.pumpAndSettle();
-      await scrollToControl(tester, find.text(language == 'en' ? 'Macros' : 'الماكروز'));
+      await scrollToControl(
+          tester, find.text(language == 'en' ? 'Macros' : 'الماكروز'));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
-      expect(find.text(language == 'en' ? 'Protein' : 'البروتين'), findsOneWidget);
-      expect(find.text(language == 'en' ? 'Fat' : 'الدهون'), findsOneWidget);
-      await scrollToControl(tester, find.text(language == 'en' ? 'Fiber target' : 'هدف الألياف'));
-      expect(find.text(language == 'en' ? 'Water target' : 'هدف الماء'), findsOneWidget);
+      expect(find.text(language == 'en' ? 'Protein' : 'البروتين'),
+          findsNWidgets(2));
+      expect(find.text(language == 'en' ? 'Fat' : 'الدهون'), findsNWidgets(2));
+      await scrollToControl(
+          tester, find.text(NutritionCopy(language).coachFiber));
+      expect(find.text(NutritionCopy(language).coachWater), findsOneWidget);
       expect(find.text(language == 'en' ? '32 g' : '32 جم'), findsOneWidget);
-      expect(find.text(language == 'en' ? '3.00 L · 12 glasses' : '3.00 لتر · 12 كوبًا'), findsOneWidget);
+      expect(find.text(NutritionCopy(language).waterPrescription(3000)),
+          findsOneWidget);
     }
   });
 
-  testWidgets('Arabic adherence uses glossary copy and RTL', (WidgetTester tester) async {
+  testWidgets('Arabic adherence uses glossary copy and RTL',
+      (WidgetTester tester) async {
     final FakeMayosApi fake = _fake()
-      ..nutritionState = <String, dynamic>{'state': 'ready', 'goal': 'maintain',
+      ..nutritionState = <String, dynamic>{
+        'state': 'ready',
+        'goal': 'maintain',
         'goal_reason': <String, dynamic>{'code': 'default'},
-        'targets': <String, dynamic>{'calories': 2000, 'protein_g': 140, 'carbs_g': 220, 'fat_g': 70},
-        'adherence_days': List<Map<String, dynamic>>.generate(7, (int index) => <String, dynamic>{
-          'date': '2026-10-${24 - index}', 'value': <String?>['on_target', 'roughly', 'off', null][index % 4]})};
-    await tester.pumpWidget(_app(fake, 'ar', ThemeData.light()));
+        'targets': <String, dynamic>{
+          'calories': 2000,
+          'protein_g': 140,
+          'carbs_g': 220,
+          'fat_g': 70
+        },
+        'adherence_days': List<Map<String, dynamic>>.generate(
+            7,
+            (int index) => <String, dynamic>{
+                  'date': DateTime(2026, 11, 5 - index)
+                      .toIso8601String()
+                      .substring(0, 10),
+                  'value': <String?>[
+                    'on_target',
+                    'roughly',
+                    'off',
+                    null
+                  ][index % 4]
+                })
+      };
+    await tester.pumpWidget(
+        _app(fake, 'ar', ThemeData.light(), home: const NutritionTab()));
     await tester.pumpAndSettle();
     await tester.drag(find.byType(ListView), const Offset(0, -1200));
     await tester.pumpAndSettle();
@@ -550,16 +785,24 @@ void main() {
     expect(find.text('كيف كان يومك؟'), findsOneWidget);
     expect(find.text('على الهدف'), findsOneWidget);
     expect(find.text('مدربك يرى الالتزام الغذائي.'), findsNothing);
-    final Iterable<String?> tooltipMessages = tester.widgetList<Tooltip>(find.byType(Tooltip))
+    final Iterable<String?> tooltipMessages = tester
+        .widgetList<Tooltip>(find.byType(Tooltip))
         .map((Tooltip tooltip) => tooltip.message);
-    expect(tooltipMessages, contains('2026-10-24: على الهدف'));
-    expect(tooltipMessages, contains('2026-10-23: تقريبًا'));
-    expect(tooltipMessages, contains('2026-10-22: بعيد عن الهدف'));
-    expect(tooltipMessages, contains('2026-10-21: غير مسجل'));
-    expect(tooltipMessages.any((String? message) =>
-      message != null && <String>['on_target', 'roughly', 'off', 'unlogged']
-          .any(message.contains)), isFalse);
-    expect(tester.widget<Directionality>(find.byType(Directionality).last).textDirection, TextDirection.rtl);
+    expect(tooltipMessages, contains('2026-11-05: على الهدف'));
+    expect(tooltipMessages, contains('2026-11-04: تقريبًا'));
+    expect(tooltipMessages, contains('2026-11-03: بعيد عن الهدف'));
+    expect(tooltipMessages, contains('2026-11-02: غير مسجل'));
+    expect(
+        tooltipMessages.any((String? message) =>
+            message != null &&
+            <String>['on_target', 'roughly', 'off', 'unlogged']
+                .any(message.contains)),
+        isFalse);
+    expect(
+        tester
+            .widget<Directionality>(find.byType(Directionality).last)
+            .textDirection,
+        TextDirection.rtl);
   });
 
   testWidgets('pace dial previews seven stops and shows floor and gain warnings', (WidgetTester tester) async {
@@ -710,12 +953,13 @@ void main() {
   });
 }
 
-Finder _coachField(WidgetTester tester, String label) => find.byWidgetPredicate(
-    (Widget widget) => widget is TextField && widget.decoration?.labelText == label);
+Finder _coachField(WidgetTester tester, String label) =>
+    find.byWidgetPredicate((Widget widget) =>
+        widget is TextField && widget.decoration?.labelText == label);
 
-// The Food log bars leave less room, so the lazy list may not have built the Water log yet.
-Future<void> _showWaterLog(WidgetTester tester, String addGlass) async {
-  await tester.dragUntilVisible(find.text(addGlass), find.byType(ListView), const Offset(0, -200));
+Future<void> _showWaterLog(WidgetTester tester) async {
+  await tester.dragUntilVisible(find.byKey(const Key('add_water_glass')),
+      find.byType(ListView), const Offset(0, -200));
   await tester.pumpAndSettle();
 }
 
@@ -726,14 +970,23 @@ FakeMayosApi _fake() => FakeMayosApi()
   ..gender = 'female'
   ..profileExists = true;
 
-Widget _app(FakeMayosApi fake, String language, ThemeData theme, {Widget? home}) => ProviderScope(
+Widget _app(FakeMayosApi fake, String language, ThemeData theme,
+        {Widget? home}) =>
+    ProviderScope(
       overrides: <Override>[
         apiClientProvider.overrideWith((ref) {
           final InMemoryTokenStore tokens = InMemoryTokenStore();
           tokens.save('nutrition-token');
-          return ApiClient(tokens: tokens, baseUrl: 'http://test.local', adapter: fake.adapter);
+          return ApiClient(
+              tokens: tokens,
+              baseUrl: 'http://test.local',
+              adapter: fake.adapter);
         }),
         systemDisplayLanguageProvider.overrideWithValue(language),
       ],
-      child: MaterialApp(theme: theme, home: Scaffold(body: home ?? const NutritionTab())),
+      child: MaterialApp(
+          theme: theme.brightness == Brightness.dark
+              ? MayosTheme.darkForLanguage(language)
+              : MayosTheme.lightForLanguage(language),
+          home: Scaffold(body: home ?? const NutritionTab(targetsOnly: true))),
     );

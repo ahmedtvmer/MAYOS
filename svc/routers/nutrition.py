@@ -57,6 +57,28 @@ async def enable_meals(request: Request,
     return state
 
 
+@router.post("/meals/disable")
+async def disable_meals(request: Request,
+                        player: Annotated[Any, Depends(get_verified_player)],
+                        ledger: Annotated[Any, Depends(get_ledger)],
+                        db: Annotated[Any, Depends(get_db)]):
+    today, assignment, _language = _player_context(player, ledger, db, request)
+    _require_player_authority(ledger, assignment)
+    previous = ledger.get_active_nutrition_plan()
+    try:
+        state = await asyncio.to_thread(meals.disable, ledger, today)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from None
+    version_id = state.get("plan_version_id")
+    if previous is not None and version_id is not None and previous["id"] != version_id:
+        analytics.capture_for_request(request, analytics.AnalyticsEvent(
+            account_id=account_id_of(player), event="nutrition_meals_turned_off",
+            domain_key=f"{player}:meals:{version_id}", role="player", properties={},
+        ))
+    _apply_meal_permissions(state, ledger, assignment)
+    return state
+
+
 def _apply_meal_permissions(state, ledger, assignment):
     state["can_enable"] = not _coach_holds_authority(ledger.get_active_nutrition_plan(), assignment)
     state["can_request_swap"] = not state["can_enable"] and state["status"] == "ready"

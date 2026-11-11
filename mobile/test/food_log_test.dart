@@ -30,7 +30,7 @@ void main() {
         final FoodLogCopy copy = FoodLogCopy(language);
         await tester.pumpWidget(_app(fake, language: language, brightness: brightness));
         await tester.pumpAndSettle();
-        expect(find.byKey(const Key('copy_food_meal')), findsNothing);
+        expect(tester.widget<TextButton>(find.byKey(const Key('copy_food_meal'))).onPressed, isNull);
         await tester.tap(find.widgetWithText(OutlinedButton, copy.quickAdd));
         await tester.pumpAndSettle();
         expect(find.byType(QuickAddScreen), findsOneWidget);
@@ -199,8 +199,7 @@ void main() {
       final FakeMayosApi fake = _fake();
       await tester.pumpWidget(_app(fake));
       await tester.pumpAndSettle();
-      await _scrollNutritionTo(tester, find.text('Macros'));
-      expect(find.text('Macros'), findsOneWidget);
+      expect(find.text('Macros'), findsNothing);
       await tester.tap(find.byType(TextField));
       await tester.pumpAndSettle();
       expect(find.byType(FoodSearchScreen), findsOneWidget);
@@ -239,8 +238,8 @@ void main() {
       expect(find.text('1900'), findsOneWidget);
       expect(find.text('kcal left of 2000'), findsOneWidget);
       expect(find.text('Macros'), findsNothing);
-      await _scrollNutritionTo(tester, find.textContaining('2 large egg · Lunch'));
-      expect(find.textContaining('2 large egg · Lunch'), findsOneWidget);
+      await _scrollNutritionTo(tester, find.text('2 large egg'));
+      expect(find.text('2 large egg'), findsOneWidget);
       expect(fake.foodLogEntries[fake.foodLogToday]!.single['grams'], 100);
       expect(
         fake.foodLogEntries[fake.foodLogToday]!.single['meal_label'],
@@ -299,8 +298,8 @@ void main() {
       await tester.pumpWidget(_app(fake));
       await tester.pumpAndSettle();
       expect(find.text('1800'), findsOneWidget);
-      expect(find.text('Protein left'), findsOneWidget);
-      expect(find.text('100 g'), findsOneWidget);
+      expect(find.text('Protein'), findsOneWidget);
+      expect(find.text('100 g left'), findsOneWidget);
       await _scrollNutritionTo(tester, find.text('Early egg'));
       expect(
         tester.getTopLeft(find.text('Early egg')).dy,
@@ -313,7 +312,7 @@ void main() {
       await tester.tap(find.byTooltip('Previous day'));
       await tester.pumpAndSettle();
       expect(find.textContaining('Yesterday,'), findsOneWidget);
-      expect(find.text('No food logged for this day.'), findsOneWidget);
+      expect(find.text('Nothing logged yet.'), findsOneWidget);
       expect(find.byType(TextField), findsOneWidget);
       await tester.tap(find.byTooltip('Previous day'));
       await tester.pumpAndSettle();
@@ -540,8 +539,7 @@ void main() {
       await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
       await tester.pumpAndSettle();
       expect(fake.foodLogEntries[fake.foodLogToday], isEmpty);
-      await _scrollNutritionTo(tester, find.text('Macros'));
-      expect(find.text('Macros'), findsOneWidget);
+      expect(find.text('Macros'), findsNothing);
       await _scrollNutritionTo(tester, find.text('2000'), delta: -200);
       expect(find.text('2000'), findsOneWidget);
     },
@@ -660,7 +658,7 @@ void main() {
           );
           await tester.pumpAndSettle();
           expect(find.text('1900'), findsOneWidget);
-          expect(find.text(copy.macroLeft(copy.protein)), findsOneWidget);
+          expect(find.text(copy.protein), findsOneWidget);
           expect(tester.takeException(), isNull,
             reason: 'The Food log day view must fit the phone.');
           expect(

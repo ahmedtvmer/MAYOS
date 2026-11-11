@@ -5,7 +5,8 @@ class FoodLogCopy extends NutritionCopy {
 
   String get foodLog => isArabic ? 'سجل الطعام' : 'Food log';
   String get quickAdd => isArabic ? 'إضافة سريعة' : 'Quick add';
-  String get createPersonal => isArabic ? 'إنشاء طعام خاص' : 'Create a Personal food';
+  String get createPersonal =>
+      isArabic ? 'إنشاء طعام خاص' : 'Create a Personal food';
   String get cantFind => isArabic ? 'لم تجد ما تبحث عنه؟' : "Can't find it?";
   String get foodName => isArabic ? 'اسم الطعام' : 'Food name';
   String get nutrientBasis => isArabic ? 'القيم الغذائية لكل' : 'Nutrients per';
@@ -13,11 +14,14 @@ class FoodLogCopy extends NutritionCopy {
   String get portion => isArabic ? 'حصة' : 'Portion';
   String get portionName => isArabic ? 'اسم الحصة' : 'Portion name';
   String get portionWeight => isArabic ? 'وزن الحصة بالجرام' : 'Portion grams';
-  String get optionalMacros => isArabic ? 'المغذيات الكبرى (اختياري)' : 'Macros (optional)';
+  String get optionalMacros =>
+      isArabic ? 'المغذيات الكبرى (اختياري)' : 'Macros (optional)';
   String get invalidNutrients => isArabic
       ? 'أدخل قيمًا صحيحة غير سالبة وأكمل الحقول المطلوبة.'
       : 'Enter valid nonnegative values and complete the required fields.';
-  String get copyMeal => isArabic ? 'نسخ وجبة من أمس' : 'Copy a meal from yesterday';
+  String get copyMeal =>
+      isArabic ? 'نسخ وجبة من أمس' : 'Copy a meal from yesterday';
+  String get copyMealShort => isArabic ? 'نسخ وجبة' : 'Copy a meal';
   String get copying => isArabic ? 'جارٍ النسخ…' : 'Copying…';
   String get searchFoods => isArabic ? 'ابحث عن طعام' : 'Search foods';
   String get addFood =>
@@ -32,6 +36,8 @@ class FoodLogCopy extends NutritionCopy {
   String get noEntries => isArabic
       ? 'لا يوجد طعام مسجل لهذا اليوم.'
       : 'No food logged for this day.';
+  String get nothingLogged =>
+      isArabic ? 'لم يُسجّل شيء بعد.' : 'Nothing logged yet.';
   String get recentFoods =>
       isArabic ? 'أطعمتك الأخيرة والمتكررة' : 'Recent and frequent foods';
   String get noRecent => isArabic
@@ -57,22 +63,36 @@ class FoodLogCopy extends NutritionCopy {
       isArabic ? 'السعرات المتبقية بعد الإضافة' : 'kcal left after adding';
   String get afterSaving =>
       isArabic ? 'السعرات المتبقية بعد الحفظ' : 'kcal left after saving';
-  String get targetsTitle =>
-      isArabic ? 'الأهداف الغذائية' : 'Nutrition targets';
   String mealLabel(String value) => switch (value) {
-    'breakfast' => isArabic ? 'الإفطار' : 'Breakfast',
-    'lunch' => isArabic ? 'الغداء' : 'Lunch',
-    'dinner' => isArabic ? 'العشاء' : 'Dinner',
-    'morning_snack' => isArabic ? 'وجبة خفيفة صباحية' : 'Morning snack',
-    'afternoon_snack' => isArabic ? 'وجبة خفيفة بعد الظهر' : 'Afternoon snack',
-    _ => isArabic ? 'وجبة خفيفة' : 'Snack',
-  };
+        'breakfast' => isArabic ? 'الإفطار' : 'Breakfast',
+        'lunch' => isArabic ? 'الغداء' : 'Lunch',
+        'dinner' => isArabic ? 'العشاء' : 'Dinner',
+        'morning_snack' => isArabic ? 'وجبة خفيفة صباحية' : 'Morning snack',
+        'afternoon_snack' =>
+          isArabic ? 'وجبة خفيفة بعد الظهر' : 'Afternoon snack',
+        _ => isArabic ? 'وجبة خفيفة' : 'Snack',
+      };
   String addTo(String meal) =>
       isArabic ? 'إضافة إلى ${mealLabel(meal)}' : 'Add to ${mealLabel(meal)}';
   String leftOf(num target) => isArabic
       ? 'سعرة متبقية من ${target.round()}'
       : 'kcal left of ${target.round()}';
   String macroLeft(String macro) => isArabic ? '$macro المتبقي' : '$macro left';
+  String eatenOf(num target) => isArabic
+      ? 'سعرة متناولة من ${target.round()}'
+      : 'kcal eaten of ${target.round()}';
+  String get caloriesEaten => isArabic ? 'سعرة متناولة' : 'kcal eaten';
+  String caloriesOver(num amount) => isArabic
+      ? '${amount.round()} سعرة فوق الهدف'
+      : '${amount.round()} kcal over';
+  String gramsRemaining(num amount) => amount < 0
+      ? (isArabic
+          ? '${(-amount).round()} جم فوق الهدف'
+          : '${(-amount).round()} g over')
+      : (isArabic ? '${amount.round()} جم متبقية' : '${amount.round()} g left');
+  String gramsEaten(num amount, num target) => isArabic
+      ? '${amount.round()} من ${target.round()} جم'
+      : '${amount.round()} of ${target.round()} g';
   String per100g(num kcal) => isArabic
       ? '${kcal.round()} سعرة / ١٠٠ جرام'
       : '${kcal.round()} kcal / 100 g';

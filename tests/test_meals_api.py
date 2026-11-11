@@ -60,6 +60,77 @@ def _enable(client, headers):
     return response.json()
 
 
+def _disable(client, headers):
+    response = client.post("/nutrition/meals/disable", headers=headers)
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def test_disable_versions_the_plan_keeps_logged_food_and_regenerates_when_enabled(meals_api, recording_analytics):
+    client, db, headers, today = meals_api
+    enabled = _enable(client, headers)
+    logged = client.post("/nutrition/meals/log", headers=headers, json={
+        "slot": "breakfast", "entry_date": today.isoformat(), "plan_version_id": enabled["plan_version_id"]})
+    assert logged.status_code == 201, logged.text
+    entries = client.get("/nutrition/food-log", headers=headers).json()["entries"]
+    targets = client.get("/nutrition", headers=headers).json()["targets"]
+
+    disabled = _disable(client, headers)
+    assert disabled["status"] == "disabled" and disabled["enabled"] is False
+    assert disabled["meals"] == [] and disabled["plan_version_id"] > enabled["plan_version_id"]
+    assert client.get("/nutrition/meals", headers=headers).json() == disabled
+    nutrition_state = client.get("/nutrition", headers=headers).json()
+    assert nutrition_state["meals"] == []
+    assert nutrition_state["targets"] == targets and nutrition_state["authority"] == "player"
+    assert client.get("/nutrition/food-log", headers=headers).json()["entries"] == entries
+    with db.open_ledger(_ledger_id(db)) as ledger:
+        active = ledger.get_active_nutrition_plan()
+        assert active["author"] == "Player" and json.loads(active["meals_json"])["enabled"] is False
+
+    # Saving setup while off must not silently turn meals on (#676).
+    changed = client.put("/nutrition/meal-setup", headers=headers, json={
+        "meal_count": 4, "training_time": "evening",
+        "restrictions": {"allergies": [], "dislikes": [], "vegetarian": False}})
+    assert changed.status_code == 200, changed.text
+    assert client.get("/nutrition/meals", headers=headers).json()["status"] == "disabled"
+    regenerated = _enable(client, headers)
+    assert regenerated["plan_version_id"] > disabled["plan_version_id"]
+    assert regenerated["enabled"] and len(regenerated["meals"]) == 4
+    assert client.get("/nutrition/food-log", headers=headers).json()["entries"] == entries
+    assert len([event for event in recording_analytics.events if event["event"] == "nutrition_meals_turned_off"]) == 1
+
+
+@pytest.mark.parametrize("previously_enabled", [False, True])
+def test_disable_when_already_off_creates_no_version_or_event(meals_api, recording_analytics, previously_enabled):
+    client, db, headers, _today = meals_api
+    if previously_enabled:
+        _enable(client, headers)
+        _disable(client, headers)
+    before = client.get("/nutrition/meals", headers=headers).json()
+    off_events = [event for event in recording_analytics.events if event["event"] == "nutrition_meals_turned_off"]
+    with db.open_ledger(_ledger_id(db)) as ledger:
+        versions_before = ledger.conn.execute("SELECT count(*) FROM nutrition_plan_versions").fetchone()[0]
+    assert _disable(client, headers) == before
+    with db.open_ledger(_ledger_id(db)) as ledger:
+        assert ledger.conn.execute("SELECT count(*) FROM nutrition_plan_versions").fetchone()[0] == versions_before
+    assert [event for event in recording_analytics.events if event["event"] == "nutrition_meals_turned_off"] == off_events
+
+
+def test_coach_authored_meals_cannot_be_disabled_without_an_active_assignment(meals_api):
+    client, db, headers, _today = meals_api
+    _enable(client, headers)
+    with db.open_ledger(_ledger_id(db)) as ledger, ledger.ledger_transaction():
+        active = ledger.get_active_nutrition_plan()
+        ledger.save_nutrition_plan(NutritionPlanVersion(
+            goal="maintain", reason={"code": "coach"}, intensity=None, daily_activity="mostly_sitting",
+            targets=json.loads(active["targets_json"]), author="Coach", provenance="coach",
+            meals=json.loads(active["meals_json"])))
+    before = client.get("/nutrition/meals", headers=headers).json()
+    refused = client.post("/nutrition/meals/disable", headers=headers)
+    assert refused.status_code == 400
+    assert client.get("/nutrition/meals", headers=headers).json() == before
+
+
 def test_enable_versions_the_plan_once_and_emits_allowlisted_analytics(meals_api, recording_analytics):
     client, db, headers, _today = meals_api
     before = client.get("/nutrition", headers=headers).json()
@@ -240,6 +311,7 @@ def test_coach_target_edits_preserve_coach_meals_with_notice_and_gate_enable(mea
         assert nutrition.coach_read(ledger, today, "assignment")["meals_targets_changed"]
     monkeypatch.setattr(db, "get_active_assignment_for_player", lambda _account: {"assignment_id": "assignment"})
     assert client.post("/nutrition/meals/enable", headers=headers).status_code == 403
+    assert client.post("/nutrition/meals/disable", headers=headers).status_code == 403
     assert client.get("/nutrition/meals", headers=headers).json()["targets_changed"]
 
 

@@ -31,6 +31,7 @@ import 'features/player/auth/reset_password_screen.dart';
 import 'features/player/chat/chat_screen.dart';
 import 'features/player/exercise/exercise_detail_screen.dart';
 import 'features/player/onboarding/onboarding_screen.dart';
+import 'features/player/nutrition/food_swap_requests.dart';
 import 'features/player/onboarding/rest_alert_permission_screen.dart';
 import 'features/player/plan/plan_screen.dart';
 import 'features/player/profile/profile_screen.dart';
@@ -71,6 +72,7 @@ const String coachPlanPath = '/coach-plan';
 const String profilePath = '/profile';
 const String featureGuidePath = '/feature-guide';
 const String whatsNewPath = '/whats-new';
+const String foodSwapRequestsPath = '/food-swap-requests';
 const String coachPath = '/coach';
 const String coachRosterRoutePath = 'roster';
 const String coachAssignmentRoutePath = ':assignmentId';
@@ -529,6 +531,11 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: whatsNewPath,
         builder: (BuildContext context, GoRouterState state) => const WhatsNewScreen(),
+      ),
+      GoRoute(
+        path: foodSwapRequestsPath,
+        builder: (BuildContext context, GoRouterState state) =>
+            _withRecoveryEmailReminder(state, const FoodSwapRequestsScreen()),
       ),
       GoRoute(
         path: chatPath,
