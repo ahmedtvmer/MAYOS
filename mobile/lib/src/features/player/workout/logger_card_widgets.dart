@@ -591,15 +591,15 @@ class ExerciseLoggingCard extends StatelessWidget {
                             ),
                           ),
                         if (exercise.exercise['notes'] case final String notes
-                            when notes.isNotEmpty)
+                            when notes.trim().isNotEmpty &&
+                                exercise.exercise['notes_are_technique'] != true)
                           Padding(
                             padding:
                                 const EdgeInsets.only(top: MayosSpacing.xxs),
-                            child: Text(
-                              '${copy.exerciseNotes}: $notes',
-                              textAlign: copy.isArabic ? TextAlign.end : null,
-                              style: MayosTypography.of(context).caption
-                                  .copyWith(color: c.textSecondary),
+                            child: _ExpandableLoggerNote(
+                              key: ValueKey<String>(
+                                  'logger.note.${exercise.rowId}'),
+                              text: '${copy.exerciseNotes}: $notes',
                             ),
                           ),
                         if (lastSession.isNotEmpty)
@@ -689,6 +689,45 @@ class ExerciseLoggingCard extends StatelessWidget {
   }
 }
 
+class _ExpandableLoggerNote extends StatefulWidget {
+  const _ExpandableLoggerNote({super.key, required this.text});
+
+  final String text;
+
+  @override
+  State<_ExpandableLoggerNote> createState() => _ExpandableLoggerNoteState();
+}
+
+class _ExpandableLoggerNoteState extends State<_ExpandableLoggerNote> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final WorkoutCopy copy = workoutCopyOf(context);
+    return Row(
+      crossAxisAlignment:
+          _expanded ? CrossAxisAlignment.start : CrossAxisAlignment.center,
+      children: <Widget>[
+        Expanded(
+          child: Text(
+            widget.text,
+            maxLines: _expanded ? null : 1,
+            overflow: _expanded ? null : TextOverflow.ellipsis,
+            textAlign: copy.isArabic ? TextAlign.end : null,
+            style: MayosTypography.of(context).caption.copyWith(
+              color: MayosTheme.of(context).textSecondary,
+            ),
+          ),
+        ),
+        TextButton(
+          onPressed: () => setState(() => _expanded = !_expanded),
+          child: Text(_expanded ? copy.less : copy.more),
+        ),
+      ],
+    );
+  }
+}
+
 class _CoachExerciseLoggerDetails extends StatelessWidget {
   const _CoachExerciseLoggerDetails({required this.exercise});
 
@@ -705,11 +744,9 @@ class _CoachExerciseLoggerDetails extends StatelessWidget {
       children: <Widget>[
         if (note?.trim().isNotEmpty == true) ...<Widget>[
           const SizedBox(height: MayosSpacing.xxs),
-          Text(
-            note!,
-            style: MayosTypography.of(context).bodySecondary.copyWith(
-              color: MayosTheme.of(context).textSecondary,
-            ),
+          _ExpandableLoggerNote(
+            key: ValueKey<String>('logger.coachNote.${exercise.rowId}'),
+            text: note!,
           ),
         ],
         if (videoUrl?.trim().isNotEmpty == true)

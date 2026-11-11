@@ -6,6 +6,7 @@ import '../../../core/display_language/copy_context.dart';
 import '../../../core/display_language/feature_copy_context.dart';
 import '../../../core/display_language/catalog.dart';
 import '../../../core/api_client.dart';
+import '../../../core/refetch_on_reconnect.dart';
 import '../../../core/app_failure.dart';
 import '../../../core/connectivity_message.dart';
 import '../../../core/effort.dart';
@@ -43,7 +44,11 @@ class ProgressTab extends ConsumerStatefulWidget {
   ConsumerState<ProgressTab> createState() => _ProgressTabState();
 }
 
-class _ProgressTabState extends ConsumerState<ProgressTab> {
+class _ProgressTabState extends ConsumerState<ProgressTab>
+    with RefetchOnReconnect<ProgressTab> {
+  @override
+  Future<void> refreshAfterReconnect() => _load();
+
   static const List<int> _volumePeriods = <int>[7, 28, 90];
 
   bool _loading = true;
@@ -100,7 +105,7 @@ class _ProgressTabState extends ConsumerState<ProgressTab> {
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() {
-        _checkpointError = _failureMessage(error);
+        _checkpointError = apiFailureMessage(error);
         _checkpointLoading = false;
       });
     }
@@ -124,9 +129,9 @@ class _ProgressTabState extends ConsumerState<ProgressTab> {
       setState(() {
         _loading = false;
         if (_exercises.isNotEmpty) {
-          _notice = _failureMessage(error);
+          _notice = apiFailureMessage(error);
         } else {
-          _loadError = _failureMessage(error);
+          _loadError = apiFailureMessage(error);
         }
       });
       return;
@@ -166,7 +171,7 @@ class _ProgressTabState extends ConsumerState<ProgressTab> {
     } on ApiException catch (error) {
       if (!mounted || _selectedExerciseId != exerciseId) return;
       setState(() {
-        _historyError = _failureMessage(error);
+        _historyError = apiFailureMessage(error);
         _historyLoading = false;
       });
     }
@@ -188,7 +193,7 @@ class _ProgressTabState extends ConsumerState<ProgressTab> {
     } on ApiException catch (error) {
       if (!mounted || _volumeDays != days) return;
       setState(() {
-        _volumeError = _failureMessage(error);
+        _volumeError = apiFailureMessage(error);
         _volumeLoading = false;
       });
     }
@@ -210,7 +215,7 @@ class _ProgressTabState extends ConsumerState<ProgressTab> {
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() {
-        _weightError = _failureMessage(error);
+        _weightError = apiFailureMessage(error);
         _weightLoading = false;
       });
     }
@@ -246,7 +251,7 @@ class _ProgressTabState extends ConsumerState<ProgressTab> {
       if (!mounted) return;
       setState(() {
         _weightSaving = false;
-        _weightError = _failureMessage(error);
+        _weightError = mutationFailureMessage(error);
       });
     }
   }
@@ -269,10 +274,6 @@ class _ProgressTabState extends ConsumerState<ProgressTab> {
     ref.read(playerShellTabProvider.notifier).state =
         PlayerShellTab.program.index;
   }
-
-  FailureMessage _failureMessage(ApiException error) => isNetworkFailure(error)
-      ? mutationFailureMessage(error)
-      : apiFailureMessage(error);
 
   @override
   Widget build(BuildContext context) {

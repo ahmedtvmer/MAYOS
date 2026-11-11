@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/refetch_on_reconnect.dart';
 import '../../../core/app_failure.dart';
 import '../../../core/connectivity_message.dart';
 import '../../../core/display_language/assignment_copy.dart';
@@ -37,7 +38,11 @@ class PlayerAssignmentScreen extends ConsumerStatefulWidget {
 }
 
 class _PlayerAssignmentScreenState
-    extends ConsumerState<PlayerAssignmentScreen> {
+    extends ConsumerState<PlayerAssignmentScreen>
+    with RefetchOnReconnect<PlayerAssignmentScreen> {
+  @override
+  Future<void> refreshAfterReconnect() => _refreshInPlace();
+
   final TextEditingController _code = TextEditingController();
 
   bool _loading = true;

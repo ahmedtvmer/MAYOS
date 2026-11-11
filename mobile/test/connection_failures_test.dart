@@ -38,6 +38,9 @@ class _WriteCompletionTracker {
   }
 }
 
+// #690 read retries are covered in api_read_retry_test.dart; these tests skip the waits.
+Future<void> _noRetryDelay(Duration _) async {}
+
 class _MemoryConnectionFailureStore implements ConnectionFailureStore {
   final Map<String, List<ClientConnectionFailure>> _failures =
       <String, List<ClientConnectionFailure>>{};
@@ -158,6 +161,7 @@ ApiClient _client(
       baseUrl: 'http://test.local',
       adapter: adapter,
       clientHeaderLoader: () => 'web/1.2.3',
+      retryDelay: _noRetryDelay,
       connectionFailureOptions: ConnectionFailureOptions(
         store: store,
         offlineStatusLoader: () async => false,
@@ -188,6 +192,7 @@ void main() {
       tokens: tokens,
       baseUrl: 'http://test.local',
       adapter: adapter,
+      retryDelay: _noRetryDelay,
       connectionFailureOptions: ConnectionFailureOptions(
         store: store,
         offlineStatusLoader: () async => true,
@@ -236,6 +241,7 @@ void main() {
       tokens: tokens,
       baseUrl: 'http://test.local',
       adapter: adapter,
+      retryDelay: _noRetryDelay,
       connectionFailureOptions: ConnectionFailureOptions(
         store: store,
         offlineStatusLoader: () async => false,
@@ -482,6 +488,7 @@ void main() {
     final ApiClient api = ApiClient(
       tokens: tokens, baseUrl: 'http://test.local',
       clientHeaderLoader: () => 'web/1.2.3',
+      retryDelay: _noRetryDelay,
       connectionFailureOptions: ConnectionFailureOptions(
         store: store, offlineStatusLoader: () async => true,
       ),
@@ -520,6 +527,7 @@ void main() {
     final ApiClient api = ApiClient(
       tokens: tokens, baseUrl: 'http://test.local',
       clientHeaderLoader: () => 'web/1.2.3',
+      retryDelay: _noRetryDelay,
       connectionFailureOptions: ConnectionFailureOptions(
         store: store, offlineStatusLoader: () async => false,
       ),

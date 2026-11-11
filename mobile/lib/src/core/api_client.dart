@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
@@ -143,12 +144,14 @@ class ApiClient {
     String? Function()? buildHeaderLoader,
     String Function()? displayLanguageLoader,
     ConnectionFailureOptions? connectionFailureOptions,
+    Future<void> Function(Duration)? retryDelay,
   })  : _tokens = tokens,
         _baseUrl = baseUrl,
         _chatStreamFetch = chatStreamFetch ?? createChatStreamFetch(),
         _clientHeader = (clientHeaderLoader ?? _loadClientHeader)(),
         _buildHeader = (buildHeaderLoader ?? _loadBuildHeader)(),
-        _displayLanguageLoader = displayLanguageLoader ?? (() => 'en') {
+        _displayLanguageLoader = displayLanguageLoader ?? (() => 'en'),
+        _retryDelay = retryDelay ?? Future<void>.delayed {
     _dio = Dio(
       BaseOptions(
         baseUrl: baseUrl,
@@ -181,6 +184,11 @@ class ApiClient {
   }
 
   static const String _skipAuth = connectionFailureSkipAuthKey;
+
+  /// Opt out for reads with their own bounded fallback, such as workout start.
+  static const String skipReadRetry = 'skipReadRetry';
+  static const String _offlineMessage =
+      "You're offline. We'll retry when you're back online.";
 
   void _addHttpBreadcrumb(RequestOptions request, int? status) {
     if (status == null) return;
@@ -257,6 +265,8 @@ class ApiClient {
   final String _clientHeader;
   final String? _buildHeader;
   final String Function() _displayLanguageLoader;
+  final Future<void> Function(Duration) _retryDelay;
+  final Random _retryRandom = Random();
   late final Dio _dio;
   late final PersistedConnectionFailureReporter _connectionFailureReporter;
 
@@ -359,16 +369,37 @@ class ApiClient {
 
   Future<Response<dynamic>> _send(
       Future<Response<dynamic>> Function() run) async {
-    try {
-      final Response<dynamic> response = await run();
-      _connectionFailureReporter
-          .flushAfterSuccessfulRequest(response.requestOptions);
-      return response;
-    } on DioException catch (error) {
-      _recordConnectionFailure(error);
-      throw _toApiException(error);
+    int retries = 0;
+    while (true) {
+      try {
+        final Response<dynamic> response = await run();
+        _connectionFailureReporter
+            .flushAfterSuccessfulRequest(response.requestOptions);
+        return response;
+      } on DioException catch (error) {
+        if (retries == 3 || !_canRetryRead(error)) {
+          // Only the final attempt's failure is reported (ADR 114).
+          _recordConnectionFailure(error);
+          throw _toApiException(error);
+        }
+        // Three retries after the initial attempt, with +/-20% jitter so
+        // clients returning from an outage do not all retry together.
+        final int milliseconds =
+            (1000 * (1 << retries) * (0.8 + _retryRandom.nextDouble() * 0.4))
+                .round();
+        retries += 1;
+        await _retryDelay(Duration(milliseconds: milliseconds));
+      }
     }
   }
+
+  bool _canRetryRead(DioException error) =>
+      error.requestOptions.method.toUpperCase() == 'GET' &&
+      error.requestOptions.extra[skipReadRetry] != true &&
+      error.response == null &&
+      (error.type == DioExceptionType.connectionError ||
+          error.type == DioExceptionType.connectionTimeout ||
+          error.type == DioExceptionType.receiveTimeout);
 
   void _recordConnectionFailure(DioException error) {
     if (error.response != null || error.type == DioExceptionType.cancel) return;
@@ -413,10 +444,10 @@ class ApiClient {
     }
     if (status == null) {
       return const ApiException(
-        'Cannot reach the service. Check your connection.',
+        _offlineMessage,
         failureMessage: AppFailureMessage(
           AppFailureId.cannotReachService,
-          'Cannot reach the service. Check your connection.',
+          _offlineMessage,
         ),
       );
     }
@@ -2902,13 +2933,20 @@ class ApiClient {
   }
 
   /// Auto-regulated targets for one training day (`GET /workouts/prescription`).
-  Future<Prescription> prescription(int dayOrder, {int weekOrder = 1}) async {
+  Future<Prescription> prescription(
+    int dayOrder, {
+    int weekOrder = 1,
+    bool retryTransportFailures = true,
+  }) async {
     final response = await _send(
       () => _dio.get<dynamic>('/workouts/prescription',
           queryParameters: <String, dynamic>{
             'day_order': dayOrder,
             'week_order': weekOrder,
-          }),
+          },
+          options: Options(extra: <String, dynamic>{
+            skipReadRetry: !retryTransportFailures,
+          })),
     );
     return _parseBody(response.data, Prescription.fromJson,
         'The service returned invalid prescription data.');
@@ -2957,7 +2995,10 @@ class ApiClient {
     final response = await _send(
       () => _dio.get<dynamic>(
         '/workouts/baselines',
-        options: Options(receiveTimeout: receiveTimeout),
+        options: Options(
+          receiveTimeout: receiveTimeout,
+          extra: <String, dynamic>{skipReadRetry: true},
+        ),
       ),
     );
     final dynamic data = response.data;
@@ -3526,10 +3567,10 @@ class ApiClient {
   }
 
   ApiException _networkFailure() => const ApiException(
-        'Cannot reach the service. Check your connection.',
+        _offlineMessage,
         failureMessage: AppFailureMessage(
           AppFailureId.cannotReachService,
-          'Cannot reach the service. Check your connection.',
+          _offlineMessage,
         ),
       );
 
