@@ -1073,7 +1073,9 @@ def test_ambiguous_and_unmatched_exercise_clearances_wait_for_selection_and_stay
     assert records[0]["original_wording"] == unmatched_wording
     assert records[1]["exercise_id"] in {"leg-curl-a", "leg-curl-b"}
     with db.open_ledger("alice") as ledger:
-        tool_result = player_tools._read_player_injuries(ledger)
+        tools, _ = player_tools.build_player_read_tools(ledger)
+        profile_tool = next(tool for tool in tools if tool.name == "get_player_profile")
+        tool_result = json.loads(profile_tool.invoke({"sections": ["Limitations"]}))
     raw_clearance = next(
         entry for entry in tool_result["injuries"][0]["clearances"]
         if entry["exercise_name"] == "fictional glute gliders"

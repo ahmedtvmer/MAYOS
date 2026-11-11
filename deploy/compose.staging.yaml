@@ -57,6 +57,7 @@ services:
       start_period: 120s
 
 networks:
+  # Staging uses the connector managed by the production Compose project.
   production:
     external: true
     name: mayos_default

@@ -1145,6 +1145,53 @@ This document records the architectural, algorithmic, and heuristic decisions im
 * **Rationale**: A single-week overview has bounded structural size across supported Splits, frequencies and week counts. Matching prescriptions remain available through explicit scopes, while repeated restriction skips do not consume space once per day or Program week.
 * **Code References**: `agent/player_tools.py`, `tests/test_player_chat_privacy.py`, `tests/test_player_program_rationale_tool.py`.
 
+### ADR 104: Player chat receives query-scoped Context pieces (amends ADR 002 and 078)
+
+* **Status**: Accepted (#523). Profile sections implemented by #525. The Context router is recorded in ADR 105 (#527) and history trimming in the ADR 078 amendment (#524).
+* **Decision**: Player chat retrieves only the facts a question needs. `get_player_profile` advertises a required `sections` list of Body (gender, age, height, weight, target weight), Goals (current, long-term), Training setup (weekly frequency, equipment access, rep preference, training age), Limitations (injury text, injury records with Exercise clearances, confirmed Movement restrictions), Focus (Weak points), and Recovery (stress and sleep). Omitted or empty sections return only section names and one-line descriptions, with no personal values. The existing `not set` and storage-default evidence rules remain. Limitations replaces `get_player_injuries`; suggestions inferred from injury text are not confirmed Movement restrictions.
+* **Parent retrieval design**: A deterministic Context router will select Context pieces before the hosted model runs, after the unchanged safety and write-intent paths. Pieces use simulated assistant tool calls and tool results; scoped read tools remain available in the existing three-round loop. Player data stays out of the fixed system core. Each result stays within 4 KB; router pieces together stay within 8 KB and the hosted prompt ceiling, dropping lower-priority pieces first (safety, Limitations, Program, rationale, other). Coach AI is outside this decision's scope.
+* **Question → Context piece table**: see ADR 105, which holds the owner-reviewable routing contract.
+
+* **Body area → joint actions table**: Routing reuses the Movement restriction action vocabulary and curated Primary and Secondary actions.
+
+  | Body area | Joint actions |
+  |---|---|
+  | Knee | Knee Flexion, Knee Extension |
+  | Hip | Hip Flexion, Hip Extension, Hip Adduction, Hip Abduction |
+  | Lower back | Spinal Flexion, Spinal Extension, plus hinges |
+  | Shoulder | Shoulder Flexion, Shoulder Abduction, Shoulder Horizontal Adduction |
+  | Elbow | Elbow Flexion, Elbow Extension |
+  | Wrist | Wrist Flexion, Wrist Extension |
+  | Ankle | Plantar Flexion |
+  | Neck | Neck Flexion, Neck Extension |
+
+* **Parent history and telemetry design**: Keep the last six messages in full and trim older assistant replies within the ten-message window to 600 characters, excluding session pointers. Log router topics, piece names and whether the model fetched more, never matched names, arguments or results. A recognised name without a topic inherits the previous user turn's topic one turn deep; new names replace the old scope. Exercise matching prefers the active Program before the library, muscles include English and Arabic aliases, and region day words expand to all matching Program days.
+* **Rationale**: Section scope avoids disclosing injuries and Weak points for a body-fact question. Bringing injury text, records and clearances together removes the need to choose between two injury readers. Deterministic routing in the parent work reduces missed or oversized reads while keeping the existing tools as a fallback.
+* **Code References** (Profile sections): `agent/player_tools.py`, `agent/player_prompt.py`, `tests/test_player_chat_privacy.py`.
+
+### ADR 105: Player chat receives router-selected Context pieces; read tools remain a fallback (amends ADR 078)
+
+* **Status**: Accepted (2026-11-08, #527; Program what/how-many tracer from #523).
+* **Decision**: At hosted Player chat entry, after the existing safety gate and deterministic write paths, a Context router recognises Program what/how-many questions and resolves their named days, Exercises and muscles. It runs the existing scoped `get_active_program` read and inserts an empty assistant message with simulated tool calls followed by their matching tool results before the first model call. No scope selects the Program overview from ADR 103. Both streaming and buffered generation use this hand-over for coaching Q&A turns only; Exercise history and its hosted fallback bypass the Program router. Arabic last-time and past-lift wording is excluded from the Program topic. The read registry stays bound and its three-round model tool loop is unchanged. Coach chat, Program generation and Program edits are unchanged.
+* **Question → Context piece table**: This is the owner-reviewable routing contract for #523. Only the Program what/how-many row is implemented by #527; the other rows belong to later tickets and keep their existing behavior here.
+
+  | Topic | Context pieces |
+  |---|---|
+  | Pain / hurts / injury (after the safety gate) | Limitations + Program Exercises loading that body area |
+  | Program what/how many | Program scoped to named day/Exercise/muscle; none named → overview |
+  | Program why | Program rationale scoped the same way |
+  | Progress / weights lifted | Exercise history for the named Exercise |
+  | Weight / body | Body + weight trend |
+  | Nutrition | Nutrition |
+  | Generic coaching | Training setup + Goals |
+  | Rebuild / Program edit | Nothing for the model; deterministic paths unchanged |
+
+* **Name matching**: Normalisation folds case, punctuation, Arabic diacritics and Alef variants. Muscle matching reuses the English/Arabic Weak point aliases, with gym nicknames including bi, tri, quads, باي and تراي and attached Arabic articles/conjunctions. Longest phrases win, so upper chest and side delts do not also select their broader groups. Full Exercise names match the active Program's current week first, then visible Exercise library source names, display names and aliases; bare bench/squat and other common shorthands use active Program variants when no full name covers that phrase; hidden rows and other Coaches' exercises are never catalog candidates. Exercise-name spans take precedence over overlapping muscle words. Multiple names produce the union of scoped reads; day scopes intersect with named Exercise/muscle scopes. Program day labels match in full, and English/Arabic weekday equivalents match weekday labels. A weekday with no corresponding Program label returns the read tool's `not_found` result; the separate Training schedule does not establish a fixed weekday-to-Program-day mapping. Region phrases such as leg day / يوم الرجل expand to every matching day in the current Program week. Explicit upper/lower day labels take precedence over muscle-derived regions, so arm isolation on a lower day does not make it an upper day. Unlabelled days are classified from their Exercise target muscles; full-body days can match both regions. Follow-up inheritance and broader multi-topic routing remain later #523 work.
+* **Bounds and privacy**: Each result goes through the existing 4 KB tool-result cap. Router results and their serialized simulated calls together may use at most 8 KB and must also fit the existing 32 KB prompt-content ceiling minus its 512-byte reserve. Pieces that do not fit are omitted with their calls; the bound tools can still fetch them. No Player facts are placed in the system prompt; its text, language metadata, history policy and tool descriptions remain unchanged (fixed-prompt byte delta: 0). Telemetry records only fixed topic labels, scope-kind piece labels and whether the model called another tool, including on failed model turns; it never records matched names, tool arguments or results.
+* **Context**: The small hosted model could miss a tool call or request an unscoped Program and lose prescriptions at the result cap. Weekly bi/tri questions therefore need deterministic scoped facts before inference, while unusual questions still need model-initiated reads.
+* **Validation**: `tests/test_player_context_router.py` starts the English/Egyptian Arabic chat-turn routing set with 19 Program questions, including the production bi/tri case, region expansion, weekday equivalents, active-first Exercise matching and catalog aliases. It also covers no active Program, Coach authority, safety/write bypass, fallback retrieval and privacy-safe telemetry, prompt headroom and buffered generation. They pass on the server with the related chat suites (314 tests, 2026-11-09).
+* **Code References**: `agent/context_router.py`, `agent/assistant_graph.py`, `database/exercise_library/lookup.py`, `core/weak_point_suggestions.py`, `tests/test_player_context_router.py`.
+
 ### ADR 106: Staple choices define cooked meal weights and per-food limits
 * **Status**: Accepted (owner review, 2026-11-09, #681).
 * **Decision**: Meals are weighed cooked through the curated Staple choice: raw rows keep no Staple role, following the owner's review in #683, so no separate `cooked_only` flag is needed. Optional `min_grams` and `max_grams` on Staple foods specify per-meal amount limits; each supplied bound overrides its per-category default in the meal generator (#682). Empty bounds leave the corresponding category defaults in effect.
