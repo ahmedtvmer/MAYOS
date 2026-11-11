@@ -134,7 +134,11 @@ void main() {
     );
     expect(
       MayosCopy('ar').failureMessage(apiFailureMessage(network)),
-      'تعذر الاتصال بالخدمة. تحقق من اتصالك بالإنترنت.',
+      'أنت غير متصل بالإنترنت. سنعيد المحاولة عند عودة الاتصال.',
+    );
+    expect(
+      MayosCopy('en').failureMessage(apiFailureMessage(network)),
+      "You're offline. We'll retry when you're back online.",
     );
 
     final ApiException noBody = await _expectApiException(
@@ -144,6 +148,10 @@ void main() {
     expect(
       MayosCopy('ar').failureMessage(apiFailureMessage(noBody)),
       'الخدمة غير متاحة. حاول مجددًا.',
+    );
+    expect(
+      MayosCopy('en').failureMessage(apiFailureMessage(noBody)),
+      'The service is unavailable. Please retry.',
     );
   });
 

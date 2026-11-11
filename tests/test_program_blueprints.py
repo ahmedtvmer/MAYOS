@@ -525,14 +525,15 @@ def test_no_duplicate_exercises_within_a_day():
         assert len(ids) == len(set(ids)), f"Duplicate exercise inside {day.day_name}"
 
 
-def test_program_output_is_english_only_with_catalog_steps():
+def test_generated_programs_leave_catalog_technique_out_of_exercise_notes():
     program = _generate("male", 4)
     assert program.instructions == ""
     for day in program.days:
         for exercise in day.exercises:
-            assert exercise.notes, f"Missing catalog execution steps on {exercise.exercise_name}"
-            assert not any("\u0600" <= char <= "\u06ff" for char in exercise.notes)
-            assert exercise.notes != "-"
+            assert exercise.notes == "", exercise.exercise_name
+    stored = db.ledger.get_active_program()
+    assert stored is not None
+    assert all(not exercise.notes for day in stored.days for exercise in day.exercises)
 
 
 def test_prescriptions_follow_reference_scheme():
@@ -895,7 +896,7 @@ def test_schema_round_trip_persists_warmups_and_slots():
         for generated_ex, stored_ex in zip(generated_day.exercises, stored_day.exercises, strict=True):
             assert stored_ex.slot_key == generated_ex.slot_key
             assert stored_ex.warmup_sets == generated_ex.warmup_sets
-            assert stored_ex.notes == generated_ex.notes
+            assert stored_ex.notes == (generated_ex.notes or "")
 
 
 def test_split_day_pools_cover_all_defined_days():

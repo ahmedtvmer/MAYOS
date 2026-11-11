@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/refetch_on_reconnect.dart';
 import '../../../core/app_failure.dart';
 import '../../../core/connectivity_message.dart';
 import '../../../core/chat_models.dart';
@@ -198,7 +199,13 @@ class _ProgramEditPreviewCardState extends State<_ProgramEditPreviewCard> {
   }
 }
 
-class _ChatScreenState extends ConsumerState<ChatScreen> {
+class _ChatScreenState extends ConsumerState<ChatScreen>
+    with RefetchOnReconnect<ChatScreen> {
+  @override
+  Future<void> refreshAfterReconnect() async {
+    if (!_sending) await _loadHistory();
+  }
+
   final TextEditingController _controller = TextEditingController();
 
   bool _disposed = false;

@@ -547,7 +547,7 @@ void main() {
     await tester.tap(
         find.byKey(const Key('program_template_archive_tmpl:upper')));
     await _pumpUntilFound(
-        tester, find.textContaining('Cannot reach the service'));
+        tester, find.textContaining("You're offline"));
 
     // The dropped request never reached the server, and no reload wiped the
     // surfaced failure; the row is still actionable.
@@ -568,7 +568,7 @@ void main() {
     await tester.tap(
         find.byKey(const Key('program_template_duplicate_tmpl:upper')));
     await _pumpUntilFound(
-        tester, find.textContaining('Cannot reach the service'));
+        tester, find.textContaining("You're offline"));
 
     expect(fake.programTemplateListRequests, loadsBefore);
     expect(find.byKey(const Key('program_template_duplicate_tmpl:upper')),

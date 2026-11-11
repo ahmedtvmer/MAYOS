@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/refetch_on_reconnect.dart';
 import '../../../core/display_language/controller.dart';
 import '../../../core/display_language/food_log_copy.dart';
 import '../../../core/food_log_models.dart';
@@ -30,11 +31,16 @@ class FoodLogDayView extends ConsumerStatefulWidget {
   ConsumerState<FoodLogDayView> createState() => _FoodLogDayViewState();
 }
 
-class _FoodLogDayViewState extends ConsumerState<FoodLogDayView> {
+class _FoodLogDayViewState extends ConsumerState<FoodLogDayView>
+    with RefetchOnReconnect<FoodLogDayView> {
+  @override
+  Future<void> refreshAfterReconnect() async {
+    if (!_deleting) await _load(background: true);
+  }
+
   FoodLogDay? _day;
   DateTime? _selected;
   bool _opening = false;
-  late final AppLifecycleListener _lifecycle;
   bool _loading = true;
   bool _deleting = false;
   String? _error;
@@ -43,16 +49,7 @@ class _FoodLogDayViewState extends ConsumerState<FoodLogDayView> {
   @override
   void initState() {
     super.initState();
-    _lifecycle = AppLifecycleListener(onResume: () {
-      if (mounted) _load(background: true);
-    });
     _load();
-  }
-
-  @override
-  void dispose() {
-    _lifecycle.dispose();
-    super.dispose();
   }
 
   @override
@@ -79,6 +76,7 @@ class _FoodLogDayViewState extends ConsumerState<FoodLogDayView> {
       if (!mounted || request != _request) return false;
       setState(() {
         _day = day;
+        _error = null;
         _loading = false;
       });
       return true;
