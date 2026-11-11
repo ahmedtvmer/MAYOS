@@ -1434,6 +1434,8 @@ class ProgramDraftExerciseIn(ProgramDraftInput):
     gif_path: str | None = None
     suggested_substitutes: list[SuggestedSubstitute] = Field(default_factory=list)
     focus_extra: Any = Field(default=None, exclude=True)
+    # A read-time logger label (#534); a republished Player read carries it, and it is never stored.
+    notes_are_technique: Any = Field(default=None, exclude=True)
 
     @model_validator(mode="after")
     def validate_group_loads(self) -> "ProgramDraftExerciseIn":
