@@ -40,9 +40,11 @@ class ExerciseClearancePolicy:
 
 def assistant_program_clearances(db: Any, ledger: Any, days: Any) -> dict[str, Any]:
     """Supply current safety flags through the existing scoped program read tool."""
+    policy = ExerciseClearancePolicy(ledger)
+    if not policy.injuries:
+        return {"status": "ok", "exercises": []}
     if db is None:
         return {"status": "unavailable"}
-    policy = ExerciseClearancePolicy(ledger)
     flags = {}
     for day in days:
         for exercise in day.exercises:

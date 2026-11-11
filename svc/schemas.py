@@ -29,6 +29,7 @@ from agent.ProgramState import (
     ProgramLoadSchema,
     ProgramSetGroupSchema,
     SuggestedSubstitute,
+    WarmupExerciseSchema,
     validate_set_group_loads,
 )
 from agent.program_cardio import CardioType
@@ -64,6 +65,10 @@ WorkoutSyncFailureReason = Literal[*WORKOUT_SYNC_FAILURE_REASONS]
 
 __all__ = [
     "ActiveProgramOut",
+    "PlayerActiveProgramDayOut",
+    "PlayerActiveProgramExerciseOut",
+    "PlayerActiveProgramWarmupExerciseOut",
+    "PlayerActiveProgramWeekOut",
     "AccountCapabilitiesOut",
     "AccountOut",
     "AccountPlansOut",
@@ -1892,9 +1897,51 @@ class ProgramEditIn(BaseModel):
     exercises: list[ProgramEditExerciseIn] = Field(max_length=MAX_EXERCISES_PER_DAY + 1)
 
 
+class PlayerActiveProgramExerciseOut(PersistedProgramExerciseSchema):
+    """A Player program exercise with its current read-only clearance facts."""
+
+    clearance_status: str | None = Field(
+        default=None, exclude_if=lambda status: status in (None, "allowed")
+    )
+    clearance_limit_notes: list[str] = Field(
+        default_factory=list, exclude_if=lambda notes: not notes
+    )
+
+
+class PlayerActiveProgramWarmupExerciseOut(WarmupExerciseSchema):
+    """A Player warm-up with its current read-only clearance facts."""
+
+    clearance_status: str | None = Field(
+        default=None, exclude_if=lambda status: status in (None, "allowed")
+    )
+    clearance_limit_notes: list[str] = Field(
+        default_factory=list, exclude_if=lambda notes: not notes
+    )
+
+
+class PlayerActiveProgramDayOut(PersistedProgramDaySchema):
+    warmup_exercises: list[PlayerActiveProgramWarmupExerciseOut] = Field(default_factory=list)
+    exercises: list[PlayerActiveProgramExerciseOut] = Field(
+        min_length=1,
+        max_length=MAX_EXERCISES_PER_DAY,
+    )
+
+
+class PlayerActiveProgramWeekOut(PersistedProgramWeekSchema):
+    days: list[PlayerActiveProgramDayOut] = Field(
+        min_length=1,
+        max_length=MAX_PROGRAM_DAYS,
+    )
+
+
 class ActiveProgramOut(PersistedProgramSchema):
     """An active program plus the server's current Program-authority decision."""
 
+    days: list[PlayerActiveProgramDayOut]
+    weeks: list[PlayerActiveProgramWeekOut] = Field(
+        default_factory=list,
+        max_length=MAX_PROGRAM_WEEKS,
+    )
     player_controls_program: bool
     offer_design_regeneration: bool = False
     regeneration_offer_reason: str | None = None

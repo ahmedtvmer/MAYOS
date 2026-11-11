@@ -140,8 +140,6 @@ class SuggestedSubstitute(_ProgramStateModel):
 
 
 class ProgramExerciseSchema(_ProgramStateModel):
-    clearance_status: str | None = Field(default=None, exclude=True)
-    clearance_limit_notes: list[str] = Field(default_factory=list, exclude=True)
     exercise_id: str = Field(description="Exact ID matching candidate from the database")
     exercise_name: str = Field(description="Exact name of the exercise")
     body_part: str | None = Field(default=None, description="Optional Coach exercise body-part tag")
@@ -215,8 +213,6 @@ class ProgramExerciseSchema(_ProgramStateModel):
 
 
 class WarmupExerciseSchema(_ProgramStateModel):
-    clearance_status: str | None = Field(default=None, exclude=True)
-    clearance_limit_notes: list[str] = Field(default_factory=list, exclude=True)
     exercise_id: str | None = Field(default=None, description="Catalog ID when resolvable")
     equipment: str | None = Field(default=None, description="Exercise library equipment")
     exercise_name: str = Field(description="Warm-up movement name")

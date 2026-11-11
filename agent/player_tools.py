@@ -505,13 +505,15 @@ def _read_active_program(ledger: Any, args: ActiveProgramArgs | None = None, sto
                 "day": day_name, "muscles": day_muscles,
             }
         )
+    clearance_flags = assistant_program_clearances(store, ledger, all_days)
     return {
         "status": "ok", "f": getattr(program, "weekly_frequency", "not set"),
         "split": _not_set(getattr(program, "split_type", None)),
         "week_order": selected_week, "days": days,
         "movement_restrictions": _player_profile(ledger).get("movement_restrictions", []),
         "skipped_restricted_slots": _program_restriction_skips(program, all_days),
-        "exercise_clearance_flags": assistant_program_clearances(store, ledger, all_days),
+        **({"exercise_clearance_flags": clearance_flags}
+           if clearance_flags["status"] != "ok" or clearance_flags["exercises"] else {}),
         "program_authority": authority,
         **({"coach": coach_name} if coach_name else {}),
         **({} if detailed_scope else {
@@ -550,7 +552,9 @@ PLAYER_READ_TOOL_REGISTRY: tuple[PlayerReadTool, ...] = (
             "restriction skips; no prescriptions. Defaults to current week; week_order selects another. "
             "Scope day_name, exercise_name/exercise_id or muscle for matching prescriptions only. "
             "Muscle accepts Weak point groups or exact target muscles. Skips map restrictions to slots. "
-            "Groups can overlap. Use before program questions."
+            "Groups can overlap. On successful reads, absent "
+            "exercise_clearance_flags means no exercises are flagged. "
+            "Use before program questions."
         ),
         args_schema=ActiveProgramArgs,
         reader=_read_active_program,
@@ -663,7 +667,8 @@ def _encode_tool_result(tool_result: Any) -> str:
             "weekly_sets_by_muscle": tool_result["weekly_sets_by_muscle"],
             "other_muscles": tool_result.get("other_muscles", {}),
             "message": "Scope by day_name, exercise_name/exercise_id or muscle for prescriptions.",
-            "exercise_clearance_flags": tool_result.get("exercise_clearance_flags"),
+            **({"exercise_clearance_flags": tool_result["exercise_clearance_flags"]}
+               if "exercise_clearance_flags" in tool_result else {}),
         }
         compact_rendered = json.dumps(compact, ensure_ascii=False, separators=(",", ":"))
         if len(compact_rendered.encode("utf-8")) <= MAX_TOOL_RESULT_BYTES:
