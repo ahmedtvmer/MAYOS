@@ -381,6 +381,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
               await ref.read(apiClientProvider).updateProfile(weakPoints: weakPoints);
           result = ProfileUpdateResult(
             programRebuilt: result.programRebuilt || weakPointResult.programRebuilt,
+            focusCrossDayExplanation: weakPointResult.focusCrossDayExplanation ?? result.focusCrossDayExplanation,
             programBlocked: result.programBlocked || weakPointResult.programBlocked,
             programMessage: weakPointResult.programMessage ?? result.programMessage,
             profile: weakPointResult.profile ?? result.profile,
@@ -415,6 +416,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
             : result.programRebuilt
                 ? _copy.programRebuilt
                 : _copy.profileSaved;
+        _notice = _withFocusExplanation(_notice, result);
       });
     } on ApiException catch (error) {
       if (!mounted) return;
@@ -444,6 +446,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
         ),
       );
 
+  String? _withFocusExplanation(String? notice, ProfileUpdateResult result) {
+    final String? explanation = result.focusCrossDayExplanation?[
+      ref.read(displayLanguageProvider)
+    ] as String?;
+    if (explanation == null) return notice;
+    return notice == null ? explanation : '$notice $explanation';
+  }
+
   Future<void> _saveMovementRestrictions() async {
     setState(() { _saving = true; _notice = null; _noticeFailure = null; _noticeIsError = false; });
     try {
@@ -452,7 +462,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
       await ref.read(activeWorkoutControllerProvider.notifier).applyMovementRestrictionConflicts(result.movementRestrictionConflicts);
       unawaited(ref.read(activeWorkoutControllerProvider.notifier).refreshMovementRestrictionAnnotations());
       if (result.programRebuilt) unawaited(_refreshProgramCache(rebuiltProgram: result.program));
-      setState(() { _saving = false; _noticeFailure = null; _noticeIsError = false; _savedProfile = result.profile ?? _savedProfile; _notice = result.coachNotifiedOfMovementRestrictions ? _copy.coachNotifiedMovementRestrictions : result.removedExercises.isNotEmpty ? _copy.removedMovementExercises(result.removedExercises.map((Map<String, dynamic> item) => '${item['exercise_name'] ?? item['name']}: ${_copy.movementRestriction(item['restriction'] as String? ?? '')}').join(', ')) : result.programMessage ?? (result.programRebuilt ? _copy.programRebuilt : _copy.profileSaved); });
+      setState(() { _saving = false; _noticeFailure = null; _noticeIsError = false; _savedProfile = result.profile ?? _savedProfile; _notice = result.coachNotifiedOfMovementRestrictions ? _copy.coachNotifiedMovementRestrictions : result.removedExercises.isNotEmpty ? _copy.removedMovementExercises(result.removedExercises.map((Map<String, dynamic> item) => '${item['exercise_name'] ?? item['name']}: ${_copy.movementRestriction(item['restriction'] as String? ?? '')}').join(', ')) : result.programMessage ?? (result.programRebuilt ? _copy.programRebuilt : _copy.profileSaved); _notice = _withFocusExplanation(_notice, result); });
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() { _saving = false; _noticeFailure = _mutationFailure(error); _noticeIsError = true; });

@@ -71,6 +71,12 @@ PROGRAM_DESIGN_OFFER_DDL: tuple[str, ...] = (
     ")",
 )
 
+FOCUS_CROSS_DAY_EXPLANATION_DDL: tuple[str, ...] = (
+    "CREATE TABLE IF NOT EXISTS focus_cross_day_explanation ("
+    " id INTEGER PRIMARY KEY CHECK (id = 1), explained_at TEXT NOT NULL"
+    ")",
+)
+
 PROGRAM_EXERCISE_LOAD_COLUMN = "load_json TEXT"
 PROGRAM_EXERCISE_SET_GROUPS_COLUMN = "set_groups_json TEXT"
 
@@ -1272,7 +1278,9 @@ def _migrate_v54_to_v55(conn: sqlite3.Connection) -> None:
 
 
 def _migrate_v55_to_v56(conn: sqlite3.Connection) -> None:
-    """Keeps the v56 slot available for the concurrently landing ledger change."""
+    """Remembers the one-time cross-day Focus explanation (#550)."""
+    for statement in FOCUS_CROSS_DAY_EXPLANATION_DDL:
+        conn.execute(statement)
 
 
 def _migrate_v56_to_v57(conn: sqlite3.Connection) -> None:

@@ -16,8 +16,8 @@ day_order.ppl_x_ul_spaces_leg_days. Change codes: change.substitution,
 change.program_edit_removed, change.program_edit_trimmed,
 change.program_edit_reordered, change.program_edit_added,
 change.program_edit_raised, change.volume_review, change.coach_edit.
-Parameters are stable JSON values; message
-text belongs to the reading assistant.
+Recorded reasons use stable JSON parameters. The assistant reads those facts;
+UI tags render English and Arabic copy from the same recorded parameters.
 selection.focus_muscle_extra, position.focus_first, sets.focus_multiplier,
 focus.unavailable, focus.new_weekly_exposure and focus.lightest_training_day
 are the Focus muscle codes (#492, #512).
@@ -82,6 +82,59 @@ SETS_FOCUS_MULTIPLIER = "sets.focus_multiplier"
 FOCUS_UNAVAILABLE = "focus.unavailable"
 FOCUS_NEW_WEEKLY_EXPOSURE = "focus.new_weekly_exposure"
 FOCUS_LIGHTEST_TRAINING_DAY = "focus.lightest_training_day"
+
+FOCUS_MUSCLE_LABELS = {
+    "chest": ("Chest", "الصدر"), "upper_chest": ("Upper chest", "أعلى الصدر"),
+    "back": ("Back", "الظهر"), "shoulders": ("Shoulders", "الأكتاف"),
+    "side_delts": ("Side delts", "الأكتاف الجانبية"), "biceps": ("Biceps", "العضلة ذات الرأسين"),
+    "triceps": ("Triceps", "العضلة ثلاثية الرؤوس"), "forearms": ("Forearms", "الساعدان"),
+    "quads": ("Quads", "العضلة رباعية الرؤوس"), "hamstrings": ("Hamstrings", "أوتار الركبة"),
+    "glutes": ("Glutes", "عضلات المؤخرة"), "adductors": ("Adductors", "العضلات المقربة"),
+    "calves": ("Calves", "السمانة"), "abs": ("Abs", "عضلات البطن"),
+}
+
+
+def focus_extra_tag(rationale: dict[str, Any]) -> dict[str, Any] | None:
+    selection = rationale.get("selection", {})
+    choice = rationale.get("day_choice", {})
+    params = choice.get("params", {})
+    muscle = selection.get("params", {}).get("muscle")
+    if selection.get("code") != SELECTION_FOCUS_MUSCLE_EXTRA or muscle not in FOCUS_MUSCLE_LABELS:
+        return None
+    if "day_name" not in params:
+        return None  # Legacy rationale cannot explain a day choice it never recorded.
+    return {"muscle": muscle,
+            "kind": "weekly_session" if choice["code"] == FOCUS_NEW_WEEKLY_EXPOSURE else "sets",
+            "cross_day": params.get("cross_day", False),
+            "reason": focus_day_reason(choice)}
+
+
+def focus_day_reason(choice: dict[str, Any]) -> dict[str, str]:
+    params = choice["params"]
+    english, arabic = FOCUS_MUSCLE_LABELS[params["muscle"]]
+    day = params["day_name"]
+    if choice["code"] == FOCUS_NEW_WEEKLY_EXPOSURE:
+        count = params.get("weekly_exposures", params["exposures_after"])
+        return {"en": f"Added to {day} to train {english.lower()} on {count} days this week.",
+                "ar": f"أُضيف إلى {day} لتدريب {arabic} في {count} أيام هذا الأسبوع."}
+    return {"en": f"Added to {day}, the lightest eligible day already training {english.lower()}, for extra sets.",
+            "ar": f"أُضيف إلى {day}، أخف يوم مؤهل يدرب {arabic} بالفعل، لإضافة مجموعات."}
+
+
+def apply_focus_extra_tags(program: Any) -> None:
+    reasons = {(day.get("week_order", 1), day["day_order"], entry["exercise_id"]): entry.get("rationale", {})
+               for day in (program.program_rationale or {}).get("days", [])
+               for entry in day.get("exercises", [])}
+    for day in program.days:
+        for exercise in day.exercises:
+            reason = reasons.get((day.week_order, day.day_order, exercise.exercise_id), {})
+            choice = reason.get("day_choice", {})
+            if choice.get("code") in {FOCUS_NEW_WEEKLY_EXPOSURE, FOCUS_LIGHTEST_TRAINING_DAY}:
+                params = choice["params"]
+                reason = {**reason, "day_choice": {**choice, "params": {
+                    **params, "day_name": params.get("day_name", day.day_name),
+                }}}
+            exercise.focus_extra = focus_extra_tag(reason)
 
 
 @dataclass(frozen=True)

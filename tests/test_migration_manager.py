@@ -1980,3 +1980,23 @@ def test_v51_upgrade_adds_deleted_injury_source_event_storage(temp_db_env):
     assert "movement_restrictions_json" in {
         row[1] for row in conn.execute("PRAGMA table_info(user_profile)")
     }
+
+
+def test_v56_lazy_focus_marker_survives_reopen_and_rollback(fresh_store):
+    db = fresh_store
+    with db.open_ledger("focus-v55") as ledger:
+        ledger.upsert_player_profile({"weak_points": [{"muscle": "chest", "source": "named"}]})
+        ledger.conn.execute("DROP TABLE focus_cross_day_explanation")
+        set_ledger_schema_version(ledger.conn, 55)
+        ledger.conn.commit()
+    with db.open_ledger("focus-v55") as ledger:
+        assert get_ledger_schema_version(ledger.conn) == CURRENT_LEDGER_SCHEMA_VERSION
+        assert ledger.get_player_profile()["weak_points"] == [{"muscle": "chest", "source": "named"}]
+        with pytest.raises(RuntimeError, match="rebuild failed"):
+            with ledger.ledger_transaction():
+                assert ledger.claim_focus_cross_day_explanation() is True
+                raise RuntimeError("rebuild failed")
+        assert ledger.claim_focus_cross_day_explanation() is True
+        assert ledger.claim_focus_cross_day_explanation() is False
+    with db.open_ledger("focus-v55") as ledger:
+        assert ledger.claim_focus_cross_day_explanation() is False

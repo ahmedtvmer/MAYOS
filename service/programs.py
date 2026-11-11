@@ -97,6 +97,14 @@ def with_library_equipment(program: Any, db: Any) -> dict[str, Any]:
     return payload
 
 
+def rebuilt_program_response(db: Any, ledger: Any, account_id: str, program: Any) -> dict[str, Any]:
+    from service.focus_explanation import cross_day_focus_explanation
+
+    payload = active_program_response(db, ledger, account_id, program)
+    payload["focus_cross_day_explanation"] = cross_day_focus_explanation(ledger, program)
+    return payload
+
+
 def active_program_response(
     db: Any, ledger: Any, player_account_id: str, program: Any
 ) -> dict[str, Any]:

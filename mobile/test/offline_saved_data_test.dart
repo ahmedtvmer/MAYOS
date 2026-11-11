@@ -34,7 +34,7 @@ Future<void> _primePlayerCache({
   fake.profileExists = true;
   fake.recoveryEmail = 'alice@example.com';
   fake.displayLanguage = language;
-  fake.whatsNewSeenRelease = 6;
+  fake.whatsNewSeenRelease = 7;
   fake.foodLogToday = _today();
   // The fake intentionally returns 503 until a training status is supplied.
   fake.trainingStatusBody = <String, dynamic>{

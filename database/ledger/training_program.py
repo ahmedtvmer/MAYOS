@@ -12,6 +12,7 @@ from agent.ProgramState import PersistedProgramExerciseSchema
 from agent.ProgramState import PersistedProgramSchema
 from agent.ProgramState import PersistedProgramWeekSchema
 from agent.ProgramState import WarmupExerciseSchema
+from agent.program_rationale import apply_focus_extra_tags
 from agent.program_weeks import (
     ProgramPosition,
     clamp_program_position,
@@ -49,6 +50,14 @@ def _with_current_name(movement: Any, current_names: dict[str, str]) -> Any:
 
 
 class LedgerTrainingProgramMixin:
+    def claim_focus_cross_day_explanation(self) -> bool:
+        cursor = self.conn.execute(
+            "INSERT OR IGNORE INTO focus_cross_day_explanation (id, explained_at) VALUES (1, ?)",
+            (datetime.now(UTC).isoformat(),),
+        )
+        self._commit_ledger()
+        return cursor.rowcount == 1
+
     def program_design_offer_decision(self) -> str | None:
         row = self.conn.execute(
             "SELECT decision FROM program_design_offer WHERE id = 1"
@@ -598,7 +607,7 @@ class LedgerTrainingProgramMixin:
                 for week_order, week_days in sorted(weeks_by_order.items())
             ]
 
-            return PersistedProgramSchema(
+            program = PersistedProgramSchema(
                 program_name=prog_name,
                 weekly_frequency=int(freq),
                 split_type=split_type or "custom",
@@ -612,6 +621,8 @@ class LedgerTrainingProgramMixin:
                 program_rationale=json.loads(rationale_json) if rationale_json else None,
                 created_at=created_at,
             )
+            apply_focus_extra_tags(program)
+            return program
         except Exception as exc:
             logger.warning(f"Program '{prog_id}' is malformed or incomplete: {exc}")
             return None

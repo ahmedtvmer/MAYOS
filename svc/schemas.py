@@ -1433,6 +1433,9 @@ class ProgramDraftExerciseIn(ProgramDraftInput):
     image_path: str | None = None
     gif_path: str | None = None
     suggested_substitutes: list[SuggestedSubstitute] = Field(default_factory=list)
+    focus_extra: Any = Field(default=None, exclude=True)
+    # A read-time logger label (#534); a republished Player read carries it, and it is never stored.
+    notes_are_technique: Any = Field(default=None, exclude=True)
 
     @model_validator(mode="after")
     def validate_group_loads(self) -> "ProgramDraftExerciseIn":
@@ -1914,6 +1917,7 @@ class ActiveProgramOut(PersistedProgramSchema):
     player_controls_program: bool
     offer_design_regeneration: bool = False
     regeneration_offer_reason: str | None = None
+    focus_cross_day_explanation: dict[str, str] | None = None
     current_week: int = 1
     week_count: int = 1
     next_day_order: int = 1
@@ -2269,6 +2273,7 @@ class IntakeConfirmIn(BaseModel):
 class IntakeConfirmOut(BaseModel):
     """`POST /onboarding/intake/confirm`: the confirmed first-program result."""
 
+    focus_cross_day_explanation: dict[str, str] | None = None
     status: str
     program_name: str | None = None
     weekly_frequency: int | None = None

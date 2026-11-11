@@ -126,7 +126,7 @@ async def accept_design_regeneration_offer(
             ) from exc
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-        return programs_service.active_program_response(db, ledger, account_id, program)
+        return programs_service.rebuilt_program_response(db, ledger, account_id, program)
 
     return await asyncio.to_thread(_run)
 
@@ -249,7 +249,7 @@ async def generate_program(
             )
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-        return programs_service.active_program_response(db, ledger, account_id, program)
+        return programs_service.rebuilt_program_response(db, ledger, account_id, program)
 
     return await asyncio.to_thread(_run)
 

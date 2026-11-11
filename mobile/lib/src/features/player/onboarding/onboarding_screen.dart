@@ -437,9 +437,10 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
         return;
       }
       _finishToHome(
-        programMessage: confirmation.programMessage?.resolve(
-          ref.read(displayLanguageProvider),
-        ),
+        programMessage: confirmation.focusCrossDayExplanation?[ref.read(displayLanguageProvider)] as String?
+            ?? confirmation.programMessage?.resolve(
+              ref.read(displayLanguageProvider),
+            ),
       );
     } on ApiException catch (error) {
       if (!mounted) {

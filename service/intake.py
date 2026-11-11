@@ -717,4 +717,5 @@ def confirm_intake(
             "program_name": program.program_name,
             "weekly_frequency": program.weekly_frequency,
             "program_message": None,
+            "focus_cross_day_explanation": result.get("focus_cross_day_explanation"),
         }

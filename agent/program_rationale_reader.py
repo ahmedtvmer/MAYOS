@@ -101,7 +101,7 @@ def read_program_rationale(program: Any, scope: Any = None) -> dict[str, Any]:
             record = {"position": pos, "exercise_id": eid, "exercise": ename}
             if reason is not None:
                 record["rationale"] = reason
-                for key in ("selection", "position", "prescription"):
+                for key in ("selection", "position", "prescription", "day_choice"):
                     if key in reason:
                         record[key] = reason[key]
             if item.get("changes"):

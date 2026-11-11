@@ -2101,6 +2101,7 @@ class OnboardingIntake {
 class IntakeConfirmation {
   const IntakeConfirmation({
     required this.status,
+    this.focusCrossDayExplanation,
     this.programName,
     this.weeklyFrequency,
     this.programMessage,
@@ -2109,6 +2110,7 @@ class IntakeConfirmation {
   factory IntakeConfirmation.fromJson(Map<String, dynamic> json) =>
       IntakeConfirmation(
         status: json['status'] as String? ?? 'confirmed',
+        focusCrossDayExplanation: json['focus_cross_day_explanation'] as Map<String, dynamic>?,
         programName: json['program_name'] as String?,
         weeklyFrequency: (json['weekly_frequency'] as num?)?.toInt(),
         programMessage: _localizedIntakeCopy(
@@ -2118,6 +2120,7 @@ class IntakeConfirmation {
       );
 
   final String status;
+  final Map<String, dynamic>? focusCrossDayExplanation;
   final String? programName;
   final int? weeklyFrequency;
   final LocalizedText? programMessage;
@@ -2298,6 +2301,7 @@ class PlayerProfile {
 class ProfileUpdateResult {
   const ProfileUpdateResult({
     required this.programRebuilt,
+    this.focusCrossDayExplanation,
     this.programBlocked = false,
     this.programMessage,
     this.coachNotifiedOfMovementRestrictions = false,
@@ -2310,6 +2314,7 @@ class ProfileUpdateResult {
   factory ProfileUpdateResult.fromJson(Map<String, dynamic> json) =>
       ProfileUpdateResult(
         programRebuilt: json['program_rebuilt'] as bool? ?? false,
+        focusCrossDayExplanation: json['focus_cross_day_explanation'] as Map<String, dynamic>?,
         programBlocked: json['program_blocked'] as bool? ?? false,
         programMessage: json['program_message'] as String?,
         coachNotifiedOfMovementRestrictions: json['coach_notified_of_movement_restrictions'] as bool? ?? false,
@@ -2324,6 +2329,7 @@ class ProfileUpdateResult {
       );
 
   final bool programRebuilt;
+  final Map<String, dynamic>? focusCrossDayExplanation;
   final bool programBlocked;
   final String? programMessage;
   final bool coachNotifiedOfMovementRestrictions;
@@ -2745,6 +2751,7 @@ class ProgramExercise {
     this.equipmentCategory,
     this.loadType,
     this.slotKey,
+    this.focusExtra,
     this.coachEquipment,
     this.load,
     this.setGroups = const <Map<String, dynamic>>[],
@@ -2798,6 +2805,7 @@ class ProgramExercise {
         equipmentCategory: json['equipment_category'] as String?,
         loadType: json['load_type'] as String?,
         slotKey: json['slot_key'] as String?,
+        focusExtra: json['focus_extra'] as Map<String, dynamic>?,
         coachEquipment: json['coach_equipment'] as String?,
         load: rawLoad is Map<String, dynamic>
             ? ProgramLoad.fromJson(rawLoad)
@@ -2842,6 +2850,7 @@ class ProgramExercise {
   final String? equipmentCategory;
   final String? loadType;
   final String? slotKey;
+  final Map<String, dynamic>? focusExtra;
   final String? coachEquipment;
   final ProgramLoad? load;
   final List<Map<String, dynamic>> setGroups;
@@ -2891,6 +2900,7 @@ class ProgramExercise {
         equipmentCategory: equipmentCategory,
         loadType: loadType,
         slotKey: slotKey,
+        focusExtra: focusExtra,
         coachEquipment: coachEquipment,
         load: load,
         setGroups: setGroups,
@@ -2923,6 +2933,7 @@ class ProgramExercise {
       json['equipment'] = equipment;
     }
     if (slotKey != null) json['slot_key'] = slotKey;
+    if (focusExtra != null) json['focus_extra'] = focusExtra;
     // The key is omitted when unset, so the Active workout (and the draft
     // built from it) keeps "no rest_seconds" as-is and the timer resolves it
     // to 2:00 rather than writing a phantom 180 back (#125). Its position in
@@ -3366,6 +3377,7 @@ class TrainingProgram {
     this.playerControlsProgram = false,
     this.offerDesignRegeneration = false,
     this.regenerationOfferReason,
+    this.focusCrossDayExplanation,
   });
 
   factory TrainingProgram.fromJson(Map<String, dynamic> json) {
@@ -3401,6 +3413,7 @@ class TrainingProgram {
         offerDesignRegeneration:
             json['offer_design_regeneration'] as bool? ?? false,
         regenerationOfferReason: json['regeneration_offer_reason'] as String?,
+        focusCrossDayExplanation: json['focus_cross_day_explanation'] as Map<String, dynamic>?,
       );
   }
 
@@ -3434,6 +3447,7 @@ class TrainingProgram {
   final bool offerDesignRegeneration;
 
   final String? regenerationOfferReason;
+  final Map<String, dynamic>? focusCrossDayExplanation;
 
   bool get isCoachPublished => publishedByCoachAccountId != null;
 

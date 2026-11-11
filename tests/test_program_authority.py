@@ -2239,3 +2239,182 @@ def test_profile_injuries_send_clarification_pending_as_boolean(api):
 
     assert sorted(record["clarification_pending"] for record in injuries) == [False, True]
     assert all(type(record["clarification_pending"]) is bool for record in injuries)
+
+
+def _focus_player_profile():
+    return {"gender": "male", "age": 30, "height_cm": 175, "weight_kg": 80,
+            "equipment_access": "Commercial gym", "injuries_or_limitations": "None",
+            "weekly_frequency": 4, "training_age_years": 3, "rep_preference": "balanced",
+            "weak_points": [{"muscle": "chest", "source": "named"}]}
+
+
+def test_profile_cross_day_focus_summary_and_rationale_survive_reload_once(shipped_library_api):
+    from agent.player_tools import build_player_read_tools
+
+    client, db = shipped_library_api
+    registered = _register(client, "focus-profile-once")
+    headers = _authed(registered["access_token"])
+    with db.open_ledger("focus-profile-once") as ledger:
+        ledger.upsert_player_profile(_focus_player_profile())
+    rebuilt = client.put("/profile", headers=headers, json={"weekly_frequency": 5})
+    assert rebuilt.status_code == 200, rebuilt.text
+    explanation = rebuilt.json()["focus_cross_day_explanation"]
+    assert "Chest now trains 3× a week" in explanation["en"]
+    assert "Pull" in explanation["en"] and "الصدر" in explanation["ar"]
+    active = client.get("/programs/active", headers=headers).json()
+    extra = next(ex for day in active["days"] for ex in day["exercises"]
+                 if (ex.get("focus_extra") or {}).get("cross_day"))
+    assert extra["focus_extra"]["kind"] == "weekly_session"
+    assert "Pull" in extra["focus_extra"]["reason"]["en"]
+    assert "3" in extra["focus_extra"]["reason"]["en"]
+    with db.open_ledger("focus-profile-once") as ledger:
+        tools, _ = build_player_read_tools(ledger)
+        rationale_tool = next(tool for tool in tools if tool.name == "get_program_rationale")
+        response = json.loads(rationale_tool.invoke({"exercise_id": extra["exercise_id"]}))
+        record = next(record for day in response["days"] for record in day["exercises"]
+                      if record["exercise_id"] == extra["exercise_id"])
+        day_choice = record["day_choice"]
+        choice = day_choice.get("params", day_choice.get("p"))
+        assert choice["cross_day"] is True and choice["isolation_only"] is True
+        assert choice["day_name"] == "Pull" and choice["weekly_exposures"] == 3
+    again = client.put("/profile", headers=headers, json={"rep_preference": "high"})
+    assert again.status_code == 200, again.text
+    assert again.json()["program_rebuilt"] is True
+    assert again.json()["focus_cross_day_explanation"] is None
+    assert client.get("/programs/active", headers=headers).json()["focus_cross_day_explanation"] is None
+    chat = _chat_done_event(client, headers, "rebuild my program as PPL for 3 days")
+    assert chat["program_updated"] is True, chat
+    assert "to give your weak point more frequency" not in chat["response_content"]
+
+
+def test_focus_extra_read_payload_can_be_published_without_persisting_coach_tag(shipped_library_api):
+    from agent.program_generator import generate_program_pipeline
+
+    client, db = shipped_library_api
+    username = "focus-roundtrip-player"
+    registered = _register(client, username)
+    player_headers = _authed(registered["access_token"])
+    with db.open_ledger(username) as ledger:
+        ledger.upsert_player_profile({**_focus_player_profile(), "weekly_frequency": 5})
+        generate_program_pipeline(ledger=ledger)
+
+    coach_headers = _make_coach(client, db, "focus-roundtrip-coach", capacity=5)
+    invite = client.post("/coach/assignments/invites", headers=coach_headers).json()["token"]
+    redeemed = client.post(
+        "/assignments/invites/redeem",
+        headers=player_headers,
+        json={"token": invite, "consent": True},
+    )
+    assert redeemed.status_code == 200, redeemed.text
+    assignment_id = redeemed.json()["assignment"]["assignment_id"]
+
+    read_payload = client.get("/programs/active", headers=player_headers).json()
+    exercise = next(
+        exercise
+        for day in read_payload["days"]
+        for exercise in day["exercises"]
+        if exercise.get("focus_extra")
+    )
+    read_tag = exercise["focus_extra"]
+    forged_tag = {"kind": "forged", "cross_day": False}
+    target_exercise_id = exercise["exercise_id"]
+    for day in read_payload["days"]:
+        for item in day["exercises"]:
+            if item["exercise_id"] == target_exercise_id:
+                item["focus_extra"] = forged_tag
+    for week in read_payload["weeks"]:
+        for day in week["days"]:
+            for item in day["exercises"]:
+                if item["exercise_id"] == target_exercise_id:
+                    item["focus_extra"] = forged_tag
+    draft_payload = {
+        key: read_payload[key]
+        for key in (
+            "program_name", "split_type", "weekly_frequency", "instructions",
+            "program_rationale", "days", "weeks",
+        )
+    }
+
+    created = client.post(
+        f"/coach/assignments/{assignment_id}/program-draft",
+        headers=coach_headers,
+        json=draft_payload,
+    )
+    assert created.status_code == 200, created.text
+    with db.open_ledger(username) as ledger:
+        stored_draft = ledger.get_program_draft(assignment_id)["draft"]
+    stored_exercises = [
+        exercise
+        for day in stored_draft["days"]
+        for exercise in day["exercises"]
+    ] + [
+        exercise
+        for week in stored_draft["weeks"]
+        for day in week["days"]
+        for exercise in day["exercises"]
+    ]
+    assert all("focus_extra" not in exercise for exercise in stored_exercises)
+
+    published = client.post(
+        f"/coach/assignments/{assignment_id}/program-draft/publish",
+        headers=coach_headers,
+    )
+    assert published.status_code == 200, published.text
+    active = client.get("/programs/active", headers=player_headers).json()
+    published_tag = next(
+        exercise["focus_extra"]
+        for day in active["days"]
+        for exercise in day["exercises"]
+        if exercise.get("focus_extra")
+    )
+    assert published_tag == read_tag
+    assert published_tag != forged_tag
+
+
+@pytest.mark.parametrize("language", ["en", "ar"])
+def test_chat_rebuild_explains_cross_day_focus_once(shipped_library_api, monkeypatch, language):
+    from agent import assistant_graph
+    from agent.program_generator import generate_program_pipeline
+
+    client, db = shipped_library_api
+    username = f"focus-chat-{language}"
+    registered = _register(client, username)
+    headers = _authed(registered["access_token"])
+    with db.open_ledger(username) as ledger:
+        ledger.upsert_player_profile({**_focus_player_profile(), "weekly_frequency": 5})
+        generate_program_pipeline(ledger=ledger)
+    active = client.get("/programs/active", headers=headers)
+    assert active.status_code == 200, active.text
+    assert active.json()["focus_cross_day_explanation"] is None
+    query = "rebuild my program as PPL for 3 days"
+    expected = "to give your weak point more frequency"
+    if language == "ar":
+        query = "غيّر البرنامج لتقسيمة PPL على 3 أيام."
+        expected = "علشان نزود مرات تدريب نقطة ضعفك"
+        model = ScriptedChatModel([
+            {"intent": "program_change", "target_split_type": "ppl", "target_frequency": 3},
+            {"intent": "program_change", "target_split_type": "ppl", "target_frequency": 3},
+        ])
+        monkeypatch.setattr(assistant_graph, "llm", model)
+    first = _chat_done_event(client, headers, query)
+    assert first["program_updated"] is True, first
+    assert expected in first["response_content"]
+    second = _chat_done_event(client, headers, query)
+    assert second["program_updated"] is True, second
+    assert expected not in second["response_content"]
+
+
+def test_onboarding_focus_explanation_is_claimed_only_for_first_generation(shipped_library_api):
+    client, db = shipped_library_api
+    _register(client, "focus-onboarding-once")
+    account_id = db.get_active_account_by_username("focus-onboarding-once")["account_id"]
+    with db.open_ledger("focus-onboarding-once") as ledger:
+        ledger.upsert_player_profile({**_focus_player_profile(), "weekly_frequency": 5})
+        first = onboarding_service.complete_onboarding(db, ledger.ledger_id, account_id, ledger)
+        assert first["program_generated"] is True
+        assert "Chest now trains 3×" in first["focus_cross_day_explanation"]["en"]
+        assert "الصدر" in first["focus_cross_day_explanation"]["ar"]
+    with db.open_ledger("focus-onboarding-once") as ledger:
+        second = onboarding_service.complete_onboarding(db, ledger.ledger_id, account_id, ledger)
+        assert second["program_generated"] is False
+        assert second["focus_cross_day_explanation"] is None

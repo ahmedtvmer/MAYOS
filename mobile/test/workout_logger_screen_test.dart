@@ -44,6 +44,7 @@ import 'package:mayos_mobile/src/router.dart';
 import 'support/fake_api_adapter.dart';
 import 'support/fake_analytics_client.dart';
 import 'support/fake_mayos_api.dart';
+import 'support/focus_extra_fixture.dart';
 
 Uint8List _validShareTestPng() => Uint8List.fromList(<int>[
   137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82,
@@ -781,6 +782,29 @@ Future<void> _assertNoOverflowAt360(
 }
 
 void main() {
+  for (final String language in <String>['en', 'ar']) {
+    for (final String kind in <String>['weekly_session', 'sets']) {
+      testWidgets('logger retains Focus tag and reason after resume: $language $kind', (tester) async {
+        final ProgramDay day = ProgramDay.fromJson(<String, dynamic>{
+          'day_name': 'Pull', 'day_order': 1,
+          'exercises': <Map<String, dynamic>>[focusExerciseFixture(kind: kind)],
+        });
+        await _openLogger(tester, day: day, languageCode: language, roundTripStoredWorkout: true);
+        final String suffix = kind == 'weekly_session'
+            ? (language == 'ar' ? 'جلسة إضافية في الأسبوع' : 'extra weekly session')
+            : (language == 'ar' ? 'مجموعات إضافية' : 'extra sets');
+        expect(find.text(language == 'ar' ? 'تركيز: الصدر · $suffix' : 'Focus: Chest · $suffix'), findsOneWidget);
+        expect(find.byKey(const Key('focus_extra_reason')), findsNothing);
+        await tester.tap(find.byKey(const Key('focus_extra_tag')));
+        await tester.pumpAndSettle();
+        final Map<String, dynamic> extra = focusExerciseFixture(kind: kind)['focus_extra'] as Map<String, dynamic>;
+        final Map<String, String> reason = extra['reason'] as Map<String, String>;
+        expect(find.text(reason[language]!), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
+
   for (final String language in <String>['en', 'ar']) {
     for (final bool deload in <bool>[false, true]) {
       testWidgets('each set row shows its target RIR in $language (deload: $deload)',
