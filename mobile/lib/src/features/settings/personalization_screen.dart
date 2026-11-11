@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api_client.dart';
+import '../../core/refetch_on_reconnect.dart';
 import '../../core/app_failure.dart';
 import '../../core/connectivity_message.dart';
 import '../../core/display_language/catalog.dart';
@@ -49,7 +50,13 @@ class PersonalizationScreen extends ConsumerStatefulWidget {
       _PersonalizationScreenState();
 }
 
-class _PersonalizationScreenState extends ConsumerState<PersonalizationScreen> {
+class _PersonalizationScreenState extends ConsumerState<PersonalizationScreen>
+    with RefetchOnReconnect<PersonalizationScreen> {
+  @override
+  Future<void> refreshAfterReconnect() async {
+    if (_status == _PersonalizationStatus.loadFailed) await _load();
+  }
+
   final TextEditingController _instructions = TextEditingController();
   final TextEditingController _preferredName = TextEditingController();
 
