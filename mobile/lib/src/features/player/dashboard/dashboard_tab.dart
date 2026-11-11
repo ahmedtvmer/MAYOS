@@ -190,6 +190,15 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
       latestSession =
           accountId == null ? null : await cache.readLatestSession(accountId);
     }
+    if (program != null && _isCurrentLoad(generation, accountId) &&
+        !ref.read(authControllerProvider).isOffline) {
+      final ProgramDay? nextDay = selectNextDay(program, <TrainedDay>[
+        if (latestSession != null) TrainedDay.fromLatestSession(latestSession),
+        for (final WorkoutDraft draft in ref.read(draftSyncServiceProvider).drafts)
+          TrainedDay.fromDraft(draft),
+      ]);
+      if (nextDay != null) unawaited(_prefetchPrescription(api, nextDay));
+    }
     return _DashboardData(
       program: program,
       schedule: schedule,
@@ -207,6 +216,18 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
       mounted &&
       generation == _loadGeneration &&
       ref.read(authControllerProvider).session?.account.accountId == accountId;
+
+  Future<void> _prefetchPrescription(ApiClient api, ProgramDay day) async {
+    try {
+      await api.prescription(
+        day.dayOrder,
+        weekOrder: day.weekOrder,
+        retryTransportFailures: false,
+      );
+    } on ApiException {
+      // Home stays usable if today's targets cannot be saved yet.
+    }
+  }
 
   Future<Assignment?> _loadAssignment(ApiClient api) async {
     try {

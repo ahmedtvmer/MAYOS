@@ -1,7 +1,7 @@
 import 'browser_key_value_store_stub.dart'
     if (dart.library.js_interop) 'browser_key_value_store_web.dart' as platform;
 
-/// The small localStorage surface used by the web Active workout.
+/// The localStorage surface for the web Active workout and saved Player reads.
 abstract interface class BrowserKeyValueStore {
   String? getItem(String key);
 

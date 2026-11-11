@@ -28,9 +28,13 @@ abstract class ChatCacheStore {
 
 class SecureChatCacheStore implements ChatCacheStore {
   SecureChatCacheStore({FlutterSecureStorage? storage})
-      : _store = SecureStore(storage: storage);
+      : _store = SecureStore(storage: storage),
+        _usesPlatformStorage = storage == null;
 
   final SecureStore _store;
+  final bool _usesPlatformStorage;
+
+  bool get usesPlatformStorage => _usesPlatformStorage;
 
   static String _historyKey(String accountId) => 'chat_history.$accountId';
 
