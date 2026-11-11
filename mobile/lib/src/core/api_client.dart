@@ -164,9 +164,7 @@ class ApiClient {
           _addHttpBreadcrumb(response.requestOptions, response.statusCode);
           handler.next(response);
         },
-        onError: (DioException error, ErrorInterceptorHandler handler) async {
-          await _handleError(error, handler);
-        },
+        onError: _handleError,
       ),
     );
   }
@@ -311,10 +309,10 @@ class ApiClient {
   }) =>
       '$platform/$version';
 
-  Future<void> _handleError(
+  void _handleError(
     DioException error,
     ErrorInterceptorHandler handler,
-  ) async {
+  ) {
     final int? status = error.response?.statusCode;
     if (status != null) _addHttpBreadcrumb(error.requestOptions, status);
     final dynamic responseBody = error.response?.data;
@@ -332,10 +330,8 @@ class ApiClient {
       if (responseBody is Map &&
           responseBody['error'] == 'account_deleted') {
         onAccountDeleted?.call();
-        await _waitForHandling(waitForAccountDeletedHandling);
       } else {
         onUnauthorized?.call();
-        await _waitForHandling(waitForUnauthorizedHandling);
       }
     }
     handler.next(error);
@@ -351,11 +347,26 @@ class ApiClient {
     }
   }
 
+  Future<void> _waitForDioErrorHandling(DioException error) async {
+    if (error.requestOptions.extra[_skipAuth] == true ||
+        error.response?.statusCode != 401) {
+      return;
+    }
+    final dynamic responseBody = error.response?.data;
+    final Future<void> Function()? waitForCleanup =
+        responseBody is Map && responseBody['error'] == 'account_deleted'
+            ? waitForAccountDeletedHandling
+            : waitForUnauthorizedHandling;
+    await _waitForHandling(waitForCleanup);
+  }
+
   Future<Response<dynamic>> _send(
       Future<Response<dynamic>> Function() run) async {
     try {
       return await run();
     } on DioException catch (error) {
+      // Cleanup may wait for work that needs this error to reach its caller.
+      await _waitForDioErrorHandling(error);
       throw _toApiException(error);
     }
   }
@@ -3309,8 +3320,11 @@ class ApiClient {
       final dynamic errorBody = error.response?.data;
       final int? errorStatus = error.response?.statusCode;
       if (errorBody is ResponseBody && errorStatus != null) {
-        throw _errorFromResponse(errorStatus, await _readStream(errorBody.stream));
+        final String raw = await _readStream(errorBody.stream);
+        await _waitForDioErrorHandling(error);
+        throw _errorFromResponse(errorStatus, raw);
       }
+      await _waitForDioErrorHandling(error);
       throw _toApiException(error);
     }
 
