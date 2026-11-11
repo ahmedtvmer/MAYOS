@@ -81,12 +81,13 @@ def ledger_with_pending_legacy_injury(ledger: Any, injury_text: str) -> Any:
     if is_none_answer(description):
         return ledger
     records = ledger.list_injury_records()
-    legacy = ledger.conn.execute(
-        "SELECT id FROM injury_records WHERE source_event_key = ?",
-        (LEGACY_INJURY_SOURCE_EVENT_KEY,),
-    ).fetchone()
+    legacy = ledger.get_injury_record_by_source_event_key(
+        LEGACY_INJURY_SOURCE_EVENT_KEY
+    )
     if legacy:
-        return _updated_legacy_injury_view(ledger, records, str(legacy[0]), description)
+        return _updated_legacy_injury_view(
+            ledger, records, str(legacy["id"]), description
+        )
     if ledger.get_deleted_injury_source_event(LEGACY_INJURY_SOURCE_EVENT_KEY) == description:
         return ledger
     pending = {

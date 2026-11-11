@@ -305,8 +305,7 @@ final Map<String, _MessageTemplate> _templates = <String, _MessageTemplate>{
   'coach_alert.deload_recommended.v1': _deload,
   'coach_alert.performance_regression.v1': _regression,
   'coach_alert.profile_change.v1': _profileChange,
-  'coach_alert.program_clearance.v1': (params, copy) => params['exercise_name'] is String
-      ? copy.programClearance(params['exercise_name'] as String) : null,
+  'coach_alert.program_clearance.v1': _programClearance,
   'coach_alert.weight_off_target_trend.v1': _weightOffTargetTrend,
   'coach_alert.program_final_week_started.v1': _programFinalWeekStarted,
   'coach_alert.program_final_week_completed.v1': _programFinalWeekCompleted,
@@ -694,6 +693,13 @@ String? _profileChange(Map<String, dynamic> params, MessageCopy copy) {
     return null;
   }
   return copy.profileChange(rawFields.cast<String>());
+}
+
+String? _programClearance(Map<String, dynamic> params, MessageCopy copy) {
+  final Object? exerciseName = params['exercise_name'];
+  return exerciseName is String && exerciseName.isNotEmpty
+      ? copy.programClearance(exerciseName)
+      : null;
 }
 
 String? _weightOffTargetTrend(Map<String, dynamic> params, MessageCopy copy) {

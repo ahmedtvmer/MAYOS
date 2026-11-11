@@ -9,7 +9,6 @@ from collections.abc import Iterator
 from datetime import UTC, datetime
 from typing import Any
 
-from agent.program_weeks import flatten_program_days
 from core.exercise_clearances import exercise_clearance
 from database.exercise_resolution import resolve_exercise_display_row
 
@@ -101,20 +100,32 @@ def _program_exercise_flag(
     }
 
 
+def _exercises_for_days(days: Any) -> Iterator[dict[str, Any]]:
+    for day in days:
+        yield from day.get("exercises", [])
+        yield from day.get("warmup_exercises", [])
+
+
 def _program_exercises(payload: dict[str, Any]) -> Iterator[dict[str, Any]]:
-    for week in payload["weeks"]:
-        for day in week["days"]:
-            yield from day.get("exercises", [])
-            yield from day.get("warmup_exercises", [])
+    if payload.get("weeks"):
+        for week in payload["weeks"]:
+            yield from _exercises_for_days(week.get("days", []))
+        return
+    yield from _exercises_for_days(payload.get("days", []))
+
+
+def _response_program_exercises(payload: dict[str, Any]) -> Iterator[dict[str, Any]]:
+    yield from _program_exercises(payload)
+    if payload.get("weeks"):
+        yield from _exercises_for_days(payload.get("days", []))
 
 
 def annotate_program(db: Any, ledger: Any, payload: dict[str, Any]) -> None:
     """Decorate a response copy; retain every existing prescription unchanged."""
     policy = ExerciseClearancePolicy(ledger)
-    for exercise in _program_exercises(payload):
+    for exercise in _response_program_exercises(payload):
         assessment = _exercise_assessment(db, policy, exercise)
         _annotate_exercise(db, policy, exercise, assessment)
-    payload["days"] = flatten_program_days(payload["weeks"])
 
 
 def program_exclusions(db: Any, ledger: Any, payload: dict[str, Any]) -> list[dict[str, Any]]:

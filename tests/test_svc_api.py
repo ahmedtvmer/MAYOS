@@ -1307,6 +1307,9 @@ def test_arabic_routine_slot_update_reply_uses_egyptian_copy_over_http(
         def get_active_program(self):
             return program
 
+        def list_injury_records(self):
+            return []
+
         def get_program_position(self, _program):
             return ProgramPosition(current_week=1, week_count=1, next_day_order=1)
 

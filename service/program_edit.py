@@ -130,7 +130,12 @@ def edit_active_program_day(db: Any, ledger: Any, edit_request: ProgramEdit) -> 
         warnings = _volume_warnings(
             ledger, active.model_dump(), ledger.get_player_profile() or {}, week_order
         )
-        return {**_updated_program_result(db, ledger, previous_version), "volume_warnings": warnings}
+        preview_payload = (
+            {**active.model_dump(), "previous_version": previous_version}
+            if edit_request.preview
+            else _updated_program_result(db, ledger, previous_version)
+        )
+        return {**preview_payload, "volume_warnings": warnings}
     _apply_program_edit(prepared, edit_request.exercises)
     _prepare_added_prescriptions(db, ledger, prepared.day, edit_request.exercises)
     restriction_failure = _restricted_program_edit(db, ledger, prepared.day)
@@ -195,10 +200,11 @@ def edit_active_program_day(db: Any, ledger: Any, edit_request: ProgramEdit) -> 
                             occurrence_mappings=mappings, removed_entries=removed_entries)
     warnings = _volume_warnings(ledger, prepared.program_copy, ledger.get_player_profile() or {}, day_key[0])
     if edit_request.preview:
-        result = {**prepared.program_copy, "previous_version": active.version, "volume_warnings": warnings}
-        from service.exercise_clearances import annotate_program
-        annotate_program(db, ledger, result)
-        return result
+        return {
+            **prepared.program_copy,
+            "previous_version": active.version,
+            "volume_warnings": warnings,
+        }
     prepared.program_copy.pop("created_at", None)
     ledger.save_training_program(
         prepared.program_copy,
