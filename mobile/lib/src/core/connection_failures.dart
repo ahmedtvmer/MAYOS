@@ -13,6 +13,7 @@ const int maxBufferedConnectionFailures = 200;
 const String connectionFailuresEndpoint = '/client/connection-failures';
 const String connectionFailureAccountKey = 'connectionFailureAccountId';
 const String connectionFailureSkipAuthKey = 'skipAuth';
+const Duration _connectionFailureStorageTimeout = Duration(seconds: 1);
 const String _anonymousBuffer = 'device-before-sign-in';
 const Set<String> _failureTypes = <String>{
   'dns',
@@ -92,12 +93,50 @@ abstract interface class ConnectionFailureStore {
   Future<void> deleteForAccount(String accountId);
 }
 
+/// Keeps callers without app-level store wiring independent of platform storage.
+class MemoryConnectionFailureStore implements ConnectionFailureStore {
+  final Map<String, List<ClientConnectionFailure>> _failures =
+      <String, List<ClientConnectionFailure>>{};
+
+  @override
+  Future<List<ClientConnectionFailure>> read(String accountId) async =>
+      List<ClientConnectionFailure>.of(
+        _failures[accountId] ?? <ClientConnectionFailure>[],
+      );
+
+  @override
+  Future<void> write(
+    String accountId,
+    List<ClientConnectionFailure> failures,
+  ) async {
+    _failures[accountId] = _boundedFailureCopy(failures);
+  }
+
+  @override
+  Future<void> deleteForAccount(String accountId) async {
+    _failures.remove(accountId);
+  }
+}
+
+List<ClientConnectionFailure> _boundedFailureCopy(
+  List<ClientConnectionFailure> failures,
+) {
+  // Empty, under-limit, and exact-limit lists stay intact; overflow keeps the
+  // newest reports because they are most useful for reconnect diagnostics.
+  final List<ClientConnectionFailure> bounded =
+      failures.length <= maxBufferedConnectionFailures
+          ? failures
+          : failures.sublist(failures.length - maxBufferedConnectionFailures);
+  return List<ClientConnectionFailure>.of(bounded);
+}
+
 class ConnectionFailureOptions {
   const ConnectionFailureOptions({
     this.store,
     this.offlineStatusLoader,
   });
 
+  /// App wiring supplies the device store; unset options stay in memory.
   final ConnectionFailureStore? store;
   final Future<bool> Function()? offlineStatusLoader;
 }
@@ -107,12 +146,34 @@ class SecureConnectionFailureStore implements ConnectionFailureStore {
       : _store = store ?? SecureStore();
 
   final SecureStore _store;
+  final MemoryConnectionFailureStore _fallback =
+      MemoryConnectionFailureStore();
+  final Set<String> _memoryAccounts = <String>{};
 
   static String _key(String accountId) => 'connection_failures.$accountId';
 
   @override
   Future<List<ClientConnectionFailure>> read(String accountId) async {
-    final dynamic stored = await _store.readJson(_key(accountId));
+    if (_memoryAccounts.contains(accountId)) {
+      return _fallback.read(accountId);
+    }
+    final dynamic stored;
+    try {
+      stored = await _store
+          .readJson(_key(accountId))
+          .timeout(_connectionFailureStorageTimeout);
+    } on Object {
+      _memoryAccounts.add(accountId);
+      return _fallback.read(accountId);
+    }
+    final List<ClientConnectionFailure> failures =
+        _parseStoredFailures(stored);
+    await _fallback.write(accountId, failures);
+    _memoryAccounts.add(accountId);
+    return failures;
+  }
+
+  List<ClientConnectionFailure> _parseStoredFailures(Object? stored) {
     if (stored is! List) return <ClientConnectionFailure>[];
     try {
       final List<ClientConnectionFailure> failures = stored
@@ -136,22 +197,35 @@ class SecureConnectionFailureStore implements ConnectionFailureStore {
     List<ClientConnectionFailure> failures,
   ) async {
     final List<ClientConnectionFailure> bounded =
-        failures.length <= maxBufferedConnectionFailures
-            ? failures
-            : failures.sublist(
-                failures.length - maxBufferedConnectionFailures,
-              );
-    await _store.writeJson(
-      key: _key(accountId),
-      value: bounded
-          .map((ClientConnectionFailure failure) => failure.toJson())
-          .toList(growable: false),
-    );
+        _boundedFailureCopy(failures);
+    await _fallback.write(accountId, bounded);
+    _memoryAccounts.add(accountId);
+    try {
+      await _store
+          .writeJson(
+            key: _key(accountId),
+            value: bounded
+                .map((ClientConnectionFailure failure) => failure.toJson())
+                .toList(growable: false),
+          )
+          .timeout(_connectionFailureStorageTimeout);
+    } on Object {
+      // The bounded memory copy remains available when device storage stalls.
+    }
   }
 
   @override
-  Future<void> deleteForAccount(String accountId) =>
-      _store.delete(_key(accountId));
+  Future<void> deleteForAccount(String accountId) async {
+    await _fallback.deleteForAccount(accountId);
+    _memoryAccounts.add(accountId);
+    try {
+      await _store
+          .delete(_key(accountId))
+          .timeout(_connectionFailureStorageTimeout);
+    } on Object {
+      // Device storage can be unavailable while the in-memory copy is cleared.
+    }
+  }
 }
 
 class PersistedConnectionFailureReporter {
@@ -162,7 +236,7 @@ class PersistedConnectionFailureReporter {
     Future<bool> Function()? offlineStatusLoader,
   })  : _tokens = tokens,
         _dio = dio,
-        _store = store ?? SecureConnectionFailureStore(),
+        _store = store ?? MemoryConnectionFailureStore(),
         _offlineStatusLoader = offlineStatusLoader ?? reportedOfflineStatus;
 
   final TokenStore _tokens;
@@ -181,9 +255,9 @@ class PersistedConnectionFailureReporter {
     final String accountId =
         failure.requestOptions.extra[connectionFailureAccountKey] as String? ??
             _anonymousBuffer;
-    final ClientConnectionFailure? event = await _eventFrom(failure);
-    if (event == null) return;
     await _exclusive(() async {
+      final ClientConnectionFailure? event = await _eventFrom(failure);
+      if (event == null) return;
       await _append(accountId, event);
     });
   }
@@ -199,7 +273,7 @@ class PersistedConnectionFailureReporter {
   Future<void> _flushSafely(RequestOptions request) async {
     try {
       await _flushPending(request);
-    } on Exception {
+    } on Object {
       // Keep the batch for a later successful request, without a retry storm.
       _retryAfter = DateTime.now().add(const Duration(minutes: 1));
     } finally {
@@ -211,7 +285,7 @@ class PersistedConnectionFailureReporter {
     final String? accountId =
         request.extra[connectionFailureAccountKey] as String?;
     if (accountId == null || accountId.isEmpty) return;
-    if (accountId != await _tokens.readAccountId()) return;
+    if (accountId != _tokens.lastKnownAccountId) return;
     final List<ClientConnectionFailure> batch =
         await _exclusive(() => _batchForAccount(accountId));
     if (batch.isEmpty) return;
@@ -301,8 +375,10 @@ class PersistedConnectionFailureReporter {
     List<ClientConnectionFailure> buffer,
   ) async {
     try {
-      await _store.write(accountId, buffer);
-    } on Exception {
+      await _store
+          .write(accountId, buffer)
+          .timeout(_connectionFailureStorageTimeout);
+    } on Object {
       // Device storage can be unavailable; keep the bounded in-memory buffer.
     }
   }
@@ -311,8 +387,10 @@ class PersistedConnectionFailureReporter {
     if (!_loadedAccounts.contains(accountId)) {
       List<ClientConnectionFailure> stored;
       try {
-        stored = await _store.read(accountId);
-      } on Exception {
+        stored = await _store
+            .read(accountId)
+            .timeout(_connectionFailureStorageTimeout);
+      } on Object {
         // Reporting still works for this session when device storage fails.
         stored = <ClientConnectionFailure>[];
       }

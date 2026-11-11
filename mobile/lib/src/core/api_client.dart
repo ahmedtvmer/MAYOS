@@ -167,6 +167,7 @@ class ApiClient {
       store: failureOptions.store,
       offlineStatusLoader: failureOptions.offlineStatusLoader,
     );
+    unawaited(_warmAccountIdSnapshot());
     _dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: _attachToken,
@@ -286,12 +287,22 @@ class ApiClient {
     if (options.extra[_skipAuth] != true) {
       final String? token = await _tokens.read();
       if (token != null && token.isNotEmpty) {
-          options.headers['Authorization'] = 'Bearer $token';
-          options.extra[connectionFailureAccountKey] =
-              await _tokens.readAccountId();
+        options.headers['Authorization'] = 'Bearer $token';
+        final String? accountId = _tokens.lastKnownAccountId;
+        if (accountId != null && accountId.isNotEmpty) {
+          options.extra[connectionFailureAccountKey] = accountId;
+        }
       }
     }
     handler.next(options);
+  }
+
+  Future<void> _warmAccountIdSnapshot() async {
+    try {
+      await _tokens.readAccountId();
+    } on Object {
+      // Account lookup is best effort for telemetry attribution.
+    }
   }
 
   static String _loadClientHeader() {
@@ -3393,12 +3404,14 @@ class ApiClient {
     MultiStreamController<ChatStreamEvent> events,
   ) async {
     final Map<String, String> headers = await _chatStreamHeaders();
+    final String? accountId = _tokens.lastKnownAccountId;
     final RequestOptions reportRequest = RequestOptions(
       path: path,
       method: 'POST',
       headers: headers,
       extra: <String, dynamic>{
-        connectionFailureAccountKey: await _tokens.readAccountId(),
+        if (accountId != null && accountId.isNotEmpty)
+          connectionFailureAccountKey: accountId,
       },
     );
     if (events.isClosed) return;

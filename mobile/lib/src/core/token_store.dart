@@ -7,6 +7,9 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 /// discovers its account was deleted can erase that account's protected local
 /// data even before it has a live session (ADR 039).
 abstract class TokenStore {
+  /// Account id already known by this process, without reading device storage.
+  String? get lastKnownAccountId;
+
   Future<void> save(String token);
 
   Future<String?> read();
@@ -29,6 +32,11 @@ class SecureTokenStore implements TokenStore {
   static const String _accountIdKey = 'mayos.account_id';
 
   final FlutterSecureStorage _storage;
+  String? _lastKnownAccountId;
+  int _accountIdRevision = 0;
+
+  @override
+  String? get lastKnownAccountId => _lastKnownAccountId;
 
   @override
   Future<void> save(String token) =>
@@ -38,14 +46,26 @@ class SecureTokenStore implements TokenStore {
   Future<String?> read() => _storage.read(key: _tokenKey);
 
   @override
-  Future<void> saveAccountId(String accountId) =>
-      _storage.write(key: _accountIdKey, value: accountId);
+  Future<void> saveAccountId(String accountId) async {
+    _accountIdRevision++;
+    _lastKnownAccountId = accountId;
+    await _storage.write(key: _accountIdKey, value: accountId);
+  }
 
   @override
-  Future<String?> readAccountId() => _storage.read(key: _accountIdKey);
+  Future<String?> readAccountId() async {
+    final int revision = _accountIdRevision;
+    final String? accountId = await _storage.read(key: _accountIdKey);
+    if (revision == _accountIdRevision) {
+      _lastKnownAccountId = accountId;
+    }
+    return accountId;
+  }
 
   @override
   Future<void> clear() async {
+    _accountIdRevision++;
+    _lastKnownAccountId = null;
     await _storage.delete(key: _tokenKey);
     await _storage.delete(key: _accountIdKey);
   }
@@ -54,6 +74,9 @@ class SecureTokenStore implements TokenStore {
 class InMemoryTokenStore implements TokenStore {
   String? _token;
   String? _accountId;
+
+  @override
+  String? get lastKnownAccountId => _accountId;
 
   @override
   Future<void> save(String token) async => _token = token;

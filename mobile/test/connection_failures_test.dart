@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/chat_stream_fetch_types.dart';
 import 'package:mayos_mobile/src/core/connection_failures.dart';
+import 'package:mayos_mobile/src/core/secure_store.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 
 import 'support/fake_api_adapter.dart';
@@ -14,7 +15,9 @@ import 'support/fake_api_adapter.dart';
 class _MemoryConnectionFailureStore implements ConnectionFailureStore {
   final Map<String, List<ClientConnectionFailure>> _failures =
       <String, List<ClientConnectionFailure>>{};
+  final List<Completer<void>> _writeWaiters = <Completer<void>>[];
   void Function(String, List<ClientConnectionFailure>)? onWrite;
+  int _writeCount = 0;
 
   @override
   Future<List<ClientConnectionFailure>> read(String accountId) async =>
@@ -28,7 +31,30 @@ class _MemoryConnectionFailureStore implements ConnectionFailureStore {
     List<ClientConnectionFailure> failures,
   ) async {
     _failures[accountId] = List<ClientConnectionFailure>.of(failures);
+    _markWriteAttempt();
     onWrite?.call(accountId, failures);
+  }
+
+  void _markWriteAttempt() {
+    _writeCount++;
+    final List<Completer<void>> waiters =
+        List<Completer<void>>.of(_writeWaiters);
+    _writeWaiters.clear();
+    for (final Completer<void> waiter in waiters) {
+      if (!waiter.isCompleted) waiter.complete();
+    }
+  }
+
+  Future<void> waitForWrites(int count) async {
+    while (_writeCount < count) {
+      final Completer<void> waiter = Completer<void>();
+      _writeWaiters.add(waiter);
+      try {
+        await waiter.future.timeout(const Duration(seconds: 2));
+      } finally {
+        _writeWaiters.remove(waiter);
+      }
+    }
   }
 
   @override
@@ -58,8 +84,27 @@ class _UnavailableConnectionFailureStore extends _MemoryConnectionFailureStore {
       throw Exception('Device storage unavailable');
 
   @override
-  Future<void> write(String accountId, List<ClientConnectionFailure> failures) async =>
-      throw Exception('Device storage unavailable');
+  Future<void> write(String accountId, List<ClientConnectionFailure> failures) =>
+      _writeUnavailable();
+
+  Future<void> _writeUnavailable() async {
+    _markWriteAttempt();
+    throw Exception('Device storage unavailable');
+  }
+}
+
+class _UnavailableSecureStore extends SecureStore {
+  @override
+  Future<dynamic> readJson(String key) async =>
+      throw StateError('Device storage unavailable');
+
+  @override
+  Future<void> writeJson({required String key, required Object value}) async =>
+      throw StateError('Device storage unavailable');
+
+  @override
+  Future<void> delete(String key) async =>
+      throw StateError('Device storage unavailable');
 }
 
 Future<InMemoryTokenStore> _signedInTokens() async {
@@ -67,6 +112,21 @@ Future<InMemoryTokenStore> _signedInTokens() async {
   await tokens.save('token-alice');
   await tokens.saveAccountId('account-alice');
   return tokens;
+}
+
+Future<List<ClientConnectionFailure>> _waitForFailureCount(
+  ConnectionFailureStore Function() createStore,
+  String accountId,
+  int count,
+) async {
+  final DateTime deadline = DateTime.now().add(const Duration(seconds: 2));
+  while (DateTime.now().isBefore(deadline)) {
+    final List<ClientConnectionFailure> failures =
+        await createStore().read(accountId);
+    if (failures.length >= count) return failures;
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+  }
+  return createStore().read(accountId);
 }
 
 ApiClient _client(
@@ -121,6 +181,7 @@ void main() {
       api.deleteInjury(id: 'private-injury-37'),
       throwsA(isA<ApiException>()),
     );
+    await store.waitForWrites(1);
     final List<ClientConnectionFailure> buffered =
         await store.read('account-alice');
     expect(buffered, hasLength(1));
@@ -169,6 +230,7 @@ void main() {
         api.deleteInjury(id: 'injury-$index'), throwsA(isA<ApiException>()),
       );
     }
+    await store.waitForWrites(1 + maxBufferedConnectionFailures);
 
     final List<ClientConnectionFailure> failures = await store.read('account-alice');
     expect(failures, hasLength(200));
@@ -191,6 +253,7 @@ void main() {
     await expectLater(api.exerciseHistory('private/exercise?private-value'),
         throwsA(isA<ApiException>()));
 
+    await store.waitForWrites(3);
     final List<ClientConnectionFailure> failures = await store.read('account-alice');
     expect(failures.take(2).map((failure) => failure.routeTemplate), <String>[
       '/profile/injuries/{id}',
@@ -213,8 +276,15 @@ void main() {
     final ApiClient offline = _client(tokens, SecureConnectionFailureStore(),
         FakeApiAdapter((_) => const FakeResponse.networkFailure()));
     await expectLater(offline.deleteInjury(id: 'private-id'), throwsA(isA<ApiException>()));
+    expect(
+      await _waitForFailureCount(
+        () => SecureConnectionFailureStore(),
+        'account-alice',
+        1,
+      ),
+      hasLength(1),
+    );
     final SecureConnectionFailureStore reopened = SecureConnectionFailureStore();
-    expect(await reopened.read('account-alice'), hasLength(1));
     final Completer<FakeRequest> uploaded = Completer<FakeRequest>();
     final ApiClient online = _client(tokens, reopened, FakeApiAdapter((request) {
       if (request.path == connectionFailuresEndpoint) {
@@ -233,10 +303,33 @@ void main() {
     expect(await reopened.read('account-alice'), isEmpty);
   });
 
+  test('secure failure buffer falls back to memory when platform storage fails', () async {
+    final SecureConnectionFailureStore store =
+        SecureConnectionFailureStore(store: _UnavailableSecureStore());
+    const String accountId = 'account-alice';
+    final ClientConnectionFailure failure = ClientConnectionFailure(
+      occurredAt: DateTime.utc(2026, 11, 11),
+      failureType: 'other',
+      offlineReported: false,
+      platform: 'web',
+      appBuild: '42',
+      routeTemplate: '/profile/injuries/{id}',
+    );
+
+    expect(await store.read(accountId), isEmpty);
+    await store.write(accountId, <ClientConnectionFailure>[failure]);
+    expect(await store.read(accountId), <ClientConnectionFailure>[failure]);
+
+    await store.deleteForAccount(accountId);
+    expect(await store.read(accountId), isEmpty);
+  });
+
   test('unavailable device storage still allows in-memory reporting', () async {
     final InMemoryTokenStore tokens = await _signedInTokens();
     final Completer<FakeRequest> uploaded = Completer<FakeRequest>();
-    final ApiClient api = _client(tokens, _UnavailableConnectionFailureStore(),
+    final _UnavailableConnectionFailureStore store =
+        _UnavailableConnectionFailureStore();
+    final ApiClient api = _client(tokens, store,
         FakeApiAdapter((request) {
       if (request.path == connectionFailuresEndpoint) {
         uploaded.complete(request);
@@ -246,6 +339,7 @@ void main() {
       return const FakeResponse(200, <String, Object>{'opted_in': true});
     }));
     await expectLater(api.deleteInjury(id: 'private-id'), throwsA(isA<ApiException>()));
+    await store.waitForWrites(1);
     await api.setProductEmailConsent(true);
     final FakeRequest batch = await uploaded.future.timeout(const Duration(seconds: 2));
     expect(batch.body['failures'], hasLength(1));
@@ -267,6 +361,7 @@ void main() {
     await expectLater(api.login(
       traineeId: 'private-username', password: 'private-password',
     ), throwsA(isA<ApiException>()));
+    await store.waitForWrites(1);
     await tokens.save('token-alice');
     await tokens.saveAccountId('account-alice');
     await api.setProductEmailConsent(true);
@@ -301,6 +396,7 @@ void main() {
       }));
       api.onUnauthorized = () => unauthorized++;
       await expectLater(api.deleteInjury(id: 'private-id'), throwsA(isA<ApiException>()));
+      await store.waitForWrites(1);
       await api.setProductEmailConsent(true);
       await uploaded.future.timeout(const Duration(seconds: 2));
       await Future<void>.delayed(Duration.zero);
@@ -334,6 +430,7 @@ void main() {
       ));
 
       await expectLater(api.deleteInjury(id: 'private-id'), throwsA(isA<ApiException>()));
+      if (scenario.$3 != null) await store.waitForWrites(1);
       final List<ClientConnectionFailure> failures = await store.read('account-alice');
       if (scenario.$3 == null) {
         expect(failures, isEmpty);
@@ -386,6 +483,7 @@ void main() {
     await started.future.timeout(const Duration(seconds: 2));
     pending.completed.completeError(const ChatStreamTransportException('Failed to fetch'));
     await failed;
+    await store.waitForWrites(1);
     expect((await store.read('account-alice')).single.routeTemplate, '/chat/messages');
     await api.setProductEmailConsent(true);
     final FakeRequest batch = await uploaded.future.timeout(const Duration(seconds: 2));
@@ -438,11 +536,13 @@ void main() {
     };
     final ApiClient api = _client(tokens, store, adapter);
     await expectLater(api.deleteInjury(id: 'old'), throwsA(isA<ApiException>()));
+    await store.waitForWrites(1);
     await api.setProductEmailConsent(true);
     await uploadStarted.future.timeout(const Duration(seconds: 2));
     try {
       await expectLater(api.deleteInjury(id: 'new').timeout(const Duration(seconds: 2)),
           throwsA(isA<ApiException>()));
+      await store.waitForWrites(2);
       expect(await store.read('account-alice'), hasLength(2));
       await api.setProductEmailConsent(true);
       store.onWrite = (_, failures) {
@@ -479,8 +579,8 @@ void main() {
     await tokens.saveAccountId('account-bob');
     finish.complete();
     await failure;
+    await store.waitForWrites(1);
     await api.setProductEmailConsent(true);
-    await Future<void>.delayed(Duration.zero);
     expect(await store.read('account-alice'), hasLength(1));
     expect(await store.read('account-bob'), isEmpty);
     expect(adapter.requests.where((request) => request.path == connectionFailuresEndpoint), isEmpty);
