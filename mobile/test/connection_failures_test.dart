@@ -7,10 +7,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/chat_stream_fetch_types.dart';
 import 'package:mayos_mobile/src/core/connection_failures.dart';
+import 'package:mayos_mobile/src/core/saved_player_data.dart';
+import 'package:mayos_mobile/src/core/saved_player_reads.dart';
 import 'package:mayos_mobile/src/core/secure_store.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 
 import 'support/fake_api_adapter.dart';
+import 'support/in_memory_browser_key_value_store.dart';
 
 class _WriteCompletionTracker {
   final List<Completer<void>> _waiters = <Completer<void>>[];
@@ -170,6 +173,65 @@ ApiClient _client(
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  for (final scenario in <(bool, int)>[(true, 4), (false, 1)]) {
+    test('auth read with retries ${scenario.$1} records only its final failure',
+        () async {
+      final _MemoryConnectionFailureStore store = _MemoryConnectionFailureStore();
+      final InMemoryTokenStore tokens = await _signedInTokens();
+      final FakeApiAdapter adapter =
+          FakeApiAdapter((_) => const FakeResponse.networkFailure());
+      final ApiClient api = _client(tokens, store, adapter);
+      addTearDown(api.dispose);
+
+      await expectLater(
+        api.currentAccount(retryTransportFailures: scenario.$1),
+        throwsA(isA<ApiException>()),
+      );
+      await store.waitForWrites(1);
+
+      expect(adapter.requests, hasLength(scenario.$2));
+      final List<ClientConnectionFailure> failures =
+          await store.read('account-alice');
+      expect(failures, hasLength(1));
+      expect(failures.single.routeTemplate, '/auth/me');
+    });
+  }
+
+  test('saved fallback records the outage and uploads only after a live success',
+      () async {
+    final _MemoryConnectionFailureStore store = _MemoryConnectionFailureStore();
+    final InMemoryTokenStore tokens = await _signedInTokens();
+    final SavedPlayerDataStore saved =
+        SavedPlayerDataStore(browser: InMemoryBrowserKeyValueStore());
+    addTearDown(saved.dispose);
+    await saved.write('account-alice', '/dashboard/volume?days=7',
+        <String, dynamic>{'body': <String, double>{'Chest': 8}}, saved.generation);
+    final FakeApiAdapter adapter = FakeApiAdapter((request) {
+      if (request.path == '/dashboard/volume') {
+        return const FakeResponse.networkFailure();
+      }
+      if (request.path == connectionFailuresEndpoint) {
+        return const FakeResponse(202, <String, Object>{'accepted': 1});
+      }
+      return const FakeResponse(200, <String, Object>{'opted_in': true});
+    });
+    final ApiClient api = _client(tokens, store, adapter);
+    addTearDown(api.dispose);
+    api.dio.interceptors.add(SavedPlayerReads(tokens, saved));
+
+    expect(await api.volume(), <String, double>{'Chest': 8});
+    await store.waitForWrites(1);
+    expect(await store.read('account-alice'), hasLength(1));
+    expect(await api.volume(), <String, double>{'Chest': 8});
+    expect(adapter.requests, hasLength(1));
+
+    await api.setProductEmailConsent(true);
+    await store.waitForWrites(2);
+    expect(await store.read('account-alice'), isEmpty);
+    expect(adapter.requests.where((r) => r.path == connectionFailuresEndpoint),
+        hasLength(1));
+  });
+
   test('final transport failures buffer one private route template and upload on reconnect', () async {
     final _MemoryConnectionFailureStore store = _MemoryConnectionFailureStore();
     final InMemoryTokenStore tokens = InMemoryTokenStore();

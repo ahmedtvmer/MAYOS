@@ -8,8 +8,8 @@ import 'connectivity_events_stub.dart'
 import 'connectivity_status_stub.dart'
     if (dart.library.io) 'connectivity_status_io.dart' as device;
 
-/// Emits the browser's current online state and subsequent online/offline
-/// changes. Non-web platforms provide an empty stream.
+/// Emits browser online/offline events or Android network validation changes.
+/// Other platforms provide an empty stream; API signals and backoff still work.
 Stream<bool> browserConnectivityEvents() =>
     platform.browserConnectivityEvents();
 

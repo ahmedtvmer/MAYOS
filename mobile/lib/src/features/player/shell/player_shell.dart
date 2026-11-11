@@ -21,6 +21,7 @@ import '../../../providers.dart';
 import '../../../router.dart';
 import '../../shared/mode_switch.dart';
 import '../../shared/install_prompt.dart';
+import '../auth/auth_controller.dart';
 import '../dashboard/dashboard_tab.dart';
 import '../program/program_tab.dart';
 import '../nutrition/nutrition_tab.dart';
@@ -74,6 +75,7 @@ class _PlayerShellState extends ConsumerState<PlayerShell> {
   /// Set once this shell visit has offered Resume / Discard, so the prompt
   /// appears at most once per opening of the app (#123).
   bool _offeredResume = false;
+  int _confirmedDataRevision = 0;
   bool _rosterAiDisclosureChecked = false;
   String? _whatsNewAttemptedAccountId;
   bool _whatsNewRetryReady = false;
@@ -403,15 +405,24 @@ class _PlayerShellState extends ConsumerState<PlayerShell> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<AuthState>(authControllerProvider, (previous, next) {
+      if (previous?.isOffline == true && next.isAuthenticated && !next.isOffline) {
+        // Recreate the read views once after confirmation, including the nested
+        // Nutrition day. Active workouts remain in their account-scoped provider.
+        setState(() => _confirmedDataRevision++);
+      }
+    });
     ref.listen<ActiveWorkoutState>(
       activeWorkoutControllerProvider,
       (_, ActiveWorkoutState next) => _offerResume(next),
     );
-    final int index = ref.watch(playerShellTabProvider);
-    final bool isCoach =
-        ref.watch(authControllerProvider).session?.account.isCoach ?? false;
     final Account? account =
         ref.watch(authControllerProvider).session?.account;
+    // The router redirects on the next frame. Do not recreate the keyed tabs
+    // for a null account and start fresh reads after session cleanup.
+    if (account == null) return const SizedBox.shrink();
+    final int index = ref.watch(playerShellTabProvider);
+    final bool isCoach = account.isCoach;
     final MayosCopy copy = MayosCopy(ref.watch(displayLanguageProvider));
     final String settingsLabel = copy.settings;
     final ActiveWorkoutState workout =
@@ -462,6 +473,7 @@ class _PlayerShellState extends ConsumerState<PlayerShell> {
         ),
       ),
       body: IndexedStack(
+            key: ValueKey<String>('${account.accountId}:$_confirmedDataRevision'),
             index: index,
             children: <Widget>[
               TickerMode(enabled: index == 0, child: const DashboardTab()),

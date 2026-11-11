@@ -1,7 +1,6 @@
 package com.mayos.mayos_mobile
 
 import android.content.Intent
-import android.net.ConnectivityManager
 import android.net.Uri
 import android.provider.OpenableColumns
 import io.flutter.embedding.android.FlutterActivity
@@ -15,6 +14,7 @@ import java.util.concurrent.Executors
 
 class MainActivity : FlutterActivity() {
     private val shareExecutor = Executors.newSingleThreadExecutor()
+    private var connectivityEvents: ConnectivityEvents? = null
     private var shareChannel: MethodChannel? = null
     private var shareReceiverReady = false
     private var initialShare: Map<String, Any?>? = null
@@ -23,6 +23,9 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        connectivityEvents = ConnectivityEvents(
+            applicationContext, flutterEngine.dartExecutor.binaryMessenger
+        )
         shareChannel = MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             "com.mayos/share"
@@ -43,20 +46,6 @@ class MainActivity : FlutterActivity() {
                 }
                 else -> result.notImplemented()
             }
-        }
-        MethodChannel(
-            flutterEngine.dartExecutor.binaryMessenger,
-            "com.mayos/connectivity"
-        ).setMethodCallHandler { call, result ->
-            if (call.method != "hasInternetConnection") {
-                result.notImplemented()
-                return@setMethodCallHandler
-            }
-            @Suppress("DEPRECATION")
-            val connected =
-                (getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager)
-                    .activeNetworkInfo?.isConnected == true
-            result.success(connected)
         }
         processShareIntent(intent, initial = true)
     }
@@ -79,6 +68,8 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
+        connectivityEvents?.dispose()
+        connectivityEvents = null
         shareExecutor.shutdownNow()
         super.onDestroy()
     }

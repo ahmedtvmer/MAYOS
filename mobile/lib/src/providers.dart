@@ -22,6 +22,8 @@ import 'core/connection_failures.dart';
 import 'core/display_language/controller.dart';
 import 'core/display_language/store.dart';
 import 'core/models.dart';
+import 'core/saved_player_data.dart';
+import 'core/saved_player_reads.dart';
 import 'core/personal_records.dart';
 import 'core/rest_alert_permission_access.dart';
 import 'core/rest_alerts.dart';
@@ -55,6 +57,15 @@ final Provider<ConnectionFailureStore> connectionFailureStoreProvider =
     Provider<ConnectionFailureStore>(
   (ref) => SecureConnectionFailureStore(),
 );
+
+final Provider<SavedPlayerDataStore> savedPlayerDataStoreProvider =
+    Provider<SavedPlayerDataStore>((ref) {
+  final SavedPlayerDataStore store = SavedPlayerDataStore(
+    browser: kIsWeb ? ref.watch(browserKeyValueStoreProvider) : null,
+  );
+  ref.onDispose(store.dispose);
+  return store;
+});
 
 final Provider<SharedProgramTextSource> sharedProgramTextSourceProvider =
     Provider<SharedProgramTextSource>((ref) => kIsWeb ||
@@ -105,8 +116,20 @@ final Provider<ApiClient> apiClientProvider = Provider<ApiClient>((ref) {
       store: ref.watch(connectionFailureStoreProvider),
     ),
   );
-  client.onUnauthorized = ref.watch(unauthorizedEventsProvider).signal;
-  client.onAccountDeleted = ref.watch(accountDeletedEventsProvider).signal;
+  ref.onDispose(client.dispose);
+  client.dio.interceptors.add(
+    SavedPlayerReads(tokens, ref.watch(savedPlayerDataStoreProvider)),
+  );
+  final UnauthorizedEvents unauthorized =
+      ref.watch(unauthorizedEventsProvider);
+  final AccountDeletedEvents accountDeleted =
+      ref.watch(accountDeletedEventsProvider);
+  client.onUnauthorized = unauthorized.signal;
+  client.waitForUnauthorizedHandling =
+      unauthorized.waitForCleanup;
+  client.onAccountDeleted = accountDeleted.signal;
+  client.waitForAccountDeletedHandling =
+      accountDeleted.waitForCleanup;
   client.onAppUpdateRequired = (AppVersionPolicy policy) {
     ref
         .read(appUpdateRequiredProvider.notifier)
@@ -157,6 +180,7 @@ final Provider<AuthRepository> authRepositoryProvider =
     api: ref.watch(apiClientProvider),
     tokens: ref.watch(tokenStoreProvider),
     chatCache: ref.watch(chatCacheStoreProvider),
+    savedData: ref.watch(savedPlayerDataStoreProvider),
     displayLanguageStore: ref.watch(displayLanguageStoreProvider),
     readFirstTouch: () => ref.read(firstTouchCaptureProvider).capture(),
     clearFirstTouch: () =>
@@ -175,12 +199,19 @@ final Provider<AuthRepository> authRepositoryProvider =
 
 final StateNotifierProvider<AuthController, AuthState> authControllerProvider =
     StateNotifierProvider<AuthController, AuthState>((ref) {
-  return AuthController(
+  final AuthController controller = AuthController(
     ref.watch(authRepositoryProvider),
     ref.watch(unauthorizedEventsProvider),
     ref.watch(accountDeletedEventsProvider),
     ref.watch(googleAuthGatewayProvider),
   );
+  final SavedPlayerDataStore saved = ref.watch(savedPlayerDataStoreProvider);
+  void onSavedData() {
+    if (saved.offline) controller.useSavedData();
+  }
+  saved.addListener(onSavedData);
+  ref.onDispose(() => saved.removeListener(onSavedData));
+  return controller;
 });
 
 /// The one seam to the Google SDK (#115): tests replace it with a fake, and
@@ -285,9 +316,9 @@ final StateNotifierProvider<CoachRosterAssistantController,
 
 /// Whether this client captures protected offline workout drafts (ADR 020).
 ///
-/// Offline Workout drafts remain Android-only (ADR 022). On web, only the
-/// account-scoped Active workout and its first-start notice use browser storage;
-/// every other protected store stays in memory.
+/// Offline Workout drafts remain Android-only (ADR 022). On web the Active
+/// workout, first-start notice and saved Player reads (ADR 112) persist in
+/// browser storage; this flag continues to control only the draft-era stores.
 final Provider<bool> offlineWorkoutDraftsEnabledProvider = Provider<bool>(
   (ref) => !kIsWeb,
 );

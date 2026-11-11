@@ -8,6 +8,7 @@ import 'package:mayos_mobile/src/app.dart';
 import 'package:mayos_mobile/src/core/active_workout.dart';
 import 'package:mayos_mobile/src/core/app_mode.dart';
 import 'package:mayos_mobile/src/core/baselines.dart';
+import 'package:mayos_mobile/src/core/browser_key_value_store.dart';
 import 'package:mayos_mobile/src/features/shared/mode_switch.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/chat_models.dart';
@@ -18,6 +19,8 @@ import 'package:mayos_mobile/src/core/connection_failures.dart';
 import 'package:mayos_mobile/src/core/connectivity_message.dart';
 import 'package:mayos_mobile/src/core/device_timezone.dart';
 import 'package:mayos_mobile/src/core/models.dart';
+import 'package:mayos_mobile/src/core/saved_player_data.dart';
+import 'package:mayos_mobile/src/core/saved_player_reads.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/core/workout_storage.dart';
 import 'package:mayos_mobile/src/features/player/auth/auth_controller.dart';
@@ -120,6 +123,12 @@ ProviderContainer _container({
     overrides: <Override>[
       tokenStoreProvider.overrideWithValue(tokens),
       connectionFailureStoreProvider.overrideWithValue(connectionFailures),
+      savedPlayerDataStoreProvider.overrideWith((ref) {
+        final SavedPlayerDataStore store =
+            SavedPlayerDataStore(browser: createBrowserKeyValueStore());
+        ref.onDispose(store.dispose);
+        return store;
+      }),
       appModeStoreProvider.overrideWithValue(InMemoryAppModeStore()),
       draftStoreProvider.overrideWithValue(drafts),
       workoutCacheStoreProvider.overrideWithValue(cache),
@@ -137,18 +146,59 @@ ProviderContainer _container({
           tokens: ref.watch(tokenStoreProvider),
           baseUrl: 'http://test.local',
           adapter: fake.adapter,
+          retryDelay: (_) async {},
           connectionFailureOptions: ConnectionFailureOptions(
             store: connectionFailures,
             offlineStatusLoader: () async => false,
           ),
         );
-        client.onUnauthorized = ref.watch(unauthorizedEventsProvider).signal;
-        client.onAccountDeleted =
-            ref.watch(accountDeletedEventsProvider).signal;
+        ref.onDispose(client.dispose);
+        client.dio.interceptors.add(SavedPlayerReads(
+          ref.watch(tokenStoreProvider),
+          ref.watch(savedPlayerDataStoreProvider),
+        ));
+        final unauthorized = ref.watch(unauthorizedEventsProvider);
+        final accountDeleted = ref.watch(accountDeletedEventsProvider);
+        client.onUnauthorized = unauthorized.signal;
+        client.waitForUnauthorizedHandling = unauthorized.waitForCleanup;
+        client.onAccountDeleted = accountDeleted.signal;
+        client.waitForAccountDeletedHandling = accountDeleted.waitForCleanup;
         return client;
       }),
     ],
   );
+}
+
+Future<void> _seedSavedAndFailureData(ProviderContainer container) async {
+  final SavedPlayerDataStore saved = container.read(savedPlayerDataStoreProvider);
+  final ConnectionFailureStore failures =
+      container.read(connectionFailureStoreProvider);
+  for (final String accountId in <String>[_accountAlice, 'account-alice-other']) {
+    await saved.write(accountId, '/dashboard/volume', <String, dynamic>{
+      'body': <String, double>{'Chest': 8},
+    }, saved.generation);
+    await failures.write(accountId, <ClientConnectionFailure>[
+      ClientConnectionFailure(
+        occurredAt: DateTime.utc(2026, 11, 11),
+        failureType: 'connect_timeout',
+        offlineReported: true,
+        platform: 'web',
+        appBuild: '42',
+        routeTemplate: '/dashboard/volume',
+      ),
+    ]);
+  }
+}
+
+Future<void> _expectSavedAndFailureDataErased(ProviderContainer container) async {
+  final SavedPlayerDataStore saved = container.read(savedPlayerDataStoreProvider);
+  final ConnectionFailureStore failures =
+      container.read(connectionFailureStoreProvider);
+  expect(await saved.read(_accountAlice, '/dashboard/volume'), isNull);
+  expect(await saved.session(_accountAlice), isNull);
+  expect(await failures.read(_accountAlice), isEmpty);
+  expect(await saved.read('account-alice-other', '/dashboard/volume'), isNotNull);
+  expect(await failures.read('account-alice-other'), hasLength(1));
 }
 
 Future<InMemoryDraftStore> _seedLocalData(
@@ -207,6 +257,7 @@ void main() {
           container.read(authControllerProvider.notifier);
       await auth.initialize();
       expect(container.read(authControllerProvider).isAuthenticated, isTrue);
+      await _seedSavedAndFailureData(container);
 
       await auth.deleteAccount('correct-horse-1');
 
@@ -225,6 +276,7 @@ void main() {
       expect(await displayLanguage.readAccount(_accountAlice), isNull);
       expect(await tokens.read(), isNull);
       expect(await tokens.readAccountId(), isNull);
+      await _expectSavedAndFailureDataErased(container);
     });
 
     test('wrong password changes nothing and keeps data', () async {
@@ -296,6 +348,7 @@ void main() {
       final ProviderContainer container = _container(
           fake: fake, tokens: tokens, drafts: drafts, cache: cache, chat: chat);
       addTearDown(container.dispose);
+      await _seedSavedAndFailureData(container);
       final AuthController auth =
           container.read(authControllerProvider.notifier);
 
@@ -310,6 +363,7 @@ void main() {
       expect(await cache.readProgram(_accountAlice), isNull);
       expect(await chat.readDisclosureAccepted(_accountAlice), isFalse);
       expect(await tokens.read(), isNull);
+      await _expectSavedAndFailureDataErased(container);
     });
 
     test('a draft-sync 401 account_deleted erases drafts without a prompt',
@@ -397,6 +451,12 @@ void main() {
             tokenStoreProvider.overrideWithValue(tokens),
             connectionFailureStoreProvider
                 .overrideWithValue(connectionFailures),
+            savedPlayerDataStoreProvider.overrideWith((ref) {
+              final SavedPlayerDataStore store =
+                  SavedPlayerDataStore(browser: createBrowserKeyValueStore());
+              ref.onDispose(store.dispose);
+              return store;
+            }),
             appModeStoreProvider.overrideWithValue(InMemoryAppModeStore()),
             draftStoreProvider.overrideWithValue(drafts),
             workoutCacheStoreProvider.overrideWithValue(cache),
@@ -412,15 +472,25 @@ void main() {
                 tokens: ref.watch(tokenStoreProvider),
                 baseUrl: 'http://test.local',
                 adapter: fake.adapter,
+                retryDelay: (_) async {},
                 connectionFailureOptions: ConnectionFailureOptions(
                   store: connectionFailures,
                   offlineStatusLoader: () async => false,
                 ),
               );
-              client.onUnauthorized =
-                  ref.watch(unauthorizedEventsProvider).signal;
-              client.onAccountDeleted =
-                  ref.watch(accountDeletedEventsProvider).signal;
+              ref.onDispose(client.dispose);
+              client.dio.interceptors.add(SavedPlayerReads(
+                ref.watch(tokenStoreProvider),
+                ref.watch(savedPlayerDataStoreProvider),
+              ));
+              final unauthorized = ref.watch(unauthorizedEventsProvider);
+              final accountDeleted = ref.watch(accountDeletedEventsProvider);
+              client.onUnauthorized = unauthorized.signal;
+              client.waitForUnauthorizedHandling =
+                  unauthorized.waitForCleanup;
+              client.onAccountDeleted = accountDeleted.signal;
+              client.waitForAccountDeletedHandling =
+                  accountDeleted.waitForCleanup;
               return client;
             }),
           ],
