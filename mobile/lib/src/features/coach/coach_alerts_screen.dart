@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api_client.dart';
+import '../../core/refetch_on_reconnect.dart';
 import '../../core/app_failure.dart';
 import '../../core/connectivity_message.dart';
 import '../../core/display_language/copy_context.dart';
@@ -31,7 +32,14 @@ class CoachAlertsScreen extends ConsumerStatefulWidget {
   ConsumerState<CoachAlertsScreen> createState() => _CoachAlertsScreenState();
 }
 
-class _CoachAlertsScreenState extends ConsumerState<CoachAlertsScreen> {
+class _CoachAlertsScreenState extends ConsumerState<CoachAlertsScreen>
+    with RefetchOnReconnect<CoachAlertsScreen> {
+  @override
+  Future<void> refreshAfterReconnect() async {
+    if (_loading || _busyAlertId != null) return;
+    await _load();
+  }
+
   static const List<String> _states = <String>[
     'new',
     'acknowledged',

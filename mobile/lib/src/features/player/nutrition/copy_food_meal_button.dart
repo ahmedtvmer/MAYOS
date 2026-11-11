@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/refetch_on_reconnect.dart';
 import '../../../core/display_language/controller.dart';
 import '../../../core/display_language/food_log_copy.dart';
 import '../../../providers.dart';
@@ -19,7 +20,13 @@ class CopyFoodMealButton extends ConsumerStatefulWidget {
   ConsumerState<CopyFoodMealButton> createState() => _CopyFoodMealButtonState();
 }
 
-class _CopyFoodMealButtonState extends ConsumerState<CopyFoodMealButton> {
+class _CopyFoodMealButtonState extends ConsumerState<CopyFoodMealButton>
+    with RefetchOnReconnect<CopyFoodMealButton> {
+  @override
+  Future<void> refreshAfterReconnect() async {
+    if (!_busy) await _load();
+  }
+
   List<String> _meals = <String>[];
   bool _busy = false;
   String? _error;

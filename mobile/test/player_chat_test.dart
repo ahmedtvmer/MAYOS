@@ -55,6 +55,7 @@ Override _apiOverride(FakeMayosApi fake) =>
         tokens: ref.watch(tokenStoreProvider),
         baseUrl: 'http://test.local',
         adapter: fake.adapter,
+        retryDelay: (_) async {},
       );
       client.onUnauthorized = ref.watch(unauthorizedEventsProvider).signal;
       return client;

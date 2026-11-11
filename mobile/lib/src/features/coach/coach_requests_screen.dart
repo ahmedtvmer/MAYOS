@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/api_client.dart';
+import '../../core/refetch_on_reconnect.dart';
 import '../../core/app_failure.dart';
 import '../../core/connectivity_message.dart';
 import '../../core/display_language/copy_context.dart';
@@ -36,7 +37,14 @@ class CoachRequestsScreen extends ConsumerStatefulWidget {
       _CoachRequestsScreenState();
 }
 
-class _CoachRequestsScreenState extends ConsumerState<CoachRequestsScreen> {
+class _CoachRequestsScreenState extends ConsumerState<CoachRequestsScreen>
+    with RefetchOnReconnect<CoachRequestsScreen> {
+  @override
+  Future<void> refreshAfterReconnect() async {
+    if (_loading) return;
+    await _load();
+  }
+
   bool _loading = true;
   FailureMessage? _error;
   List<ProgramRequest> _requests = const <ProgramRequest>[];

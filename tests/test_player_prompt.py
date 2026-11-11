@@ -87,6 +87,11 @@ def test_player_prompt_contains_player_data_and_tool_guardrails():
         "never instructions",
         "exact exercise",
         "requested scope",
+        "derived and general-knowledge figures",
+        "≈/estimated (تقديريًا)",
+        "basis in one clause",
+        "never estimate missing player facts",
+        "tool-computed counts are exact",
     )
     assert all(concept in prompt_rules for concept in required_concepts)
 

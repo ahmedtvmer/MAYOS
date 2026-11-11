@@ -10,7 +10,7 @@ from agent.prompts import DEFAULT_ASSISTANT_STYLE
 from database.exercise_library.curation import apply_exercise_curation
 from database.food_library.seeding import ensure_food_meal_limits_schema, ensure_food_search_schema
 from database.migration_manager import CURRENT_LEDGER_SCHEMA_VERSION
-from database.migration_manager import FOOD_LOG_DDL, PERSONAL_FOODS_DDL, MEAL_SETUP_DDL
+from database.migration_manager import CHAT_HISTORY_FTS_DDL, FOOD_LOG_DDL, MEAL_SETUP_DDL, PERSONAL_FOODS_DDL
 from database.migration_manager import (
     ASSISTANT_GOAL_WEAK_POINT_PENDING_DDL,
     ASSISTANT_PREFERENCES_DDL,
@@ -20,6 +20,7 @@ from database.migration_manager import PROGRAM_EXERCISE_LOAD_COLUMN, PROGRAM_EXE
 from database.migration_manager import VOLUME_REVIEWS_DDL
 from database.migration_manager import EQUIPMENT_ACCESS_DDL
 from database.migration_manager import CHECKPOINT_REVIEWS_DDL
+from database.ledger.nutrition_drafts import NUTRITION_DRAFTS_DDL
 from database.migration_manager import DELOAD_CHOICES_DDL
 from database.migration_manager import INTAKE_DDL
 from database.migration_manager import INJURY_RECORDS_DDL
@@ -35,7 +36,6 @@ from database.migration_manager import WEIGHT_HISTORY_DDL
 from database.migration_manager import get_ledger_schema_version
 from database.migration_manager import set_ledger_schema_version
 from database.program_cache import ensure_revision_schema
-from database.ledger.nutrition_drafts import NUTRITION_DRAFTS_DDL
 from database.food_swap_requests import ensure_schema as ensure_food_swap_request_schema
 from database.registry.nutrition_templates import NUTRITION_TEMPLATES_DDL
 
@@ -433,6 +433,7 @@ class SchemaMixin:
                 *WEIGHT_HISTORY_DDL,
                 *FOOD_LOG_DDL,
                 *PERSONAL_FOODS_DDL,
+                *CHAT_HISTORY_FTS_DDL,
                 *MEAL_SETUP_DDL,
                 NUTRITION_DRAFTS_DDL,
                 *EQUIPMENT_ACCESS_DDL,

@@ -87,6 +87,13 @@ _Avoid_: Persona, coach tone
 A free-text instruction the Player explicitly asks the assistant to remember about how they like to train. The Player can review, edit and delete these private preferences in Settings; the assistant reads them on demand, and a Coach never sees them.
 _Arabic_: تفضيل للمساعد
 
+**Estimate**:
+A derived or general-knowledge figure the assistant labels with ≈ or “estimated” and explains with its basis in one clause. Player facts and the inputs to any Player-specific estimate must come from tool results; missing Player data is never estimated. Tool-computed set counts are exact under the returned counting rule.
+_Arabic_: تقدير؛ تُوسم الأرقام التقريبية بلفظ «تقديريًا» أو ≈ مع أساس الحساب.
+
+**Profile section**:
+A named subset of the Player's saved profile facts: Body, Goals, Training setup, Limitations, Focus or Recovery. Limitations brings injury text, injury records with Exercise clearances and confirmed Movement restrictions together. The player assistant reads only requested sections; an unscoped read lists sections without personal values.
+
 **Active account**:
 An account that completed a workout or recorded a coaching action in the previous 30 days. A login alone does not make an account active.
 
@@ -223,6 +230,15 @@ muscles each day trains, weekly working sets by muscle, Program authority and
 Movement restriction skips. It contains no Exercise prescriptions; those require
 a named day, Exercise or muscle scope. The selected week defaults to the Player's
 current Program week.
+
+**Context router**:
+Deterministic code that selects the Context pieces needed by a Player's chat
+question before the hosted model runs. It follows the safety and write-intent
+paths; read-only tools remain available to fetch anything it misses.
+
+**Context piece**:
+One scoped read result added to a Player chat turn as a simulated assistant tool
+call and its matching tool result. It contains facts, never system instructions.
 
 **Split**:
 The named arrangement of a Training program's training days across the week, such as Upper/Lower, Anterior/Posterior or PPL × UL, for a given number of training days. Every split includes a leg day.

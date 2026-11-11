@@ -12,6 +12,7 @@ import '../../core/display_language/settings_copy.dart';
 import '../../core/display_language/choices.dart';
 import '../../core/models.dart';
 import '../../core/privacy_policy.dart';
+import '../../core/refetch_on_reconnect.dart';
 import '../../core/theme/mayos_spacing.dart';
 import '../../core/theme/mayos_theme.dart';
 import '../../core/ui/mayos_card.dart';
@@ -37,7 +38,14 @@ class SettingsScreen extends ConsumerStatefulWidget {
   ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
 }
 
-class _SettingsScreenState extends ConsumerState<SettingsScreen> {
+class _SettingsScreenState extends ConsumerState<SettingsScreen>
+    with RefetchOnReconnect<SettingsScreen> {
+  @override
+  Future<void> refreshAfterReconnect() async {
+    ref.invalidate(recoveryEmailDetailsProvider);
+    await ref.read(recoveryEmailDetailsProvider.future);
+  }
+
   int _selectorRevision = 0;
   bool _savingLanguage = false;
   bool _savingProductEmails = false;

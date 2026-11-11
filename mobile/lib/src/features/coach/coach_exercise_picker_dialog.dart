@@ -12,6 +12,7 @@ import '../../core/display_language/copy_context.dart';
 import '../../core/display_language/feature_copy_context.dart';
 import '../../core/exercise_filters.dart';
 import '../../core/models.dart';
+import '../../core/refetch_on_reconnect.dart';
 import '../../core/theme/mayos_spacing.dart';
 import '../../core/theme/mayos_typography.dart';
 import '../../core/ui/mayos_button.dart';
@@ -38,7 +39,13 @@ class CoachExercisePickerDialog extends ConsumerStatefulWidget {
 }
 
 class _CoachExercisePickerDialogState
-    extends ConsumerState<CoachExercisePickerDialog> {
+    extends ConsumerState<CoachExercisePickerDialog>
+    with RefetchOnReconnect<CoachExercisePickerDialog> {
+  @override
+  Future<void> refreshAfterReconnect() async {
+    if (_failure != null && !_searching) await _search();
+  }
+
   final TextEditingController _query = TextEditingController();
   List<ExerciseCatalogEntry> _results = const <ExerciseCatalogEntry>[];
   bool _searching = false;

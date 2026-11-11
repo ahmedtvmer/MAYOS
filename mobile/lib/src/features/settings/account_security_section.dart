@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api_client.dart';
+import '../../core/refetch_on_reconnect.dart';
 import '../../core/app_failure.dart';
 import '../../core/connectivity_message.dart';
 import '../../core/display_language/catalog.dart';
@@ -47,7 +48,12 @@ class AccountSecuritySection extends ConsumerStatefulWidget {
 }
 
 class _AccountSecuritySectionState extends ConsumerState<AccountSecuritySection>
-    with _AccountSecurityMethods {
+    with _AccountSecurityMethods, RefetchOnReconnect<AccountSecuritySection> {
+  @override
+  Future<void> refreshAfterReconnect() async {
+    if (!_methodBusy) await _refreshSignInMethods();
+  }
+
   @override
   Widget build(BuildContext context) {
     final MayosThemeExtension c = MayosTheme.of(context);

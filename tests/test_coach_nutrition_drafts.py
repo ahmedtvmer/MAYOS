@@ -242,13 +242,13 @@ def test_revocation_during_publication_rolls_back_plan_and_draft_deletion(coach_
         assert ledger.get_active_nutrition_plan()["id"] == 1
 
 
-def test_v57_ledger_migrates_to_draft_storage_without_changing_plans(coach_draft_api, tmp_path):
+def test_v59_ledger_migrates_to_draft_storage_without_changing_plans(coach_draft_api, tmp_path):
     _client, db, _headers, _player, _path = coach_draft_api
     with db.open_ledger(_ledger_id(db)) as ledger:
         before = dict(ledger.get_active_nutrition_plan())
         ledger.conn.execute("DROP TABLE nutrition_plan_drafts")
-        set_ledger_schema_version(ledger.conn, 57)
+        set_ledger_schema_version(ledger.conn, 59)
         ledger.conn.commit()
-        apply_lazy_migrations(ledger.conn, "meal-player", tmp_path, tmp_path)
+        apply_lazy_migrations(ledger.conn, "meal-player", tmp_path, tmp_path, target_version=60)
         assert ledger.conn.execute("SELECT COUNT(*) FROM nutrition_plan_drafts").fetchone()[0] == 0
         assert dict(ledger.get_active_nutrition_plan()) == before
