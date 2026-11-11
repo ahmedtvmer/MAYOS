@@ -653,8 +653,10 @@ PLAYER_READ_TOOL_REGISTRY: tuple[PlayerReadTool, ...] = (
         description=(
             "Read the current player's active Nutrition targets, author, Nutrition goal, pace, "
             "last-14-day adherence counts, and today's Cardio calories and calorie adjustment. "
-            "Includes the plan's saved meals (foods and grams) for today's day_type, not foods eaten. "
+            "Includes today's planned meals for the current day_type, not a Food log. "
             "If next_offset is set, call again with that food offset for the remaining meals. "
+            "For meal questions, use only the returned foods and grams; never invent a Coach's reason "
+            "or claim allergy safety without restriction data. "
             "Read-only: explain meals and suggest which food to swap; never change the Nutrition plan "
             "or claim a swap was made. Direct swaps to the food's swap action in Nutrition; "
             "Coach-authored plans need a Food swap request. Direct target changes to Nutrition."
