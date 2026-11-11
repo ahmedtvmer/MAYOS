@@ -34,6 +34,9 @@ class MayosCopy {
   AiAllowanceCopy get _allowanceCopy => AiAllowanceCopy(languageCode);
   String get brandName => isArabic ? 'ميوس' : 'MAYOS';
   String get home => isArabic ? 'الرئيسية' : 'Home';
+  String get offlineSavedData => isArabic
+      ? 'أنت غير متصل، نعرض البيانات المحفوظة'
+      : 'Offline, showing saved data';
   String get program => isArabic ? 'البرنامج التدريبي' : 'Program';
   String get progress => isArabic ? 'التقدم' : 'Progress';
   String get nutritionTab => nutrition.tab;
@@ -43,7 +46,7 @@ class MayosCopy {
   String get whatsNewTitle => isArabic ? 'ما الجديد' : "What's new";
   String whatsNewRelease(int release) => switch (release) {
         1 || 4 => isArabic ? 'أكتوبر 2026' : 'October 2026',
-        6 => isArabic ? 'نوفمبر 2026' : 'November 2026',
+        6 || 7 => isArabic ? 'نوفمبر 2026' : 'November 2026',
         _ => isArabic ? 'إصدار $release' : 'Release $release',
       };
   String get whatsNewProfile => whatsNewTitle;

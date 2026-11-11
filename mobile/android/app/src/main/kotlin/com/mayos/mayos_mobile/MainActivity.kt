@@ -14,6 +14,7 @@ import java.util.concurrent.Executors
 
 class MainActivity : FlutterActivity() {
     private val shareExecutor = Executors.newSingleThreadExecutor()
+    private var connectivityEvents: ConnectivityEvents? = null
     private var shareChannel: MethodChannel? = null
     private var shareReceiverReady = false
     private var initialShare: Map<String, Any?>? = null
@@ -22,6 +23,9 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        connectivityEvents = ConnectivityEvents(
+            applicationContext, flutterEngine.dartExecutor.binaryMessenger
+        )
         shareChannel = MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             "com.mayos/share"
@@ -64,6 +68,8 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
+        connectivityEvents?.dispose()
+        connectivityEvents = null
         shareExecutor.shutdownNow()
         super.onDestroy()
     }

@@ -704,6 +704,9 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
                 // time and the discard menu (#159) — so the frame supplies no
                 // header of its own.
                 header: const LoggerTopBar(),
+                // Logger connection errors are shown inline; the shared frame
+                // does not need to attach a connectivity observer here.
+                showOfflineBanner: false,
                 // The logger's bottom elements (bar, keypad) take the system-nav
                 // inset themselves, inside their own surface, so the bar's colour
                 // runs under the inset with no seam (#160).

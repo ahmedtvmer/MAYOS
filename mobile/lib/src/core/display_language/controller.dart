@@ -73,11 +73,15 @@ class DisplayLanguageController extends StateNotifier<String> {
         _store.writeAccount(accountId, confirmed).catchError((Object _) {}));
   }
 
-  void cacheAccountChoice(String accountId, String value) {
+  Future<void> cacheAccountChoice(String accountId, String value) async {
     if (accountId.isEmpty || !isSupportedDisplayLanguage(value)) {
       return;
     }
-    unawaited(_store.writeAccount(accountId, value).catchError((Object _) {}));
+    try {
+      await _store.writeAccount(accountId, value);
+    } on Object {
+      // An accepted Account preference must not change the logged-out choice.
+    }
   }
 
   Future<void> restoreLoggedOutChoice() async {

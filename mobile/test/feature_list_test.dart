@@ -98,10 +98,10 @@ void main() {
     expect(entry.audience, 'lifter');
   });
 
-  test('Meal setup has bilingual discovery copy in release 6', () {
+  test('Meal setup has bilingual discovery copy in release 7', () {
     final FeatureEntry entry = featureList.singleWhere((FeatureEntry entry) => entry.id == 'meal_setup');
-    expect(entry.release, 6);
-    expect(currentFeatureRelease, 6);
+    expect(entry.release, 7);
+    expect(currentFeatureRelease, 7);
     expect(entry.titleEn, 'Meal setup and Food restrictions');
     expect(entry.titleAr, 'إعداد الوجبات والقيود الغذائية');
     expect(entry.sentenceEn, isNotEmpty);
@@ -113,13 +113,13 @@ void main() {
     expect(entry.audience, 'lifter');
   });
 
-  test('Spec B2 swap requests and assistant meals are discoverable in release 6', () {
+  test('Spec B2 swap requests and assistant meals are discoverable in release 7', () {
     final Map<String, String> targets = <String, String>{
       'food_swap_requests': 'food_swap_requests', 'assistant_meals': 'assistant',
     };
     for (final MapEntry<String, String> feature in targets.entries) {
       final FeatureEntry entry = featureList.singleWhere((FeatureEntry entry) => entry.id == feature.key);
-      expect(entry.release, 6);
+      expect(entry.release, 7);
       expect(entry.titleEn, isNotEmpty);
       expect(entry.titleAr, isNotEmpty);
       expect(entry.sentenceEn, contains('coach'));

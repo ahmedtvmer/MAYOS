@@ -6,7 +6,7 @@ import 'tour_targets.dart';
 
 /// The shared Feature list used by the Tour and later discovery surfaces.
 const int tourCurrentVersion = 1;
-const int currentFeatureRelease = 6;
+const int currentFeatureRelease = 7;
 const int kReleaseShareCard = 3;
 const int kReleasePrCelebration = 3;
 const int kReleaseDurationCheck = 4;
@@ -63,6 +63,21 @@ List<String> validateFeatureEntries(
 }
 
 const List<FeatureEntry> featureList = <FeatureEntry>[
+  FeatureEntry(
+    id: 'offline_start',
+    titleEn: 'Open your saved training offline',
+    sentenceEn:
+        'Stay signed in without a connection and view saved Home, Program, '
+        'workout targets and Nutrition data until the connection returns.',
+    titleAr: 'افتح بيانات تدريبك المحفوظة دون اتصال',
+    sentenceAr:
+        'ابقَ مسجّل الدخول دون اتصال واطّلع على بيانات الرئيسية والبرنامج '
+        'التدريبي وأهداف التمرين والتغذية المحفوظة حتى يعود الاتصال.',
+    target: 'home',
+    location: TourShellTabLocation(tabIndex: 0),
+    release: 6,
+    audience: 'lifter',
+  ),
   FeatureEntry(
     id: 'assistant_volume',
     titleEn: 'Ask about training volume',
@@ -149,7 +164,7 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
     sentenceAr: 'اختر وجباتك ووقت تدريبك وقيودك الغذائية، وأنشئ وجبات من أطعمة أساسية معتمدة مع توضيح الفرق عن الأهداف وبدّل الأطعمة في خطتك أو اتبع وجبات وملاحظات حددها مدربك، وسجّل الوجبة المخططة بلمسة واحدة.',
     target: 'meal_setup',
     location: TourShellTabLocation(tabIndex: 2),
-    release: 6,
+    release: 7,
     audience: 'lifter',
   ),
   FeatureEntry(
@@ -160,7 +175,7 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
     sentenceAr: 'اطلب من مدربك تبديل طعام في خطة التغذية، وافتح سجل طلباتك من التغذية لمتابعة حالة كل طلب ورد المدرب.',
     target: 'food_swap_requests',
     location: TourShellTabLocation(tabIndex: 2),
-    release: 6,
+    release: 7,
     audience: 'lifter',
   ),
   FeatureEntry(
@@ -171,7 +186,7 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
     sentenceAr: 'اطلب من المساعد شرح وجباتك المخططة أو اقتراح طعام لتبديله، ثم استخدم إجراء تبديل الطعام في التغذية أو أرسل طلب تبديل إلى مدربك.',
     target: 'assistant',
     location: TourShellTabLocation(tabIndex: 0),
-    release: 6,
+    release: 7,
     audience: 'lifter',
   ),
   FeatureEntry(

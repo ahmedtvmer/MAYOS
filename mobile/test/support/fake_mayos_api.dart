@@ -522,6 +522,7 @@ class FakeMayosApi {
   // Exact method+path pairs that fail as a dropped connection (offline
   // program-changing action, spec AC3). Add via ``failOffline('POST', path)``.
   final Set<String> offlineRequests = <String>{};
+  bool allRequestsOffline = false;
 
   /// Test hook: make one method+path fail as a network error.
   void failOffline(String method, String path) {
@@ -529,6 +530,7 @@ class FakeMayosApi {
   }
 
   bool _isOfflineRequest(FakeRequest request) =>
+      allRequestsOffline ||
       offlineRequests.contains('${request.method} ${request.path}');
 
   // Player training schedule and pauses (#30).
@@ -591,6 +593,9 @@ class FakeMayosApi {
 
   /// When true, `GET /auth/me` fails with a transient 500 (token still valid).
   bool meFails = false;
+
+  /// When set, `GET /auth/me` answers this non-401 refusal status instead.
+  int? meRefusalStatus;
   // When true, intake confirmation returns null program fields (coach-controlled edge).
   bool nullOnboardingProgram = false;
 
@@ -1409,6 +1414,11 @@ class FakeMayosApi {
   }
 
   FakeResponse _me(FakeRequest request) {
+    final int? refusal = meRefusalStatus;
+    if (refusal != null) {
+      return FakeResponse(
+          refusal, <String, dynamic>{'detail': 'The request was refused.'});
+    }
     if (meFails) {
       return const FakeResponse(
           500, <String, dynamic>{'detail': 'The service is unavailable.'});
