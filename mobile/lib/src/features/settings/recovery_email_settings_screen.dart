@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/api_client.dart';
 import '../../core/display_language/controller.dart';
 import '../../core/display_language/settings_copy.dart';
+import '../../core/refetch_on_reconnect.dart';
 import '../../core/theme/mayos_spacing.dart';
 import '../../core/theme/mayos_theme.dart';
 import '../../core/ui/mayos_button.dart';
@@ -24,7 +25,18 @@ class RecoveryEmailSettingsScreen extends ConsumerStatefulWidget {
 }
 
 class _RecoveryEmailSettingsScreenState
-    extends ConsumerState<RecoveryEmailSettingsScreen> {
+    extends ConsumerState<RecoveryEmailSettingsScreen>
+    with RefetchOnReconnect<RecoveryEmailSettingsScreen> {
+  @override
+  Future<void> refreshAfterReconnect() async {
+    if (_status == _RecoveryEmailChangeStatus.busy ||
+        _hasLocalRecoveryEmailState) {
+      return;
+    }
+    ref.invalidate(recoveryEmailDetailsProvider);
+    await ref.read(recoveryEmailDetailsProvider.future);
+  }
+
   final TextEditingController _email = TextEditingController();
   final TextEditingController _code = TextEditingController();
 

@@ -97,6 +97,7 @@ ApiClient _client(FakeMayosApi fake, TokenStore tokens) => ApiClient(
       tokens: tokens,
       baseUrl: 'http://test.local',
       adapter: fake.adapter,
+      retryDelay: (_) async {},
     );
 
 final DateTime _fixedNow = DateTime.parse('2026-09-26T12:00:00.000Z');

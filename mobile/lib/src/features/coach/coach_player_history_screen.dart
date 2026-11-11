@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/api_client.dart';
+import '../../core/refetch_on_reconnect.dart';
 import '../../core/app_failure.dart';
 import '../../core/connectivity.dart';
 import '../../core/connectivity_message.dart';
@@ -549,7 +550,11 @@ class _GenerateDraftDialogState extends State<_GenerateDraftDialog> {
 }
 
 class _CoachPlayerHistoryScreenState
-    extends ConsumerState<CoachPlayerHistoryScreen> {
+    extends ConsumerState<CoachPlayerHistoryScreen>
+    with RefetchOnReconnect<CoachPlayerHistoryScreen> {
+  @override
+  Future<void> refreshAfterReconnect() => _load(showLoader: false);
+
   late CoachRosterEntry _entry;
   bool _loading = true;
   FailureMessage? _error;
@@ -610,10 +615,10 @@ class _CoachPlayerHistoryScreenState
       .where((CoachAlert alert) => alert.assignmentId == _entry.assignmentId)
       .toList(growable: false);
 
-  Future<void> _load() async {
+  Future<void> _load({bool showLoader = true}) async {
     final int seq = ++_loadSeq;
     setState(() {
-      _loading = true;
+      if (showLoader) _loading = true;
       _error = null;
     });
     try {
@@ -624,6 +629,13 @@ class _CoachPlayerHistoryScreenState
       if (!mounted || seq != _loadSeq) return;
       _applyPlayerData(playerData);
     } on ApiException catch (error) {
+      // Keep mounted editors and their unsaved fields during a failed
+      // background refresh. Access revocations still replace the page.
+      if (!showLoader &&
+          _summary != null &&
+          (error.statusCode == null || (error.statusCode ?? 0) >= 500)) {
+        return;
+      }
       _showLoadError(error, seq);
     }
   }

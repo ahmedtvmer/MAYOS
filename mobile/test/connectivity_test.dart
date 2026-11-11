@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/app.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/connectivity.dart';
+import 'package:mayos_mobile/src/core/refetch_on_reconnect.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/core/ui/mayos_app_header.dart';
 import 'package:mayos_mobile/src/core/ui/mayos_scaffold.dart';
@@ -155,6 +156,7 @@ void main() {
       tokens,
       extraOverrides: <Override>[
         offlineBannerEnabledProvider.overrideWithValue(true),
+        reconnectProvider.overrideWith((_) => ReconnectController()),
         browserConnectivityEventsProvider.overrideWithValue(
           browserEvents.stream,
         ),

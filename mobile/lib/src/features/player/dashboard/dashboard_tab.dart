@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/active_program.dart';
+import '../../../core/refetch_on_reconnect.dart';
 import '../../../core/app_failure.dart';
 import '../../../core/connectivity_message.dart';
 import '../../../core/api_client.dart';
@@ -74,7 +75,11 @@ class _DashboardData {
   final FailureMessage? partialError;
 }
 
-class _DashboardTabState extends ConsumerState<DashboardTab> {
+class _DashboardTabState extends ConsumerState<DashboardTab>
+    with RefetchOnReconnect<DashboardTab> {
+  @override
+  Future<void> refreshAfterReconnect() => _refresh();
+
   late Future<_DashboardData> _future;
   Assignment? _assignmentOverride;
   bool _assignmentOverrideKnown = false;

@@ -261,11 +261,11 @@ void main() {
     );
 
     expect(
-      find.text('تعذر الاتصال بالخدمة. تحقق من اتصالك بالإنترنت.'),
+      find.text('أنت غير متصل بالإنترنت. سنعيد المحاولة عند عودة الاتصال.'),
       findsOneWidget,
     );
     expect(
-      find.text('Cannot reach the service. Check your connection.'),
+      find.text("You're offline. We'll retry when you're back online."),
       findsNothing,
     );
   });
