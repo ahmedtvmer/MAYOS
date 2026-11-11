@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/api_client.dart';
+import '../../core/refetch_on_reconnect.dart';
 import '../../core/app_mode.dart';
 import '../../core/display_language/feature_copy_context.dart';
 import '../../core/models.dart';
@@ -26,7 +27,11 @@ class SharedProgramChooserScreen extends ConsumerStatefulWidget {
 }
 
 class _SharedProgramChooserScreenState
-    extends ConsumerState<SharedProgramChooserScreen> {
+    extends ConsumerState<SharedProgramChooserScreen>
+    with RefetchOnReconnect<SharedProgramChooserScreen> {
+  @override
+  Future<void> refreshAfterReconnect() => _prepare();
+
   StreamSubscription<SharedProgramText>? _sharedTextSubscription;
   bool _loading = true;
   _ChooserError? _error;
@@ -78,6 +83,7 @@ class _SharedProgramChooserScreenState
       if (mounted) {
         setState(() {
           _assignments = assignments;
+          _error = null;
           _loading = false;
         });
       }

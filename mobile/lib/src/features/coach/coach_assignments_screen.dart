@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/api_client.dart';
+import '../../core/refetch_on_reconnect.dart';
 import '../../core/app_failure.dart';
 import '../../core/connectivity_message.dart';
 import '../../core/display_language/coach_copy.dart';
@@ -43,7 +44,21 @@ class CoachAssignmentsScreen extends ConsumerStatefulWidget {
 }
 
 class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
-    with WidgetsBindingObserver {
+    with RefetchOnReconnect<CoachAssignmentsScreen> {
+  @override
+  bool get refreshWhenHidden => true;
+
+  @override
+  Future<void> refreshAfterReconnect() async {
+    if (_loading ||
+        _disabling ||
+        _busyAssignmentId != null ||
+        _loadingStalledFilter) {
+      return;
+    }
+    await _load(showLoader: false);
+  }
+
   bool _loading = true;
   bool _disabling = false;
   bool _loadingStalledFilter = false;
@@ -56,24 +71,7 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
     _loadCached();
-  }
-
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    super.dispose();
-  }
-
-  /// Grants and revocations happen elsewhere: a return to the foreground
-  /// refreshes the roster so a lost assignment drops its assistant transcript
-  /// before the coach can reopen it (issue #45).
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      _load(showLoader: false);
-    }
   }
 
   /// [showLoader] blanks the list while fetching; the background refreshes

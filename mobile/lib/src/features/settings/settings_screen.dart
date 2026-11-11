@@ -12,6 +12,7 @@ import '../../core/display_language/settings_copy.dart';
 import '../../core/display_language/choices.dart';
 import '../../core/models.dart';
 import '../../core/privacy_policy.dart';
+import '../../core/refetch_on_reconnect.dart';
 import '../../core/theme/mayos_spacing.dart';
 import '../../core/theme/mayos_theme.dart';
 import '../../core/ui/mayos_card.dart';
@@ -37,10 +38,16 @@ class SettingsScreen extends ConsumerStatefulWidget {
   ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
 }
 
-class _SettingsScreenState extends ConsumerState<SettingsScreen> {
+class _SettingsScreenState extends ConsumerState<SettingsScreen>
+    with RefetchOnReconnect<SettingsScreen> {
+  @override
+  Future<void> refreshAfterReconnect() async {
+    ref.invalidate(recoveryEmailDetailsProvider);
+    await ref.read(recoveryEmailDetailsProvider.future);
+  }
+
   int _selectorRevision = 0;
   bool _savingLanguage = false;
-  bool _savingAnalytics = false;
   bool _savingProductEmails = false;
   bool? _productEmailsOptedIn;
 
@@ -441,24 +448,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ],
             ),
           ),
-          const SizedBox(height: MayosSpacing.lg),
-          MayosSectionHeader(title: ui.productAnalytics),
-          MayosCard(
-            padding: const EdgeInsets.symmetric(horizontal: MayosSpacing.xs),
-            child: SwitchListTile(
-              key: const Key('analytics_preference_switch'),
-              contentPadding: EdgeInsets.zero,
-              value: session?.account.analyticsAllowed ?? true,
-              onChanged: session == null || _savingAnalytics
-                  ? null
-                  : (bool value) => _saveAnalyticsPreference(
-                      value,
-                      accountId: session.account.accountId,
-                    ),
-              title: Text(ui.allowAnalytics),
-              subtitle: Text(ui.analyticsDescription),
-            ),
-          ),
           const SizedBox(height: MayosSpacing.xl),
           MayosCard(
             padding: const EdgeInsets.symmetric(
@@ -542,28 +531,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       }
     } finally {
       if (mounted) setState(() => _savingLanguage = false);
-    }
-  }
-
-  Future<void> _saveAnalyticsPreference(
-    bool value, {
-    required String accountId,
-  }) async {
-    setState(() => _savingAnalytics = true);
-    final authController = ref.read(authControllerProvider.notifier);
-    final SettingsCopy ui = SettingsCopy(ref.read(displayLanguageProvider));
-    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
-    messenger.hideCurrentSnackBar();
-    try {
-      await authController.updateAnalyticsAllowed(accountId, value);
-    } on ApiException {
-      if (!mounted) return;
-      if (authController.ownsAccount(accountId)) {
-        messenger.hideCurrentSnackBar();
-        messenger.showSnackBar(SnackBar(content: Text(ui.analyticsSaveFailed)));
-      }
-    } finally {
-      if (mounted) setState(() => _savingAnalytics = false);
     }
   }
 }

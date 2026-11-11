@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/api_client.dart';
+import '../../core/refetch_on_reconnect.dart';
 import '../../core/app_failure.dart';
 import '../../core/connectivity_message.dart';
 import '../../core/display_language/coach_copy.dart';
@@ -36,7 +37,18 @@ class CoachProfileScreen extends ConsumerStatefulWidget {
   ConsumerState<CoachProfileScreen> createState() => _CoachProfileScreenState();
 }
 
-class _CoachProfileScreenState extends ConsumerState<CoachProfileScreen> {
+class _CoachProfileScreenState extends ConsumerState<CoachProfileScreen>
+    with RefetchOnReconnect<CoachProfileScreen> {
+  @override
+  Future<void> refreshAfterReconnect() async {
+    // Reloading an open profile form would replace the coach's edits.
+    if (_loadError != null && !_saving) {
+      await _load();
+    } else {
+      await _loadExtras();
+    }
+  }
+
   static const int _maxDisplayName = 60;
   static const int _maxBio = 1000;
   static const int _maxSpecialization = 200;

@@ -53,14 +53,14 @@ services:
       start_period: 120s
 
   cloudflared:
-    image: cloudflare/cloudflared:2026.10.0
+    image: cloudflare/cloudflared:2026.10.7
     environment:
       TUNNEL_TOKEN: "${TUNNEL_TOKEN:?set TUNNEL_TOKEN in /opt/mayos/.env}"
     command: ["tunnel", "--no-autoupdate", "run"]
     restart: unless-stopped
 
   litestream:
-    image: litestream/litestream:0.5.17
+    image: litestream/litestream:0.5.18
     environment:
       R2_ENDPOINT: "${R2_ENDPOINT:?set R2_ENDPOINT in /opt/mayos/.env}"
       R2_BUCKET: "${R2_BUCKET:?set R2_BUCKET in /opt/mayos/.env}"

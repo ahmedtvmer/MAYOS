@@ -114,11 +114,11 @@ def test_vegetarian_uses_source_category(category, allowed):
     assert vegetarian_category(category) is allowed
 
 
-def test_lazy_v56_migration_preserves_existing_food_log(tmp_path):
+def test_lazy_v58_migration_preserves_existing_food_log(tmp_path):
     with sqlite3.connect(":memory:") as connection:
         connection.execute("CREATE TABLE food_log_entries(id TEXT PRIMARY KEY)")
         connection.execute("INSERT INTO food_log_entries VALUES('existing')")
-        set_ledger_schema_version(connection, 55)
+        set_ledger_schema_version(connection, 57)
         connection.commit()
         apply_lazy_migrations(connection, "meals", tmp_path / "users", tmp_path / "backups")
         apply_lazy_migrations(connection, "meals", tmp_path / "users", tmp_path / "backups")

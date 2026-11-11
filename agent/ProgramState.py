@@ -174,7 +174,7 @@ class ProgramExerciseSchema(_ProgramStateModel):
     notes: str | None = Field(
         default=None,
         max_length=MAX_PROGRAM_NOTES_LENGTH,
-        description="Execution steps from the exercise catalog (or a chat-supplied cue)",
+        description="Optional Coach or chat-supplied cue; legacy notes may contain catalog technique",
     )
     load: ProgramLoadSchema | None = Field(default=None, description="Optional fixed kg or percent of e1RM")
     image_path: str | None = Field(default=None, description="Local path or URL to demonstration image")

@@ -9,6 +9,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import '../../../core/active_workout.dart';
 import '../../../core/active_program.dart';
 import '../../../core/api_client.dart';
+import '../../../core/refetch_on_reconnect.dart';
 import '../../../core/analytics_client.dart';
 import '../../../core/app_failure.dart';
 import '../../../core/baselines.dart';
@@ -302,7 +303,26 @@ class WorkoutLoggerScreen extends ConsumerStatefulWidget {
 }
 
 class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver, RefetchOnReconnect<WorkoutLoggerScreen> {
+  @override
+  Future<void> refreshAfterReconnect() async {
+    final String? accountId =
+        ref.read(authControllerProvider).session?.account.accountId;
+    if (accountId == null || _loading) return;
+    // The Active workout keeps its frozen prescription and entered sets.
+    // Only refresh the program used to check current authority and changes.
+    final _LoggerProgramLoad loaded = await _loadLoggerProgram(accountId);
+    if (!mounted ||
+        ref.read(authControllerProvider).session?.account.accountId != accountId) {
+      return;
+    }
+    setState(() {
+      _fromCache = loaded.fromCache;
+      _loggerProgram = loaded.program;
+      _loggerProgramOnline = loaded.fetchedOnline;
+    });
+  }
+
   final TextEditingController _notes = TextEditingController();
   final TextEditingController _refreshedCoachReason = TextEditingController();
 
@@ -2522,6 +2542,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
     final List<dynamic> groups =
         exercise.exercise['set_groups'] as List<dynamic>? ?? <dynamic>[];
     String? groupPrescription;
+    PrescriptionHint? setHint = exercise.prescriptionHint;
     int groupEnd = 0;
     for (final dynamic rawGroup in groups) {
       if (rawGroup is! Map<String, dynamic>) continue;
@@ -2530,7 +2551,18 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
       if (setIndex < groupEnd) {
         final bool isAmrapSet =
             rawGroup['amrap_last_set'] == true && setIndex == groupEnd - 1;
-        groupPrescription = _copy.groupPrescription(rawGroup, amrap: isAmrapSet);
+        setHint = PrescriptionHint(
+          weightKg: setHint?.weightKg,
+          reps: setHint?.reps,
+          rir: workout.deload?.isApplied == true &&
+                  workout.deload?.intensityCapRpe != null
+              ? 10 - workout.deload!.intensityCapRpe!
+              : (rawGroup['target_rir'] as num?)?.toDouble() ?? setHint?.rir,
+        );
+        groupPrescription = _copy.groupPrescription(
+          <String, dynamic>{...rawGroup, 'target_rir': setHint.rir},
+          amrap: isAmrapSet,
+        );
         break;
       }
     }
@@ -2541,7 +2573,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
       set: set,
       equipment: exercise.equipment,
       previous: previousSetFor(exercise, setIndex, workout.baselines),
-      prescriptionHint: exercise.prescriptionHint,
+      prescriptionHint: setHint,
       badges: badges[set.id] ?? const SetRecordBadges(),
       focus: _focus,
       isCurrent: isCurrent,

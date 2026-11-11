@@ -87,7 +87,7 @@ void main() {
     expect(entry.target, 'home');
   });
 
-  test('Food log keeps its release 5 entry', () {
+  test('Food log has bilingual copy and a Nutrition target from release 5', () {
     final FeatureEntry entry = featureList.singleWhere((FeatureEntry entry) => entry.id == 'food_log');
     expect(entry.release, 5);
     expect(entry.titleEn, 'Food log');

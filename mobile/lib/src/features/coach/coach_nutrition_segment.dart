@@ -7,6 +7,7 @@ import '../../core/display_language/copy_context.dart';
 import '../../core/display_language/nutrition_copy.dart';
 import '../../core/display_language/coach_food_log_copy.dart';
 import '../../core/models.dart';
+import '../../core/refetch_on_reconnect.dart';
 import '../../providers.dart';
 import 'coach_food_log_view.dart';
 import 'coach_nutrition_draft_screen.dart';
@@ -23,7 +24,18 @@ class CoachNutritionSegment extends ConsumerStatefulWidget {
       _CoachNutritionSegmentState();
 }
 
-class _CoachNutritionSegmentState extends ConsumerState<CoachNutritionSegment> {
+class _CoachNutritionSegmentState extends ConsumerState<CoachNutritionSegment>
+    with RefetchOnReconnect<CoachNutritionSegment> {
+  @override
+  Future<void> refreshAfterReconnect() async {
+    // Do not replace nutrition fields after the coach has loaded or started
+    // editing them. A failed initial read is safe to retry in place.
+    if (_state == null && _error != null && !_busy) {
+      setState(() => _error = null);
+      await _load();
+    }
+  }
+
   static const List<String> _targetFields = <String>[
     'calories',
     'protein_g',

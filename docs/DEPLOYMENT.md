@@ -212,10 +212,29 @@ addresses remain per-address. Admin audit entries retain the full caller IP.
 
 Set `MIN_ANDROID_BUILD` to the lowest Android `versionCode` that may use the
 API. The default `0` disables the policy; malformed or negative values also
-disable it. Android requests with a lower `X-MAYOS-Build` receive HTTP 426 and
+disable it.
+Android requests with a lower `X-MAYOS-Build` receive HTTP 426 and
 the configured `ANDROID_STORE_URL`. Health and readiness checks, public account
 pages, `assetlinks.json`, `/app/version-policy`, and `/admin` are exempt.
 Requests without that build header and web clients are not rejected by this policy.
+
+**Legacy analytics preference writes (#445).** Keep `PUT /auth/analytics-preference`
+only for installed older apps while Android build 1 is still supported, so their
+old Settings switch continues to work. New Android and web builds have no switch
+and never call this endpoint. After `MIN_ANDROID_BUILD` reaches `2`, remove the
+route and `AnalyticsPreferenceIn`, along with the endpoint's compatibility tests. Until
+then, retain the committed-preference `analytics_opted_out` person-property
+update from the ADR 040 amendment of 2026-10-04. Keep the stored preference,
+`/auth/me` read path, server/client gates, and account-deletion behavior when
+removing that compatibility code. Retain the registry preference writer and
+`record_opt_out_change`: the owner's **Turn off analytics** action uses them to
+record objections received at the privacy contact address even after older
+Android builds are retired.
+
+Per-set RIR hints (#532) need Android build 2. The code default stays `0` so
+a deploy can never lock out installed apps: publish build 2 first, then the
+owner sets `MIN_ANDROID_BUILD=2` in `/opt/mayos/.env`. Deploy the web client
+with the API change.
 
 ---
 
@@ -540,7 +559,7 @@ services:
       start_period: 120s
 
   cloudflared:
-    image: cloudflare/cloudflared:latest
+    image: cloudflare/cloudflared:2026.10.7
     container_name: mayos_tunnel
     restart: unless-stopped
     command: tunnel --no-autoupdate --url http://mayos-api:8000
@@ -1418,9 +1437,9 @@ ADR 040; event contracts in [ANALYTICS.md](ANALYTICS.md). Analytics stays off
 everywhere until these keys are set, so this can be done at any time.
 
 **Privacy policy.** The live policy (`docs/PRIVACY_POLICY.md`, served at
-`/privacy`, version 1.2) names PostHog and the opt-out; keep it in step with
-ANALYTICS.md whenever what is sent changes. The served page updates with the
-next `fly deploy`.
+`/privacy`, version 1.12) names PostHog and the preserved historical opt-outs;
+keep it in step with ANALYTICS.md whenever what is sent changes. The served
+page updates with the next `fly deploy`.
 
 **1. PostHog project settings** (EU Cloud, project MAYOS):
 - Project settings → **Discard client IP data: ON**.
@@ -1667,10 +1686,11 @@ input to `/opt/mayos/app`, including `data/processed_exercises.csv` and
 mobile outputs, caches, worktrees, and secrets. It never runs `git pull` on the
 server.
 
-Docker builds `api` on the server and reuses its layer cache. The script then
-runs `compose up -d --no-deps api`, leaving the existing `cloudflared` and
-Litestream services running. It polls the API container's `/readyz` for up to
-three minutes and prints the successful response. The last three image tags
+Docker builds `api` on the server and reuses its layer cache. The script first
+runs `compose up -d --no-deps api` and polls the API container's `/readyz` for
+up to three minutes. After readiness succeeds, it also runs Compose for the
+`cloudflared` and Litestream services, applying any changed image tags. The
+last three API image tags
 are kept in `/opt/mayos/state/deploy-history.tsv`; older `mayos-api` images are
 removed while the running image is retained. After a successful deploy, the
 script also prunes Docker build cache older than 168 hours and prints `df -h /`;
@@ -1688,6 +1708,34 @@ image running and explains that Training ledgers may have migrated.
 ```bash
 ./deploy/deploy_server.sh status
 ```
+
+### Cloudflare Tunnel image upgrade and rollback
+
+The production connector image is pinned in `deploy/compose.server.yaml`.
+Staging's API joins the production network and uses that same connector through
+the `api-staging` alias; `deploy/compose.staging.yaml` does not run a second
+tunnel connector.
+
+To upgrade, change the connector to an exact release tag, merge the change to
+`master`, and deploy it to staging first:
+
+```bash
+./deploy/deploy_server.sh staging up
+```
+
+Check staging readiness and the staging route at `https://staging.mayos.online`.
+Staging validation exercises the API through the currently running production
+connector; it does not start a separate tunnel image. After staging passes,
+deploy the merged `master` checkout to production with the command in §14.
+Once the API is ready, the production deploy recreates `cloudflared` with the
+new pinned image. Keep `TUNNEL_TOKEN` and the Cloudflare tunnel configuration
+unchanged.
+
+To roll back the connector, restore its previous exact image tag in
+`deploy/compose.server.yaml`, merge that change to `master`, then deploy the
+merged checkout to production. The successful production deploy applies the
+previous tag to `cloudflared`; the API image rollback command does not change
+the connector tag.
 
 ### Rollback (#376)
 

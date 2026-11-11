@@ -64,6 +64,18 @@ List<String> validateFeatureEntries(
 
 const List<FeatureEntry> featureList = <FeatureEntry>[
   FeatureEntry(
+    id: 'set_effort',
+    titleEn: 'Ease into each exercise',
+    sentenceEn: 'New generated programs start each exercise with more reps in reserve when it has multiple sets; follow the RIR on each row.',
+    titleAr: 'ابدأ كل تمرين بجهد أخف',
+    sentenceAr: 'تبدأ البرامج التدريبية الجديدة كل تمرين بتكرارات أكثر في الاحتياط عند وجود عدة مجموعات؛ اتبع RIR في كل صف.',
+    target: 'program',
+    location: TourShellTabLocation(tabIndex: 1),
+    release: 6,
+    audience: 'lifter',
+    requiresProgramControl: true,
+  ),
+  FeatureEntry(
     id: 'home',
     titleEn: 'Home',
     sentenceEn: 'See your next workout and start training.',
@@ -88,9 +100,9 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
   FeatureEntry(
     id: 'assistant',
     titleEn: 'Assistant',
-    sentenceEn: 'Ask about your training, changes to your program, or what you ate on a recent day.',
+    sentenceEn: 'Ask about your Program days, Exercises and working sets, program changes or recent food; profile answers use only the facts your question needs.',
     titleAr: 'المساعد',
-    sentenceAr: 'اسأل عن تدريبك أو تغييرات برنامجك التدريبي أو ما أكلته في يوم قريب.',
+    sentenceAr: 'اسأل عن أيام برنامجك التدريبي وتمارينه ومجموعاته، أو تغييرات برنامجك، أو طعامك مؤخرًا؛ وتستخدم إجابات الملف الشخصي البيانات المطلوبة لسؤالك فقط.',
     target: 'assistant',
     location: TourShellTabLocation(tabIndex: 0),
     release: 0,
@@ -250,9 +262,9 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
   FeatureEntry(
     id: 'assistant_why',
     titleEn: 'Ask the assistant why',
-    sentenceEn: 'Ask why an exercise or training decision is in your program.',
+    sentenceEn: 'Ask why an exercise or training decision is in your program, or bring up something you told the assistant in an older chat.',
     titleAr: 'اسأل المساعد عن السبب',
-    sentenceAr: 'اسأل عن سبب وجود تمرين أو قرار تدريبي في برنامجك.',
+    sentenceAr: 'اسأل عن سبب وجود تمرين أو قرار تدريبي في برنامجك التدريبي، أو اذكر شيئًا قلته للمساعد في محادثة سابقة.',
     target: 'whats_new_assistant_why',
     location: TourRouteLocation(chatPath),
     release: 1,

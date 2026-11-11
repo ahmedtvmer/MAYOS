@@ -16,20 +16,30 @@ Keys, PostHog project settings and the release-build defines are set up in
 
 - PostHog `distinct_id` is the immutable Account id. It is never a username,
   email, token, or client identifier.
-- The registry stores each Account's analytics preference, allowed by default.
-  Opting out suppresses that Account's server events and person updates at the
-  analytics boundary, and disables the Flutter client for that Account. The
-  sole exception is one best-effort person update after the preference change
-  commits. If the registry preference cannot be read, the service suppresses
-  the send. A deleted Account is also denied by the gate even after its
-  preference row has been removed.
+- Analytics is on for new Accounts and existing Accounts that never opted out.
+  Accounts that opted out before the setting was removed (#445) retain their
+  stored preferences; `/auth/me` still returns `analytics_allowed` to disable
+  the Flutter client. The server
+  suppresses those Accounts' events and person updates at the same boundary.
+  New Android and web builds have no Player or Coach analytics setting and
+  never write the preference. `PUT /auth/analytics-preference` remains only for
+  installed older apps until `MIN_ANDROID_BUILD` reaches `2`; their old switch
+  can still change the preference. Its sole gate exception remains one
+  best-effort `analytics_opted_out` person update after a preference change
+  commits (ADR 040, 2026-10-04). Remove that compatibility write path after the
+  minimum-build change, retaining stored preferences and both analytics gates.
+  If the registry preference cannot be read, the service suppresses the send.
+  A deleted Account is also denied by the gate even after its preference row
+  has been removed.
 - The gate follows an event or person update's `distinct_id`. An opted-out
   Account's own events and person updates are suppressed. A counterpart's event
   can still be sent when that Account allows analytics; for example, an
   `assignment_started` event from an opted-out Player redeeming an invite is
   attributed to the Coach. That event does not identify the opted-out Player.
 - Mutable person properties are `is_player`, `is_coach`, `coached`,
-  `active_roster_size`, and `analytics_opted_out`. The initial `signup_phase` is set once from
+  `active_roster_size`, and `analytics_opted_out` (updated by the legacy
+  preference-write endpoint and owner-recorded objections). The initial
+  `signup_phase` is set once from
   `MAYOS_RELEASE_PHASE` (`closed_trial` by default; `public` after launch).
   UTM and referrer properties are set once at registration; referral Coach
   attribution is set once after the first successful Assignment invite redemption.
@@ -38,6 +48,20 @@ Keys, PostHog project settings and the release-build defines are set up in
   the version must be a three-part numeric version with optional prerelease or
   build labels. Missing or invalid versions resolve to `unknown`; a bad version
   does not invalidate an otherwise recognized platform.
+- The legal basis for product analytics is MAYOS's legitimate interest in
+  understanding how the app is used to improve it (GDPR Art. 6(1)(f)). Account
+  holders can object at any time by writing to the privacy contact named in
+  the policy (`PRIVACY_CONTACT_EMAIL`). The owner records the objection on the
+  Account's admin page using **Turn off analytics**, then confirms the action.
+  `POST /admin/accounts/{account_id}/analytics-off` requires the owner session,
+  session CSRF token, and explicit confirmation. It sets the same stored opt-out
+  and atomically writes `account_analytics_turned_off` to the Audit log with the
+  owner actor, Account id, source IP, and fixed objection reason. A repeated
+  request is a no-op, with no duplicate audit entry or person update. After
+  commit, one `analytics_opted_out: true` person-property send crosses the gate
+  (ADR 040, 2026-10-04); all subsequent Account sends are suppressed. The page
+  shows On or Off and offers no turn-on action. Retain this objection route,
+  registry writer, and person-update helper after retiring the legacy app API.
 - `env` uses one of `development`, `production`, or `test` from `MAYOS_ENV`;
   the default is `development`. Fly sets `MAYOS_ENV=production` explicitly.
   `TESTING=1` or no `POSTHOG_API_KEY` disables sends.
@@ -319,7 +343,7 @@ those definitions.
 | `is_coach` | Boolean person property | The Account has Coach capability. |
 | `coached` | Boolean person property | The Player has an active Assignment. |
 | `active_roster_size` | Integer from 0 to 200; person property and assignment event property | The Coach's count of active Assignments, read from committed registry state. |
-| `analytics_opted_out` | Boolean person property | Whether the Account holder turned product analytics off. Updated once after the preference change commits. |
+| `analytics_opted_out` | Boolean person property | Updated once after a committed preference change through the legacy endpoint or an owner-recorded objection. Retain objection updates after removing the legacy endpoint (#445). |
 | `role` | `player`, `coach`, or `unknown` | Capability for the event's distinct id; Assignment lifecycle events describe the roster owner except when the Coach is deleted. |
 | `platform` | `android`, `web`, or `unknown` | Flutter client platform; server events use `X-MAYOS-Client`. |
 | `app_version` | Safe version label or `unknown`; IP literals rejected | Flutter build name; server events use `X-MAYOS-Client`. |
@@ -492,19 +516,24 @@ records.
 | Assignment invite redemption failures by coded reason (trend) | invite_redemption_failed | reason_code, platform, app_version, role. |
 | Alert lifecycle delay and unresolved volume (trend) | coach_alert_created, coach_alert_acknowledged, coach_alert_resolved; operational alert rows for current open count | alert_kind, platform, signup_phase, plan. |
 
-## Privacy notice — approved by the owner 2026-10-05
+## Privacy notice — owner decisions 2026-10-05 and 2026-10-23
 
 Published as the "Product analytics" section of PRIVACY_POLICY.md (policy
-version 1.2). The approved summary:
+version 1.12). The summary reflecting the preserved opt-outs decision:
 
 MAYOS uses PostHog (EU) as a product-analytics processor. MAYOS sends
 pseudonymous events associated with an immutable Account id to measure feature
 use, such as onboarding, workouts, coaching, programs, and AI. Events use
 allowlisted properties such as event names, capabilities, counts, and timing
 metadata; they do not contain free text, chat messages, onboarding answers,
-prompts, or workout contents. Account
-holders can turn product analytics off in Settings. When analytics is off,
-MAYOS stops sending that Account's own server and Flutter client analytics
-events. Events attributed to a counterpart remain subject to that counterpart's
-choice and do not identify the opted-out Account. The choice is stored with the
-Account and applies again after signing in on another session.
+prompts, or workout contents. Analytics is on for all Accounts except those
+that previously turned it off or objected through the privacy contact. Those Accounts stay off
+and send no server or Flutter client analytics events across sessions and
+devices. The product-analytics setting is no longer in new app
+builds. Installed older apps can still change the stored preference through
+the compatibility endpoint until Android build 2 becomes the minimum build.
+Account holders can object at any time through the policy's privacy contact;
+the owner turns analytics off through the Account's admin page. The legal basis
+is legitimate interest in understanding app use to improve it (GDPR Art. 6(1)(f)).
+Events attributed to a counterpart follow that counterpart's stored preference
+and do not identify the opted-out Account.

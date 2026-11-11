@@ -1095,7 +1095,7 @@ def test_generate_draft_preserves_active_program_profile_and_authority(api, monk
         assert ledger.get_player_profile() == original_profile
         assert ledger.get_program_draft(assignment_id)["draft"]["weekly_frequency"] == 2
         assert db.get_active_assignment_for_player(player_account_id)["coach_account_id"] == coach_account_id
-        assert ledger.get_program_draft(assignment_id)["draft"]["days"][0]["exercises"][0]["target_rir"] == 0.5
+        assert ledger.get_program_draft(assignment_id)["draft"]["days"][0]["exercises"][0]["target_rir"] == 1.0
 
 
 def test_generate_draft_rejects_cardio_days_above_training_frequency(api):
@@ -2410,7 +2410,13 @@ def test_multi_day_program_draft_round_trips_every_field_through_publish(api):
 
     active = client.get("/programs/active", headers=player_headers)
     assert active.status_code == 200, active.text
-    assert active.json()["days"] == days
+    active_days = active.json()["days"]
+    for day in active_days:
+        for exercise in day["exercises"]:
+            # This Player-read projection is derived from the catalog and is
+            # not part of the Coach's persisted publication response.
+            exercise.pop("notes_are_technique", None)
+    assert active_days == days
 
 
 def test_ending_assignment_discards_program_draft(api):

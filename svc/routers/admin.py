@@ -393,6 +393,28 @@ async def admin_account_detail(
     return _document(f"Account · {account['username']}", body)
 
 
+@router.post("/accounts/{account_id}/analytics-off", include_in_schema=False)
+async def admin_account_analytics_off(
+    request: Request, account_id: str, db: Annotated[Any, Depends(get_db)]
+):
+    form = await request.form()
+    access = await _admin_account_action_access(request, account_id, db, form)
+    if isinstance(access, Response):
+        return access
+    if _form_text(form, "confirmation") != "turn_off":
+        return HTMLResponse("Confirm the analytics objection before continuing.", status_code=400)
+    changed = await asyncio.to_thread(
+        admin_accounts_service.turn_off_analytics,
+        db,
+        account_id,
+        _owner_actor(request.app.state.admin_security),
+        _source_ip(request),
+    )
+    if changed is None:
+        return not_found_response()
+    return RedirectResponse(f"/admin/accounts/{account_id}", status_code=303)
+
+
 @router.get("/accounts/{account_id}/delete", response_class=HTMLResponse, include_in_schema=False)
 async def admin_account_delete_confirmation(
     request: Request,
@@ -1476,8 +1498,28 @@ def _account_detail_page(
         + "</ul>"
         + _password_card(account, metadata, csrf_token, reset_result)
         + _coach_access_card(account, csrf_token, coach_invites, coach_email_result)
+        + _account_analytics_card(account, csrf_token)
         + _account_delete_card(account)
         + "</main>"
+    )
+
+
+def _account_analytics_card(account: dict[str, Any], csrf_token: str) -> str:
+    heading = '<section class="health-panel"><h2>Product analytics</h2>'
+    if not account["analytics_allowed"]:
+        return heading + '<p role="status">Analytics: Off</p></section>'
+    account_id = html.escape(account["account_id"], quote=True)
+    csrf = html.escape(csrf_token, quote=True)
+    return (
+        heading + '<p>Analytics: On</p>'
+        '<details><summary>Turn off analytics</summary>'
+        '<p>Record this Account\'s objection to product analytics. This action has no undo here.</p>'
+        f'<form method="post" action="/admin/accounts/{account_id}/analytics-off">'
+        f'<input type="hidden" name="csrf_token" value="{csrf}">'
+        '<label><input type="checkbox" name="confirmation" value="turn_off" required> '
+        'Confirm that this Account has objected to product analytics</label>'
+        '<button type="submit">Confirm turn off analytics</button>'
+        '</form></details></section>'
     )
 
 

@@ -8,9 +8,9 @@ from typing import Any
 
 from agent.prompts import DEFAULT_ASSISTANT_STYLE
 from database.exercise_library.curation import apply_exercise_curation
-from database.food_library.seeding import ensure_food_search_schema
+from database.food_library.seeding import ensure_food_meal_limits_schema, ensure_food_search_schema
 from database.migration_manager import CURRENT_LEDGER_SCHEMA_VERSION
-from database.migration_manager import FOOD_LOG_DDL, PERSONAL_FOODS_DDL, MEAL_SETUP_DDL
+from database.migration_manager import CHAT_HISTORY_FTS_DDL, FOOD_LOG_DDL, MEAL_SETUP_DDL, PERSONAL_FOODS_DDL
 from database.migration_manager import (
     ASSISTANT_GOAL_WEAK_POINT_PENDING_DDL,
     ASSISTANT_PREFERENCES_DDL,
@@ -134,6 +134,7 @@ class SchemaMixin:
             if self.catalog_conn.execute(
                 "SELECT 1 FROM sqlite_master WHERE type='table' AND name='foods'"
             ).fetchone():
+                ensure_food_meal_limits_schema(self.catalog_conn)
                 ensure_food_search_schema(self.catalog_conn)
             self.catalog_conn.commit()
         self._ensure_exercise_name_schema(curation_path)
@@ -432,6 +433,7 @@ class SchemaMixin:
                 *WEIGHT_HISTORY_DDL,
                 *FOOD_LOG_DDL,
                 *PERSONAL_FOODS_DDL,
+                *CHAT_HISTORY_FTS_DDL,
                 *MEAL_SETUP_DDL,
                 NUTRITION_DRAFTS_DDL,
                 *EQUIPMENT_ACCESS_DDL,

@@ -313,11 +313,11 @@ def test_coach_target_edits_preserve_coach_meals_with_notice_and_gate_enable(mea
     assert client.get("/nutrition/meals", headers=headers).json()["targets_changed"]
 
 
-def test_lazy_v57_adds_meals_without_rewriting_existing_versions(tmp_path):
+def test_lazy_v59_adds_meals_without_rewriting_existing_versions(tmp_path):
     with sqlite3.connect(":memory:") as connection:
         connection.execute("CREATE TABLE nutrition_plan_versions(id INTEGER PRIMARY KEY, targets_json TEXT)")
         connection.execute("INSERT INTO nutrition_plan_versions VALUES(1,'{\"calories\":2000}')")
-        set_ledger_schema_version(connection, 56)
+        set_ledger_schema_version(connection, 58)
         connection.commit()
         apply_lazy_migrations(connection, "meal-player", tmp_path / "users", tmp_path / "backups")
         assert connection.execute("SELECT targets_json, meals_json FROM nutrition_plan_versions").fetchone() == ('{"calories":2000}', None)
