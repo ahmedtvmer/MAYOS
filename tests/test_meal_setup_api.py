@@ -32,7 +32,7 @@ def test_setup_round_trips_in_private_ledger_without_changing_targets(food_api, 
     account = db.get_active_account_by_username("food-player")
     with db.open_ledger(account["ledger_id"]) as ledger:
         assert ledger.get_meal_setup() == _setup(count)
-        assert get_ledger_schema_version(ledger.conn) >= 56
+        assert get_ledger_schema_version(ledger.conn) >= 58
     assert db.catalog_conn.execute("SELECT 1 FROM sqlite_master WHERE name='meal_setup'").fetchone() is None
     other = client.post("/auth/register", json={"trainee_id": "other-meals", "password": "correct-horse-1"}).json()
     other_headers = {"Authorization": f"Bearer {other['access_token']}"}

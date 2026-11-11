@@ -91,7 +91,8 @@ def _upsert_food_rows(connection, rows):
          portion_grams=excluded.portion_grams,ingredients_json=excluded.ingredients_json,
          category=excluded.category,vegetarian=excluded.vegetarian,
          allergens_json=excluded.allergens_json,allergens_reviewed=excluded.allergens_reviewed,
-         staple_order=excluded.staple_order,min_grams=excluded.min_grams,max_grams=excluded.max_grams""",
+         staple_order=excluded.staple_order,
+         min_grams=excluded.min_grams,max_grams=excluded.max_grams""",
         [_storage_row(row) for row in rows])
 
 

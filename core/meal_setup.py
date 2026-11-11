@@ -5,6 +5,7 @@ ALLERGENS = (
     "shellfish", "sesame", "soy",
 )
 MEAL_LAYOUTS = {
+    2: ("lunch", "dinner"),
     3: ("breakfast", "lunch", "dinner"),
     4: ("breakfast", "lunch", "afternoon_snack", "dinner"),
     5: ("breakfast", "morning_snack", "lunch", "afternoon_snack", "dinner"),

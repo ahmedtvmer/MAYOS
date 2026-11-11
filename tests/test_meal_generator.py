@@ -2,10 +2,11 @@
 
 from copy import deepcopy
 from dataclasses import replace
+from random import Random
 
 import pytest
 
-from core.meal_generator import MealGenerationInput, generate_meals, portion_step
+from core.meal_generator import MealGenerationInput, generate_meals
 from core.meal_setup import MEAL_LAYOUTS
 
 
@@ -24,29 +25,26 @@ def _request(count=3, time="evening", training=False):
                "restrictions": {"allergies": [], "dislikes": [], "vegetarian": False}},
         training_day=training, staples=[_food("protein", "protein", protein=30),
                                       _food("carb", "carb", carbs=50),
-                                      _food("fat", "vegetable_fat", fat=100,
+                                      _food("Oil", "vegetable_fat", fat=100,
                                             portion_label="local portion", portion_grams=1)],
     )
 
 
-@pytest.mark.parametrize("count", [3, 4, 5])
+@pytest.mark.parametrize("count", [2, 3, 4, 5])
 @pytest.mark.parametrize("time", ["morning", "afternoon", "evening"])
 @pytest.mark.parametrize("training", [False, True])
-def test_layouts_timing_rounding_and_all_nutrients_meet_slot_and_day_limits(count, time, training):
+def test_layouts_targets_and_inputs_stay_deterministic(count, time, training):
     request = _request(count, time, training)
     untouched = deepcopy(request)
     generated = generate_meals(request)
     assert generated["status"] == "ready"
     assert [meal["slot"] for meal in generated["meals"]] == list(MEAL_LAYOUTS[count])
     for meal in generated["meals"]:
+        assert len(meal["foods"]) == 3
         assert meal["targets"]["protein_g"] == pytest.approx(150 / count)
         assert meal["targets"]["calories"] == pytest.approx(2610 / count)
-        for key, target in meal["targets"].items():
-            assert target * .95 - 1e-8 <= meal["totals"][key] <= target * 1.05 + 1e-8
-        for food, staple in zip(meal["foods"], request.staples):
-            assert food["grams"] % portion_step(staple) == pytest.approx(0)
-    for key, target in request.targets.items():
-        assert target * .95 <= generated["totals"][key] <= target * 1.05
+    assert sum(meal["targets"]["carbs_g"] for meal in generated["meals"]) == pytest.approx(300)
+    assert sum(meal["targets"]["fat_g"] for meal in generated["meals"]) == pytest.approx(90)
     assert generate_meals(request) == generated
     assert request == untouched
 
@@ -56,11 +54,11 @@ def test_layouts_timing_rounding_and_all_nutrients_meet_slot_and_day_limits(coun
     (4, "afternoon", {"lunch", "afternoon_snack"}),
     (5, "evening", {"afternoon_snack", "dinner"}),
 ])
-def test_training_carb_shift_brackets_usual_training_time(count, time, higher):
+def test_training_carb_targets_bracket_usual_training_time(count, time, higher):
     meals = generate_meals(_request(count, time, True))["meals"]
     near = [meal for meal in meals if meal["slot"] in higher]
     far = [meal for meal in meals if meal["slot"] not in higher]
-    assert min(meal["totals"]["carbs_g"] for meal in near) > max(meal["totals"]["carbs_g"] for meal in far)
+    assert min(meal["targets"]["carbs_g"] for meal in near) > max(meal["targets"]["carbs_g"] for meal in far)
     assert max(meal["targets"]["fat_g"] for meal in near) < min(meal["targets"]["fat_g"] for meal in far)
 
 
@@ -72,27 +70,6 @@ def test_foods_are_selected_from_the_correct_meal_type_list():
     generated = generate_meals(request)
     assert [meal["foods"][0]["id"] for meal in generated["meals"]] == [
         "breakfast", "snack", "main", "snack", "main"]
-
-
-def test_whole_eggs_half_loaves_and_local_portions_are_solved_together():
-    request = replace(_request(), targets={"calories": 2655, "protein_g": 90, "carbs_g": 337.5, "fat_g": 105},
-        staples=[_food("Boiled egg", "protein", protein=12, fat=10, portion_label="large egg", portion_grams=50),
-                 _food("Baladi bread", "carb", carbs=50, portion_label="loaf", portion_grams=90),
-                 _food("Oil", "vegetable_fat", fat=100)])
-    generated = generate_meals(request)
-    assert generated["status"] == "ready"
-    for meal in generated["meals"]:
-        assert [food["grams"] for food in meal["foods"]] == [250, 225, 10]
-
-
-@pytest.mark.parametrize(("name", "label", "grams", "expected"), [
-    ("Egg, whole, raw", None, None, 50), ("Boiled eggs", None, None, 50),
-    ("Egg white", None, None, 10), ("Eggplant", None, None, 10),
-    ("Baladi bread", "loaf", 90, 45), ("Ful", "bowl", 200, 200),
-    ("Rice", None, None, 10),
-])
-def test_food_units_distinguish_whole_eggs_loaves_local_portions_and_grams(name, label, grams, expected):
-    assert portion_step({"name": name, "portion_label": label, "portion_grams": grams}) == expected
 
 
 @pytest.mark.parametrize(("restriction", "draft", "expected"), [
@@ -151,36 +128,6 @@ def test_impractical_first_staple_tries_the_next_allowed_food_in_role_order(role
     generated = generate_meals(request)
     assert generated["status"] == "ready"
     assert {meal["foods"][role_index]["id"] for meal in generated["meals"]} == {"next_allowed"}
-    for meal in generated["meals"]:
-        for key, target in meal["targets"].items():
-            assert target * .95 <= meal["totals"][key] <= target * 1.05
-
-
-def test_small_portion_units_do_not_skip_a_feasible_first_staple():
-    request = _request()
-    request.staples[-1]["portion_grams"] = .001
-    request.staples.append(_food("later_fat", "vegetable_fat", fat=100, portion_grams=1))
-    generated = generate_meals(request)
-    assert generated["status"] == "ready"
-    for meal in generated["meals"]:
-        assert meal["foods"][2]["id"] == "fat"
-        assert 28.5 <= meal["foods"][2]["grams"] <= 31.5
-
-
-def test_no_combination_fits_returns_the_closest_meal_with_each_slots_deviation():
-    request = _request()
-    request.staples[0]["portion_grams"] = 100
-    request.staples.insert(1, _food("closer", "protein", protein=27.5, portion_grams=100))
-    generated = generate_meals(request)
-    assert generated["status"] == "ready"
-    assert generate_meals(request) == generated
-    for meal in generated["meals"]:
-        assert meal["foods"][0]["id"] == "closer"
-        assert meal["foods"][0]["grams"] == 200
-        assert meal["totals"]["protein_g"] == 55
-        assert meal["target_deviation"]["protein_g"] == 5
-        for key, target in meal["targets"].items():
-            assert meal["target_deviation"][key] == pytest.approx(meal["totals"][key] - target)
 
 
 @pytest.mark.parametrize("revoked", [False, True])
@@ -206,3 +153,150 @@ def test_regeneration_keeps_explicit_allowed_swaps_but_removes_strictly_restrict
     request.setup["restrictions"].update(restriction)
     request.swaps["breakfast"] = {"protein": "swap"}
     assert generate_meals(request)["meals"][0]["foods"][0]["id"] == expected
+
+
+@pytest.mark.parametrize("count", [2, 3, 4, 5])
+def test_seeded_target_grid_never_breaks_food_limits_and_explains_day_gaps(count):
+    random = Random(682)
+    staples = [
+        _food("Chicken", "protein", protein=30),
+        _food("Boiled egg", "protein", protein=12, fat=10, portion_grams=50),
+        _food("Rice", "carb", carbs=28),
+        _food("White pita", "carb", carbs=50, portion_grams=90),
+        _food("Banana", "carb", carbs=23, portion_grams=120),
+        _food("Oil", "vegetable_fat", fat=100),
+        _food("Tahini", "vegetable_fat", protein=17, carbs=21, fat=54),
+        _food("Zucchini", "vegetable_fat", protein=1, carbs=3),
+    ]
+    expected = {"Chicken": (100, 250, 25), "Boiled egg": (100, 200, 25),
+                "Rice": (100, 300, 25), "White pita": (45, 180, 45),
+                "Banana": (120, 240, 60), "Oil": (5, 15, 5),
+                "Tahini": (10, 30, 10), "Zucchini": (100, 300, 25)}
+    for calories in range(1400, 3501, 300):
+        protein, fat = random.randint(100, 190), calories * .25 / 9
+        targets = {"calories": calories, "protein_g": protein,
+                   "carbs_g": (calories - 4 * protein - 9 * fat) / 4, "fat_g": fat}
+        generated = generate_meals(replace(_request(count), targets=targets, staples=staples))
+        assert generated["status"] == "ready"
+        for meal in generated["meals"]:
+            assert len(meal["foods"]) == 3
+            for food in meal["foods"]:
+                lower, upper, step = expected[food["id"]]
+                assert lower <= food["grams"] <= upper
+                assert food["grams"] / step == pytest.approx(round(food["grams"] / step))
+        outside = [key for key, tolerance in zip(targets, (.05, .05, .10, .10))
+                   if abs(generated["totals"][key] - targets[key]) > targets[key] * tolerance + 1e-8]
+        assert bool(generated["gap_note"]) == bool(outside)
+        if outside:
+            assert set(generated["gap_note"]) == {"en", "ar"}
+
+
+@pytest.mark.parametrize("count", [2, 3, 4, 5])
+def test_known_realistic_days_land_inside_all_four_day_tolerances(count):
+    random = Random(682 + count)
+    for _ in range(6):
+        # Construct a feasible witness independently of the generator's search.
+        protein_grams = sum(random.choice(range(100, 251, 25)) for _ in range(count))
+        carb_grams = sum(random.choice(range(100, 301, 25)) for _ in range(count))
+        oil_grams = sum(random.choice((5, 10, 15)) for _ in range(count))
+        targets = {"protein_g": protein_grams * .3, "carbs_g": carb_grams * .5, "fat_g": oil_grams}
+        targets["calories"] = 4 * targets["protein_g"] + 4 * targets["carbs_g"] + 9 * oil_grams
+        request = replace(_request(count), targets=targets)
+        generated = generate_meals(request)
+        assert generated["status"] == "ready"
+        assert generated["gap_note"] is None
+        for key, tolerance in (("calories", .05), ("protein_g", .05), ("carbs_g", .10), ("fat_g", .10)):
+            assert abs(generated["totals"][key] - targets[key]) <= targets[key] * tolerance + 1e-8
+
+
+def test_complementary_meals_fit_the_day_even_when_slots_cannot_fit():
+    request = replace(_request(), targets={"calories": 2470, "protein_g": 100, "carbs_g": 450, "fat_g": 30},
+        staples=[_food("breakfast", "breakfast_protein", protein=20, min_grams=100, max_grams=100),
+                 _food("main", "main_protein", protein=20, min_grams=200, max_grams=200),
+                 _food("Rice", "carb", carbs=50, min_grams=300, max_grams=300),
+                 _food("Oil", "vegetable_fat", fat=100, min_grams=10, max_grams=10)])
+    generated = generate_meals(request)
+    assert generated["totals"] == request.targets
+    assert generated["gap_note"] is None
+    assert all(abs(meal["target_deviation"]["protein_g"]) > meal["targets"]["protein_g"] * .05
+               for meal in generated["meals"])
+
+
+def test_all_food_combinations_are_scored_instead_of_stopping_at_first_fit():
+    request = replace(_request(), targets={"calories": 2310, "protein_g": 135, "carbs_g": 375, "fat_g": 30},
+        staples=[_food("first", "protein", protein=29, min_grams=150, max_grams=150),
+                 _food("exact", "protein", protein=30, min_grams=150, max_grams=150),
+                 _food("Rice", "carb", carbs=50, min_grams=250, max_grams=250),
+                 _food("Oil", "vegetable_fat", fat=100, min_grams=10, max_grams=10)])
+    generated = generate_meals(request)
+    assert generated["gap_note"] is None
+    assert {meal["foods"][0]["id"] for meal in generated["meals"]} == {"exact"}
+
+
+def test_normal_amounts_win_before_curation_order_for_equal_nutrient_fit():
+    request = replace(_request(), targets={"calories": 1140, "protein_g": 90, "carbs_g": 150, "fat_g": 20},
+        staples=[_food("first", "protein", protein=30, portion_grams=100, min_grams=100, max_grams=300),
+                 _food("normal", "protein", protein=15, portion_grams=200, min_grams=100, max_grams=300),
+                 _food("Rice", "carb", carbs=50, min_grams=100, max_grams=100),
+                 _food("Oil", "vegetable_fat", fat=100, min_grams=5, max_grams=10)])
+    generated = generate_meals(request)
+    assert {meal["foods"][0]["id"] for meal in generated["meals"]} == {"normal"}
+    assert all(meal["foods"][0]["grams"] == 200 for meal in generated["meals"])
+
+
+@pytest.mark.parametrize(("targets", "english", "arabic"), [
+    ({"calories": 1954, "protein_g": 106, "carbs_g": 300, "fat_g": 30},
+     "About 120 kcal under and 15 g protein under. Add a snack or a bigger portion.",
+     "تقريبًا: نقص 120 سعرة ونقص 15 غ بروتين. أضف وجبة خفيفة أو حصة أكبر."),
+    ({"calories": 1830, "protein_g": 90, "carbs_g": 280, "fat_g": 28}, None, None),
+    ({"calories": 1700, "protein_g": 80, "carbs_g": 300, "fat_g": 30},
+     "About 130 kcal over and 10 g protein over. Try a smaller portion or a different food.",
+     "تقريبًا: زيادة 130 سعرة وزيادة 10 غ بروتين. جرّب حصة أصغر أو طعامًا مختلفًا."),
+    ({"calories": 1954, "protein_g": 80, "carbs_g": 300, "fat_g": 30},
+     "About 120 kcal under and 10 g protein over. Try different foods or adjust portions.",
+     "تقريبًا: نقص 120 سعرة وزيادة 10 غ بروتين. جرّب أطعمة مختلفة أو عدّل الحصص."),
+])
+def test_fixed_day_gaps_name_only_outside_nutrients_with_rounded_bilingual_advice(targets, english, arabic):
+    request = replace(_request(), targets=targets,
+        staples=[_food("Chicken", "protein", protein=30, min_grams=100, max_grams=100),
+                 _food("Rice", "carb", carbs=50, min_grams=200, max_grams=200),
+                 _food("Oil", "vegetable_fat", fat=100, min_grams=10, max_grams=10)])
+    generated = generate_meals(request)
+    assert generated["totals"] == {"calories": 1830, "protein_g": 90, "carbs_g": 300, "fat_g": 30}
+    assert generated["gap_note"] == ({"en": english, "ar": arabic} if english else None)
+
+
+@pytest.mark.parametrize(("name", "role", "portion", "expected"), [
+    ("Boiled eggs", "protein", 50, {100, 125, 150, 175, 200}),
+    ("White pita", "carb", 90, {45, 90, 135, 180}),
+    ("Banana", "carb", 120, {120, 180, 240}),
+    ("Whole-wheat bread", "carb", None, set(range(50, 201, 25))),
+    ("Boiled egg", "protein", None, set(range(100, 201, 25))),
+    ("Banana", "carb", None, set(range(150, 301, 25))),
+    ("Chicken", "protein", 80, {160, 240}),
+])
+def test_household_portions_count_in_halves_and_uncurated_counted_foods_use_grams(name, role, portion, expected):
+    request = _request()
+    index = 0 if role == "protein" else 1
+    request.staples[index] = _food(name, role, protein=30 if index == 0 else 0,
+                                  carbs=50 if index == 1 else 0, portion_grams=portion)
+    generated = generate_meals(request)
+    assert generated["status"] == "ready"
+    assert all(meal["foods"][index]["grams"] in expected for meal in generated["meals"])
+
+
+@pytest.mark.parametrize(("bounds", "expected"), [
+    ({"min_grams": 175}, {175, 200, 225, 250, 275, 300}),
+    ({"max_grams": 125}, {100, 125}),
+    ({"min_grams": 75, "max_grams": 75}, {75}),
+    ({"min_grams": 101, "max_grams": 124}, set()),
+])
+def test_each_curated_bound_overrides_only_its_category_default(bounds, expected):
+    request = _request()
+    request.staples[1].update(bounds)
+    generated = generate_meals(request)
+    if expected:
+        assert generated["status"] == "ready"
+        assert all(meal["foods"][1]["grams"] in expected for meal in generated["meals"])
+    else:
+        assert generated == {"status": "unavailable", "reason": "portions", "meals": []}

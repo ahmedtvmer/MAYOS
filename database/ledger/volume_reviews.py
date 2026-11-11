@@ -4,6 +4,25 @@ from typing import Any
 
 
 class LedgerVolumeReviewsMixin:
+    def program_exercise_metadata(self, exercise_ids: list[str]) -> dict[str, dict[str, Any]]:
+        """Curated actions and catalog secondaries; absent curation stays unknown."""
+        ids = sorted({str(exercise_id) for exercise_id in exercise_ids if exercise_id})
+        if not ids:
+            return {}
+        placeholders = ",".join("?" for _ in ids)
+        metadata = {exercise_id: {"secondary_muscles": [], "movement_pattern": None} for exercise_id in ids}
+        for exercise_id, action in self.conn.execute(
+            f"SELECT exercise_id, primary_action FROM catalog.exercise_curated_fields WHERE exercise_id IN ({placeholders})",
+            ids,
+        ):
+            metadata[str(exercise_id)]["movement_pattern"] = action or None
+        for exercise_id, muscle in self.conn.execute(
+            f"SELECT DISTINCT exercise_id, muscle FROM catalog.exercise_secondary_muscles WHERE exercise_id IN ({placeholders}) ORDER BY muscle",
+            ids,
+        ):
+            metadata[str(exercise_id)]["secondary_muscles"].append(str(muscle))
+        return metadata
+
     def _curated_primary_muscles(self, placeholders: str, ids: list[str]) -> dict[str, str]:
         rows = self.conn.execute(
             f"SELECT exercise_id, primary_muscle FROM catalog.exercise_curated_fields WHERE exercise_id IN ({placeholders})",

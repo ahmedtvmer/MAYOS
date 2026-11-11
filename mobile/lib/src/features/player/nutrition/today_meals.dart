@@ -182,6 +182,8 @@ class _TodayMealsState extends ConsumerState<TodayMeals> {
                 : copy.unavailable),
       if (plan.status == 'ready') ...<Widget>[
         Text(plan.dayType == 'training_day' ? copy.trainingDay : copy.restDay),
+        if (plan.author == 'Player' && plan.gapNote[copy.language] != null)
+          Text(plan.gapNote[copy.language]!),
         for (final PlannedMeal meal
             in (_expanded ? plan.meals : plan.meals.take(2)))
           _meal(meal, copy),
@@ -229,7 +231,8 @@ class _TodayMealsState extends ConsumerState<TodayMeals> {
                 '${meal.name.isEmpty ? copy.slot(meal.slot) : meal.name} · ${copy.calories(meal.calories)}',
                 style: Theme.of(context).textTheme.titleMedium),
             if (meal.note.isNotEmpty) Text(meal.note),
-            if (meal.targetDeviation.isNotEmpty)
+            if (_plan!.author == 'Player') Text(copy.cookedWeights),
+            if (_plan!.author == 'Coach' && meal.targetDeviation.isNotEmpty)
               Text(copy.deviation(meal.targetDeviation)),
             for (final (int index, PlannedFood food) in meal.foods.indexed)
               Row(children: <Widget>[

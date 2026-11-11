@@ -1,42 +1,31 @@
 """Practical single-food replacements, preserving the meal's calories and protein."""
 
-from math import ceil, floor, isfinite
+from math import isfinite
 
-from core.meal_generator import NUTRIENT_KEYS, _meal_food, meal_target_deviation, meal_totals, portion_step
+from core.meal_generator import NUTRIENT_KEYS, _meal_food, meal_target_deviation, meal_totals
+from core.meal_portions import portion_amounts, portion_normality
 
 
 def replacement_portion(meal, role, replacement):
     """Minimize squared relative meal calorie/protein error on practical units.
 
     Other foods stay fixed. Missing/invalid nutrients and zero-energy foods
-    cannot yield a usable replacement; ties choose the smaller portion.
+    cannot yield a usable replacement; ties prefer normal amounts, then smaller.
     """
     nutrients = [replacement["nutrients"].get(key) for key in NUTRIENT_KEYS]
-    step = portion_step(replacement)
+    replacement = {**replacement, "role": role}
+    amounts = portion_amounts(replacement)
     if (any(amount is None or not isfinite(amount) or amount < 0 for amount in nutrients)
-            or not isfinite(step) or step <= 0 or step > 10000 or nutrients[0] <= 0):
+            or not amounts or nutrients[0] <= 0):
         raise ValueError("This food needs complete nutrients and a practical portion before it can be swapped.")
     others = [food for food in meal["foods"] if food["role"] != role]
     targets = meal_totals(meal["foods"])
     consumed = meal_totals(others)
-    units = _closest_units(nutrients[:2], step, targets, consumed)
-    return _meal_food({**replacement, "role": role, "swapped": True}, round(units * step, 6))
-
-
-def _closest_units(nutrients, step, targets, consumed):
     keys = ("calories", "protein_g")
-    vector = [amount * step / 100 for amount in nutrients]
-    scales = [max(targets[key], 1) ** 2 for key in keys]
-    denominator = sum(amount ** 2 / scale for amount, scale in zip(vector, scales))
-    ideal = sum(amount * (targets[key] - consumed[key]) / scale
-                for amount, key, scale in zip(vector, keys, scales)) / denominator
-    limit = floor(10000 / step)
-    # The convex optimum lies at one of its two adjacent practical portions,
-    # including when the unconstrained optimum falls outside the portion range.
-    candidates = {max(1, min(limit, floor(ideal))), max(1, min(limit, ceil(ideal)))}
-    return min(candidates, key=lambda units: (
-        sum((consumed[key] + amount * units - targets[key]) ** 2 / scale
-            for key, amount, scale in zip(keys, vector, scales)), units))
+    grams = min(amounts, key=lambda grams: (
+        sum(((consumed[key] + amount * grams / 100 - targets[key]) / max(targets[key], 1)) ** 2
+            for key, amount in zip(keys, nutrients[:2])), portion_normality(replacement, grams), grams))
+    return _meal_food({**replacement, "swapped": True}, grams)
 
 
 def swap_meal(meal, role, replacement):

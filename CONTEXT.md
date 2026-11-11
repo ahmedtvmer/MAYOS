@@ -87,6 +87,10 @@ _Avoid_: Persona, coach tone
 A free-text instruction the Player explicitly asks the assistant to remember about how they like to train. The Player can review, edit and delete these private preferences in Settings; the assistant reads them on demand, and a Coach never sees them.
 _Arabic_: تفضيل للمساعد
 
+**Estimate**:
+A derived or general-knowledge figure the assistant labels with ≈ or “estimated” and explains with its basis in one clause. Player facts and the inputs to any Player-specific estimate must come from tool results; missing Player data is never estimated. Tool-computed set counts are exact under the returned counting rule.
+_Arabic_: تقدير؛ تُوسم الأرقام التقريبية بلفظ «تقديريًا» أو ≈ مع أساس الحساب.
+
 **Profile section**:
 A named subset of the Player's saved profile facts: Body, Goals, Training setup, Limitations, Focus or Recovery. Limitations brings injury text, injury records with Exercise clearances and confirmed Movement restrictions together. The player assistant reads only requested sections; an unscoped read lists sections without personal values.
 
@@ -495,8 +499,8 @@ A named place in a Player's eating day, such as Breakfast, Lunch, Dinner or Snac
 _Arabic_: وجبة
 
 **Staple food**:
-A food MAYOS curates as a default choice for a meal role, such as eggs or ful for a breakfast protein. Each role has an ordered list; meal generation tries reviewed foods the Player's Food restrictions allow in that order until practical portions fit within ±5% of the slot's calories and Macros. If none fit, it returns the closest allowed meal with each slot's difference from its targets. Later foods are also offered as swaps. It is the food counterpart of a Staple exercise.
-Optional per-food minimum and maximum grams per meal override the meal generator's per-category defaults (#682).
+A food MAYOS curates as a default choice for a meal role, such as eggs or ful for a breakfast protein. Each role has an ordered list. Meals use curated cooked Food library rows, except raw salad vegetables and fruit. Generation scores allowed foods and realistic portions across Meal slots against the day's targets: ±5% for calories and protein, and ±10% for carbs and fat. It returns the closest day with a plain gap note when outside those tolerances, without exceeding portion limits. Normal amounts break equal-fit ties before curation order. Foods are also offered as swaps. It is the food counterpart of a Staple exercise.
+Optional per-food minimum and maximum grams per meal override the meal generator's per-category defaults (#682). Counted foods use half or whole curated household portions; without a curated portion they use grams. Coach-authored meals keep the Coach's exact grams (ADR 107).
 _Arabic_: طعام أساسي
 
 **Food restriction**:

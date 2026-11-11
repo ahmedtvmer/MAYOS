@@ -182,3 +182,35 @@ def test_food_swap_analytics_respects_opt_out(meals_api, recording_analytics):
     assert disabled.status_code == 200, disabled.text
     assert _swap(client, headers, plan).status_code == 201
     assert not [event for event in recording_analytics.events if event["event"] == "nutrition_food_swapped"]
+
+
+def test_swap_preview_and_saved_day_share_curated_limits_and_refresh_gap_note(meals_api):
+    client, db, headers, _today = meals_api
+    plan = _enable(client, headers)
+    with db.catalog_locked() as connection:
+        connection.execute("UPDATE foods SET min_grams=75, max_grams=75 WHERE id='alternative'")
+        connection.commit()
+    preview = _candidates(client, headers, plan)["staples"][0]
+    assert preview["allowed"] and preview["grams"] == 75
+    assert _swap(client, headers, plan).status_code == 201
+    saved = client.get("/nutrition/meals", headers=headers).json()
+    assert saved["meals"][0]["foods"][0]["grams"] == preview["grams"]
+    with db.open_ledger(_ledger_id(db)) as ledger:
+        payload = json.loads(ledger.get_active_nutrition_plan()["meals_json"])
+    for variant in payload["variants"].values():
+        assert variant["meals"][0]["foods"][0]["grams"] == 75
+        assert set(variant["gap_note"]) == {"en", "ar"}
+
+
+def test_swap_candidates_without_any_amount_inside_limits_are_disabled(meals_api):
+    client, db, headers, _today = meals_api
+    plan = _enable(client, headers)
+    with db.catalog_locked() as connection:
+        connection.execute("UPDATE foods SET min_grams=101, max_grams=124 WHERE id='alternative'")
+        connection.commit()
+    choices = _candidates(client, headers, plan, "Alternative")
+    assert choices["staples"] == []
+    assert choices["search"][0]["allowed"] is False
+    assert choices["search"][0]["grams"] is None
+    assert _swap(client, headers, plan).status_code == 409
+    assert client.get("/nutrition/meals", headers=headers).json()["plan_version_id"] == plan["plan_version_id"]

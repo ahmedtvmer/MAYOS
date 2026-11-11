@@ -20,17 +20,16 @@ logger = MayosLogger().get_logger(__name__)
 # Current target schema version for all user ledgers
 CURRENT_LEDGER_SCHEMA_VERSION: int = 60
 
-CHAT_HISTORY_FTS_DDL: tuple[str, ...] = (
-    "CREATE VIRTUAL TABLE IF NOT EXISTS chat_history_fts USING fts5("
-    "message_id UNINDEXED, search_text, tokenize='unicode61 remove_diacritics 2')",
-)
-
 MEAL_SETUP_DDL: tuple[str, ...] = (
     "CREATE TABLE IF NOT EXISTS meal_setup ("
     " id INTEGER PRIMARY KEY CHECK(id=1),"
     " meal_count INTEGER NOT NULL CHECK(meal_count IN (3,4,5)),"
     " training_time TEXT NOT NULL CHECK(training_time IN ('morning','afternoon','evening')),"
     " restrictions_json TEXT NOT NULL)",
+)
+CHAT_HISTORY_FTS_DDL: tuple[str, ...] = (
+    "CREATE VIRTUAL TABLE IF NOT EXISTS chat_history_fts USING fts5("
+    "message_id UNINDEXED, search_text, tokenize='unicode61 remove_diacritics 2')",
 )
 
 PERSONAL_FOODS_DDL: tuple[str, ...] = (
