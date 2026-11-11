@@ -941,15 +941,12 @@ def test_chat_search_finds_old_english_and_arabic_messages_with_filters(api, mon
     assert results[4] == {"status": "no_matches", "matches": [], "has_more": False}
     assert results[5] == {"status": "no_matches", "matches": [], "has_more": False}
     assert results[6] == {"status": "no_matches", "matches": [], "has_more": False}
-    status_frames = [
-        frame for frame in body.split("\n\n") if frame.startswith("event: status\n")
-    ]
-    assert len(status_frames) == 7
-    assert all(
+    statuses = [
         json.loads(frame.splitlines()[1].removeprefix("data: "))["status"]
-        == "بدور في محادثاتك القديمة…"
-        for frame in status_frames
-    )
+        for frame in body.split("\n\n") if frame.startswith("event: status\n")
+    ]
+    # The context router may add its own status before the search; count only the searches.
+    assert statuses.count("بدور في محادثاتك القديمة…") == 7
 
 
 def test_chat_history_search_backfills_legacy_messages_on_first_mount(api, monkeypatch):
