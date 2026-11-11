@@ -161,6 +161,7 @@ class ApiClient {
       InterceptorsWrapper(
         onRequest: _attachToken,
         onResponse: (Response<dynamic> response, ResponseInterceptorHandler handler) {
+          _forgetSessionRequest(response.requestOptions);
           _addHttpBreadcrumb(response.requestOptions, response.statusCode);
           handler.next(response);
         },
@@ -170,6 +171,7 @@ class ApiClient {
   }
 
   static const String _skipAuth = 'skipAuth';
+  static const String _sessionRequestToken = 'sessionRequestToken';
 
   void _addHttpBreadcrumb(RequestOptions request, int? status) {
     if (status == null) return;
@@ -247,6 +249,7 @@ class ApiClient {
   final String? _buildHeader;
   final String Function() _displayLanguageLoader;
   late final Dio _dio;
+  final Set<CancelToken> _sessionRequestTokens = <CancelToken>{};
 
   /// Invoked when an authenticated request fails with 401.
   void Function()? onUnauthorized;
@@ -267,6 +270,15 @@ class ApiClient {
 
   Dio get dio => _dio;
 
+  /// Cancels requests that belonged to the session that just ended.
+  void cancelAuthenticatedRequests() {
+    for (final CancelToken token
+        in List<CancelToken>.of(_sessionRequestTokens)) {
+      token.cancel('Session ended');
+    }
+    _sessionRequestTokens.clear();
+  }
+
   Future<void> _attachToken(
     RequestOptions options,
     RequestInterceptorHandler handler,
@@ -279,6 +291,13 @@ class ApiClient {
     options.headers['Accept-Language'] =
         _displayLanguageLoader() == 'ar' ? 'ar' : 'en';
     if (options.extra[_skipAuth] != true) {
+      final CancelToken requestToken = options.cancelToken ??= CancelToken();
+      options.extra[_sessionRequestToken] = requestToken;
+      _sessionRequestTokens.add(requestToken);
+      if (requestToken.isCancelled) {
+        handler.next(options);
+        return;
+      }
       final String? token = await _tokens.read();
       if (token != null && token.isNotEmpty) {
         options.headers['Authorization'] = 'Bearer $token';
@@ -313,6 +332,7 @@ class ApiClient {
     DioException error,
     ErrorInterceptorHandler handler,
   ) {
+    _forgetSessionRequest(error.requestOptions);
     final int? status = error.response?.statusCode;
     if (status != null) _addHttpBreadcrumb(error.requestOptions, status);
     final dynamic responseBody = error.response?.data;
@@ -335,6 +355,11 @@ class ApiClient {
       }
     }
     handler.next(error);
+  }
+
+  void _forgetSessionRequest(RequestOptions request) {
+    final Object? token = request.extra.remove(_sessionRequestToken);
+    if (token is CancelToken) _sessionRequestTokens.remove(token);
   }
 
   Future<void> _waitForHandling(

@@ -427,12 +427,12 @@ class AuthController extends StateNotifier<AuthState> {
   Future<void> logout() async {
     _cancelRestore();
     final String? accountId = state.session?.account.accountId;
+    state = const AuthState.unauthenticated();
     await _repository.logout(accountId: accountId);
     _cancelRestore();
     // The MAYOS session is over, so the Google SDK's own is too (#115).
     await _google.clearSdkState();
     _cancelRestore();
-    state = const AuthState.unauthenticated();
   }
 
   /// Applies a server-confirmed Display language without changing Account

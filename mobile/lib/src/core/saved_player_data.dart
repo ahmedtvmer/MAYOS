@@ -13,10 +13,12 @@ import 'secure_store.dart';
 class SavedPlayerDataStore extends ChangeNotifier {
   SavedPlayerDataStore({BrowserKeyValueStore? browser, SecureStore? secure})
       : _browser = browser,
-        _secure = browser == null ? secure ?? SecureStore() : null;
+        _secure = browser == null ? secure ?? SecureStore() : null,
+        _usesPlatformStorage = browser == null && secure == null;
 
   final BrowserKeyValueStore? _browser;
   final SecureStore? _secure;
+  final bool _usesPlatformStorage;
   int _generation = 0;
   Future<void> _storageQueue = Future<void>.value();
   bool _offline = false;
@@ -24,6 +26,7 @@ class SavedPlayerDataStore extends ChangeNotifier {
 
   bool get offline => _offline;
   int get generation => _generation;
+  bool get usesPlatformStorage => _usesPlatformStorage;
 
   void useSavedData() {
     if (_offline || _disposed) return;

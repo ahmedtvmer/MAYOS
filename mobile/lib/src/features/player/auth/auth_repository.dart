@@ -68,6 +68,7 @@ class AuthRepository {
   final Set<Future<void>> _restoreWrites = <Future<void>>{};
   int _restoreRevision = 0;
   bool _sessionEnded = false;
+  String? _knownAccountId;
 
   /// Only used after a transport failure, never to choose another account.
   Future<AccountSession?> savedSession() async {
@@ -114,6 +115,7 @@ class AuthRepository {
   void _endSession() {
     _invalidateRestores();
     _sessionEnded = true;
+    _api.cancelAuthenticatedRequests();
   }
 
   Future<bool> _canPersistRestore(
@@ -137,7 +139,15 @@ class AuthRepository {
     _restoreWrites.add(pending);
     try {
       if (!await _canPersistRestore(token, revision, dataGeneration)) return;
-      await _saveAccountId(session.account.accountId);
+      final Future<void> accountIdWrite =
+          _saveAccountId(session.account.accountId);
+      if (_usesPlatformTokenStorage) {
+        // A restore must not wait for a platform-channel write. The token
+        // store queues this write and invalidates it if teardown starts first.
+        unawaited(accountIdWrite);
+      } else {
+        await accountIdWrite;
+      }
       if (!await _canPersistRestore(token, revision, dataGeneration)) return;
       // Not awaited: a slow or unavailable store must not hold up sign-in. The
       // generation check drops this write if the session ends first.
@@ -272,6 +282,7 @@ class AuthRepository {
       if (!await _canPersistRestore(token, revision, dataGeneration)) {
         return null;
       }
+      _knownAccountId = session.account.accountId;
       await _persistRestoredSession(
         session,
         token,
@@ -285,10 +296,13 @@ class AuthRepository {
       return session;
     } on ApiException catch (error) {
       if (error.statusCode == 401 || error.errorCode == 'account_deleted') {
+        final String? accountId = unverifiedTokenSubject(token) ??
+            _knownAccountId ??
+            await _localAccountIdForCleanup();
         if (error.errorCode == 'account_deleted') {
-          await handleAccountDeleted();
+          await handleAccountDeleted(accountId: accountId);
         } else {
-          await clearSession(accountId: await _localAccountId());
+          await clearSession(accountId: accountId);
         }
         return null;
       }
@@ -302,24 +316,24 @@ class AuthRepository {
   /// The server call must succeed first, so a wrong password or an offline
   /// attempt changes nothing locally (ADR 039).
   Future<void> deleteAccount(String password) async {
-    final String? accountId = await _localAccountId();
+    final String? accountId = _knownAccountId ?? await _localAccountId();
     await _api.deleteAccount(password);
     _endSession();
     await _erasePrivateAccountData(accountId);
-    await _waitForRestoreWrites();
-    await _tokens.clear();
+    if (!_usesPlatformTokenStorage) await _waitForRestoreWrites();
+    await _clearPersistedTokens();
     _deleteDisplayLanguageCacheBestEffort(accountId);
   }
 
   /// The Google-proof deletion a Google-only account uses (#114): the same
   /// erase path, only the proof differs. A refusal changes nothing locally.
   Future<void> deleteAccountWithGoogle({required String googleIdToken}) async {
-    final String? accountId = await _localAccountId();
+    final String? accountId = _knownAccountId ?? await _localAccountId();
     await _api.deleteAccountWithGoogle(googleIdToken: googleIdToken);
     _endSession();
     await _erasePrivateAccountData(accountId);
-    await _waitForRestoreWrites();
-    await _tokens.clear();
+    if (!_usesPlatformTokenStorage) await _waitForRestoreWrites();
+    await _clearPersistedTokens();
     _deleteDisplayLanguageCacheBestEffort(accountId);
   }
 
@@ -342,7 +356,7 @@ class AuthRepository {
     required String currentPassword,
     required String newPassword,
   }) async {
-    final String? accountId = await _localAccountId();
+    final String? accountId = _knownAccountId ?? await _localAccountId();
     await _api.changePassword(
       currentPassword: currentPassword,
       newPassword: newPassword,
@@ -355,10 +369,11 @@ class AuthRepository {
   /// protected local data and clear the local session (ADR 039).
   Future<void> handleAccountDeleted({String? accountId}) async {
     _endSession();
-    final String? localAccountId = accountId ?? await _localAccountId();
+    final String? localAccountId =
+        accountId ?? _knownAccountId ?? await _localAccountIdForCleanup();
     await _erasePrivateAccountData(localAccountId);
-    await _waitForRestoreWrites();
-    await _tokens.clear();
+    if (!_usesPlatformTokenStorage) await _waitForRestoreWrites();
+    await _clearPersistedTokens();
     _deleteDisplayLanguageCacheBestEffort(localAccountId);
   }
 
@@ -367,9 +382,52 @@ class AuthRepository {
     if (accountId == null || accountId.isEmpty) {
       return;
     }
-    await _savedData?.clearAccount(accountId);
-    _savedData?.confirmSession();
-    await _eraser.erase(accountId);
+    final SavedPlayerDataStore? savedData = _savedData;
+    final Future<void>? savedDataCleanup = savedData == null
+        ? null
+        : savedData.clearAccount(accountId);
+    savedData?.confirmSession();
+    final Future<void> privateDataCleanup = _eraser.erase(accountId);
+    if (savedData != null && savedDataCleanup != null) {
+      await _completeStorageCleanup(
+        savedDataCleanup,
+        usesPlatformStorage: savedData.usesPlatformStorage,
+      );
+    }
+    await privateDataCleanup;
+  }
+
+  bool get _usesPlatformTokenStorage => switch (_tokens) {
+        SecureTokenStore store => store.usesPlatformStorage,
+        _ => false,
+      };
+
+  Future<void> _completeStorageCleanup(
+    Future<void> cleanup, {
+    required bool usesPlatformStorage,
+  }) async {
+    if (usesPlatformStorage) {
+      unawaited(cleanup.catchError((Object _) {}));
+      return;
+    }
+    try {
+      await cleanup;
+    } on Object {
+      // Cleanup is best effort; storage failure must not keep the session open.
+    }
+  }
+
+  void _trackCleanup(
+    Future<void> cleanup,
+    bool usesPlatformStorage,
+    List<Future<void>> awaitForInjectedStores,
+  ) {
+    final Future<void> bestEffort = cleanup.catchError((Object _) {});
+    if (usesPlatformStorage) {
+      unawaited(bestEffort);
+    } else {
+      awaitForInjectedStores.add(bestEffort);
+    }
   }
 
   /// Language-cache cleanup is non-critical and must not hold up session teardown.
@@ -389,12 +447,18 @@ class AuthRepository {
   /// this device's account-namespaced keys; it never authorises a request.
   Future<String?> _localAccountId() async {
     final String? subject = unverifiedTokenSubject(await _tokens.read());
-    if (subject != null && subject.isNotEmpty) return subject;
+    if (subject != null && subject.isNotEmpty) {
+      _knownAccountId = subject;
+      return subject;
+    }
     final String? stored = await _tokens.readAccountId();
     if (stored != null && stored.isNotEmpty) {
+      _knownAccountId = stored;
       return stored;
     }
-    return unverifiedTokenSubject(await _tokens.read());
+    final String? fallback = unverifiedTokenSubject(await _tokens.read());
+    _knownAccountId = fallback;
+    return fallback;
   }
 
   Future<void> _saveAccountId(String accountId) async {
@@ -462,14 +526,18 @@ class AuthRepository {
   /// device next (ADR 036). Disclosure acceptance stays per account.
   Future<void> logout({String? accountId}) async {
     _endSession();
+    final int teardownRevision = _restoreRevision;
+    final Future<void> readCacheCleanup = _clearReadCaches(accountId);
     try {
       await _api.logout();
     } on ApiException {
       // Local session is cleared regardless; the server revokes on best effort.
     }
-    await _clearReadCaches(accountId);
-    await _waitForRestoreWrites();
-    await _tokens.clear();
+    await readCacheCleanup;
+    if (!_usesPlatformTokenStorage) await _waitForRestoreWrites();
+    if (teardownRevision == _restoreRevision) {
+      await _clearPersistedTokens();
+    }
   }
 
   /// Drops the local session without a server call (the token is already
@@ -478,8 +546,15 @@ class AuthRepository {
   Future<void> clearSession({String? accountId}) async {
     _endSession();
     await _clearReadCaches(accountId);
-    await _waitForRestoreWrites();
-    await _tokens.clear();
+    if (!_usesPlatformTokenStorage) await _waitForRestoreWrites();
+    await _clearPersistedTokens();
+  }
+
+  Future<void> _clearPersistedTokens() async {
+    await _completeStorageCleanup(
+      _tokens.clear(),
+      usesPlatformStorage: _usesPlatformTokenStorage,
+    );
   }
 
   Future<String?> _bestEffortLocalAccountId() async {
@@ -491,21 +566,52 @@ class AuthRepository {
     }
   }
 
+  Future<String?> _localAccountIdForCleanup() async {
+    if (_usesPlatformTokenStorage) return null;
+    return _bestEffortLocalAccountId();
+  }
+
   Future<void> _clearReadCaches(String? accountId) async {
-    final String? localAccountId = accountId ?? await _bestEffortLocalAccountId();
+    final String? localAccountId = accountId ??
+        _knownAccountId ??
+        await _localAccountIdForCleanup();
+    await _clearSavedReads(localAccountId);
+  }
+
+  Future<void> _clearSavedReads(String? localAccountId) async {
+    final List<Future<void>> awaitForInjectedStores = <Future<void>>[];
     if (localAccountId != null) {
-      await _savedData?.clearAccount(localAccountId);
+      _startSavedDataClear(localAccountId, awaitForInjectedStores);
+      _startChatCacheClear(localAccountId, awaitForInjectedStores);
     }
     _savedData?.confirmSession();
+    await Future.wait<void>(awaitForInjectedStores);
+  }
+
+  void _startSavedDataClear(
+    String accountId,
+    List<Future<void>> awaitForInjectedStores,
+  ) {
+    final SavedPlayerDataStore? savedData = _savedData;
+    if (savedData == null) return;
+    _trackCleanup(
+      savedData.clearAccount(accountId),
+      savedData.usesPlatformStorage,
+      awaitForInjectedStores,
+    );
+  }
+
+  void _startChatCacheClear(
+    String accountId,
+    List<Future<void>> awaitForInjectedStores,
+  ) {
     final ChatCacheStore? cache = _chatCache;
-    if (cache == null || localAccountId == null) {
-      return;
-    }
-    try {
-      await cache.clearHistory(localAccountId);
-    } on Object {
-      // Best effort: a storage failure must never block logout.
-    }
+    if (cache == null) return;
+    _trackCleanup(
+      cache.clearHistory(accountId),
+      cache is SecureChatCacheStore && cache.usesPlatformStorage,
+      awaitForInjectedStores,
+    );
   }
 
   /// Persists the token issued by register/login, then resolves the session.
@@ -517,6 +623,7 @@ class AuthRepository {
     await _tokens.clear();
     await _tokens.save(auth.accessToken);
     final AccountSession session = await _currentSession();
+    _knownAccountId = session.account.accountId;
     await _saveAccountId(session.account.accountId);
     _sessionEnded = false;
     unawaited(saveSession(session));

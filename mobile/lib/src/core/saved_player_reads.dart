@@ -51,9 +51,9 @@ class SavedPlayerReads extends Interceptor {
     if (token == null || token.isEmpty || !_hasMatchingToken(request, token)) {
       return null;
     }
-    final String? accountId = request.path == '/auth/me'
-        ? unverifiedTokenSubject(token)
-        : await _accountIdFor(token);
+    // The persisted id may require platform storage. Keep the request live;
+    // a successful response can resolve the id after the service answers.
+    final String? accountId = unverifiedTokenSubject(token);
     final _SavedReadContext context = _SavedReadContext(
       token, accountId, _store.generation,
     );
@@ -73,8 +73,15 @@ class SavedPlayerReads extends Interceptor {
       handler.next(response);
       return;
     }
-    final String? accountId = _responseAccountId(request, context, response.data);
-    if (accountId != null &&
+    final String? accountId =
+        _responseAccountId(request, context, response.data);
+    if (accountId == null && request.path != '/auth/me') {
+      unawaited(
+        _saveAfterAccountIdResolves(response, context).catchError((Object _) {
+          // Snapshot caching must not hold up a live API response.
+        }),
+      );
+    } else if (accountId != null &&
         (context.accountId == null || context.accountId == accountId)) {
       unawaited(_store
           .write(accountId, _resource(request), <String, dynamic>{
@@ -140,13 +147,16 @@ class SavedPlayerReads extends Interceptor {
 
   Future<Response<dynamic>?> _savedResponse(
       RequestOptions request, _SavedReadContext context) async {
-    final String? accountId = context.accountId;
-    if (accountId == null || !await _isCurrentContext(context)) return null;
+    final String? accountId =
+        context.accountId ?? await _accountIdFor(context.token);
+    if (accountId == null || !await _isCurrentContext(context, accountId)) {
+      return null;
+    }
     final Map<String, dynamic>? snapshot =
         await _store.read(accountId, _resource(request));
     if (snapshot == null || _isStaleDaily(request.path, snapshot)) return null;
     // Recheck after I/O: teardown may have happened while storage was read.
-    if (!await _isCurrentContext(context)) return null;
+    if (!await _isCurrentContext(context, accountId)) return null;
     return Response<dynamic>(
       requestOptions: request,
       statusCode: 200,
@@ -155,11 +165,31 @@ class SavedPlayerReads extends Interceptor {
     );
   }
 
-  Future<bool> _isCurrentContext(_SavedReadContext context) async {
-    final String? accountId = context.accountId;
-    return accountId != null &&
-        await _tokens.read() == context.token &&
-        _store.generation == context.generation;
+  Future<bool> _isCurrentContext(
+    _SavedReadContext context,
+    String accountId,
+  ) async =>
+      accountId.isNotEmpty &&
+      await _tokens.read() == context.token &&
+      _store.generation == context.generation;
+
+  Future<void> _saveAfterAccountIdResolves(
+    Response<dynamic> response,
+    _SavedReadContext context,
+  ) async {
+    if (!await _canSave(response, context)) return;
+    final String? accountId = await _accountIdFor(context.token);
+    final RequestOptions request = response.requestOptions;
+    if (accountId == null || !await _canSave(response, context)) return;
+    await _store.write(
+      accountId,
+      _resource(request),
+      <String, dynamic>{
+        'body': response.data,
+        'day': _today(),
+      },
+      context.generation,
+    );
   }
 
   static bool _isStaleDaily(String path, Map<String, dynamic> snapshot) =>

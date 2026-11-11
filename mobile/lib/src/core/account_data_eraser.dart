@@ -1,8 +1,15 @@
+import 'dart:async';
+
 import 'active_workout.dart';
 import 'baselines.dart';
 import 'chat_storage.dart';
 import 'workout_start_notice_store.dart';
 import 'workout_storage.dart';
+
+typedef _AccountErase = ({
+  Future<void> Function() erase,
+  bool usesPlatformStorage,
+});
 
 /// The single place that erases every account-namespaced protected local value.
 ///
@@ -33,15 +40,66 @@ class AccountDataEraser {
   final WorkoutStartNoticeStore _workoutStartNotice;
 
   Future<void> erase(String accountId) async {
-    await _bestEffort(() => _drafts.deleteForAccount(accountId));
-    await _bestEffort(() => _workoutCache.deleteForAccount(accountId));
-    await _bestEffort(() => _chatCache.deleteAccount(accountId));
-    await _bestEffort(() => _baselines.deleteForAccount(accountId));
-    await _bestEffort(() => _activeWorkout.deleteForAccount(accountId));
-    await _bestEffort(
-      () => _workoutStartNotice.clearWorkoutStartNotice(accountId),
-    );
+    final List<Future<void>> awaitForInjectedStores = <Future<void>>[];
+    for (final _AccountErase erasure in _erasuresForAccount(accountId)) {
+      _startErase(
+        erasure.erase,
+        erasure.usesPlatformStorage,
+        awaitForInjectedStores,
+      );
+    }
+    await Future.wait<void>(awaitForInjectedStores);
   }
+
+  List<_AccountErase> _erasuresForAccount(String accountId) =>
+      <_AccountErase>[
+        (
+          erase: () => _drafts.deleteForAccount(accountId),
+          usesPlatformStorage: _usesPlatformStorage(_drafts),
+        ),
+        (
+          erase: () => _workoutCache.deleteForAccount(accountId),
+          usesPlatformStorage: _usesPlatformStorage(_workoutCache),
+        ),
+        (
+          erase: () => _chatCache.deleteAccount(accountId),
+          usesPlatformStorage: _usesPlatformStorage(_chatCache),
+        ),
+        (
+          erase: () => _baselines.deleteForAccount(accountId),
+          usesPlatformStorage: _usesPlatformStorage(_baselines),
+        ),
+        (
+          erase: () => _activeWorkout.deleteForAccount(accountId),
+          usesPlatformStorage: _usesPlatformStorage(_activeWorkout),
+        ),
+        (
+          erase: () => _workoutStartNotice.clearWorkoutStartNotice(accountId),
+          usesPlatformStorage: false,
+        ),
+      ];
+
+  void _startErase(
+    Future<void> Function() action,
+    bool usesPlatformStorage,
+    List<Future<void>> awaitForInjectedStores,
+  ) {
+    final Future<void> cleanup = _bestEffort(action);
+    if (usesPlatformStorage) {
+      unawaited(cleanup);
+    } else {
+      awaitForInjectedStores.add(cleanup);
+    }
+  }
+
+  bool _usesPlatformStorage(Object store) => switch (store) {
+        SecureDraftStore value => value.usesPlatformStorage,
+        SecureWorkoutCacheStore value => value.usesPlatformStorage,
+        SecureChatCacheStore value => value.usesPlatformStorage,
+        SecureBaselineCacheStore value => value.usesPlatformStorage,
+        SecureActiveWorkoutStore value => value.usesPlatformStorage,
+        _ => false,
+      };
 
   Future<void> _bestEffort(Future<void> Function() action) async {
     try {

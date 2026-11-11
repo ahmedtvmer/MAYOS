@@ -23,7 +23,9 @@ final Provider<bool> offlineBannerEnabledProvider =
 /// Platform network hints. The historical provider name is retained so existing
 /// browser tests can inject their event stream without a browser runtime.
 final Provider<Stream<bool>> browserConnectivityEventsProvider =
-    Provider<Stream<bool>>((ref) => browserConnectivityEvents());
+    Provider<Stream<bool>>(
+      (ref) => browserConnectivityEvents().asBroadcastStream(),
+    );
 
 /// Connectivity combines browser events with the API client's transport:
 /// browser events report navigator status, a transport failure means offline,

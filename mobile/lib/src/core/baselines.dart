@@ -420,9 +420,13 @@ abstract class BaselineCacheStore {
 
 class SecureBaselineCacheStore implements BaselineCacheStore {
   SecureBaselineCacheStore({FlutterSecureStorage? storage})
-      : _store = SecureStore(storage: storage);
+      : _store = SecureStore(storage: storage),
+        _usesPlatformStorage = storage == null;
 
   final SecureStore _store;
+  final bool _usesPlatformStorage;
+
+  bool get usesPlatformStorage => _usesPlatformStorage;
 
   static String _key(String accountId) => 'baselines.$accountId';
 
