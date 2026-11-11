@@ -57,8 +57,13 @@ Future<Prescription?> loadDayPrescription({
   Duration timeout = const Duration(seconds: 5),
 }) async {
   try {
-    final Prescription fresh =
-        await api.prescription(dayOrder, weekOrder: weekOrder).timeout(timeout);
+    final Prescription fresh = await api
+        .prescription(
+          dayOrder,
+          weekOrder: weekOrder,
+          retryTransportFailures: false,
+        )
+        .timeout(timeout);
     try {
       await cache.writePrescription(
         accountId,

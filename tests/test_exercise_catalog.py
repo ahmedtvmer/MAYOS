@@ -215,6 +215,61 @@ def test_exercise_detail_requires_auth(api):
     assert resp.status_code == 401
 
 
+@pytest.mark.parametrize(
+    ("notes", "technique", "notes_are_technique"),
+    [
+        ("Press the bar up.", "Press the bar up.", True),
+        (" \nPress the bar up.\t", "\tPress the bar up. \n", True),
+        ("Pause at the bottom.", "Press the bar up.", False),
+        ("Press the bar up.\nPause at the bottom.", "Press the bar up.", False),
+        ("Press  the bar up.", "Press the bar up.", False),
+        (None, "Press the bar up.", False),
+        (" \n", "", False),
+        ("Keep a slow tempo.", None, False),
+    ],
+)
+def test_active_program_marks_only_copied_technique_without_changing_legacy_notes(
+    api, notes, technique, notes_are_technique
+):
+    client, db = api
+    token = _register(client, "note-player")["access_token"]
+    db.catalog_conn.execute(
+        "UPDATE exercises SET instructions = ? WHERE id = 'bp'", (technique,)
+    )
+    db.catalog_conn.commit()
+    db.switch_user("note-player")
+    db.ledger.save_training_program(
+        {
+            "program_name": "Existing program",
+            "weekly_frequency": 1,
+            "split_type": "custom",
+            "days": [
+                {
+                    "day_name": "Upper",
+                    "day_order": 1,
+                    "exercises": [
+                        {"exercise_id": "bp", "exercise_name": "Bench Press", "notes": notes}
+                    ],
+                }
+            ],
+        }
+    )
+
+    response = client.get("/programs/active", headers=_authed(token))
+
+    assert response.status_code == 200, response.text
+    program = response.json()
+    exercise = program["days"][0]["exercises"][0]
+    assert exercise["notes_are_technique"] is notes_are_technique
+    # Existing program reads expose an absent stored note as an empty string.
+    assert exercise["notes"] == (notes or "")
+    assert program["weeks"][0]["days"][0]["exercises"][0] == exercise
+    assert db.ledger.get_active_program().days[0].exercises[0].notes == (notes or "")
+    detail = client.get("/workouts/exercises/bp", headers=_authed(token))
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["instructions"] == technique
+
+
 def test_catalog_search_returns_the_image_path_for_added_exercise_pictures(api):
     """`GET /workouts/exercises?query=` carries `image_path` so an exercise
     added from this search gets its card's catalog picture like a planned one
