@@ -815,9 +815,7 @@ void main() {
 
     expect(_container(tester).read(coachAssistantControllerProvider), isNull);
     await _closeAssistant(tester);
-    // A revoked assignment hides its coaching actions, so close the denied
-    // history screen through its stable route anchor instead.
-    await _pop(tester, find.byKey(const Key('coach_player_history_screen')));
+    await _closeHistory(tester);
     expect(find.text('No assigned players yet.'), findsOneWidget);
   });
 

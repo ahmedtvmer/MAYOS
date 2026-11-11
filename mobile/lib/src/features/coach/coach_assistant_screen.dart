@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api_client.dart';
-import '../../core/refetch_on_reconnect.dart';
 import '../../core/app_failure.dart';
 import '../../core/chat_models.dart';
 import '../../core/connectivity_message.dart';
@@ -41,13 +40,7 @@ class CoachAssistantScreen extends ConsumerStatefulWidget {
       _CoachAssistantScreenState();
 }
 
-class _CoachAssistantScreenState extends ConsumerState<CoachAssistantScreen>
-    with RefetchOnReconnect<CoachAssistantScreen> {
-  @override
-  Future<void> refreshAfterReconnect() async {
-    if (!_sending) await _selectPlayer();
-  }
-
+class _CoachAssistantScreenState extends ConsumerState<CoachAssistantScreen> {
   final TextEditingController _question = TextEditingController();
   bool _sending = false;
   FailureMessage? _error;
