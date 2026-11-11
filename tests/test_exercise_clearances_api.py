@@ -9,7 +9,7 @@ from svc.app import create_app
 from svc.dependencies import get_db
 from tests.test_coach_programs import _assigned_player
 from tests.test_program_substitution_api import (
-    api,
+    api,  # noqa: F401  (pytest fixture)
     _exercise,
     _make_player_with_program,
     _program,
