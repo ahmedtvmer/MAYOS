@@ -105,6 +105,7 @@ class ActiveProgramArgs(BaseModel):
     exercise_id: str | None = None
     week_order: int | None = None
     muscle: str | None = None
+    offset: int = Field(default=0, ge=0)
 
 
 @dataclass(frozen=True)
@@ -366,18 +367,19 @@ def _program_muscle_groups(muscle: str | None) -> list[str]:
     ]
 
 
-def _program_exercise_matches(exercise: Any, muscle: str | None, args: ActiveProgramArgs) -> bool:
+def _program_exercise_matches(exercise: Any, muscles: Sequence[str], args: ActiveProgramArgs) -> bool:
     if args.exercise_name and exercise.exercise_name.casefold() != args.exercise_name.strip().casefold():
         return False
     if args.exercise_id and str(exercise.exercise_id) != args.exercise_id:
         return False
     if args.muscle:
         selected = args.muscle.strip().casefold()
-        return selected == (muscle or "").strip().casefold() or selected in _program_muscle_groups(muscle)
+        return any(selected == muscle.strip().casefold() or selected in _program_muscle_groups(muscle)
+                   for muscle in muscles)
     return True
 
 
-def _program_exercise_prescription(exercise: Any, muscle: str | None) -> dict[str, Any]:
+def _program_exercise_prescription(exercise: Any, muscle: str | None, metadata: dict[str, Any]) -> dict[str, Any]:
     from agent.ProgramState import program_exercise_working_sets
 
     sets = program_exercise_working_sets(exercise)
@@ -387,6 +389,7 @@ def _program_exercise_prescription(exercise: Any, muscle: str | None) -> dict[st
         "reps_min": exercise.target_reps_min, "reps_max": exercise.target_reps_max,
         "rir": rir, "muscle": muscle or "not set",
         "rest_seconds": exercise.rest_seconds if exercise.rest_seconds is not None else "not set",
+        **metadata,
     }
     groups = exercise.set_groups or ()
     flat = (sets, exercise.target_reps_min, exercise.target_reps_max, rir, getattr(exercise, "load", None), False)
@@ -420,10 +423,54 @@ def _program_restriction_skips(program: Any, days: Sequence[Any]) -> dict[str, l
     return slots_by_restriction
 
 
+def _program_volume_context(ledger: Any) -> dict[str, Any]:
+    from service.dashboard import volume_attribution
+
+    return {
+        "logged_volume_7d": volume_attribution(None, ledger.ledger_id, 7, ledger),
+        "how_mayos_counts": {
+            "en": "Working sets: 1 direct + 0.5 per distinct secondary group, excluding the primary; no warm-ups. Logged: Home groups, UTC cutoff. Planned: overlapping Weak point groups; unknown muscles uncounted.",
+            "ar": "المجموعات: 1 للأساسية و0.5 لكل مجموعة ثانوية مختلفة، دون الأساسية أو الإحماء؛ المسجل مثل الرئيسية بحد UTC، والمخطط بنقاط الضعف المتداخلة؛ المجهول لا يُحسب.",
+        },
+    }
+
+
+def _weekly_program_volume(direct: dict[str, int], indirect: dict[str, float]) -> dict[str, Any]:
+    return {
+        muscle: {"direct": direct.get(muscle, 0), "indirect": indirect.get(muscle, 0),
+                 "total": direct.get(muscle, 0) + indirect.get(muscle, 0)}
+        for muscle in dict.fromkeys([*direct, *indirect])
+    }
+
+
+def _program_prescription_page(response: dict[str, Any], offset: int) -> dict[str, Any]:
+    # Empty / exact fit / multi-page / oversized single row: never split a prescription.
+    rows = [(day, exercise) for day in response["days"] for exercise in day["exercises"]]
+    page = {**response, "days": [], "next_offset": None}
+    for index in range(offset, len(rows)):
+        day, exercise = rows[index]
+        if not page["days"] or page["days"][-1]["day"] != day["day"]:
+            page["days"].append({**day, "exercises": []})
+        page["days"][-1]["exercises"].append(exercise)
+        page["next_offset"] = index + 1 if index + 1 < len(rows) else None
+        encoded = json.dumps(page, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+        if len(encoded.encode("utf-8")) > MAX_TOOL_RESULT_BYTES:
+            page["days"][-1]["exercises"].pop()
+            if not page["days"][-1]["exercises"]:
+                page["days"].pop()
+            if not page["days"]:
+                return {"status": "truncated", "message": "Prescription exceeds result cap.",
+                        "message_ar": "تفاصيل التمرين تتجاوز حد النتيجة."}
+            page["next_offset"] = index
+            return page
+    return page
+
+
 def _read_active_program(ledger: Any, args: ActiveProgramArgs | None = None, store: Any = None, player_account_id: str | None = None) -> dict[str, Any]:
     program = ledger.get_active_program()
+    volume_context = _program_volume_context(ledger)
     if program is None:
-        return {"status": "not_set", "active_program": "not set", "program_authority": "player"}
+        return {"status": "not_set", "active_program": "not set", "program_authority": "player", **volume_context}
     authority = "player"
     coach_name = None
     if store is not None and player_account_id:
@@ -468,8 +515,10 @@ def _read_active_program(ledger: Any, args: ActiveProgramArgs | None = None, sto
         if getattr(exercise, "exercise_id", None)
     })
     targets = ledger.volume_review_exercise_targets(exercise_ids)
+    metadata = ledger.program_exercise_metadata(exercise_ids)
     summary: dict[str, int] = {muscle: 0 for muscle in WEAK_POINT_MUSCLES}
     other_muscles: dict[str, int] = {}
+    indirect: dict[str, float] = {}
     days = []
     for day in all_days:
         exercises = []
@@ -477,7 +526,9 @@ def _read_active_program(ledger: Any, args: ActiveProgramArgs | None = None, sto
         for exercise in getattr(day, "exercises", ()) or ():
             sets = program_exercise_working_sets(exercise)
             muscle = targets.get(str(getattr(exercise, "exercise_id", "")))
-            if not _program_exercise_matches(exercise, muscle, args):
+            exercise_metadata = metadata.get(str(exercise.exercise_id), {"secondary_muscles": [], "movement_pattern": None})
+            secondaries = exercise_metadata["secondary_muscles"]
+            if not _program_exercise_matches(exercise, [muscle or "", *secondaries], args):
                 continue
             matching_groups = _program_muscle_groups(muscle)
             if muscle:
@@ -486,8 +537,13 @@ def _read_active_program(ledger: Any, args: ActiveProgramArgs | None = None, sto
                         summary[group] += sets
                 else:
                     other_muscles[str(muscle).strip()] = other_muscles.get(str(muscle).strip(), 0) + sets
+            primary_groups = set(matching_groups or [str(muscle or "").strip().casefold()])
+            secondary_groups = {group for secondary in secondaries
+                                for group in (_program_muscle_groups(secondary) or [secondary.strip().casefold()])}
+            for group in sorted(secondary_groups - primary_groups - {""}):
+                indirect[group] = indirect.get(group, 0) + 0.5 * sets
             if detailed_scope:
-                exercises.append(_program_exercise_prescription(exercise, muscle))
+                exercises.append(_program_exercise_prescription(exercise, muscle, exercise_metadata))
             for group in matching_groups or [muscle or "not set"]:
                 if group not in day_muscles:
                     day_muscles.append(group)
@@ -500,19 +556,24 @@ def _read_active_program(ledger: Any, args: ActiveProgramArgs | None = None, sto
                 "day": day_name, "muscles": day_muscles,
             }
         )
-    return {
+    response = {
         "status": "ok", "f": getattr(program, "weekly_frequency", "not set"),
         "split": _not_set(getattr(program, "split_type", None)),
         "week_order": selected_week, "days": days,
         "movement_restrictions": _player_profile(ledger).get("movement_restrictions", []),
         "skipped_restricted_slots": _program_restriction_skips(program, all_days),
         "program_authority": authority,
+        **volume_context,
         **({"coach": coach_name} if coach_name else {}),
         **({} if detailed_scope else {
             "weekly_sets_by_muscle": summary, "other_muscles": other_muscles,
+            "weekly_volume_by_muscle": _weekly_program_volume(
+                {**summary, **{muscle.casefold(): sets for muscle, sets in other_muscles.items()}}, indirect
+            ),
             "message": "Weak point groups can overlap. Scope by day_name, exercise_name/exercise_id or muscle for prescriptions.",
         }),
     }
+    return _program_prescription_page(response, args.offset) if detailed_scope else response
 
 
 def _read_program_rationale(ledger: Any, args: ProgramRationaleArgs) -> dict[str, Any]:
@@ -543,8 +604,11 @@ PLAYER_READ_TOOL_REGISTRY: tuple[PlayerReadTool, ...] = (
             "Read active Program overview: ordered days and muscles, weekly sets, authority and "
             "restriction skips; no prescriptions. Defaults to current week; week_order selects another. "
             "Scope day_name, exercise_name/exercise_id or muscle for matching prescriptions only. "
-            "Muscle accepts Weak point groups or exact target muscles. Skips map restrictions to slots. "
-            "Groups can overlap. Use before program questions."
+            "Rows include secondary_muscles and movement_pattern (curated primary action or null). "
+            "weekly_volume_by_muscle gives planned direct/indirect/total sets; logged_volume_7d "
+            "gives Home weighted sets, even without a program. how_mayos_counts explains attribution. "
+            "Muscle matches primary or secondary muscles and Weak point groups. Groups can overlap. "
+            "For next_offset, repeat the same scope with offset to read remaining complete prescriptions."
         ),
         args_schema=ActiveProgramArgs,
         reader=_read_active_program,
@@ -656,6 +720,7 @@ def _encode_tool_result(tool_result: Any) -> str:
             **({"coach": tool_result["coach"]} if tool_result.get("coach") else {}),
             "weekly_sets_by_muscle": tool_result["weekly_sets_by_muscle"],
             "other_muscles": tool_result.get("other_muscles", {}),
+            **{key: tool_result[key] for key in ("weekly_volume_by_muscle", "logged_volume_7d", "how_mayos_counts") if key in tool_result},
             "message": "Scope by day_name, exercise_name/exercise_id or muscle for prescriptions.",
         }
         compact_rendered = json.dumps(compact, ensure_ascii=False, separators=(",", ":"))

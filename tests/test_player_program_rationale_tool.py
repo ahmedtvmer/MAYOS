@@ -28,12 +28,14 @@ def _reader(program):
     return next(tool for tool in tools if tool.name == "get_program_rationale")
 
 
-def test_active_program_reports_player_authority_without_assignment():
+def test_active_program_reports_player_authority_without_assignment(fresh_store):
     program = _program()
     ledger = SimpleNamespace(
         get_active_program=lambda: program,
         get_program_position=lambda _program: SimpleNamespace(current_week=1),
         volume_review_exercise_targets=lambda _ids: {},
+        program_exercise_metadata=fresh_store.ledger.program_exercise_metadata,
+        conn=fresh_store.ledger.conn, ledger_id=fresh_store.ledger.ledger_id,
     )
     store = SimpleNamespace(get_active_assignment_for_player=lambda _account_id: None)
 
@@ -43,13 +45,15 @@ def test_active_program_reports_player_authority_without_assignment():
     assert result["program_authority"] == "player"
 
 
-def test_active_program_reports_coach_authority_and_display_name():
+def test_active_program_reports_coach_authority_and_display_name(fresh_store):
     program = _program(authored=True)
     program.created_at = "2026-10-27T12:00:00+00:00"
     ledger = SimpleNamespace(
         get_active_program=lambda: program,
         get_program_position=lambda _program: SimpleNamespace(current_week=1),
         volume_review_exercise_targets=lambda _ids: {},
+        program_exercise_metadata=fresh_store.ledger.program_exercise_metadata,
+        conn=fresh_store.ledger.conn, ledger_id=fresh_store.ledger.ledger_id,
     )
     store = SimpleNamespace(
         get_active_assignment_for_player=lambda _account: {
