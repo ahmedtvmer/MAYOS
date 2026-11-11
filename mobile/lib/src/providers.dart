@@ -110,8 +110,16 @@ final Provider<ApiClient> apiClientProvider = Provider<ApiClient>((ref) {
   client.dio.interceptors.add(
     SavedPlayerReads(tokens, ref.watch(savedPlayerDataStoreProvider)),
   );
-  client.onUnauthorized = ref.watch(unauthorizedEventsProvider).signal;
-  client.onAccountDeleted = ref.watch(accountDeletedEventsProvider).signal;
+  final UnauthorizedEvents unauthorized =
+      ref.watch(unauthorizedEventsProvider);
+  final AccountDeletedEvents accountDeleted =
+      ref.watch(accountDeletedEventsProvider);
+  client.onUnauthorized = unauthorized.signal;
+  client.waitForUnauthorizedHandling =
+      unauthorized.waitForCleanup;
+  client.onAccountDeleted = accountDeleted.signal;
+  client.waitForAccountDeletedHandling =
+      accountDeleted.waitForCleanup;
   client.onAppUpdateRequired = (AppVersionPolicy policy) {
     ref
         .read(appUpdateRequiredProvider.notifier)

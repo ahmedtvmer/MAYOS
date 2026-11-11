@@ -107,11 +107,15 @@ class SavedPlayerDataStore extends ChangeNotifier {
     });
   }
 
-  Future<void> saveSession(AccountSession session) async {
+  Future<void> saveSession(
+    AccountSession session, {
+    int? expectedGeneration,
+  }) async {
     final String accountId = session.account.accountId;
-    final int revision = generation;
+    final int revision = expectedGeneration ?? generation;
+    if (generation != revision) return;
     final Map<String, dynamic>? account = await read(accountId, '/auth/me');
-    if (account == null) return;
+    if (account == null || generation != revision) return;
     await write(accountId, 'session', <String, dynamic>{
       'account': account['body'],
       'onboarded': session.onboarded,

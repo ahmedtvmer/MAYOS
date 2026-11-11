@@ -512,8 +512,37 @@ void main() {
     }
   });
 
-  test('non-401 startup refusals keep saved data and writes still fail offline',
-      () async {
+  test('a server refusal does not authenticate from saved data', () async {
+    final FakeMayosApi fake = FakeMayosApi();
+    final InMemoryTokenStore tokens = InMemoryTokenStore();
+    final InMemoryBrowserKeyValueStore storage = InMemoryBrowserKeyValueStore();
+    await _primePlayerCache(
+      fake: fake, tokens: tokens, storage: storage, language: 'en',
+    );
+    final ProviderContainer container = authContainerFor(
+      fake, tokens, savedPlayerDataBrowser: storage,
+    );
+    addTearDown(container.dispose);
+    fake.meRefusalStatus = 403;
+    await container.read(authControllerProvider.notifier).initialize();
+    expect(container.read(authControllerProvider).isAuthenticated, isFalse);
+    expect(container.read(authControllerProvider).isOffline, isFalse);
+    expect(await tokens.read(), isNotNull);
+    expect(
+      await container
+          .read(savedPlayerDataStoreProvider)
+          .session('account-alice'),
+      isNotNull,
+    );
+    fake.allRequestsOffline = true;
+    final ApiClient api = container.read(apiClientProvider);
+    await expectLater(api.changeWaterGlasses(undo: false),
+        throwsA(isA<ApiException>()));
+    expect(fake.waterGlasses, 0);
+    expect((await api.nutrition()).todayWaterGlasses, 0);
+  });
+
+  test('a 5xx while the service restarts keeps the saved session', () async {
     final FakeMayosApi fake = FakeMayosApi();
     final InMemoryTokenStore tokens = InMemoryTokenStore();
     final InMemoryBrowserKeyValueStore storage = InMemoryBrowserKeyValueStore();
@@ -527,17 +556,7 @@ void main() {
     fake.meFails = true;
     await container.read(authControllerProvider.notifier).initialize();
     expect(container.read(authControllerProvider).isAuthenticated, isTrue);
-    expect(container.read(authControllerProvider).isOffline, isTrue);
-    // A local discovery update must not dismiss the saved-data warning.
-    container.read(authControllerProvider.notifier)
-        .confirmWhatsNewSeenRelease('account-alice', 6);
-    expect(container.read(authControllerProvider).isOffline, isTrue);
-    fake.allRequestsOffline = true;
-    final ApiClient api = container.read(apiClientProvider);
-    await expectLater(api.changeWaterGlasses(undo: false),
-        throwsA(isA<ApiException>()));
-    expect(fake.waterGlasses, 0);
-    expect((await api.nutrition()).todayWaterGlasses, 0);
+    expect(await tokens.read(), isNotNull);
   });
 
 }

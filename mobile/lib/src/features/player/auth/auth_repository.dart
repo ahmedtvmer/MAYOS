@@ -65,8 +65,11 @@ class AuthRepository {
   final DisplayLanguageStore? _displayLanguageStore;
   final Future<FirstTouch?> Function()? _readFirstTouch;
   final Future<void> Function()? _clearFirstTouch;
+  final Set<Future<void>> _restoreWrites = <Future<void>>{};
+  int _restoreRevision = 0;
+  bool _sessionEnded = false;
 
-  /// Only used after a failed online restore, never to choose another account.
+  /// Only used after a transport failure, never to choose another account.
   Future<AccountSession?> savedSession() async {
     try {
       return await _readSavedSession();
@@ -77,23 +80,75 @@ class AuthRepository {
   }
 
   Future<AccountSession?> _readSavedSession() async {
+    if (_sessionEnded) return null;
     final String? token = await _tokens.read();
     if (token == null || token.isEmpty) return null;
     final String? accountId = await _localAccountId();
     if (accountId == null) return null;
     final AccountSession? session = await _savedData?.session(accountId);
     if (await _tokens.read() != token) return null;
-    if (session != null) _savedData?.useSavedData();
     return session;
   }
 
-  Future<void> saveSession(AccountSession session) async {
+  Future<void> saveSession(
+    AccountSession session, {
+    int? expectedGeneration,
+  }) async {
     final SavedPlayerDataStore? savedData = _savedData;
-    if (savedData == null) return;
+    if (savedData == null || _sessionEnded) return;
+    final int dataGeneration = expectedGeneration ?? savedData.generation;
     try {
-      await savedData.saveSession(session);
+      await savedData.saveSession(
+        session,
+        expectedGeneration: dataGeneration,
+      );
     } on Object {
       // A local snapshot failure cannot undo a server-confirmed session.
+    }
+  }
+
+  void useSavedData() => _savedData?.useSavedData();
+
+  void _invalidateRestores() => _restoreRevision++;
+
+  void _endSession() {
+    _invalidateRestores();
+    _sessionEnded = true;
+  }
+
+  Future<bool> _canPersistRestore(
+    String token,
+    int revision,
+    int dataGeneration,
+  ) async =>
+      revision == _restoreRevision &&
+      !_sessionEnded &&
+      await _tokens.read() == token &&
+      (_savedData?.generation ?? 0) == dataGeneration;
+
+  Future<void> _persistRestoredSession(
+    AccountSession session,
+    String token,
+    int revision,
+    int dataGeneration,
+  ) async {
+    final Completer<void> completion = Completer<void>();
+    final Future<void> pending = completion.future;
+    _restoreWrites.add(pending);
+    try {
+      if (!await _canPersistRestore(token, revision, dataGeneration)) return;
+      await _saveAccountId(session.account.accountId);
+      if (!await _canPersistRestore(token, revision, dataGeneration)) return;
+      await saveSession(session, expectedGeneration: dataGeneration);
+    } finally {
+      _restoreWrites.remove(pending);
+      completion.complete();
+    }
+  }
+
+  Future<void> _waitForRestoreWrites() async {
+    while (_restoreWrites.isNotEmpty) {
+      await Future.wait<void>(List<Future<void>>.of(_restoreWrites));
     }
   }
 
@@ -199,20 +254,31 @@ class AuthRepository {
       _api.usernameAvailable(username, ticket: signupTicket);
 
   /// Restores a persisted session, or returns null when there is no live one.
-  /// A 401 clears the stale token; any other failure (for example, no network)
-  /// propagates so the caller can keep the token for a later retry. A 401 that
-  /// carries `account_deleted` erases that account's protected local data before
-  /// clearing the session (ADR 039).
+  /// A 401 ends the session; other failures propagate for the controller to
+  /// classify. Only a transport failure may fall back to a saved session. A
+  /// 401 carrying `account_deleted` also erases protected local data (ADR 039).
   Future<AccountSession?> restore() async {
+    if (_sessionEnded) return null;
+    final int revision = _restoreRevision;
+    final int dataGeneration = _savedData?.generation ?? 0;
     final String? token = await _tokens.read();
-    if (token == null || token.isEmpty) {
+    if (revision != _restoreRevision || token == null || token.isEmpty) {
       return null;
     }
     try {
       final AccountSession session = await _currentSession();
-      if (await _tokens.read() != token) return null;
-      await _saveAccountId(session.account.accountId);
-      unawaited(saveSession(session));
+      if (!await _canPersistRestore(token, revision, dataGeneration)) {
+        return null;
+      }
+      await _persistRestoredSession(
+        session,
+        token,
+        revision,
+        dataGeneration,
+      );
+      if (!await _canPersistRestore(token, revision, dataGeneration)) {
+        return null;
+      }
       _savedData?.confirmSession();
       return session;
     } on ApiException catch (error) {
@@ -236,7 +302,9 @@ class AuthRepository {
   Future<void> deleteAccount(String password) async {
     final String? accountId = await _localAccountId();
     await _api.deleteAccount(password);
+    _endSession();
     await _erasePrivateAccountData(accountId);
+    await _waitForRestoreWrites();
     await _tokens.clear();
     _deleteDisplayLanguageCacheBestEffort(accountId);
   }
@@ -246,7 +314,9 @@ class AuthRepository {
   Future<void> deleteAccountWithGoogle({required String googleIdToken}) async {
     final String? accountId = await _localAccountId();
     await _api.deleteAccountWithGoogle(googleIdToken: googleIdToken);
+    _endSession();
     await _erasePrivateAccountData(accountId);
+    await _waitForRestoreWrites();
     await _tokens.clear();
     _deleteDisplayLanguageCacheBestEffort(accountId);
   }
@@ -275,16 +345,19 @@ class AuthRepository {
       currentPassword: currentPassword,
       newPassword: newPassword,
     );
+    _endSession();
     await clearSession(accountId: accountId);
   }
 
   /// Handles a request that reported `account_deleted`: erase the account's
   /// protected local data and clear the local session (ADR 039).
-  Future<void> handleAccountDeleted() async {
-    final String? accountId = await _localAccountId();
-    await _erasePrivateAccountData(accountId);
+  Future<void> handleAccountDeleted({String? accountId}) async {
+    _endSession();
+    final String? localAccountId = accountId ?? await _localAccountId();
+    await _erasePrivateAccountData(localAccountId);
+    await _waitForRestoreWrites();
     await _tokens.clear();
-    _deleteDisplayLanguageCacheBestEffort(accountId);
+    _deleteDisplayLanguageCacheBestEffort(localAccountId);
   }
 
   /// Clears the account's private local data before dropping its credentials.
@@ -360,6 +433,7 @@ class AuthRepository {
     String? accountId,
   }) async {
     await _api.resetPassword(token: token, newPassword: newPassword);
+    _endSession();
     await clearSession(accountId: accountId);
   }
 
@@ -385,12 +459,14 @@ class AuthRepository {
   /// keeps a private conversation from being readable by whoever holds the
   /// device next (ADR 036). Disclosure acceptance stays per account.
   Future<void> logout({String? accountId}) async {
+    _endSession();
     try {
       await _api.logout();
     } on ApiException {
       // Local session is cleared regardless; the server revokes on best effort.
     }
     await _clearReadCaches(accountId);
+    await _waitForRestoreWrites();
     await _tokens.clear();
   }
 
@@ -398,7 +474,9 @@ class AuthRepository {
   /// invalid, e.g. after a 401): clears the account's cached chat history and
   /// the persisted token.
   Future<void> clearSession({String? accountId}) async {
+    _endSession();
     await _clearReadCaches(accountId);
+    await _waitForRestoreWrites();
     await _tokens.clear();
   }
 
@@ -431,12 +509,14 @@ class AuthRepository {
   /// Persists the token issued by register/login, then resolves the session.
   Future<AccountSession> _establishSession(
       Future<AuthTokens> Function() authenticate) async {
+    _invalidateRestores();
     final AuthTokens auth = await authenticate();
     // A new bearer must never inherit the previous account's local key lookup.
     await _tokens.clear();
     await _tokens.save(auth.accessToken);
     final AccountSession session = await _currentSession();
     await _saveAccountId(session.account.accountId);
+    _sessionEnded = false;
     unawaited(saveSession(session));
     _savedData?.confirmSession();
     return session;

@@ -52,9 +52,12 @@ ProviderContainer authContainerFor(
           ref.watch(tokenStoreProvider),
           ref.watch(savedPlayerDataStoreProvider),
         ));
-        client.onUnauthorized = ref.watch(unauthorizedEventsProvider).signal;
-        client.onAccountDeleted =
-            ref.watch(accountDeletedEventsProvider).signal;
+        final unauthorized = ref.watch(unauthorizedEventsProvider);
+        final accountDeleted = ref.watch(accountDeletedEventsProvider);
+        client.onUnauthorized = unauthorized.signal;
+        client.waitForUnauthorizedHandling = unauthorized.waitForCleanup;
+        client.onAccountDeleted = accountDeleted.signal;
+        client.waitForAccountDeletedHandling = accountDeleted.waitForCleanup;
         client.onAppUpdateRequired = (AppVersionPolicy policy) {
           ref
               .read(appUpdateRequiredProvider.notifier)
@@ -107,9 +110,12 @@ Widget authApp(
           ref.watch(tokenStoreProvider),
           ref.watch(savedPlayerDataStoreProvider),
         ));
-        client.onUnauthorized = ref.watch(unauthorizedEventsProvider).signal;
-        client.onAccountDeleted =
-            ref.watch(accountDeletedEventsProvider).signal;
+        final unauthorized = ref.watch(unauthorizedEventsProvider);
+        final accountDeleted = ref.watch(accountDeletedEventsProvider);
+        client.onUnauthorized = unauthorized.signal;
+        client.waitForUnauthorizedHandling = unauthorized.waitForCleanup;
+        client.onAccountDeleted = accountDeleted.signal;
+        client.waitForAccountDeletedHandling = accountDeleted.waitForCleanup;
         client.onAppUpdateRequired = (AppVersionPolicy policy) {
           ref
               .read(appUpdateRequiredProvider.notifier)

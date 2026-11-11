@@ -184,18 +184,33 @@ class AuthState {
   AccountSession? get accountSession => session;
 }
 
-/// Signals a 401 observed on an authenticated request. Kept separate from the
-/// API client so the two providers never depend on each other in a cycle.
-class UnauthorizedEvents extends ChangeNotifier {
+/// Signals auth lifecycle events without coupling the API client to auth.
+abstract class AuthLifecycleEvents extends ChangeNotifier {
+  Future<void>? _cleanup;
+
   void signal() => notifyListeners();
+
+  void trackCleanup(Future<void> cleanup) =>
+      _cleanup = cleanup.catchError((Object _) {});
+
+  Future<void> waitForCleanup() async {
+    final Future<void>? cleanup = _cleanup;
+    if (cleanup == null) return;
+    try {
+      await cleanup;
+    } finally {
+      if (identical(_cleanup, cleanup)) _cleanup = null;
+    }
+  }
 }
+
+/// Signals a 401 observed on an authenticated request.
+class UnauthorizedEvents extends AuthLifecycleEvents {}
 
 /// Signals a 401 carrying `account_deleted` for a validly signed token, so the
 /// app erases that account's protected data instead of offering the logout
 /// keep/discard choice (ADR 039).
-class AccountDeletedEvents extends ChangeNotifier {
-  void signal() => notifyListeners();
-}
+class AccountDeletedEvents extends AuthLifecycleEvents {}
 
 class AuthController extends StateNotifier<AuthState> {
   AuthController(
@@ -245,8 +260,14 @@ class AuthController extends StateNotifier<AuthState> {
     _sessionRevision++;
     _restoreRetry?.cancel();
     _restoreRetry = null;
+    _confirmingSession = false;
     _needsSessionConfirmation = false;
     _restoreDelaySeconds = 2;
+  }
+
+  Future<void> _waitForSessionCleanup() async {
+    await _events.waitForCleanup();
+    await _accountDeletedEvents.waitForCleanup();
   }
 
   /// Browser online events, an API response, resume, and backoff all enter here.
@@ -263,8 +284,18 @@ class AuthController extends StateNotifier<AuthState> {
       state = session == null
           ? AuthState.unauthenticated(state.notice)
           : AuthState.authenticated(session);
+    } on ApiException catch (error) {
+      if (!mounted || revision != _sessionRevision) return;
+      if (_isTransientFailure(error)) {
+        _scheduleRestore();
+      } else {
+        _endUnconfirmedSession(error);
+      }
     } on Object {
-      if (mounted && revision == _sessionRevision) _scheduleRestore();
+      if (mounted && revision == _sessionRevision) {
+        _cancelRestore();
+        state = const AuthState.unauthenticated();
+      }
     } finally {
       _confirmingSession = false;
     }
@@ -274,8 +305,8 @@ class AuthController extends StateNotifier<AuthState> {
   PendingGoogleSignup? get pendingSignup => _pendingSignup;
 
   /// Resolves a persisted session once at startup.
-  /// Returns true when startup definitively has no session; false for an
-  /// authenticated restore or a transient failure where the cached token stays.
+  /// Returns true when no session is shown; false while a session is
+  /// authenticated or startup is still waiting to identify one.
   Future<bool> initialize() async {
     _cancelRestore();
     final int revision = _sessionRevision;
@@ -284,8 +315,17 @@ class AuthController extends StateNotifier<AuthState> {
       if (!_isCurrentRestore(revision)) return _isUnauthenticated();
       _applyInitialRestore(session);
       return session == null;
+    } on ApiException catch (error) {
+      if (!_isCurrentRestore(revision)) return _isUnauthenticated();
+      if (_isTransientFailure(error)) return _restoreSavedSession(revision);
+      _endUnconfirmedSession(error);
+      return true;
     } on Object {
-      return _restoreSavedSession(revision);
+      if (_isCurrentRestore(revision)) {
+        _cancelRestore();
+        state = const AuthState.unauthenticated();
+      }
+      return true;
     }
   }
 
@@ -304,7 +344,7 @@ class AuthController extends StateNotifier<AuthState> {
   }
 
   Future<bool> _restoreSavedSession(int revision) async {
-    // A non-401 failure is transient; retain the token and retry in background.
+    if (!_isCurrentRestore(revision)) return _isUnauthenticated();
     final AccountSession? saved = await _repository.savedSession();
     if (!_isCurrentRestore(revision)) return _isUnauthenticated();
     // Older installs without a saved Account stay on splash until online.
@@ -312,8 +352,27 @@ class AuthController extends StateNotifier<AuthState> {
     state = saved == null
         ? const AuthState.loading()
         : AuthState.authenticated(saved, offline: true);
+    if (saved != null) _repository.useSavedData();
     _scheduleRestore();
     return false;
+  }
+
+  /// The server was not reached, or answered 5xx while restarting (a tunnel
+  /// 502 included): the saved session stays. Any other answer is a refusal.
+  bool _isTransientFailure(ApiException error) {
+    final int? status = error.statusCode;
+    if (status != null) return status >= 500;
+    final FailureMessage? failure = error.failureMessage;
+    return failure is AppFailureMessage &&
+        failure.id == AppFailureId.cannotReachService;
+  }
+
+  void _endUnconfirmedSession(ApiException error) {
+    _cancelRestore();
+    state = AuthState.unauthenticatedWithFailure(
+      error.message,
+      apiFailureMessage(error),
+    );
   }
 
   bool _isCurrentRestore(int revision) =>
@@ -338,6 +397,7 @@ class AuthController extends StateNotifier<AuthState> {
     String? coachInviteCode,
     String displayLanguage = 'en',
   }) async {
+    await _waitForSessionCleanup();
     _cancelRestore();
     final AccountSession session = await _repository.register(
       username: username,
@@ -354,6 +414,7 @@ class AuthController extends StateNotifier<AuthState> {
     required String password,
     bool rememberMe = false,
   }) async {
+    await _waitForSessionCleanup();
     _cancelRestore();
     final AccountSession session = await _repository.login(
       username: username,
@@ -367,8 +428,10 @@ class AuthController extends StateNotifier<AuthState> {
     _cancelRestore();
     final String? accountId = state.session?.account.accountId;
     await _repository.logout(accountId: accountId);
+    _cancelRestore();
     // The MAYOS session is over, so the Google SDK's own is too (#115).
     await _google.clearSdkState();
+    _cancelRestore();
     state = const AuthState.unauthenticated();
   }
 
@@ -490,6 +553,7 @@ class AuthController extends StateNotifier<AuthState> {
 
   Future<ContinueWithGoogleResult> _continueWithGoogleToken(
       String idToken) async {
+    await _waitForSessionCleanup();
     _cancelRestore();
     try {
       final GoogleSignInFlowResult result =
@@ -530,6 +594,7 @@ class AuthController extends StateNotifier<AuthState> {
   /// Picks the username and creates the account behind the pending ticket.
   Future<CompleteGoogleSignupResult> completeGoogleSignup(
       {required String username, String displayLanguage = 'en'}) async {
+    await _waitForSessionCleanup();
     _cancelRestore();
     final PendingGoogleSignup? pending = _pendingSignup;
     if (pending == null) {
@@ -637,7 +702,9 @@ class AuthController extends StateNotifier<AuthState> {
         failureMessage: failure,
       );
     }
+    _cancelRestore();
     await _google.clearSdkState();
+    _cancelRestore();
     state = const AuthState.unauthenticated(
         'Your account was deleted. Create a new account or sign in.');
     return const DeleteWithGoogleDone();
@@ -932,19 +999,21 @@ class AuthController extends StateNotifier<AuthState> {
     final String? accountId = state.session?.account.accountId;
     _cancelRestore();
     state = const AuthState.unauthenticated();
-    // Fire-and-forget: the in-memory state already reflects the logout. The
-    // token is already invalid, so only the local state is dropped here.
-    unawaited(_repository.clearSession(accountId: accountId));
+    // The API request waits for this local cleanup before it surfaces the 401.
+    _events.trackCleanup(_repository.clearSession(accountId: accountId));
     unawaited(_google.clearSdkState());
   }
 
   /// A 401 carrying `account_deleted`: erase the account's protected local data
   /// (no keep/discard prompt) and end the session with an explanation (ADR 039).
   void _onAccountDeleted() {
+    final String? accountId = state.session?.account.accountId;
     _cancelRestore();
     state = const AuthState.unauthenticated(
         'This account was deleted. Its data was removed from this device.');
-    unawaited(_repository.handleAccountDeleted());
+    _accountDeletedEvents.trackCleanup(
+      _repository.handleAccountDeleted(accountId: accountId),
+    );
     unawaited(_google.clearSdkState());
   }
 

@@ -164,7 +164,9 @@ class ApiClient {
           _addHttpBreadcrumb(response.requestOptions, response.statusCode);
           handler.next(response);
         },
-        onError: _handleError,
+        onError: (DioException error, ErrorInterceptorHandler handler) async {
+          await _handleError(error, handler);
+        },
       ),
     );
   }
@@ -251,10 +253,16 @@ class ApiClient {
   /// Invoked when an authenticated request fails with 401.
   void Function()? onUnauthorized;
 
+  /// Waits for the auth controller to finish local cleanup after a 401.
+  Future<void> Function()? waitForUnauthorizedHandling;
+
   /// Invoked when an authenticated request fails with 401 carrying the
   /// `account_deleted` signal, so the app can erase that account's protected
   /// local data without the logout keep/discard prompt (ADR 039).
   void Function()? onAccountDeleted;
+
+  /// Waits for protected account data to be erased after `account_deleted`.
+  Future<void> Function()? waitForAccountDeletedHandling;
 
   /// Invoked when any service request is blocked by the Android minimum build.
   void Function(AppVersionPolicy policy)? onAppUpdateRequired;
@@ -303,7 +311,10 @@ class ApiClient {
   }) =>
       '$platform/$version';
 
-  void _handleError(DioException error, ErrorInterceptorHandler handler) {
+  Future<void> _handleError(
+    DioException error,
+    ErrorInterceptorHandler handler,
+  ) async {
     final int? status = error.response?.statusCode;
     if (status != null) _addHttpBreadcrumb(error.requestOptions, status);
     final dynamic responseBody = error.response?.data;
@@ -321,11 +332,23 @@ class ApiClient {
       if (responseBody is Map &&
           responseBody['error'] == 'account_deleted') {
         onAccountDeleted?.call();
+        await _waitForHandling(waitForAccountDeletedHandling);
       } else {
         onUnauthorized?.call();
+        await _waitForHandling(waitForUnauthorizedHandling);
       }
     }
     handler.next(error);
+  }
+
+  Future<void> _waitForHandling(
+    Future<void> Function()? waitForHandling,
+  ) async {
+    try {
+      await waitForHandling?.call();
+    } on Object {
+      // Preserve the service response when local cleanup also fails.
+    }
   }
 
   Future<Response<dynamic>> _send(
@@ -3423,7 +3446,7 @@ class ApiClient {
   Future<void> _throwFetchResponseFailure(
       ChatStreamFetchResponse response) async {
     final String raw = await _readStream(response.body);
-    _handleFetchErrorResponse(response.statusCode, raw);
+    await _handleFetchErrorResponse(response.statusCode, raw);
     throw _errorFromResponse(response.statusCode, raw);
   }
 
@@ -3444,10 +3467,10 @@ class ApiClient {
         ),
       );
 
-  void _handleFetchErrorResponse(int status, String raw) {
+  Future<void> _handleFetchErrorResponse(int status, String raw) async {
     final Map<String, dynamic>? body = _fetchErrorBody(raw);
     _notifyFetchAppUpdate(status, body);
-    _notifyFetchUnauthorized(status, body);
+    await _notifyFetchUnauthorized(status, body);
   }
 
   Map<String, dynamic>? _fetchErrorBody(String raw) {
@@ -3469,12 +3492,17 @@ class ApiClient {
     if (policy != null) onAppUpdateRequired?.call(policy);
   }
 
-  void _notifyFetchUnauthorized(int status, Map<String, dynamic>? body) {
+  Future<void> _notifyFetchUnauthorized(
+    int status,
+    Map<String, dynamic>? body,
+  ) async {
     if (status != 401) return;
     if (body?['error'] == 'account_deleted') {
       onAccountDeleted?.call();
+      await _waitForHandling(waitForAccountDeletedHandling);
     } else {
       onUnauthorized?.call();
+      await _waitForHandling(waitForUnauthorizedHandling);
     }
   }
 
