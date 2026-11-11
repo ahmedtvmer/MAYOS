@@ -769,7 +769,7 @@ def test_tool_bound_chat_fetches_profile_and_program_only_after_parallel_calls(
         [
             ToolCallsTurn(
                 calls=[
-                    {"name": "get_player_profile", "args": {}, "id": "profile-call"},
+                    {"name": "get_player_profile", "args": {"sections": ["Goals", "Training setup", "Limitations", "Recovery"]}, "id": "profile-call"},
                     {"name": "get_active_program", "args": {}, "id": "program-call"},
                 ]
             ),
@@ -783,7 +783,7 @@ def test_tool_bound_chat_fetches_profile_and_program_only_after_parallel_calls(
         "POST",
         "/chat/messages",
         headers=headers,
-        json={"content": "What do you know about my profile and program?"},
+        json={"content": "What do you know about my profile?"},
     ) as response:
         body = response.read().decode("utf-8")
         assert response.status_code == 200
@@ -796,8 +796,8 @@ def test_tool_bound_chat_fetches_profile_and_program_only_after_parallel_calls(
         "get_player_weight_trend",
         "get_player_nutrition",
         "get_player_food_log",
-        "get_player_injuries",
         "get_assistant_preferences",
+        "search_chat_history",
     ]
     first_payload = "\n".join(
         str(getattr(message, "content", message)) for message in model.calls[0]["messages"]
@@ -852,6 +852,196 @@ def test_tool_bound_chat_fetches_profile_and_program_only_after_parallel_calls(
         if line.startswith("data: ") and '"token"' in line
     ]
     assert len(token_frames) >= 2
+
+
+def test_chat_search_finds_old_english_and_arabic_messages_with_filters(api, monkeypatch):
+    _force_free_form_coaching_intent(monkeypatch)
+    client, db = api
+    username = "chat-history-search"
+    headers = _authed(_register(client, username)["access_token"])
+    with db.open_ledger(username) as ledger:
+        history = [
+            ("user", "I told you my shoulder hurts after overhead press.", "2026-01-05T12:00:00+00:00"),
+            ("assistant", "coachassistantnote: I suggested a lighter shoulder warm-up.", "2026-01-08T12:00:00+00:00"),
+            ("user", "training diary first January entry", "2026-01-10T12:00:00+00:00"),
+            ("user", "training diary second January entry", "2026-01-20T12:00:00+00:00"),
+            ("user", "training diary February entry", "2026-02-20T12:00:00+00:00"),
+            ("user", "أَلَمٌ في الكَتِفِ بعد الضغط", "2026-02-05T12:00:00+00:00"),
+        ]
+        for role, content, created_at in history:
+            message_id = ledger.add_chat_message(role, content)
+            ledger.conn.execute(
+                "UPDATE chat_history SET created_at = ? WHERE id = ?",
+                (created_at, message_id),
+            )
+        for index in range(9):
+            ledger.add_chat_message("user", f"Recent training note {index}")
+        # Newest message, so it sits inside the prompt's recent window (ordered by created_at).
+        ledger.add_chat_message("assistant", "RECENT_WINDOW_SECRET")
+        ledger.add_chat_message(
+            "assistant",
+            format_session_pointer(SessionPointerFacts(
+                display_language="en", day_name="POINTER_ONLY_SECRET",
+                performed_date="2026-10-31", total_working_sets=3,
+                total_tonnage_kg=150.0, readiness=4,
+            )),
+        )
+
+    model = ScriptedChatModel(
+        [
+            ToolCallsTurn(calls=[
+                {"name": "search_chat_history", "args": {
+                    "query": "shoulder hurts", "start_date": "2026-01-01",
+                    "end_date": "2026-01-31", "limit": 10,
+                }, "id": "search-english"},
+                {"name": "search_chat_history", "args": {
+                    "query": "الم", "start_date": "2026-02-01",
+                    "end_date": "2026-02-28", "limit": 10,
+                }, "id": "search-arabic"},
+                {"name": "search_chat_history", "args": {
+                    "query": "coachassistantnote",
+                }, "id": "search-assistant"},
+                {"name": "search_chat_history", "args": {
+                    "query": "training", "start_date": "2026-01-01",
+                    "end_date": "2026-01-31", "limit": 1,
+                }, "id": "search-limit"},
+                {"name": "search_chat_history", "args": {
+                    "query": "RECENT_WINDOW_SECRET",
+                }, "id": "search-recent"},
+                {"name": "search_chat_history", "args": {
+                    "query": "POINTER_ONLY_SECRET",
+                }, "id": "search-pointer"},
+                {"name": "search_chat_history", "args": {
+                    "query": "never stored search phrase",
+                }, "id": "search-empty"},
+            ]),
+            "لقيت الملاحظات القديمة اللي بتسأل عنها.",
+        ]
+    )
+    monkeypatch.setattr(assistant_graph, "llm", model)
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers,
+        json={"content": "إيه اللي قولتهولك قبل كده عن كتفي؟"},
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+
+    results = [
+        json.loads(message.content)
+        for message in model.calls[1]["messages"]
+        if getattr(message, "name", None) == "search_chat_history"
+    ]
+    assert len(results) == 7
+    assert "shoulder hurts" in results[0]["matches"][0]["content"]
+    assert results[1]["matches"][0]["content"] == "أَلَمٌ في الكَتِفِ بعد الضغط"
+    assert "coachassistantnote" in results[2]["matches"][0]["content"]
+    assert len(results[3]["matches"]) == 1
+    assert "second January entry" in results[3]["matches"][0]["content"]
+    assert results[4] == {"status": "no_matches", "matches": [], "has_more": False}
+    assert results[5] == {"status": "no_matches", "matches": [], "has_more": False}
+    assert results[6] == {"status": "no_matches", "matches": [], "has_more": False}
+    statuses = [
+        json.loads(frame.splitlines()[1].removeprefix("data: "))["status"]
+        for frame in body.split("\n\n") if frame.startswith("event: status\n")
+    ]
+    # The context router may add its own status before the search; count only the searches.
+    assert statuses.count("بدور في محادثاتك القديمة…") == 7
+
+
+def test_chat_history_search_backfills_legacy_messages_on_first_mount(api, monkeypatch):
+    _force_free_form_coaching_intent(monkeypatch)
+    client, db = api
+    username = "chat-history-migration"
+    headers = _authed(_register(client, username)["access_token"])
+    with db.open_ledger(username) as ledger:
+        ledger.conn.execute("DROP TABLE chat_history_fts")
+        ledger.conn.execute(
+            "INSERT INTO chat_history (id, role, content, created_at) "
+            "VALUES (?, 'user', ?, ?)",
+            ("legacy-search-hit", "Last month I described my shoulder recovery plan.",
+             "2026-01-01T12:00:00+00:00"),
+        )
+        for index in range(12):
+            ledger.conn.execute(
+                "INSERT INTO chat_history (id, role, content, created_at) "
+                "VALUES (?, 'user', ?, ?)",
+                (f"legacy-filler-{index}", f"Old conversation note {index}",
+                 f"2026-02-01T00:00:{index:02d}+00:00"),
+            )
+        ledger.conn.execute("PRAGMA user_version = 55")
+
+    model = ScriptedChatModel(
+        [
+            ToolCallsTurn(calls=[{
+                "name": "search_chat_history",
+                "args": {"query": "shoulder recovery"},
+                "id": "legacy-search",
+            }]),
+            "I found your earlier note about shoulder recovery.",
+        ]
+    )
+    monkeypatch.setattr(assistant_graph, "llm", model)
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers,
+        json={"content": "What did I tell you about shoulder recovery?"},
+    ) as response:
+        response.read()
+        assert response.status_code == 200
+
+    tool_result = next(
+        json.loads(message.content)
+        for message in model.calls[1]["messages"]
+        if getattr(message, "name", None) == "search_chat_history"
+    )
+    assert tool_result["matches"][0]["content"] == (
+        "Last month I described my shoulder recovery plan."
+    )
+
+
+def test_delete_chat_history_removes_old_messages_from_search(api, monkeypatch):
+    _force_free_form_coaching_intent(monkeypatch)
+    client, db = api
+    username = "chat-history-clear-search"
+    headers = _authed(_register(client, username)["access_token"])
+    with db.open_ledger(username) as ledger:
+        message_id = ledger.add_chat_message(
+            "user", "I described my old shoulder rehabilitation plan."
+        )
+        ledger.conn.execute(
+            "UPDATE chat_history SET created_at = ? WHERE id = ?",
+            ("2026-01-01T12:00:00+00:00", message_id),
+        )
+        for index in range(12):
+            ledger.add_chat_message("user", f"Old filler conversation {index}")
+    assert client.delete("/chat/history", headers=headers).status_code == 204
+
+    model = ScriptedChatModel(
+        [
+            ToolCallsTurn(calls=[{
+                "name": "search_chat_history",
+                "args": {"query": "shoulder rehabilitation"},
+                "id": "cleared-search",
+            }]),
+            "I couldn't find an older message about that.",
+        ]
+    )
+    monkeypatch.setattr(assistant_graph, "llm", model)
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers,
+        json={"content": "What did I tell you about my shoulder?"},
+    ) as response:
+        response.read()
+        assert response.status_code == 200
+
+    tool_result = next(
+        json.loads(message.content)
+        for message in model.calls[1]["messages"]
+        if getattr(message, "name", None) == "search_chat_history"
+    )
+    assert tool_result == {"status": "no_matches", "matches": [], "has_more": False}
 
 
 def test_arabic_tool_status_uses_fixed_localized_text(api, monkeypatch):
@@ -921,13 +1111,157 @@ def test_turn_without_tool_call_sends_no_profile_telemetry_or_program_data(api, 
         "get_player_weight_trend",
         "get_player_nutrition",
         "get_player_food_log",
-        "get_player_injuries",
         "get_assistant_preferences",
+        "search_chat_history",
     )
     assert "PROFILE_MUST_STAY_PRIVATE" not in payload
     assert "PROGRAM_MUST_STAY_PRIVATE" not in payload
     assert "99" not in payload
     assert "[TRAINEE CONTEXT]" not in payload
+
+
+def _run_profile_read(ledger, arguments):
+    tools, definitions = player_tools.build_player_read_tools(ledger)
+    messages, _ = player_tools.run_player_tool_calls(
+        [{"name": "get_player_profile", "args": arguments, "id": "scoped-profile"}],
+        tools=tools, definitions=definitions, language="en",
+    )
+    assert len(messages[0].content.encode("utf-8")) <= player_tools.MAX_TOOL_RESULT_BYTES
+    return json.loads(messages[0].content)
+
+
+@pytest.fixture
+def populated_profile_ledger(fresh_store):
+    ledger = fresh_store.ledger
+    ledger.upsert_player_profile({
+        "gender": "female", "age": 31, "height_cm": 165, "weight_kg": 67,
+        "target_weight_kg": 63, "current_goal": "GOAL_PRIVATE",
+        "long_term_goal": "LONG_GOAL_PRIVATE", "weekly_frequency": 3,
+        "equipment_access": "Home gym", "rep_preference": "high",
+        "training_age_years": 3, "injuries_or_limitations": "LIMITATION_TEXT_PRIVATE",
+        "movement_restrictions": ["Knee flexion"],
+        "weak_points": [{"muscle": "biceps", "source": "named"}],
+        "stress_and_sleep": "RECOVERY_PRIVATE", "proportions": "PROPORTIONS_PRIVATE",
+    })
+    ledger.create_injury_record("knee", "INJURY_RECORD_PRIVATE", status="physician_seen")
+    return ledger
+
+
+@pytest.mark.parametrize(
+    "sections,expected_profile",
+    [
+        (["Body"], {"gender": "female", "age": 31, "height_cm": 165,
+                    "weight_kg": 67, "target_weight_kg": 63}),
+        (["Goals"], {"current_goal": "GOAL_PRIVATE", "long_term_goal": "LONG_GOAL_PRIVATE"}),
+        (["Training setup"], {"weekly_frequency": 3, "equipment_access": "Home gym",
+                              "rep_preference": "high", "training_age_years": 3}),
+        (["Limitations"], {"injuries_or_limitations": "LIMITATION_TEXT_PRIVATE",
+                           "movement_restrictions": ["Knee flexion"]}),
+        (["Focus"], {"weak_points": [{"muscle": "biceps", "source": "named"}]}),
+        (["Recovery"], {"stress_and_sleep": "RECOVERY_PRIVATE"}),
+        (["Goals", "Recovery", "Goals"], {"current_goal": "GOAL_PRIVATE",
+                                            "long_term_goal": "LONG_GOAL_PRIVATE",
+                                            "stress_and_sleep": "RECOVERY_PRIVATE"}),
+    ],
+)
+def test_profile_sections_return_only_requested_fields(populated_profile_ledger, sections, expected_profile):
+    result = _run_profile_read(populated_profile_ledger, {"sections": sections})
+    assert result["status"] == "ok"
+    assert result["profile"] == expected_profile
+    assert set(result) == ({"status", "profile", "injuries"} if "Limitations" in sections
+                           else {"status", "profile"})
+    if "Limitations" in sections:
+        assert result["injuries"][0]["description"] == "INJURY_RECORD_PRIVATE"
+
+
+@pytest.mark.parametrize("arguments", [{}, {"sections": []}])
+def test_unscoped_profile_lists_sections_without_values(populated_profile_ledger, arguments):
+    result = _run_profile_read(populated_profile_ledger, arguments)
+    assert set(result) == {"status", "sections"}
+    assert result["status"] == "ok"
+    assert set(result["sections"]) == {
+        "Body", "Goals", "Training setup", "Limitations", "Focus", "Recovery",
+    }
+    assert all(isinstance(description, str) and description.strip() and "\n" not in description
+               for description in result["sections"].values())
+    for private_value in ("PRIVATE", "female", "31", "Knee flexion", "biceps", "Home gym"):
+        assert private_value not in json.dumps(result)
+
+
+@pytest.mark.parametrize("arguments", [
+    {"sections": ["Unknown"]}, {"sections": ["Body", "Unknown"]},
+    {"sections": None}, {"sections": "Body"},
+])
+def test_invalid_profile_scope_returns_unavailable_without_values(populated_profile_ledger, arguments):
+    assert _run_profile_read(populated_profile_ledger, arguments) == {"status": "unavailable"}
+
+
+@pytest.mark.parametrize(
+    "prefilled,completion,expected_age",
+    [(True, None, "not set"), (False, None, 25),
+     (True, "confirmed", 25), (True, "analytics", 25)],
+)
+def test_scoped_profile_preserves_intake_default_evidence(fresh_store, prefilled, completion, expected_age):
+    ledger = fresh_store.ledger
+    ledger.upsert_player_profile({})
+    ledger.save_intake_answer("age", 25, prefilled=prefilled)
+    if completion == "confirmed":
+        ledger.save_intake_state(status="confirmed")
+    elif completion == "analytics":
+        ledger.start_onboarding_analytics("2026-11-08T10:00:00+00:00")
+        ledger.mark_onboarding_analytics_completed("2026-11-08T10:10:00+00:00")
+    result = _run_profile_read(ledger, {"sections": ["Body"]})
+    assert result["profile"]["age"] == expected_age
+
+
+def test_large_merged_limitations_are_capped_through_tool_runner(populated_profile_ledger):
+    ledger = populated_profile_ledger
+    for index in range(4):
+        injury, _ = ledger.create_injury_record("knee", f"Record {index}: " + "إصابة " * 200)
+        ledger.create_exercise_clearance(
+            injury_id=injury["id"], exercise_id=None, exercise_name="Squat",
+            original_wording="Physician wording " * 100, verdict="cleared_with_limits",
+            note="Only as advised " * 100,
+        )
+    assert _run_profile_read(ledger, {"sections": ["Limitations"]})["status"] == "truncated"
+
+
+@pytest.mark.parametrize("question", ["How old am I?", "أنا عندي كام سنة؟"])
+def test_age_question_sends_body_without_injury_or_weak_point_data(api, monkeypatch, question):
+    _force_free_form_coaching_intent(monkeypatch)
+    client, db = api
+    headers = _authed(_register(client, "body-only-player")["access_token"])
+    with db.open_ledger("body-only-player") as ledger:
+        ledger.upsert_player_profile({
+            "age": 31, "injuries_or_limitations": "LIMITATION_TEXT_PRIVATE",
+            "movement_restrictions": ["Knee flexion"],
+            "weak_points": [{"muscle": "biceps", "source": "named"}],
+        })
+        injury, _ = ledger.create_injury_record("knee", "INJURY_RECORD_PRIVATE", status="resolved")
+        ledger.create_exercise_clearance(
+            injury_id=injury["id"], exercise_id=None, exercise_name="Squat",
+            original_wording="CLEARANCE_WORDING_PRIVATE", verdict="not_cleared",
+        )
+    model = ScriptedChatModel([
+        ToolCallsTurn(calls=[{"name": "get_player_profile", "args": {"sections": ["Body"]}, "id": "age"}]),
+        "You are 31 years old.",
+    ])
+    monkeypatch.setattr(assistant_graph, "llm", model)
+    with client.stream("POST", "/chat/messages", headers=headers, json={"content": question}) as response:
+        response.read()
+        assert response.status_code == 200
+    tool_messages = [message for call in model.calls for message in call["messages"]
+                     if getattr(message, "type", "") == "tool"]
+    assert tool_messages
+    assert json.loads(tool_messages[-1].content)["profile"]["age"] == 31
+    for call in model.calls:
+        payload = "\n".join(str(message.content) for message in call["messages"])
+        for forbidden in ("LIMITATION_TEXT_PRIVATE", "INJURY_RECORD_PRIVATE", "CLEARANCE_WORDING_PRIVATE",
+                          "biceps", "Knee flexion", "weak_points", "injuries_or_limitations"):
+            assert forbidden not in payload
+        assert "get_player_injuries" not in call["tools"]
+    assert len(tool_messages[-1].content.encode("utf-8")) <= player_tools.MAX_TOOL_RESULT_BYTES
+    assert model.calls[0]["messages"][0].content == model.calls[-1]["messages"][0].content
 
 
 def test_unset_profile_fields_return_not_set_without_invented_defaults(api, monkeypatch):
@@ -941,7 +1275,7 @@ def test_unset_profile_fields_return_not_set_without_invented_defaults(api, monk
     model = ScriptedChatModel(
         [
             ToolCallsTurn(
-                calls=[{"name": "get_player_profile", "args": {}, "id": "unset-profile"}]
+                calls=[{"name": "get_player_profile", "args": {"sections": ["Body", "Goals", "Training setup", "Limitations", "Focus", "Recovery"]}, "id": "unset-profile"}]
             ),
             "Your profile has no saved details yet.",
         ]
@@ -955,7 +1289,7 @@ def test_unset_profile_fields_return_not_set_without_invented_defaults(api, monk
         assert response.status_code == 200
 
     result = model.calls[1]["messages"][-1].content
-    assert result.count("not set") == 15
+    assert result.count("not set") == 14
     assert '"weak_points":"not set"' in result
     for invented in ("male", "hypertrophy", "25", "75", "175"):
         assert invented not in result
@@ -979,7 +1313,7 @@ def test_legacy_completed_profile_keeps_values_equal_to_storage_defaults(api, mo
     model = ScriptedChatModel(
         [
             ToolCallsTurn(
-                calls=[{"name": "get_player_profile", "args": {}, "id": "legacy-defaults"}]
+                calls=[{"name": "get_player_profile", "args": {"sections": ["Body", "Goals"]}, "id": "legacy-defaults"}]
             ),
             "Your saved values include male, age 25, 75 kg, 175 cm, and hypertrophy.",
         ]
@@ -1019,7 +1353,7 @@ def test_explicit_none_limitations_answer_is_reported_as_none(api, monkeypatch):
     model = ScriptedChatModel(
         [
             ToolCallsTurn(
-                calls=[{"name": "get_player_profile", "args": {}, "id": "none-answer"}]
+                calls=[{"name": "get_player_profile", "args": {"sections": ["Limitations"]}, "id": "none-answer"}]
             ),
             "You reported no injuries or limitations.",
         ]
@@ -1209,7 +1543,7 @@ def test_partial_profile_update_does_not_expose_storage_defaults(api, monkeypatc
     model = ScriptedChatModel(
         [
             ToolCallsTurn(
-                calls=[{"name": "get_player_profile", "args": {}, "id": "partial-profile"}]
+                calls=[{"name": "get_player_profile", "args": {"sections": ["Body", "Goals", "Training setup"]}, "id": "partial-profile"}]
             ),
             "Your saved goal is strength; other profile details are not set.",
         ]
@@ -1267,7 +1601,7 @@ def test_tool_timeout_returns_unavailable_and_turn_continues(api, monkeypatch):
     client, _db = api
     headers = _authed(_register(client, "slow-profile-tool")["access_token"])
 
-    def slow_profile(_ledger):
+    def slow_profile(_ledger, _args):
         time.sleep(0.05)
         return {"status": "ok"}
 
@@ -1275,7 +1609,7 @@ def test_tool_timeout_returns_unavailable_and_turn_continues(api, monkeypatch):
         player_tools,
         "PLAYER_READ_TOOL_REGISTRY",
         tuple(
-            replace(definition, reader=slow_profile, timeout_seconds=0.005)
+            replace(definition, args_reader=slow_profile, timeout_seconds=0.005)
             if definition.name == "get_player_profile"
             else definition
             for definition in player_tools.PLAYER_READ_TOOL_REGISTRY
@@ -1315,7 +1649,7 @@ def test_oversized_tool_result_is_capped_at_four_kilobytes(api, monkeypatch):
     model = ScriptedChatModel(
         [
             ToolCallsTurn(
-                calls=[{"name": "get_player_profile", "args": {}, "id": "large-profile"}]
+                calls=[{"name": "get_player_profile", "args": {"sections": ["Limitations"]}, "id": "large-profile"}]
             ),
             "The profile result was too large to include.",
         ]
@@ -1351,7 +1685,7 @@ def test_tool_result_keeps_followup_payload_under_the_prompt_ceiling(api, monkey
     model = ScriptedChatModel(
         [
             ToolCallsTurn(
-                calls=[{"name": "get_player_profile", "args": {}, "id": "ceiling-profile"}]
+                calls=[{"name": "get_player_profile", "args": {"sections": ["Limitations"]}, "id": "ceiling-profile"}]
             ),
             "The remaining profile details were omitted to fit this turn.",
         ]
@@ -3170,7 +3504,7 @@ def test_clinical_fixed_reply_survives_any_recording_failure(api, monkeypatch):
     assert _done_content(body) == assistant_graph.CLINICAL_SAFEGUARD_RESPONSE
 
 
-def test_player_chat_reads_injuries_through_the_read_tool(api, monkeypatch):
+def test_player_chat_reads_injuries_through_limitations_section(api, monkeypatch):
     _force_free_form_coaching_intent(monkeypatch)
     client, db = api
     headers = _authed(_register(client, "injury-tool")['access_token'])
@@ -3179,7 +3513,7 @@ def test_player_chat_reads_injuries_through_the_read_tool(api, monkeypatch):
     model = ScriptedChatModel(
         [
             ToolCallsTurn(
-                calls=[{"name": "get_player_injuries", "args": {}, "id": "injury-read"}]
+                calls=[{"name": "get_player_profile", "args": {"sections": ["Limitations"]}, "id": "injury-read"}]
             ),
             "You reported knee pain during squats; its status is reported.",
         ],
@@ -3204,7 +3538,7 @@ def test_player_chat_reads_injuries_through_the_read_tool(api, monkeypatch):
         body = response.read().decode("utf-8")
         assert response.status_code == 200
     assert _done_content(body) == "I found your injury record."
-    assert "get_player_injuries" in model.calls[0]["tools"]
+    assert "get_player_injuries" not in model.calls[0]["tools"]
     tool_payload = "\n".join(
         str(getattr(message, "content", message)) for message in model.calls[1]["messages"]
     )
@@ -3212,7 +3546,7 @@ def test_player_chat_reads_injuries_through_the_read_tool(api, monkeypatch):
     assert '"status":"reported"' in tool_payload
 
 
-def test_player_injury_tool_clearances_hide_internal_ids_but_keep_player_wording(api, monkeypatch):
+def test_limitations_clearances_hide_internal_ids_but_keep_player_wording(api, monkeypatch):
     _force_free_form_coaching_intent(monkeypatch)
     client, db = api
     headers = _authed(_register(client, "injury-clearance-tool")['access_token'])
@@ -3222,6 +3556,11 @@ def test_player_injury_tool_clearances_hide_internal_ids_but_keep_player_wording
     )
     db.catalog_conn.commit()
     with db.open_ledger("injury-clearance-tool") as ledger:
+        ledger.upsert_player_profile({
+            "injuries_or_limitations": "LIMITATION_TEXT_PRIVATE",
+            "movement_restrictions": ["Knee flexion"],
+            "weak_points": [{"muscle": "biceps", "source": "named"}],
+        })
         injury, _ = ledger.create_injury_record(
             "knee", "Pain during squats", status="physician_seen"
         )
@@ -3245,7 +3584,7 @@ def test_player_injury_tool_clearances_hide_internal_ids_but_keep_player_wording
     model = ScriptedChatModel(
         [
             ToolCallsTurn(
-                calls=[{"name": "get_player_injuries", "args": {}, "id": "clearance-read"}]
+                calls=[{"name": "get_player_profile", "args": {"sections": ["Limitations"]}, "id": "clearance-read"}]
             ),
             "I found your injury and clearance notes.",
         ]
@@ -3267,6 +3606,12 @@ def test_player_injury_tool_clearances_hide_internal_ids_but_keep_player_wording
     ]
     assert len(tool_messages) == 1
     result = json.loads(tool_messages[0])
+    assert result["profile"] == {
+        "injuries_or_limitations": "LIMITATION_TEXT_PRIVATE",
+        "movement_restrictions": ["Knee flexion"],
+    }
+    assert "biceps" not in tool_messages[0]
+    assert len(tool_messages[0].encode("utf-8")) <= player_tools.MAX_TOOL_RESULT_BYTES
     clearances = result["injuries"][0]["clearances"]
     assert len(clearances) == 2
     expected_fields = {

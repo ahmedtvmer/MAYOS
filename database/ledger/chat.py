@@ -1,13 +1,84 @@
-"""LedgerChatMixin (database split, #78).
-
-Extracted from DatabaseManager; behaviour is unchanged.
-"""
+"""Player chat history, keyword search, and assistant preference persistence."""
 
 import json
+import re
+import sqlite3
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from difflib import SequenceMatcher
 from typing import Any
+
+from agent.chat_markers import is_session_pointer_text
+from core.arabic import normalize_arabic_text
+
+MAX_CHAT_HISTORY_SEARCH_RESULTS = 10
+
+
+def _chat_search_text(role: str, content: str) -> str | None:
+    if role not in {"user", "assistant"}:
+        return None
+    if role == "assistant" and is_session_pointer_text(content):
+        return None
+    normalized = normalize_arabic_text(content.casefold()).strip()
+    return normalized or None
+
+
+def _chat_search_expression(query: str) -> str | None:
+    normalized = normalize_arabic_text(query.casefold())
+    tokens = re.findall(r"[^\W_]+", normalized, flags=re.UNICODE)
+    return " AND ".join(f'"{token}"' for token in tokens) or None
+
+
+def _recent_chat_search_exclusions(
+    conn: sqlite3.Connection, window_size: int | None = None
+) -> list[str]:
+    from agent.player_prompt import recent_history_messages
+
+    rows = conn.execute(
+        "SELECT id, role, content FROM chat_history ORDER BY created_at ASC"
+    ).fetchall()
+    recent_messages = recent_history_messages(
+        [dict(row) for row in rows], window_size=window_size
+    )
+    return [message["id"] for message in recent_messages]
+
+
+def _chat_search_clauses(
+    conn: sqlite3.Connection,
+    expression: str,
+    start_date: date | None,
+    end_date: date | None,
+    recent_window_size: int | None,
+) -> tuple[list[str], list[Any]]:
+    clauses = ["chat_history_fts MATCH ?", "chat_history.role IN ('user', 'assistant')"]
+    params: list[Any] = [expression]
+    recent_ids = _recent_chat_search_exclusions(conn, recent_window_size)
+    if recent_ids:
+        placeholders = ", ".join("?" for _ in recent_ids)
+        clauses.append(f"chat_history.id NOT IN ({placeholders})")
+        params.extend(recent_ids)
+    if start_date is not None:
+        clauses.append("chat_history.created_at >= ?")
+        params.append(f"{start_date.isoformat()}T00:00:00")
+    if end_date is not None and end_date < date.max:
+        clauses.append("chat_history.created_at < ?")
+        params.append(f"{(end_date + timedelta(days=1)).isoformat()}T00:00:00")
+    return clauses, params
+
+
+def _search_chat_rows(
+    conn: sqlite3.Connection, clauses: list[str], params: list[Any], limit: int
+) -> list[dict[str, Any]]:
+    params.append(min(max(limit, 1), MAX_CHAT_HISTORY_SEARCH_RESULTS))
+    rows = conn.execute(
+        "SELECT chat_history.role, chat_history.content, chat_history.created_at "
+        "FROM chat_history_fts JOIN chat_history "
+        "ON chat_history.id = chat_history_fts.message_id WHERE "
+        + " AND ".join(clauses)
+        + " ORDER BY chat_history.created_at DESC, chat_history.rowid DESC LIMIT ?",
+        params,
+    ).fetchall()
+    return [dict(row) for row in rows]
 
 
 class LedgerChatMixin:
@@ -225,13 +296,20 @@ class LedgerChatMixin:
         self._commit_ledger()
 
     def add_chat_message(self, role: str, content: str) -> str:
-        cursor = self.conn.cursor()
         msg_id = str(uuid.uuid4())
-        cursor.execute(
-            "INSERT INTO chat_history (id, role, content, created_at) VALUES (?, ?, ?, ?)",
-            (msg_id, role, content, datetime.now(UTC).isoformat()),
-        )
-        self._commit_ledger()
+        created_at = datetime.now(UTC).isoformat()
+        with self.ledger_transaction():
+            self.conn.execute(
+                "INSERT INTO chat_history (id, role, content, created_at) VALUES (?, ?, ?, ?)",
+                (msg_id, role, content, created_at),
+            )
+            search_text = _chat_search_text(role, content)
+            if search_text is not None:
+                self.conn.execute(
+                    "INSERT INTO chat_history_fts (message_id, search_text) VALUES (?, ?)",
+                    (msg_id, search_text),
+                )
+            self._commit_ledger()
         return msg_id
 
     def get_chat_history(self, limit: int | None = None) -> list[dict[str, Any]]:
@@ -244,9 +322,29 @@ class LedgerChatMixin:
         cursor.execute("SELECT id, role, content, created_at FROM chat_history ORDER BY created_at ASC")
         return [dict(r) for r in cursor.fetchall()]
 
+    def search_chat_history(
+        self,
+        query: str,
+        *,
+        start_date: date | None = None,
+        end_date: date | None = None,
+        limit: int = 10,
+        recent_window_size: int | None = None,
+    ) -> list[dict[str, Any]]:
+        if start_date is not None and end_date is not None and start_date > end_date:
+            return []
+        expression = _chat_search_expression(query)
+        if expression is None:
+            return []
+        clauses, params = _chat_search_clauses(
+            self.conn, expression, start_date, end_date, recent_window_size
+        )
+        return _search_chat_rows(self.conn, clauses, params, limit)
+
     def clear_chat_history(self) -> None:
-        cursor = self.conn.cursor()
-        cursor.execute("DELETE FROM chat_history")
-        cursor.execute("DELETE FROM assistant_preference_pending")
-        cursor.execute("DELETE FROM assistant_goal_weak_point_pending")
-        self.conn.commit()
+        with self.ledger_transaction():
+            self.conn.execute("DELETE FROM chat_history")
+            self.conn.execute("DELETE FROM chat_history_fts")
+            self.conn.execute("DELETE FROM assistant_preference_pending")
+            self.conn.execute("DELETE FROM assistant_goal_weak_point_pending")
+            self._commit_ledger()
