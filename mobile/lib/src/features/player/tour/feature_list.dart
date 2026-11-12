@@ -78,19 +78,6 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
     requiresProgramControl: true,
   ),
   FeatureEntry(
-    id: 'assistant_exercise_lookup',
-    titleEn: 'Search exercises by the name you know',
-    sentenceEn:
-        'Search with nicknames, singular or plural names, and common typos; choose from close matches when a name could mean more than one exercise.',
-    titleAr: 'ابحث عن التمرين بالاسم الذي تعرفه',
-    sentenceAr:
-        'ابحث في مكتبة التمارين بالأسماء البديلة والمفرد والجمع، وستظهر لك الخيارات الأقرب عندما يحتمل الاسم أكثر من تمرين.',
-    target: 'whats_new_assistant_why',
-    location: TourRouteLocation(chatPath),
-    release: 7,
-    audience: 'lifter',
-  ),
-  FeatureEntry(
     id: 'offline_start',
     titleEn: 'Open your saved training offline',
     sentenceEn:

@@ -1487,8 +1487,7 @@ void main() {
       if (entry.release == currentFeatureRelease) {
         final Finder realControl = switch (entry.id) {
           'weak_points' => find.byKey(const Key('profile_weak_points_section')),
-          'assistant_why' || 'assistant_volume' || 'assistant_exercise_lookup' =>
-            find.byKey(const Key('chat_composer')),
+          'assistant_why' || 'assistant_volume' => find.byKey(const Key('chat_composer')),
           'add_exercises' => find.byKey(const Key('program_edit_day_1')),
           'edit_program_chat' => find.byKey(const Key('chat_composer_bar')),
           'movements_to_avoid' => find.byKey(const Key('profile_movement_restrictions_section')),
@@ -1583,8 +1582,7 @@ void main() {
       if (entry.release == currentFeatureRelease) {
         final Finder realControl = switch (entry.id) {
           'weak_points' => find.byKey(const Key('profile_weak_points_section')),
-          'assistant_why' || 'assistant_volume' || 'assistant_exercise_lookup' =>
-            find.byKey(const Key('chat_composer')),
+          'assistant_why' || 'assistant_volume' => find.byKey(const Key('chat_composer')),
           'add_exercises' => find.byKey(const Key('program_edit_day_1')),
           'edit_program_chat' => find.byKey(const Key('chat_composer_bar')),
           'movements_to_avoid' => find.byKey(const Key('profile_movement_restrictions_section')),

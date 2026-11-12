@@ -87,21 +87,6 @@ void main() {
     expect(entry.target, 'home');
   });
 
-  test('assistant exercise search is bilingual in release 7', () {
-    final FeatureEntry entry = featureList.singleWhere(
-      (FeatureEntry entry) => entry.id == 'assistant_exercise_lookup',
-    );
-    expect(entry.titleEn, 'Search exercises by the name you know');
-    expect(entry.sentenceEn, contains('nicknames'));
-    expect(entry.titleAr, isNotEmpty);
-    expect(entry.sentenceAr, isNotEmpty);
-    expect(entry.target, 'whats_new_assistant_why');
-    expect(entry.location, const TourRouteLocation(chatPath));
-    expect(entry.release, 7);
-    expect(currentFeatureRelease, 7);
-    expect(entry.audience, 'lifter');
-  });
-
   test('Food log has bilingual copy and a Nutrition target from release 5', () {
     final FeatureEntry entry = featureList.singleWhere((FeatureEntry entry) => entry.id == 'food_log');
     expect(entry.release, 5);
