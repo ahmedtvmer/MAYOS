@@ -7,8 +7,8 @@ import os
 import re
 import shutil
 import sys
-from pathlib import Path
-from urllib.parse import urlsplit
+from pathlib import Path, PurePosixPath
+from urllib.parse import unquote, urlsplit
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -174,30 +174,87 @@ def _scoped_headers(headers: Path) -> str:
                   r"\1/app/\2\3", content)
 
 
-def assert_service_worker_safe(worker_source: str, api_origin: str) -> None:
-    """Reject a generated worker that precaches account/API or HTML documents."""
+def _precache_urls(worker_source: str) -> list[str]:
+    return re.findall(r"[\"']?url[\"']?\s*:\s*[\"']([^\"']+)", worker_source)
+
+
+def _assert_local_precache_urls(entries: list[str]) -> None:
+    for url in entries:
+        parsed_url = urlsplit(url)
+        relative_path = PurePosixPath(unquote(parsed_url.path))
+        if (parsed_url.scheme or parsed_url.netloc or relative_path.is_absolute()
+                or ".." in relative_path.parts):
+            raise ValueError("generated service worker precaches a non-local URL")
+
+
+def _assert_precached_navigation_documents(entries: list[str]) -> None:
+    cached_urls = {unquote(urlsplit(url).path) for url in entries}
+    missing_urls = {"index.html", "offline.html"} - cached_urls
+    if missing_urls:
+        missing_list = ", ".join(sorted(missing_urls))
+        raise ValueError(f"generated service worker does not precache {missing_list}")
+
+
+def _assert_app_scripts_precached(entries: list[str], app_document: str) -> None:
+    cached_urls = {unquote(urlsplit(url).path).lstrip("/") for url in entries}
+    for script_src in re.findall(
+        r"<script\b[^>]*\bsrc=[\"']([^\"']+)[\"']",
+        app_document,
+        flags=re.IGNORECASE,
+    ):
+        script_url = urlsplit(script_src)
+        if script_url.scheme or script_url.netloc:
+            continue
+        script_path = unquote(script_url.path).lstrip("/")
+        if script_path not in cached_urls:
+            raise ValueError(
+                f"generated service worker does not precache app script {script_path}"
+            )
+
+
+def assert_service_worker_safe(worker_source: str, api_origin: str,
+                               app_document: str | None = None) -> None:
+    """Require the app document and reject cross-origin or account/API precache."""
     parsed_api = urlsplit(api_origin)
     origin = f"{parsed_api.scheme}://{parsed_api.netloc}" if parsed_api.netloc else api_origin.rstrip("/")
     if origin and origin in worker_source:
         raise ValueError("generated service worker references the API origin")
-    entries = re.findall(r"[\"']?url[\"']?\s*:\s*[\"']([^\"']+)", worker_source)
-    if any(Path(url.split("?", 1)[0]).name.lower() == "index.html" for url in entries):
-        raise ValueError("generated service worker precaches index.html")
+    entries = _precache_urls(worker_source)
+    _assert_local_precache_urls(entries)
+    _assert_precached_navigation_documents(entries)
     if any(
-        url.lower().startswith(("canvaskit/skwasm", "canvaskit/wimp", "canvaskit/webparagraph/"))
-        or url.lower().endswith(".symbols")
-        or Path(url.split("?", 1)[0]).name.lower() == "notices"
+        urlsplit(url).path.lower().startswith(("canvaskit/skwasm", "canvaskit/wimp", "canvaskit/webparagraph/"))
+        or urlsplit(url).path.lower().endswith(".symbols")
+        or PurePosixPath(urlsplit(url).path).name.lower() == "notices"
         for url in entries
     ):
         raise ValueError("generated service worker precaches excluded CanvasKit or debug assets")
+    if app_document is not None:
+        _assert_app_scripts_precached(entries, app_document)
+
+
+def assert_assembled_precache_unchanged(worker_source: str, build: Path,
+                                        assembled_app: Path) -> None:
+    """Ensure assembly copies every generated precache entry byte for byte."""
+    for url in _precache_urls(worker_source):
+        relative_path = PurePosixPath(unquote(urlsplit(url).path))
+        build_file = build.joinpath(*relative_path.parts)
+        assembled_file = assembled_app.joinpath(*relative_path.parts)
+        if not build_file.is_file() or not assembled_file.is_file():
+            raise ValueError(f"assembly is missing precached file {relative_path}")
+        if build_file.read_bytes() != assembled_file.read_bytes():
+            raise ValueError(f"assembly changed precached file {relative_path}")
 
 
 def assemble(flutter_build: Path, landing: Path, output: Path) -> None:
     worker = flutter_build / "service-worker.js"
+    worker_source = None
     if worker.exists():
+        worker_source = worker.read_text(encoding="utf-8")
         assert_service_worker_safe(
-            worker.read_text(encoding="utf-8"),
+            worker_source,
             os.environ.get("MAYOS_API_BASE_URL", "https://api.mayos.online"),
+            (flutter_build / "index.html").read_text(encoding="utf-8"),
         )
     routes = parse_router_routes(ROUTER.read_text(encoding="utf-8"))
     redirects = render_redirects(routes)
@@ -233,6 +290,8 @@ def assemble(flutter_build: Path, landing: Path, output: Path) -> None:
         output / "app",
         ignore=shutil.ignore_patterns("_headers", "_redirects"),
     )
+    if worker_source is not None:
+        assert_assembled_precache_unchanged(worker_source, flutter_build, output / "app")
     flutter_headers = flutter_build / "_headers"
     if flutter_headers.exists():
         (output / "_headers").write_text(_scoped_headers(flutter_headers), encoding="utf-8")

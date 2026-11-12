@@ -67,12 +67,12 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
     id: 'offline_start',
     titleEn: 'Open your saved training offline',
     sentenceEn:
-        'Stay signed in without a connection and view saved Home, Program, '
-        'workout targets and Nutrition data until the connection returns.',
+        'After opening the installed app online once, reopen it without a '
+        'connection to view saved Home, Program, workout targets and Nutrition data.',
     titleAr: 'افتح بيانات تدريبك المحفوظة دون اتصال',
     sentenceAr:
-        'ابقَ مسجّل الدخول دون اتصال واطّلع على بيانات الرئيسية والبرنامج '
-        'التدريبي وأهداف التمرين والتغذية المحفوظة حتى يعود الاتصال.',
+        'بعد فتح التطبيق المثبّت عبر الإنترنت مرة واحدة، أعد فتحه دون اتصال '
+        'للاطّلاع على بيانات الرئيسية والبرنامج التدريبي وأهداف التمرين والتغذية المحفوظة.',
     target: 'home',
     location: TourShellTabLocation(tabIndex: 0),
     release: 6,
