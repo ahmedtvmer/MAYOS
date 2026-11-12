@@ -248,7 +248,11 @@ async def _periodic_loop(db: object, interval_seconds: float, step: object, job:
 
 
 def readiness_snapshot() -> tuple[str, dict[str, bool | str]]:
-    """Returns the verdict and details shared by the readiness endpoint and dashboard."""
+    """Return API-local readiness shared by /readyz and the dashboard.
+
+    R2 replication freshness is deliberately not a readiness gate: production
+    replicas sync hourly while the local database remains available to requests.
+    """
     storage_ok, storage_detail = storage_status()
     details = {**_ready, "storage": storage_ok, "storage_detail": storage_detail}
     if _ready["draining"] or not (_ready["model"] and _ready["catalog"] and storage_ok):

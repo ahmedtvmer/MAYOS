@@ -1,4 +1,4 @@
-"""Litestream connection and operational restore guarantees for #372."""
+"""Litestream WAL safety, readiness, and operational restore guarantees for #372."""
 
 import sqlite3
 from pathlib import Path
@@ -11,6 +11,22 @@ from database.litestream import litestream_ledger_replica_path, litestream_repli
 
 def _pragma(connection: sqlite3.Connection, name: str) -> int:
     return int(connection.execute(f"PRAGMA {name}").fetchone()[0])
+
+
+def test_hourly_r2_replication_is_not_an_api_readiness_gate(monkeypatch):
+    from svc import app as api
+
+    monkeypatch.setitem(api._ready, "model", True)
+    monkeypatch.setitem(api._ready, "catalog", True)
+    monkeypatch.setitem(api._ready, "draining", False)
+    monkeypatch.setattr(api, "storage_status", lambda: (True, "ok"))
+    monkeypatch.setenv("MAYOS_LITESTREAM", "true")
+
+    status, details = api.readiness_snapshot()
+
+    assert status == "ready"
+    assert details["storage"] is True
+    assert "replication" not in details
 
 
 @pytest.mark.parametrize(

@@ -1489,7 +1489,7 @@ separate "MAYOS dev" project's key) so local runs never send into trial data;
 
 ## 13. Litestream replication and restore on the production VPS (#372)
 
-The production Compose stack runs one Litestream v0.5.4+ process beside the
+The production Compose stack runs one Litestream v0.5.18 process beside the
 single API writer. Bind the same host data directory to `/data` read/write in
 the API and Litestream containers, and mount
 [`deploy/litestream.yml`](../deploy/litestream.yml) as Litestream's config. Set
@@ -1537,21 +1537,38 @@ account id); the old and new files therefore have different replica prefixes.
 The restore script restores each exact ledger path and the full deletion replay
 removes any restored prefix whose Account was deleted.
 
-Player ledgers use a 10-second `monitor-interval` and replica `sync-interval`;
-Litestream therefore checks and uploads their changes every 10 seconds rather
-than every second. `watch: true` remains enabled so a newly created ledger is
-picked up without a restart. `catalog.db` and `deletions.db` keep Litestream's
-1-second defaults. The staging rehearsal measured idle CPU at 750 ledgers of
-58.0% average / 118.6% maximum at 1 second, 23.1% / 59.2% at 10 seconds, and
-17.0% / 32.3% at 30 seconds. At 200-Player load, Litestream CPU was 28.2%,
+All three replica groups use a 1-hour `sync-interval`, so up to about one hour
+of committed writes can be missing from R2 after a server failure. This is a
+temporary cost-control policy until MAYOS has paying users. `watch: true`
+remains enabled so a newly created ledger is picked up without a restart.
+An unsynced workout remains on the phone as an offline draft and retries on
+reconnect.
+L1 compaction and L0-retention checking run daily; snapshot creation and
+retention enforcement also run daily. No Litestream periodic R2 job is
+configured more often than hourly.
+
+Local WAL handling stays frequent while SQLite automatic checkpoints are
+disabled for Litestream. Catalog and deletion databases are monitored each
+second, and Player ledgers each 10 seconds. Litestream performs non-blocking
+PASSIVE checkpoints every minute, also uses a separate 1,000-page checkpoint
+threshold, and has an emergency TRUNCATE threshold of 121,359 pages (about
+500 MB with 4 KB pages). These local monitor and checkpoint operations do not
+call R2. The replica paths and deletion cleanup remain unchanged, so account
+deletion still removes the exact ledger replica prefix.
+
+The staging rehearsal measured idle CPU at 750 ledgers of 58.0% average /
+118.6% maximum at a 1-second monitor interval, 23.1% / 59.2% at 10 seconds,
+and 17.0% / 32.3% at 30 seconds. At 200-Player load, Litestream CPU was 28.2%,
 20.1%, and 19.4%, respectively, with API throughput of 23.3, 24.8, and 22.9
-requests/second. Ten seconds was selected to cut idle CPU while retaining a
-short recovery window. About 10–20 seconds of a Player's newest writes can be
-lost if the server dies, compared with about 1–2 seconds before; catalog and
-deletion records are unchanged. An unsynced workout remains on the phone as an
-offline draft and the app retries syncing it on reconnect.
-At 1 second, earlier idle readings were 1.7% CPU and 27 MiB at 15 ledgers,
-then 13.8% and 184 MiB at 215 ledgers.
+requests/second. The 10-second ledger monitor remains to reduce idle CPU; it
+does not set the R2 recovery window. At 1 second, earlier idle readings were
+1.7% CPU and 27 MiB at 15 ledgers, then 13.8% and 184 MiB at 215 ledgers.
+
+When paying users arrive, restore the previous R2 cadence by setting
+`sync-interval: 1s` for `catalog.db` and `deletions.db`, `sync-interval: 10s`
+for Player ledgers, and compaction levels to `30s`, `5m`, and `1h`. Restore
+`l0-retention-check-interval: 15s` as well. Keep the local monitor and
+checkpoint settings independent of the R2 cadence.
 
 ### Litestream disaster restore
 
@@ -1646,12 +1663,14 @@ bind-mounts it at `/data` in both the API and Litestream containers. The
 long-syntax bind disables host-path creation, so the containers fail to start
 if the bootstrap-created data directory is absent.
 
-Durability rests on the local disk and Litestream's continuous replication to
-R2. Player ledgers use a 10-second monitor and sync interval, so about 10–20
-seconds of a Player's newest writes can be lost if the server dies (previously
-about 1–2 seconds). Catalog and deletion records retain their 1-second
-defaults. Daily R2 snapshots remain the second backup layer. The server is
-ordered in Contabo's panel and prepared by the provider-neutral
+Durability rests on the local disk and Litestream replication to R2. All
+replicas sync hourly, so up to about one hour of the newest committed writes
+can be lost if the server dies; this temporary policy remains in effect until
+MAYOS has paying users. Litestream still monitors catalog/deletion WALs each
+second and Player-ledger WALs every 10 seconds, and checkpoints locally every
+minute while automatic SQLite checkpoints are disabled. These local tasks do
+not incur R2 operations. Daily R2 snapshots remain the second backup layer.
+The server is ordered in Contabo's panel and prepared by the provider-neutral
 `deploy/setup_vps.sh` bootstrap. Follow the
 [server setup checklist](SERVER_SETUP.md#3-provision-the-server) for
 provisioning, UFW and Docker port guidance, SSH hardening, secret migration,
