@@ -2,6 +2,7 @@ from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
+from core.muscle_volume import normalize_main_muscle
 from agent.ProgramState import (
     PersistedProgramDaySchema,
     PersistedProgramExerciseSchema,
@@ -92,8 +93,26 @@ def test_volume_review_counts_sets_across_groups(fresh_store):
 
     result = review_facts(ledger, program, profile, today)
 
-    row = next(item for item in result["muscles"] if item["muscle"] == muscle)
+    row = next(item for item in result["muscles"] if item["muscle"] == normalize_main_muscle(muscle))
     assert row["weekly_sets"] == 5
+
+
+def test_volume_review_counts_secondary_credit_in_its_main_group(fresh_store):
+    ledger, program, profile, today, _muscle = _seed_review(
+        fresh_store, "progressing", target_muscle="Quads"
+    )
+    exercise_id = str(program.days[0].exercises[0].exercise_id)
+    with fresh_store.catalog_conn:
+        fresh_store.catalog_conn.execute(
+            "INSERT OR REPLACE INTO exercise_muscle_credits "
+            "(exercise_id, muscle, credit, is_primary, source) VALUES (?, ?, ?, ?, ?)",
+            (exercise_id, "triceps", 0.5, 0, "reviewed"),
+        )
+
+    result = review_facts(ledger, program, profile, today)
+
+    row = next(item for item in result["muscles"] if item["muscle"] == "triceps")
+    assert row["weekly_sets"] == 1.0
 
 
 def test_grouped_volume_reduction_keeps_backoffs_and_places_remaining_cut(fresh_store):
@@ -118,7 +137,7 @@ def test_grouped_volume_reduction_keeps_backoffs_and_places_remaining_cut(fresh_
 
     result = review_facts(ledger, program, profile, today)
 
-    row = next(item for item in result["muscles"] if item["muscle"] == muscle)
+    row = next(item for item in result["muscles"] if item["muscle"] == normalize_main_muscle(muscle))
     assert row["set_delta"] == -2
     assert row["edits"] == [{
         "week_order": 1, "day_order": 1, "day_name": "Full A",
@@ -144,7 +163,7 @@ def test_seeded_working_set_histories_produce_volume_verdicts(
     result = review_facts(ledger, program, profile, today)
     assert result["eligible"] is True
     assert result["muscles"], result
-    row = next(item for item in result["muscles"] if item["muscle"] == muscle)
+    row = next(item for item in result["muscles"] if item["muscle"] == normalize_main_muscle(muscle))
     assert row["verdict"] == verdict
     assert row["set_delta"] == delta
     if verdict == "low_adherence":
@@ -158,7 +177,7 @@ def test_beginner_ceiling_caps_stalled_volume(fresh_store):
     profile["training_age_years"] = 1
     program.days[0].exercises[0].set_groups[0].sets = 9
     result = review_facts(ledger, program, profile, today)
-    row = next((item for item in result["muscles"] if item["muscle"] == muscle), None)
+    row = next((item for item in result["muscles"] if item["muscle"] == normalize_main_muscle(muscle)), None)
     assert row is None or row["set_delta"] == 0
 
 
@@ -174,7 +193,7 @@ def test_volume_limits_have_distinct_no_change_verdicts(fresh_store, trend, sets
 
     result = review_facts(ledger, program, profile, today)
 
-    row = next(item for item in result["muscles"] if item["muscle"] == muscle)
+    row = next(item for item in result["muscles"] if item["muscle"] == normalize_main_muscle(muscle))
     assert row["verdict"] == verdict
     assert row["set_delta"] == 0
     assert row["edits"] == []
@@ -206,7 +225,7 @@ def test_focus_volume_limits_come_from_reviewed_program_version(
 
     result = review_facts(ledger, program, profile, today)
 
-    row = next(item for item in result["muscles"] if item["muscle"] == muscle)
+    row = next(item for item in result["muscles"] if item["muscle"] == normalize_main_muscle(muscle))
     assert row["verdict"] == expected_verdict
     assert row["set_delta"] == expected_delta
     if row["set_delta"] < 0:
@@ -254,7 +273,7 @@ def test_review_focus_uses_real_weak_point_to_primary_muscle_mapping(
 
     result = review_facts(ledger, program, profile, today)
 
-    row = next(item for item in result["muscles"] if item["muscle"] == muscle)
+    row = next(item for item in result["muscles"] if item["muscle"] == normalize_main_muscle(muscle))
     assert row["verdict"] == expected_verdict
     assert row["set_delta"] == expected_delta
 
@@ -278,7 +297,7 @@ def test_beginner_ceiling_allows_only_the_last_set_up_to_eight(fresh_store):
     ))
     profile["training_age_years"] = 1
     result = review_facts(ledger, program, profile, today)
-    row = next(item for item in result["muscles"] if item["muscle"] == muscle)
+    row = next(item for item in result["muscles"] if item["muscle"] == normalize_main_muscle(muscle))
     assert row["weekly_sets"] == 7
     assert row["set_delta"] == 1
     assert row["weekly_sets"] + row["set_delta"] == 8
@@ -311,7 +330,7 @@ def test_multiweek_review_counts_and_edits_only_current_week(fresh_store):
         )
     result = review_facts(ledger, active, profile, today)
     assert result["muscles"], result
-    row = next(item for item in result["muscles"] if item["muscle"] == muscle)
+    row = next(item for item in result["muscles"] if item["muscle"] == normalize_main_muscle(muscle))
     assert row["weekly_sets"] == 5
     assert {edit["week_order"] for edit in row["edits"]} == {1}
 
@@ -433,7 +452,7 @@ def test_removals_start_with_last_exercise_and_keep_four_weekly_sets(fresh_store
         ledger.log_workout_session(session_id, session_date.isoformat(), "Day 1", stamp, stamp, program_version=active.version)
         ledger.log_workout_set(f"removal-set-{index}", session_id, first_id, 1, weight, 8, 8, 0)
     result = review_facts(ledger, active, {"training_age_years": 3}, datetime.now(timezone.utc).date())
-    chest = next(item for item in result["muscles"] if item["muscle"] == rows[0][2])
+    chest = next(item for item in result["muscles"] if item["muscle"] == normalize_main_muscle(rows[0][2]))
     assert chest["set_delta"] == -1
     assert chest["edits"][0]["exercise_id"] == second_id
     assert chest["edits"][0]["target_sets"] == 1
@@ -525,7 +544,7 @@ def test_flat_performance_with_recovery_strain_reduces_volume(fresh_store, signa
     else:
         ledger.conn.execute("UPDATE workout_sets SET rpe = 9.8 WHERE is_warmup = 0")
     result = review_facts(ledger, program, profile, today)
-    row = next(item for item in result["muscles"] if item["muscle"] == muscle)
+    row = next(item for item in result["muscles"] if item["muscle"] == normalize_main_muscle(muscle))
     assert row["verdict"] == "under_recovered"
     assert row["set_delta"] < 0
     assert row["weekly_sets"] + row["set_delta"] >= 4
@@ -540,7 +559,7 @@ def test_bodyweight_progression_uses_reps_at_zero_load(fresh_store):
             (8 + index, f"work-{index}"),
         )
     result = review_facts(ledger, program, profile, today)
-    row = next(item for item in result["muscles"] if item["muscle"] == muscle)
+    row = next(item for item in result["muscles"] if item["muscle"] == normalize_main_muscle(muscle))
     assert row["verdict"] == "progressing"
 
 
@@ -548,7 +567,7 @@ def test_program_frequency_controls_adherence_denominator(fresh_store):
     ledger, program, profile, today, muscle = _seed_review(fresh_store, "stalled")
     profile["weekly_frequency"] = 3
     result = review_facts(ledger, program, profile, today)
-    row = next(item for item in result["muscles"] if item["muscle"] == muscle)
+    row = next(item for item in result["muscles"] if item["muscle"] == normalize_main_muscle(muscle))
     assert row["verdict"] == "stalled"
 
 

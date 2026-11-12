@@ -161,6 +161,20 @@ Search filters may match one or more Primary muscles; the source row's
 `target_muscle` remains a separate catalog field.
 _Arabic_: العضلة الأساسية
 
+**Main muscle group**:
+The single volume-counting group credited for a muscle: chest, back (lats and
+upper back), shoulders, rear delts, traps, quads, hamstrings, glutes, biceps,
+triceps, calves or core. Upper chest maps to chest; lats and upper back map to
+back; front and side delts map to shoulders; rear delts stay separate; abs and
+obliques map to core. A set can credit several distinct groups, but each group
+receives at most one credit for that exercise.
+
+**Exercise muscle credit**:
+The per-exercise contribution of one working set to a Main muscle group. The
+default is 1 for the Primary muscle's group and 0.5 for each distinct helper
+group. A reviewed exercise override replaces those defaults and applies to all
+Players.
+
 **Primary action**:
 The main joint action curated for an Exercise library row, such as Knee
 Extension or Shoulder Flexion. Search filters match the Primary action only;
@@ -195,7 +209,7 @@ An alternative name a player may search by that resolves to one exercise in the 
 An Exercise library row excluded from Player and Coach search, Replace browse, program generation, and substitution suggestions. Its stable id remains readable in existing Training programs and workout history; when marked as a duplicate, those reads show the kept Exercise's display name.
 
 **Exercise curation file**:
-The MAYOS-owned `data/exercise_curation.csv`, keyed by Exercise library id. It holds reviewed Exercise display names and aliases, with curated fields such as Primary muscle kept beside the source row.
+The MAYOS-owned `data/exercise_curation.csv`, keyed by Exercise library id. It holds reviewed Exercise display names, aliases, Primary muscle values and per-exercise Main muscle credit overrides beside the source row.
 
 **Equipment category**:
 The derived category for an Exercise library row, computed from its Equipment value: Free weight, Machine, Cable, Bodyweight, Band, or Other. It describes the kind of equipment and is separate from Equipment access.

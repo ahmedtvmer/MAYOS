@@ -32,9 +32,8 @@ from agent.ProgramState import (
     PersistedProgramExerciseSchema, program_exercise_working_sets,
 )
 from agent import program_generator, program_rules
-from agent.focus_muscles import FOCUS_REVIEW_MUSCLES
 from agent.program_prescription import MAX_PROGRAM_WEEKS
-from core.weak_points import WEAK_POINT_MUSCLES
+from core.muscle_volume import MAIN_MUSCLE_GROUPS
 from core.movement_restrictions import MOVEMENT_RESTRICTIONS
 from database.database_manager import DatabaseManager
 from service import coach as coach_service
@@ -2092,7 +2091,7 @@ def test_active_program_overview_and_scopes_preserve_coach_authority_fields(api)
             assert fallback[key] == overview[key]
 
 
-def test_active_program_overview_preserves_days_and_unmapped_muscles_with_long_exercise_names(fresh_store):
+def test_active_program_overview_counts_main_groups_and_omits_unmapped_muscles_with_long_names(fresh_store):
     exercises = [
         ProgramExerciseSchema(
             exercise_id=f"exercise-{index}", exercise_name=f"Exercise {index} " + "x" * 1000,
@@ -2116,8 +2115,9 @@ def test_active_program_overview_preserves_days_and_unmapped_muscles_with_long_e
 
     decoded = json.loads(active_program_tool.invoke({}))
     assert decoded["status"] == "ok"
-    assert decoded["other_muscles"] == {"Traps": 2, "Lower Back": 2}
-    assert decoded["days"] == [{"day": "Pull", "muscles": ["Traps", "Lower Back", "not set"]}]
+    assert decoded["weekly_sets_by_muscle"]["traps"] == 2
+    assert decoded["days"] == [{"day": "Pull", "muscles": ["traps"]}]
+    assert "other_muscles" not in decoded
     assert "Exercise 0" not in json.dumps(decoded)
 
 
@@ -2176,20 +2176,18 @@ def test_generated_programs_fit_active_program_tool_cap_and_report_arm_sets(
                 assert [group["rir"] for group in row["set_groups"]] == [
                     group.target_rir for group in exercise.set_groups
                 ]
-    targets = fresh_store.ledger.volume_review_exercise_targets(exercise_ids)
-    expected_sets = {}
-    expected_other = {}
+    credits_by_exercise = fresh_store.ledger.volume_review_exercise_credits(exercise_ids)
+    expected_sets = {group: 0.0 for group in MAIN_MUSCLE_GROUPS}
+    expected_direct = {group: 0.0 for group in MAIN_MUSCLE_GROUPS}
+    expected_indirect = {group: 0.0 for group in MAIN_MUSCLE_GROUPS}
     for day in program.days:
         for exercise in day.exercises:
-            muscle = (targets.get(exercise.exercise_id) or "").strip()
-            if muscle:
-                groups = [
-                    group for group, names in FOCUS_REVIEW_MUSCLES.items()
-                    if muscle.casefold() in {name.casefold() for name in names}
-                ]
-                target = expected_sets if groups else expected_other
-                for key in groups or [muscle]:
-                    target[key] = target.get(key, 0) + program_exercise_working_sets(exercise)
+            sets = program_exercise_working_sets(exercise)
+            for group, attribution in credits_by_exercise.get(exercise.exercise_id, {}).items():
+                weighted_sets = sets * float(attribution["credit"])
+                expected_sets[group] += weighted_sets
+                target = expected_direct if attribution["is_primary"] else expected_indirect
+                target[group] += weighted_sets
     for week_count in range(1, MAX_PROGRAM_WEEKS + 1):
         multiweek = PersistedProgramSchema(**{
             **program.model_dump(),
@@ -2202,6 +2200,7 @@ def test_generated_programs_fit_active_program_tool_cap_and_report_arm_sets(
             get_active_program=lambda: multiweek,
             get_program_position=lambda _program: SimpleNamespace(current_week=week_count),
             volume_review_exercise_targets=fresh_store.ledger.volume_review_exercise_targets,
+            volume_review_exercise_credits=fresh_store.ledger.volume_review_exercise_credits,
             get_player_profile=fresh_store.ledger.get_player_profile,
             program_exercise_metadata=fresh_store.ledger.program_exercise_metadata,
             conn=fresh_store.ledger.conn, ledger_id=fresh_store.ledger.ledger_id,
@@ -2219,23 +2218,21 @@ def test_generated_programs_fit_active_program_tool_cap_and_report_arm_sets(
             for day, stored_day in zip(decoded["days"], program.days):
                 expected_muscles = set()
                 for exercise in stored_day.exercises:
-                    muscle = targets.get(exercise.exercise_id)
-                    groups = [group for group, names in FOCUS_REVIEW_MUSCLES.items()
-                              if (muscle or "").casefold() in {name.casefold() for name in names}]
-                    expected_muscles.update(groups or [muscle or "not set"])
+                    expected_muscles.update(
+                        group for group, attribution in credits_by_exercise.get(
+                            exercise.exercise_id, {}
+                        ).items()
+                        if float(attribution["credit"]) > 0
+                    )
                 assert set(day["muscles"]) == expected_muscles
-            assert set(WEAK_POINT_MUSCLES).issubset(decoded["weekly_sets_by_muscle"])
-            for muscle, sets in expected_sets.items():
-                assert decoded["weekly_sets_by_muscle"][muscle] == sets
-            assert decoded["other_muscles"] == expected_other
-            assert decoded["weekly_sets_by_muscle"]["biceps"] == expected_sets["biceps"]
-            assert decoded["weekly_sets_by_muscle"]["triceps"] == expected_sets["triceps"]
-            all_sets = sum(program_exercise_working_sets(exercise) for day in program.days for exercise in day.exercises)
-            for muscle in ("biceps", "triceps"):
-                direct = expected_sets[muscle]
+            assert set(MAIN_MUSCLE_GROUPS).issubset(decoded["weekly_sets_by_muscle"])
+            for muscle, sets in expected_direct.items():
+                assert decoded["weekly_sets_by_muscle"][muscle] == round(sets, 2)
+            for muscle in MAIN_MUSCLE_GROUPS:
                 assert decoded["weekly_volume_by_muscle"][muscle] == {
-                    "direct": direct, "indirect": 0.5 * (all_sets - direct),
-                    "total": direct + 0.5 * (all_sets - direct),
+                    "direct": round(expected_direct[muscle], 2),
+                    "indirect": round(expected_indirect[muscle], 2),
+                    "total": round(expected_sets[muscle], 2),
                 }
             assert decoded["logged_volume_7d"]
             assert set(decoded["how_mayos_counts"]) == {"en", "ar"}
@@ -2259,24 +2256,19 @@ def test_ppl_upper_lower_muscle_totals_follow_volume_review_groups(fresh_store):
     response = tool.args_reader(fresh_store.ledger, player_tools.ActiveProgramArgs())
     summary = response["weekly_sets_by_muscle"]
     ids = sorted({exercise.exercise_id for day in program.days for exercise in day.exercises})
-    targets = fresh_store.ledger.volume_review_exercise_targets(ids)
-    expected = {group: 0 for group in FOCUS_REVIEW_MUSCLES}
-    slot_sets = {"incline_press": 0, "flat_press": 0, "chest_fly": 0}
+    expected_direct = {group: 0.0 for group in MAIN_MUSCLE_GROUPS}
+    credits_by_exercise = fresh_store.ledger.volume_review_exercise_credits(ids)
     for day in program.days:
         for exercise in day.exercises:
             sets = program_exercise_working_sets(exercise)
-            review_muscle = (targets.get(exercise.exercise_id) or "").casefold()
-            for group, review_names in FOCUS_REVIEW_MUSCLES.items():
-                if review_muscle in {name.casefold() for name in review_names}:
-                    expected[group] += sets
-            if exercise.slot_key in slot_sets:
-                slot_sets[exercise.slot_key] += sets
+            for group, attribution in credits_by_exercise.get(exercise.exercise_id, {}).items():
+                if attribution["is_primary"]:
+                    expected_direct[group] += sets * float(attribution["credit"])
     assert summary["back"] > 0
     assert summary["shoulders"] > 0
-    assert summary["chest"] == sum(slot_sets.values())
-    assert summary["upper_chest"] == slot_sets["incline_press"]
-    assert summary["biceps"] == expected["biceps"]
-    assert summary["triceps"] == expected["triceps"]
+    assert summary["chest"] == expected_direct["chest"]
+    assert summary["biceps"] == expected_direct["biceps"]
+    assert summary["triceps"] == expected_direct["triceps"]
 
 
 @pytest.mark.parametrize(

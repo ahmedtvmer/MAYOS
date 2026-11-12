@@ -18,7 +18,12 @@ from pydantic import BaseModel, Field, model_validator
 
 from database.ledger.profile import PLAYER_PROFILE_STORAGE_DEFAULTS
 from database.ledger.chat import MAX_CHAT_HISTORY_SEARCH_RESULTS
-from agent.focus_muscles import FOCUS_REVIEW_MUSCLES
+from core.muscle_volume import (
+    MAIN_MUSCLE_GROUPS,
+    default_muscle_credits,
+    main_group_for_focus,
+    normalize_main_muscle,
+)
 from service.injuries import render_public_injury_record
 from service.nutrition import assistant_projection
 from service.food_log import NUTRIENT_KEYS
@@ -360,11 +365,24 @@ def _read_player_food_log(ledger: Any, args: FoodLogArgs) -> dict[str, Any]:
 
 
 def _program_muscle_groups(muscle: str | None) -> list[str]:
-    normalized = (muscle or "").strip().casefold()
-    return [
-        group for group, names in FOCUS_REVIEW_MUSCLES.items()
-        if normalized in {name.casefold() for name in names}
-    ]
+    group = normalize_main_muscle(muscle)
+    return [group] if group else []
+
+
+def _program_exercise_credits(ledger: Any, exercise_ids: list[str], targets, metadata):
+    reader = getattr(ledger, "volume_review_exercise_credits", None)
+    if callable(reader):
+        return reader(exercise_ids)
+    return {
+        exercise_id: {
+            group: {"credit": credit, "is_primary": credit == 1.0, "source": "default"}
+            for group, credit in default_muscle_credits(
+                targets.get(exercise_id),
+                metadata.get(exercise_id, {}).get("secondary_muscles", ()),
+            ).items()
+        }
+        for exercise_id in exercise_ids
+    }
 
 
 def _program_exercise_matches(exercise: Any, muscles: Sequence[str], args: ActiveProgramArgs) -> bool:
@@ -374,8 +392,12 @@ def _program_exercise_matches(exercise: Any, muscles: Sequence[str], args: Activ
         return False
     if args.muscle:
         selected = args.muscle.strip().casefold()
-        return any(selected == muscle.strip().casefold() or selected in _program_muscle_groups(muscle)
-                   for muscle in muscles)
+        selected_group = normalize_main_muscle(selected) or main_group_for_focus(selected)
+        return any(
+            selected == str(muscle or "").strip().casefold()
+            or bool(selected_group and selected_group in _program_muscle_groups(muscle))
+            for muscle in muscles
+        )
     return True
 
 
@@ -429,17 +451,20 @@ def _program_volume_context(ledger: Any) -> dict[str, Any]:
     return {
         "logged_volume_7d": volume_attribution(None, ledger.ledger_id, 7, ledger),
         "how_mayos_counts": {
-            "en": "Working sets: 1 direct + 0.5 per distinct secondary group, excluding the primary; no warm-ups. Logged: Home groups, UTC cutoff. Planned: overlapping Weak point groups; unknown muscles uncounted.",
-            "ar": "المجموعات: 1 للأساسية و0.5 لكل مجموعة ثانوية مختلفة، دون الأساسية أو الإحماء؛ المسجل مثل الرئيسية بحد UTC، والمخطط بنقاط الضعف المتداخلة؛ المجهول لا يُحسب.",
+            "en": "Working sets use the 12 main muscle groups. Each exercise has per-muscle credits: default 1 for its primary group and 0.5 for each distinct helper group; reviewed exercise credits replace those defaults. Sub-regions map to one group. Warm-ups are excluded. Unknown groups are uncounted.",
+            "ar": "تُحسب المجموعات العاملة ضمن 12 مجموعة عضلية رئيسية. لكل تمرين أرصدة لكل عضلة: 1 للمجموعة الأساسية و0.5 لكل مجموعة مساعدة مختلفة، وتستبدل الأرصدة المراجعة الافتراضات. تُحوّل المناطق الفرعية إلى مجموعة واحدة؛ لا تُحسب مجموعات الإحماء أو العضلات غير المعروفة.",
         },
     }
 
 
-def _weekly_program_volume(direct: dict[str, int], indirect: dict[str, float]) -> dict[str, Any]:
+def _weekly_program_volume(direct: dict[str, float], indirect: dict[str, float]) -> dict[str, Any]:
     return {
-        muscle: {"direct": direct.get(muscle, 0), "indirect": indirect.get(muscle, 0),
-                 "total": direct.get(muscle, 0) + indirect.get(muscle, 0)}
-        for muscle in dict.fromkeys([*direct, *indirect])
+        muscle: {
+            "direct": round(direct.get(muscle, 0), 2),
+            "indirect": round(indirect.get(muscle, 0), 2),
+            "total": round(direct.get(muscle, 0) + indirect.get(muscle, 0), 2),
+        }
+        for muscle in MAIN_MUSCLE_GROUPS
     }
 
 
@@ -485,7 +510,6 @@ def _read_active_program(ledger: Any, args: ActiveProgramArgs | None = None, sto
                 coach_name = coach_identity(
                     store, assignment["coach_account_id"], coach
                 )["display_name"]
-    from core.weak_points import WEAK_POINT_MUSCLES
     from agent.ProgramState import program_exercise_working_sets
 
     all_days = list(getattr(program, "days", ()) or ())
@@ -516,9 +540,9 @@ def _read_active_program(ledger: Any, args: ActiveProgramArgs | None = None, sto
     })
     targets = ledger.volume_review_exercise_targets(exercise_ids)
     metadata = ledger.program_exercise_metadata(exercise_ids)
-    summary: dict[str, int] = {muscle: 0 for muscle in WEAK_POINT_MUSCLES}
-    other_muscles: dict[str, int] = {}
+    summary: dict[str, float] = {muscle: 0.0 for muscle in MAIN_MUSCLE_GROUPS}
     indirect: dict[str, float] = {}
+    credits_by_exercise = _program_exercise_credits(ledger, exercise_ids, targets, metadata)
     days = []
     for day in all_days:
         exercises = []
@@ -528,23 +552,29 @@ def _read_active_program(ledger: Any, args: ActiveProgramArgs | None = None, sto
             muscle = targets.get(str(getattr(exercise, "exercise_id", "")))
             exercise_metadata = metadata.get(str(exercise.exercise_id), {"secondary_muscles": [], "movement_pattern": None})
             secondaries = exercise_metadata["secondary_muscles"]
-            if not _program_exercise_matches(exercise, [muscle or "", *secondaries], args):
+            exercise_credits = credits_by_exercise.get(str(exercise.exercise_id), {})
+            credited_groups = [
+                group for group, item in exercise_credits.items()
+                if float(item["credit"]) > 0
+            ]
+            if not _program_exercise_matches(
+                exercise, [muscle or "", *secondaries, *credited_groups], args
+            ):
                 continue
-            matching_groups = _program_muscle_groups(muscle)
-            if muscle:
-                if matching_groups:
-                    for group in matching_groups:
-                        summary[group] += sets
+            matching_groups = sorted(
+                credited_groups
+            )
+            for group, item in exercise_credits.items():
+                credit = float(item["credit"])
+                if credit <= 0:
+                    continue
+                if item["is_primary"]:
+                    summary[group] += sets * credit
                 else:
-                    other_muscles[str(muscle).strip()] = other_muscles.get(str(muscle).strip(), 0) + sets
-            primary_groups = set(matching_groups or [str(muscle or "").strip().casefold()])
-            secondary_groups = {group for secondary in secondaries
-                                for group in (_program_muscle_groups(secondary) or [secondary.strip().casefold()])}
-            for group in sorted(secondary_groups - primary_groups - {""}):
-                indirect[group] = indirect.get(group, 0) + 0.5 * sets
+                    indirect[group] = indirect.get(group, 0.0) + sets * credit
             if detailed_scope:
                 exercises.append(_program_exercise_prescription(exercise, muscle, exercise_metadata))
-            for group in matching_groups or [muscle or "not set"]:
+            for group in matching_groups:
                 if group not in day_muscles:
                     day_muscles.append(group)
         if detailed_scope and not exercises:
@@ -566,11 +596,9 @@ def _read_active_program(ledger: Any, args: ActiveProgramArgs | None = None, sto
         **volume_context,
         **({"coach": coach_name} if coach_name else {}),
         **({} if detailed_scope else {
-            "weekly_sets_by_muscle": summary, "other_muscles": other_muscles,
-            "weekly_volume_by_muscle": _weekly_program_volume(
-                {**summary, **{muscle.casefold(): sets for muscle, sets in other_muscles.items()}}, indirect
-            ),
-            "message": "Weak point groups can overlap. Scope by day_name, exercise_name/exercise_id or muscle for prescriptions.",
+            "weekly_sets_by_muscle": {muscle: round(sets, 2) for muscle, sets in summary.items()},
+            "weekly_volume_by_muscle": _weekly_program_volume(summary, indirect),
+            "message": "weekly_sets_by_muscle gives direct sets; weekly_volume_by_muscle gives weighted direct, indirect and total sets. Sub-regions map to one main group. Scope by day_name, exercise_name/exercise_id or muscle for prescriptions.",
         }),
     }
     return _program_prescription_page(response, args.offset) if detailed_scope else response
@@ -605,9 +633,9 @@ PLAYER_READ_TOOL_REGISTRY: tuple[PlayerReadTool, ...] = (
             "restriction skips; no prescriptions. Defaults to current week; week_order selects another. "
             "Scope day_name, exercise_name/exercise_id or muscle for matching prescriptions only. "
             "Rows include secondary_muscles and movement_pattern (curated primary action or null). "
-            "weekly_volume_by_muscle gives planned direct/indirect/total sets; logged_volume_7d "
+            "weekly_sets_by_muscle gives direct sets by main group; weekly_volume_by_muscle gives planned weighted direct/indirect/total sets for the 12 main muscle groups; logged_volume_7d "
             "gives Home weighted sets, even without a program. how_mayos_counts explains attribution. "
-            "Muscle matches primary or secondary muscles and Weak point groups. Groups can overlap. "
+            "Muscle matches primary or secondary muscles and maps sub-regions to one main group. "
             "For next_offset, repeat the same scope with offset to read remaining complete prescriptions."
         ),
         args_schema=ActiveProgramArgs,
@@ -719,7 +747,6 @@ def _encode_tool_result(tool_result: Any) -> str:
             "program_authority": tool_result.get("program_authority", "player"),
             **({"coach": tool_result["coach"]} if tool_result.get("coach") else {}),
             "weekly_sets_by_muscle": tool_result["weekly_sets_by_muscle"],
-            "other_muscles": tool_result.get("other_muscles", {}),
             **{key: tool_result[key] for key in ("weekly_volume_by_muscle", "logged_volume_7d", "how_mayos_counts") if key in tool_result},
             "message": "Scope by day_name, exercise_name/exercise_id or muscle for prescriptions.",
         }
