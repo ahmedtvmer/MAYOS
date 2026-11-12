@@ -58,6 +58,7 @@ COACH_ALERT_MESSAGE_PARAM_ALLOWLISTS = {
         {"exercise_name", "e1rm_delta", "status_badge"}
     ),
     "coach_alert.profile_change.v1": frozenset({"changed_fields"}),
+    "coach_alert.program_clearance.v1": frozenset({"exercise_name"}),
     "coach_alert.weight_off_target_trend.v1": frozenset(
         {"distance_change_kg", "target_weight_kg", "window_days", "threshold_kg"}
     ),
@@ -94,6 +95,7 @@ ERROR_MESSAGE_PARAM_ALLOWLISTS = {
     "google.unlink_password_required.v1": frozenset(),
     "workout.program_version_mismatch.v1": frozenset(),
     "program.movement_restricted.v1": frozenset(),
+    "program.clearance_excluded.v1": frozenset(),
     "auth.invalid_credentials.v1": frozenset(),
     "auth.username_taken.v1": frozenset(),
     "auth.invalid_or_expired_token.v1": frozenset(),
@@ -545,6 +547,13 @@ def _regression(evidence: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _profile_change(evidence: Mapping[str, Any]) -> dict[str, Any]:
+    flagged = evidence.get("clearance_program_exercises")
+    if flagged:
+        name = str(flagged[0]["exercise_name"])
+        return structured_message(
+            "coach_alert.program_clearance.v1", {"exercise_name": name},
+            f"Review the clearance for {name} in the active Training program. The program has not changed.",
+        )
     changes = evidence.get("profile_changes")
     fields = [field for field in _PROFILE_FIELDS if isinstance(changes, Mapping) and field in changes]
     if evidence.get("injury_changes") and "injuries_or_limitations" not in fields:

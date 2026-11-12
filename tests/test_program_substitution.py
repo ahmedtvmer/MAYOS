@@ -28,6 +28,9 @@ class FakeLedger:
     def __init__(self):
         self.saved = []
 
+    def list_injury_records(self):
+        return []
+
     def get_player_profile(self):
         return {"rep_preference": "balanced"}
 

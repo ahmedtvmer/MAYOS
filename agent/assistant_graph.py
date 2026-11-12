@@ -25,6 +25,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(BASE_DIR))
 
 from core.effort import rir_label
+from service.exercise_clearances import ExerciseClearancePolicy, exclusion_message
 from core.weak_point_suggestions import suggest_weak_points
 from core.weak_points import WEAK_POINT_MUSCLES
 from core.movement_restriction_suggestions import suggest_movement_restrictions
@@ -3326,6 +3327,7 @@ class _AlternativeSuggestionRequest:
     prescribed_ids: frozenset[str]
     target_muscle: str
     body_part: str
+    clearance_policy: ExerciseClearancePolicy
 
 
 def _matching_replace_alternatives(
@@ -3333,7 +3335,7 @@ def _matching_replace_alternatives(
 ) -> list[dict[str, Any]]:
     matches = store.find_exercises_by_name(
         "",
-        limit=1 + len(request.prescribed_ids) + 3,
+        limit=None,
         equipment_access=request.equipment_access,
         filter_browse=True,
         replacing_exercise_id=request.source_id,
@@ -3344,6 +3346,7 @@ def _matching_replace_alternatives(
         match
         for match in matches
         if match["id"] != request.source_id
+        and request.clearance_policy.allows(match)
         and match["id"] not in request.prescribed_ids
         and (
             (source_action and match.get("primary_action") == source_action)
@@ -3371,6 +3374,7 @@ def _similar_candidate_is_compatible(
     )
     return (
         candidate_id != request.source_id
+        and request.clearance_policy.allows(candidate)
         and candidate_id not in request.prescribed_ids
         and candidate_id not in excluded_ids
         and equipment_access_allows(request.equipment_access, candidate.get("equipment"))
@@ -3454,21 +3458,16 @@ def _near_miss_refusal(store: Any, target: str, exercise_ids: frozenset[str]) ->
     return {"program_updated": False, "response_content": content, "messages": [AIMessage(content=content)]}
 
 
-def _slot_alternative_lines(
-    db: Any,
-    matched_ex: Any,
-    target_muscle: str,
-    body_part: str,
-    equipment_access: str,
-) -> list[str]:
-    alt_vec = EMBED_MODEL.embed_query(f"{target_muscle} {matched_ex.exercise_name}")
+def _slot_alternative_lines(db: Any, request: _AlternativeSuggestionRequest) -> list[str]:
+    alt_vec = EMBED_MODEL.embed_query(f"{request.target_muscle} {request.source_name}")
     slot_candidates = db.search_similar_exercises(alt_vec, limit=6)
     return [
         f"- **{c['name'].title()}** (`{c.get('target_muscle', '').title()}` | `{c.get('equipment', '')}`)"
         for c in slot_candidates
-        if str(c["id"]) != str(matched_ex.exercise_id)
-        and equipment_access_allows(equipment_access, c.get("equipment"))
-        and _muscle_compatible(c, target_muscle, body_part)
+        if str(c["id"]) != request.source_id
+        and request.clearance_policy.allows(c)
+        and equipment_access_allows(request.equipment_access, c.get("equipment"))
+        and _muscle_compatible(c, request.target_muscle, request.body_part)
     ][:3]
 
 
@@ -3560,6 +3559,15 @@ def _source_request_fields(
     return day_name, exercise_id, week_order, day_order
 
 
+def _requested_replacement_is_clearance_excluded(
+    store: Any, ledger: Any, replacement_id: str | None
+) -> bool:
+    if not replacement_id:
+        return False
+    candidate = store.get_exercise_library_entry(str(replacement_id))
+    return bool(candidate and not ExerciseClearancePolicy(ledger).allows(candidate))
+
+
 def _substitution_request_suggestion(
     store: Any, ledger: Any, query: str, metadata: dict[str, Any]
 ) -> dict[str, Any]:
@@ -3598,6 +3606,11 @@ def _substitution_request_suggestion(
     )
     if replacement_id == exercise_id:
         replacement_id = None
+    clearance_excluded = _requested_replacement_is_clearance_excluded(
+        store, ledger, replacement_id
+    )
+    if clearance_excluded:
+        replacement_id = None
     return {
         "kind": "exercise_substitution",
         "day_name": day_name,
@@ -3605,6 +3618,7 @@ def _substitution_request_suggestion(
         "day_order": day_order,
         "exercise_id": exercise_id,
         "replacement_exercise_id": replacement_id,
+        "clearance_excluded": clearance_excluded,
         "reason": _request_suggestion_reason(query),
     }
 
@@ -3685,12 +3699,16 @@ def _validated_swap_success(
     profile = ledger.get_player_profile() or {}
     experience_level = experience_level_for_training_age(profile.get("training_age_years", 0.0))
     day_name = substitution["day_names"][0]
+    new_notes = replacement.get("instructions") or get_biomechanical_cue(replacement, experience_level)
+    limits = ExerciseClearancePolicy(ledger).assess(replacement)["limit_notes"]
+    if limits:
+        new_notes += " " + "; ".join(limits)
     msg = _routine_slot_updated_message(
         _RoutineSlotUpdateReply(
             source_exercise=metadata["source_exercise"],
             replacement=replacement,
             day_name=day_name,
-            new_notes=replacement.get("instructions") or get_biomechanical_cue(replacement, experience_level),
+            new_notes=new_notes,
             query=_get_message_text(state["messages"][-1]),
             display_language=state.get("display_language", "en"),
         )
@@ -3747,18 +3765,27 @@ def _apply_validated_swap(
     ledger, store = _graph_context(config)
     query = _get_message_text(state["messages"][-1])
     if not programs_service.player_controls_program(store, ledger, state.get("player_account_id")):
-        return _response(_coach_program_refusal(query))
+        message = _coach_program_refusal(query)
+        if _requested_replacement_is_clearance_excluded(
+            store, ledger, metadata.get("target_exercise_id")
+        ):
+            language = resolve_reply_language(query, state.get("display_language", "en"))
+            message += "\n\n" + exclusion_message(language)
+        return _response(message)
     active_program = ledger.get_active_program()
     if active_program is None:
         return _response(ARABIC_SWAP_CLARIFICATION_RESPONSE)
     substitution = _persist_validated_swap(ledger, store, active_program, metadata)
     if not substitution["ok"]:
+        if substitution.get("code") == "clearance_excluded":
+            return _response(exclusion_message("ar"))
         return _response(ARABIC_SWAP_CLARIFICATION_RESPONSE)
     return _validated_swap_success(state, metadata, substitution, ledger)
 
 
 def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | None = None) -> dict[str, Any]:
     ledger, store = _graph_context(config)
+    clearance_policy = ExerciseClearancePolicy(ledger)
     meta = state.get("intent_metadata", {})
     if meta.get("arabic_data_validated") is True:
         return _apply_validated_swap(state, config, meta)
@@ -3772,7 +3799,12 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
 
     if not programs_service.player_controls_program(store, ledger, state.get("player_account_id")):
         suggestion = _substitution_request_suggestion(store, ledger, query, meta)
-        return _response(_coach_program_refusal(query), request_suggestion=suggestion)
+        clearance_excluded = suggestion.pop("clearance_excluded", False)
+        message = _coach_program_refusal(query)
+        if clearance_excluded:
+            language = resolve_reply_language(query, state.get("display_language", "en"))
+            message += "\n\n" + exclusion_message(language)
+        return _response(message, request_suggestion=suggestion)
 
     active_program = ledger.get_active_program()
     if not active_program:
@@ -3886,25 +3918,26 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
     source_description = describe_exercise(
         store, str(matched_ex.exercise_id), matched_ex.exercise_name, entry=source_entry
     )
+    prescribed_ids = {str(ex.exercise_id) for ex in target_day.exercises}
+    suggestion_request = _AlternativeSuggestionRequest(
+        source_id=str(matched_ex.exercise_id),
+        source_name=matched_ex.exercise_name,
+        source_entry=(
+            source_entry
+            if isinstance(source_entry, dict)
+            else {"name": matched_ex.exercise_name}
+        ),
+        equipment_access=equipment_access,
+        prescribed_ids=frozenset(prescribed_ids),
+        target_muscle=target_muscle,
+        body_part=body_part,
+        clearance_policy=clearance_policy,
+    )
 
     if not target_desc:
         valid_candidates = []
         suggested_staples = getattr(matched_ex, "suggested_substitutes", [])
         has_suggested_staples = isinstance(suggested_staples, list) and bool(suggested_staples)
-        prescribed_ids = {str(ex.exercise_id) for ex in target_day.exercises}
-        suggestion_request = _AlternativeSuggestionRequest(
-            source_id=str(matched_ex.exercise_id),
-            source_name=matched_ex.exercise_name,
-            source_entry=(
-                source_entry
-                if isinstance(source_entry, dict)
-                else {"name": matched_ex.exercise_name}
-            ),
-            equipment_access=equipment_access,
-            prescribed_ids=frozenset(prescribed_ids),
-            target_muscle=target_muscle,
-            body_part=body_part,
-        )
         if has_suggested_staples:
             for staple in suggested_staples:
                 staple_id = str(staple.exercise_id)
@@ -3921,6 +3954,8 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
                 candidate = dict(zip(("id", "name", "equipment", "target_muscle", "body_part"), row))
                 if not equipment_access_allows(equipment_access, candidate["equipment"]):
                     continue
+                if not clearance_policy.allows(candidate):
+                    continue
                 candidate["name"] = staple.exercise_name
                 valid_candidates.append(candidate)
         elif isinstance(source_entry, dict) and (
@@ -3936,6 +3971,17 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
                 store, suggestion_request, set(), 3
             )
 
+        if not valid_candidates and clearance_policy.injuries:
+            # Old Staple lists may now be entirely excluded. Browse the whole
+            # compatible pool before concluding there is no alternative.
+            valid_candidates = [
+                candidate for candidate in store.find_exercises_by_name(
+                    "", limit=None, equipment_access=equipment_access, filter_browse=True,
+                    replacing_exercise_id=str(matched_ex.exercise_id),
+                )
+                if _similar_candidate_is_compatible(candidate, suggestion_request, set())
+            ][:3]
+        valid_candidates = [candidate for candidate in valid_candidates if clearance_policy.allows(candidate)]
         if valid_candidates:
             entries = store.get_exercise_library_entries(
                 [str(candidate["id"]) for candidate in valid_candidates]
@@ -3967,6 +4013,9 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
         model_lines = [model_header]
         for i, c in enumerate(valid_candidates, start=1):
             cue = get_biomechanical_cue(c, experience_level)
+            limits = clearance_policy.assess(c)["limit_notes"]
+            if limits:
+                cue += " " + "; ".join(limits)
             lines.append(f"{i}. **{c['name'].title()}** (`{c['equipment']}`)\n   *Cue:* {cue}")
             model_lines.append(f"{i}. **{c['description']}**\n   *Cue:* {cue}")
         lines.append(f"\n*To commit a swap, reply:* `swap {matched_ex.exercise_name} for [Choice]`")
@@ -4008,6 +4057,11 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
             ]
     if near_miss_ids and not name_matches:
         return _near_miss_refusal(store, resolve_text, near_miss_ids)
+    if name_matches:
+        eligible_matches = [match for match in name_matches if clearance_policy.allows(match)]
+        if not eligible_matches:
+            return _response(exclusion_message(resolve_reply_language(query, state.get("display_language", "en"))))
+        name_matches = eligible_matches
     compatible_name_match = _compatible_name_match(
         name_matches, target_muscle, body_part, target_day
     )
@@ -4019,8 +4073,7 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
         replacement = compatible_name_match
     elif name_matches:
         potential = _slot_alternative_lines(
-            store, matched_ex, target_muscle, body_part,
-            equipment_access,
+            store, suggestion_request,
         )
         rejected = name_matches[0]
         msg = (
@@ -4043,6 +4096,7 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
                 c
                 for c in candidates
                 if str(c["id"]) != str(matched_ex.exercise_id)
+                and clearance_policy.allows(c)
                 and equipment_access_allows(equipment_access, c.get("equipment"))
                 and (
                     (
@@ -4085,8 +4139,7 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
 
     if not replacement:
         potential = _slot_alternative_lines(
-            store, matched_ex, target_muscle, body_part,
-            equipment_access,
+            store, suggestion_request,
         )
         msg = (
             f"Could not find a biomechanically suitable match for **'{raw_target or target_desc}'** "
@@ -4115,6 +4168,9 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
         new_notes = replacement.get("instructions") or get_biomechanical_cue(
             replacement, experience_level
         )
+        limits = clearance_policy.assess(replacement)["limit_notes"]
+        if limits:
+            new_notes += " " + "; ".join(limits)
         note_suffix = ""
         # Variants of one movement share the end of their source name ("... lateral pulldown");
         # display names end in an equipment suffix, so compare source names when known.
@@ -4155,7 +4211,10 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
             "messages": [AIMessage(content=msg)],
         }
 
-    msg = substitution["error"]
+    msg = (
+        exclusion_message(resolve_reply_language(query, state.get("display_language", "en")))
+        if substitution.get("code") == "clearance_excluded" else substitution["error"]
+    )
     return {"program_updated": False, "response_content": msg, "messages": [AIMessage(content=msg)]}
 
 
@@ -4528,10 +4587,22 @@ def _deload_choice_copy(
 
 
 def catalog_search_node(state: AssistantState, config: dict[str, Any] | None = None) -> dict[str, Any]:
-    _, store = _graph_context(config)
+    ledger, store = _graph_context(config)
     query = state.get("intent_metadata", {}).get("search_query") or _get_message_text(state["messages"][-1])
     try:
         candidates, from_name_search = _catalog_search_candidates(store, query)
+        policy = ExerciseClearancePolicy(ledger)
+        excluded = [candidate for candidate in candidates if not policy.allows(candidate)]
+        candidates = [candidate for candidate in candidates if policy.allows(candidate)]
+        if excluded and not candidates:
+            reply_language = resolve_reply_language(
+                _get_message_text(state["messages"][-1]), state.get("display_language", "en")
+            )
+            return _response(exclusion_message(reply_language))
+        for candidate in candidates:
+            limits = policy.assess(candidate)["limit_notes"]
+            if limits:
+                candidate["instructions"] = "; ".join(limits) + ". " + candidate["instructions"]
         if not _catalog_search_has_matches(query, candidates, from_name_search):
             msg = f"No exercises matching '{query}' were found in the catalog."
             return {"response_content": msg, "messages": [AIMessage(content=msg)]}
@@ -4590,6 +4661,7 @@ def _library_search_details(store: Any, matches: list[dict[str, Any]]) -> list[d
             candidates.append(
                 {
                     **match,
+                    "body_part": exercise.get("body_part"),
                     "description": describe_exercise(
                         store, str(match["id"]), match["name"], entry=exercise
                     ),

@@ -15,6 +15,7 @@ import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/core/saved_player_data.dart';
 import 'package:mayos_mobile/src/features/player/auth/auth_controller.dart';
 import 'package:mayos_mobile/src/features/player/dashboard/dashboard_tab.dart';
+import 'package:mayos_mobile/src/features/player/tour/feature_list.dart';
 import 'package:mayos_mobile/src/providers.dart';
 
 import 'support/auth_harness.dart';
@@ -34,7 +35,7 @@ Future<void> _primePlayerCache({
   fake.profileExists = true;
   fake.recoveryEmail = 'alice@example.com';
   fake.displayLanguage = language;
-  fake.whatsNewSeenRelease = 6;
+  fake.whatsNewSeenRelease = currentFeatureRelease;
   fake.foodLogToday = _today();
   // The fake intentionally returns 503 until a training status is supplied.
   fake.trainingStatusBody = <String, dynamic>{

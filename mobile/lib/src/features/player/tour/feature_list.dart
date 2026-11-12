@@ -6,7 +6,7 @@ import 'tour_targets.dart';
 
 /// The shared Feature list used by the Tour and later discovery surfaces.
 const int tourCurrentVersion = 1;
-const int currentFeatureRelease = 6;
+const int currentFeatureRelease = 7;
 const int kReleaseShareCard = 3;
 const int kReleasePrCelebration = 3;
 const int kReleaseDurationCheck = 4;
@@ -63,6 +63,17 @@ List<String> validateFeatureEntries(
 }
 
 const List<FeatureEntry> featureList = <FeatureEntry>[
+  FeatureEntry(
+    id: 'exercise_clearance_flags',
+    titleEn: 'Exercise clearance flags',
+    sentenceEn: 'See exercises needing a clearance review in your Training program while keeping your workout log truthful.',
+    titleAr: 'تنبيهات التصريح الطبي للتمارين',
+    sentenceAr: 'اطّلع على التمارين التي تحتاج إلى مراجعة التصريح الطبي في برنامجك التدريبي مع تسجيل ما أديته فعليًا.',
+    target: 'program',
+    location: TourShellTabLocation(tabIndex: 1),
+    release: 7,
+    audience: 'lifter',
+  ),
   FeatureEntry(
     id: 'offline_start',
     titleEn: 'Open your saved training offline',

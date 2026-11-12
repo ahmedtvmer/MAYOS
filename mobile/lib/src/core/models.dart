@@ -1228,6 +1228,9 @@ class CoachAlert {
   };
 
   String? get supportedMessageCode {
+    if (kind == profileChangeKind && messageCode == 'coach_alert.program_clearance.v1') {
+      return messageCode;
+    }
     final String? expectedCode = _messageCodeByKind[kind];
     return messageCode == expectedCode ? expectedCode : null;
   }
@@ -2748,6 +2751,7 @@ class ProgramExercise {
     this.coachEquipment,
     this.load,
     this.setGroups = const <Map<String, dynamic>>[],
+    this.clearanceStatus,
   });
 
   factory ProgramExercise.fromJson(Map<String, dynamic> json) {
@@ -2760,6 +2764,7 @@ class ProgramExercise {
     final dynamic rawLoad = first == null ? json['load'] : first['load'];
     return ProgramExercise(
         exerciseId: json['exercise_id'] as String,
+        clearanceStatus: json['clearance_status'] as String?,
         exerciseName: json['exercise_name'] as String,
         targetSets: (first?['sets'] as num?)?.toInt() ??
             (json['target_sets'] as num?)?.toInt() ?? 2,
@@ -2807,6 +2812,7 @@ class ProgramExercise {
   }
 
   final String exerciseId;
+  final String? clearanceStatus;
   final String exerciseName;
   final int targetSets;
   final int targetRepsMin;
@@ -2868,6 +2874,7 @@ class ProgramExercise {
   bool get hasWarmupSets => warmupSets > 0;
 
   ProgramExercise copyWith({int? targetSets}) => ProgramExercise(
+        clearanceStatus: clearanceStatus,
         exerciseId: exerciseId,
         exerciseName: exerciseName,
         targetSets: targetSets ?? this.targetSets,
@@ -2986,9 +2993,11 @@ class WarmupExercise {
     this.reps = 10,
     this.restSeconds = 45,
     this.notes,
+    this.clearanceStatus,
   });
 
   factory WarmupExercise.fromJson(Map<String, dynamic> json) => WarmupExercise(
+        clearanceStatus: json['clearance_status'] as String?,
         exerciseName: json['exercise_name'] as String,
         exerciseId: json['exercise_id'] as String?,
         equipment: json['equipment'] as String?,
@@ -2999,6 +3008,7 @@ class WarmupExercise {
       );
 
   final String? exerciseId;
+  final String? clearanceStatus;
   final String? equipment;
   final String exerciseName;
   final int sets;

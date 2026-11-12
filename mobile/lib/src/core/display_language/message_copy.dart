@@ -15,6 +15,8 @@ const Map<String, String> _specificEnglishErrors = <String, String>{
       'A training day can have at most 10 working-set exercises.',
   'program.movement_restricted.v1':
       'That exercise conflicts with a Movement restriction in your profile.',
+  'program.clearance_excluded.v1':
+      "That exercise is not cleared or has no recorded clearance for an active injury. I can't confirm it's safe.",
 };
 
 const Map<String, ({String english, String arabic})> _programImportMessages =
@@ -668,8 +670,13 @@ class MessageCopy {
     if (value == null || value.isEmpty) {
       return isArabic ? 'غير محدد' : 'Not set';
     }
+
     return isArabic ? _ltr(value) : value;
   }
+
+  String programClearance(String exerciseName) => isArabic
+      ? 'راجع التصريح الطبي لتمرين $exerciseName في البرنامج التدريبي النشط. لم يتغير البرنامج.'
+      : 'Review the clearance for $exerciseName in the active Training program. The program has not changed.';
 }
 
 const Map<String, String> _specificArabicErrors = <String, String>{
@@ -719,6 +726,7 @@ const Map<String, String> _specificArabicErrors = <String, String>{
   'program.edit.exercise_not_available.v1': 'هذا التمرين غير متاح في مكتبة التمارين.',
   'program.edit.day_limit.v1': 'يمكن أن يضم اليوم التدريبي 10 تمارين كحد أقصى ضمن مجموعات التدريب.',
   'program.movement_restricted.v1': 'هذا التمرين يتعارض مع حركة ممنوعة في ملفك التدريبي.',
+  'program.clearance_excluded.v1': 'هذا التمرين غير مسموح به أو لم يُسجّل تصريح طبي له لإصابة نشطة. لا أستطيع تأكيد أنه آمن.',
   'program.edit.changed.v1': 'تغير البرنامج منذ بدء التعديل. حدّث البرنامج ثم حاول مرة أخرى.',
   'program_request.invalid_kind.v1': 'اختر استبدال تمرين أو تغيير تقسيم التدريب.',
   'program_request.reason_required.v1': 'أضف سببًا للطلب.',

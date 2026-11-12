@@ -20,6 +20,7 @@ from database.ledger.profile import PLAYER_PROFILE_STORAGE_DEFAULTS
 from database.ledger.chat import MAX_CHAT_HISTORY_SEARCH_RESULTS
 from agent.focus_muscles import FOCUS_REVIEW_MUSCLES
 from service.injuries import render_public_injury_record
+from service.exercise_clearances import assistant_program_clearances
 from service.nutrition import assistant_projection
 from service.food_log import NUTRIENT_KEYS
 from service.food_log_context import nutrient_totals
@@ -237,9 +238,12 @@ def _read_injury_records(ledger: Any) -> list[dict[str, Any]]:
         rendered.pop("id", None)
         rendered["clearances"] = [
             {
-                key: clearance[key]
-                for key in _INJURY_CLEARANCE_TOOL_FIELDS
-                if key in clearance
+                **{
+                    key: clearance[key]
+                    for key in _INJURY_CLEARANCE_TOOL_FIELDS
+                    if key in clearance
+                },
+                "catalog_matched": clearance.get("exercise_id") is not None,
             }
             for clearance in ledger.list_exercise_clearances(str(record["id"]))
         ]
@@ -385,6 +389,7 @@ def _program_exercise_prescription(exercise: Any, muscle: str | None, metadata: 
     sets = program_exercise_working_sets(exercise)
     rir = 10 - float(exercise.target_rpe)
     row = {
+        "exercise_id": str(exercise.exercise_id),
         "name": exercise.exercise_name, "sets": sets,
         "reps_min": exercise.target_reps_min, "reps_max": exercise.target_reps_max,
         "rir": rir, "muscle": muscle or "not set",
@@ -556,12 +561,15 @@ def _read_active_program(ledger: Any, args: ActiveProgramArgs | None = None, sto
                 "day": day_name, "muscles": day_muscles,
             }
         )
+    clearance_flags = assistant_program_clearances(store, ledger, all_days)
     response = {
         "status": "ok", "f": getattr(program, "weekly_frequency", "not set"),
         "split": _not_set(getattr(program, "split_type", None)),
         "week_order": selected_week, "days": days,
         "movement_restrictions": _player_profile(ledger).get("movement_restrictions", []),
         "skipped_restricted_slots": _program_restriction_skips(program, all_days),
+        **({"exercise_clearance_flags": clearance_flags}
+           if clearance_flags["status"] != "ok" or clearance_flags["exercises"] else {}),
         "program_authority": authority,
         **volume_context,
         **({"coach": coach_name} if coach_name else {}),
@@ -590,6 +598,14 @@ PLAYER_READ_TOOL_REGISTRY: tuple[PlayerReadTool, ...] = (
         description=(
             "Read only requested Profile sections. No sections: names only. "
             "Limitations includes injuries, Exercise clearances and Movement restrictions. "
+            "Before recommending, read Limitations. Never recommend matched not_cleared exercises "
+            "or unverified exercises within an active injury's catalog body parts. "
+            "Apply each injury's latest matched verdict; catalog_matched=false is raw and excludes nothing. "
+            "Cleared allows; cleared_with_limits allows with notes. Any active injury exclusion wins; "
+            "resolving it lifts its verdicts and exclusions. Existing excluded program exercises need "
+            "Coach review; never auto-remove or block truthful logging. If clearance facts are missing, "
+            "don't guess safety; for unverified exercises say \"I can't confirm it's safe\" "
+            "(Arabic: \"مش هقدر أأكد إنه آمن ليك\"). get_active_program supplies exercise_clearance_flags. "
             "Empty fields: 'not set'."
         ),
         args_schema=ProfileArgs,
@@ -604,6 +620,8 @@ PLAYER_READ_TOOL_REGISTRY: tuple[PlayerReadTool, ...] = (
             "Read active Program overview: ordered days and muscles, weekly sets, authority and "
             "restriction skips; no prescriptions. Defaults to current week; week_order selects another. "
             "Scope day_name, exercise_name/exercise_id or muscle for matching prescriptions only. "
+            "Skips map restrictions to slots. On successful reads, absent "
+            "exercise_clearance_flags means no exercises are flagged. "
             "Rows include secondary_muscles and movement_pattern (curated primary action or null). "
             "weekly_volume_by_muscle gives planned direct/indirect/total sets; logged_volume_7d "
             "gives Home weighted sets, even without a program. how_mayos_counts explains attribution. "
@@ -722,6 +740,8 @@ def _encode_tool_result(tool_result: Any) -> str:
             "other_muscles": tool_result.get("other_muscles", {}),
             **{key: tool_result[key] for key in ("weekly_volume_by_muscle", "logged_volume_7d", "how_mayos_counts") if key in tool_result},
             "message": "Scope by day_name, exercise_name/exercise_id or muscle for prescriptions.",
+            **({"exercise_clearance_flags": tool_result["exercise_clearance_flags"]}
+               if "exercise_clearance_flags" in tool_result else {}),
         }
         compact_rendered = json.dumps(compact, ensure_ascii=False, separators=(",", ":"))
         if len(compact_rendered.encode("utf-8")) <= MAX_TOOL_RESULT_BYTES:

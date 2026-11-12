@@ -3178,6 +3178,7 @@ class ApiClient {
     String? replacingExerciseId,
     bool filterEquipmentAccess = false,
     bool showAllEquipment = false,
+    bool forLogging = false,
     void Function(String?)? onMessageCode,
   }) async {
     final response = await _send(
@@ -3192,6 +3193,7 @@ class ApiClient {
               'equipment_category': equipmentCategories,
             if (replacingExerciseId != null)
               'replacing_exercise_id': replacingExerciseId,
+            if (forLogging) 'for_logging': true,
             if (filterEquipmentAccess) 'filter_equipment_access': true,
             if (filterEquipmentAccess && showAllEquipment)
               'show_all_equipment': true,

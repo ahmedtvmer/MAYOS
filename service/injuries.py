@@ -18,6 +18,7 @@ from core.injuries import (
 )
 from database.shared import _normalize_exercise_name
 from service import profile_change_alerts
+from service.exercise_clearances import notify_program_exclusions
 from service.text_normalization import normalize_digits
 
 MAX_INJURY_DESCRIPTION_LENGTH = 2000
@@ -60,6 +61,54 @@ def list_injuries(ledger: Any) -> list[dict[str, Any]]:
         rendered["clearances"] = ledger.list_exercise_clearances(str(record["id"]))
         records.append(rendered)
     return records
+
+
+class _PendingLegacyInjuryLedger:
+    def __init__(self, ledger: Any, records: list[dict[str, Any]]):
+        self._ledger = ledger
+        self._records = records
+
+    def list_injury_records(self) -> list[dict[str, Any]]:
+        return self._records
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._ledger, name)
+
+
+def ledger_with_pending_legacy_injury(ledger: Any, injury_text: str) -> Any:
+    """Let candidate filtering see a pending profile import before its atomic save."""
+    description = injury_text.strip()
+    if is_none_answer(description):
+        return ledger
+    records = ledger.list_injury_records()
+    legacy = ledger.get_injury_record_by_source_event_key(
+        LEGACY_INJURY_SOURCE_EVENT_KEY
+    )
+    if legacy:
+        return _updated_legacy_injury_view(
+            ledger, records, str(legacy["id"]), description
+        )
+    if ledger.get_deleted_injury_source_event(LEGACY_INJURY_SOURCE_EVENT_KEY) == description:
+        return ledger
+    pending = {
+        "id": "pending-legacy-injury", "body_area": body_area_in_text(description),
+        "description": description, "status": "reported",
+    }
+    return _PendingLegacyInjuryLedger(ledger, [*records, pending])
+
+
+def _updated_legacy_injury_view(
+    ledger: Any, records: list[dict[str, Any]], injury_id: str, description: str
+) -> Any:
+    area = body_area_in_text(description)
+    projected = []
+    for injury in records:
+        if str(injury["id"]) == injury_id and (
+            injury["description"] != description or injury["body_area"] != area
+        ):
+            injury = {**injury, "body_area": area, "description": description, "status": "reported"}
+        projected.append(injury)
+    return _PendingLegacyInjuryLedger(ledger, projected)
 
 
 def render_public_injury_record(record: dict[str, Any]) -> dict[str, Any]:
@@ -127,6 +176,7 @@ def create_exercise_clearance(
         profile_change_alerts.record_clearance_change(
             db, player_account_id, clearance, change="created", client=client
         )
+        notify_program_exclusions(db, ledger, player_account_id)
     return clearance
 
 
@@ -167,6 +217,7 @@ def update_exercise_clearance(
         profile_change_alerts.record_clearance_change(
             db, player_account_id, after, change="updated", client=client
         )
+        notify_program_exclusions(db, ledger, player_account_id)
     return after
 
 
@@ -184,6 +235,7 @@ def delete_exercise_clearance(
         profile_change_alerts.record_clearance_change(
             db, player_account_id, before, change="deleted", client=client
         )
+        notify_program_exclusions(db, ledger, player_account_id)
     return deleted
 
 
@@ -414,6 +466,7 @@ def create_injury(
         )
     if not record:
         return None
+    notify_program_exclusions(db, ledger, player_account_id)
     return render_injury_record(record)
 
 
@@ -472,6 +525,7 @@ def _record_imported_injury(
         change="created",
         client=command.client_context,
     )
+    notify_program_exclusions(db, ledger, command.player_account_id)
     return render_injury_record(record)
 
 
@@ -501,6 +555,7 @@ def _update_imported_injury(
         previous_status=record.get("status"),
         client=command.client_context,
     )
+    notify_program_exclusions(db, ledger, command.player_account_id)
     return render_injury_record(after)
 
 
@@ -549,6 +604,7 @@ def update_injury(
             previous_status=before.get("status"),
             client=client,
         )
+    notify_program_exclusions(db, ledger, player_account_id)
     return render_injury_record(after)
 
 

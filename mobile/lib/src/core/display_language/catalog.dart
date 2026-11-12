@@ -1249,6 +1249,10 @@ class MayosCopy {
 
   String _ltr(String value) => '\u2066$value\u2069';
 
+  String exerciseClearanceFlag(String status) => status == 'not_cleared'
+      ? (isArabic ? 'غير مسموح به حسب التصريح الطبي المسجّل؛ يمكنك تسجيل ما أديته.' : 'Not cleared by recorded physician advice; you can still log what you did.')
+      : (isArabic ? 'لا يوجد تصريح طبي مسجّل لإصابة نشطة؛ لا يمكن تأكيد أمان التمرين. يمكنك تسجيل ما أديته.' : "No recorded clearance for an active injury; we can't confirm it's safe. You can still log what you did.");
+
 }
 
 String _formatCount(num value) => value == value.roundToDouble()

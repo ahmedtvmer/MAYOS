@@ -62,6 +62,16 @@ class LedgerProfileMixin:
         ).fetchall()
         return [dict(row) for row in rows]
 
+    def get_injury_record_by_source_event_key(
+        self, source_event_key: str
+    ) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            f"SELECT {INJURY_RECORD_COLUMNS} FROM injury_records "
+            "WHERE source_event_key = ?",
+            (source_event_key,),
+        ).fetchone()
+        return dict(row) if row else None
+
     def get_injury_record(self, injury_id: str) -> dict[str, Any] | None:
         row = self.conn.execute(
             f"SELECT {INJURY_RECORD_COLUMNS} FROM injury_records WHERE id = ?",

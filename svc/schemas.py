@@ -29,6 +29,7 @@ from agent.ProgramState import (
     ProgramLoadSchema,
     ProgramSetGroupSchema,
     SuggestedSubstitute,
+    WarmupExerciseSchema,
     validate_set_group_loads,
 )
 from agent.program_cardio import CardioType
@@ -64,6 +65,10 @@ WorkoutSyncFailureReason = Literal[*WORKOUT_SYNC_FAILURE_REASONS]
 
 __all__ = [
     "ActiveProgramOut",
+    "PlayerActiveProgramDayOut",
+    "PlayerActiveProgramExerciseOut",
+    "PlayerActiveProgramWarmupExerciseOut",
+    "PlayerActiveProgramWeekOut",
     "AccountCapabilitiesOut",
     "AccountOut",
     "AccountPlansOut",
@@ -650,6 +655,7 @@ class CoachAlertOut(BaseModel):
     movement_restriction_conflicts: list[dict[str, Any]] | None = None
     injury_changes: dict[str, dict[str, Any]] | None = None
     clearance_changes: list[dict[str, Any]] | None = None
+    clearance_program_exercises: list[dict[str, Any]] | None = None
     weight_points: list[WeightTrendPointOut] | None = None
     target_weight_kg: float | None = None
     distance_change_kg: float | None = None
@@ -1402,6 +1408,9 @@ class ProgramDraftInput(BaseModel):
 
 
 class ProgramDraftExerciseIn(ProgramDraftInput):
+    clearance_status: Any = Field(default=None, exclude=True)
+    clearance_limit_notes: Any = Field(default=None, exclude=True)
+    notes_are_technique: Any = Field(default=None, exclude=True)
     exercise_id: str = Field(min_length=1, max_length=200)
     exercise_name: str = ""
     rationale: dict[str, Any] | None = None
@@ -1455,6 +1464,8 @@ class ProgramDraftExerciseIn(ProgramDraftInput):
 
 
 class ProgramDraftWarmupExerciseIn(ProgramDraftInput):
+    clearance_status: Any = Field(default=None, exclude=True)
+    clearance_limit_notes: Any = Field(default=None, exclude=True)
     exercise_id: str | None = None
     equipment: str | None = None
     exercise_name: str
@@ -1887,30 +1898,55 @@ class ProgramEditIn(BaseModel):
     exercises: list[ProgramEditExerciseIn] = Field(max_length=MAX_EXERCISES_PER_DAY + 1)
 
 
-class ActiveProgramExerciseOut(PersistedProgramExerciseSchema):
-    """A Player prescription plus read-time labels; never stored (#534)."""
+class PlayerActiveProgramExerciseOut(PersistedProgramExerciseSchema):
+    """A Player prescription plus read-time labels and clearance facts; never stored."""
 
     notes_are_technique: bool = Field(
         default=False, description="Notes equal the catalog technique; the logger card hides them"
     )
 
+    clearance_status: str | None = Field(
+        default="allowed", exclude_if=lambda status: status == "allowed"
+    )
+    clearance_limit_notes: list[str] = Field(
+        default_factory=list, exclude_if=lambda notes: not notes
+    )
 
-class ActiveProgramDayOut(PersistedProgramDaySchema):
-    exercises: list[ActiveProgramExerciseOut] = Field(
+
+class PlayerActiveProgramWarmupExerciseOut(WarmupExerciseSchema):
+    """A Player warm-up with its current read-only clearance facts."""
+
+    clearance_status: str | None = Field(
+        default="allowed", exclude_if=lambda status: status == "allowed"
+    )
+    clearance_limit_notes: list[str] = Field(
+        default_factory=list, exclude_if=lambda notes: not notes
+    )
+
+
+class PlayerActiveProgramDayOut(PersistedProgramDaySchema):
+    warmup_exercises: list[PlayerActiveProgramWarmupExerciseOut] = Field(default_factory=list)
+    exercises: list[PlayerActiveProgramExerciseOut] = Field(
         min_length=1,
         max_length=MAX_EXERCISES_PER_DAY,
     )
 
 
-class ActiveProgramWeekOut(PersistedProgramWeekSchema):
-    days: list[ActiveProgramDayOut]
+class PlayerActiveProgramWeekOut(PersistedProgramWeekSchema):
+    days: list[PlayerActiveProgramDayOut] = Field(
+        min_length=1,
+        max_length=MAX_PROGRAM_DAYS,
+    )
 
 
 class ActiveProgramOut(PersistedProgramSchema):
     """An active program plus the server's current Program-authority decision."""
 
-    days: list[ActiveProgramDayOut]
-    weeks: list[ActiveProgramWeekOut] = Field(default_factory=list, max_length=MAX_PROGRAM_WEEKS)
+    days: list[PlayerActiveProgramDayOut]
+    weeks: list[PlayerActiveProgramWeekOut] = Field(
+        default_factory=list,
+        max_length=MAX_PROGRAM_WEEKS,
+    )
     player_controls_program: bool
     offer_design_regeneration: bool = False
     regeneration_offer_reason: str | None = None
@@ -2007,8 +2043,13 @@ class WorkoutSetIn(BaseModel):
     is_warmup: bool = False
 
 
+class WorkoutExerciseIn(ProgramExerciseSchema):
+    clearance_status: Any = Field(default=None, exclude=True)
+    clearance_limit_notes: Any = Field(default=None, exclude=True)
+
+
 class ExerciseSetsIn(BaseModel):
-    exercise: ProgramExerciseSchema
+    exercise: WorkoutExerciseIn
     sets: list[WorkoutSetIn] = Field(min_length=1)
 
 
@@ -2020,6 +2061,8 @@ class WarmupMovementSetIn(BaseModel):
 
 
 class WarmupMovementIn(BaseModel):
+    clearance_status: Any = Field(default=None, exclude=True)
+    clearance_limit_notes: Any = Field(default=None, exclude=True)
     exercise_id: str | None = Field(default=None, min_length=1, max_length=64)
     equipment: str | None = Field(default=None, max_length=80)
     exercise_name: str = Field(min_length=1, max_length=120)

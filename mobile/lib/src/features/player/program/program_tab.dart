@@ -1733,6 +1733,12 @@ class _ExerciseRow extends StatelessWidget {
                   ),
                   if (exercise.isCoachExercise)
                     _CoachExerciseDetails(exercise: exercise),
+                  if (exercise.clearanceStatus == 'not_cleared' ||
+                      exercise.clearanceStatus == 'unverified')
+                    Text(
+                      displayCopyOf(context).exerciseClearanceFlag(exercise.clearanceStatus!),
+                      style: MayosTypography.of(context).caption.copyWith(color: c.textSecondary),
+                    ),
                   const SizedBox(height: 2),
                   Directionality(
                     textDirection: TextDirection.ltr,
@@ -1900,6 +1906,11 @@ class _WarmupRow extends StatelessWidget {
               warmup.exerciseName,
               style: MayosTypography.of(context).body.copyWith(color: c.textPrimary),
             ),
+            if (warmup.clearanceStatus == 'not_cleared' || warmup.clearanceStatus == 'unverified')
+              Text(
+                displayCopyOf(context).exerciseClearanceFlag(warmup.clearanceStatus!),
+                style: MayosTypography.of(context).caption.copyWith(color: c.textSecondary),
+              ),
             const SizedBox(height: 2),
             Text(
               displayCopyOf(context).warmupPrescription(

@@ -730,7 +730,7 @@ def test_profile_rebuild_persistence_failure_rolls_back_and_can_retry(shipped_li
     ("field", "value", "rebuilds"),
     [
         ("equipment_access", "Home gym", True),
-        ("injuries_or_limitations", "Left knee pain", True),
+        ("injuries_or_limitations", "Left knee pain", False),
         ("weekly_frequency", 3, True),
         ("rep_preference", "high", True),
         ("current_goal", "Lose fat", False),
@@ -779,7 +779,7 @@ def test_intake_exposes_profile_contract_and_rebuild_fields(api):
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["profile_rebuild_fields"] == [
-        "injuries_or_limitations", "movement_restrictions", "equipment_access",
+        "movement_restrictions", "equipment_access",
         "weekly_frequency", "rep_preference"
     ]
     fields = {field["name"]: field for field in body["fields"]}

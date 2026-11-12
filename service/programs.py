@@ -105,6 +105,9 @@ def active_program_response(
     completed_days = ledger.completed_program_days(int(version)) if version is not None else set()
     position = ledger.get_program_position(program)
     payload = with_library_equipment(program, db)
+    from service.exercise_clearances import annotate_program, notify_program_exclusions
+    annotate_program(db, ledger, payload)
+    notify_program_exclusions(db, ledger, player_account_id)
     payload["offer_design_regeneration"] = should_offer_design_regeneration(
         db, ledger, player_account_id, program
     )

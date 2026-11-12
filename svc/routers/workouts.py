@@ -119,13 +119,15 @@ async def search_exercises(
     replacing_exercise_id: str | None = None,
     filter_equipment_access: bool = False,
     show_all_equipment: bool = False,
+    for_logging: bool = False,
 ):
     """Search the Exercise library by name, target muscle or curated filters.
 
     A filter-only browse returns all matching rows and applies the player's
     Equipment access. Replace can rank it against the exercise being replaced;
     an uncurated, Coach, or unknown id keeps the existing display-name order.
-    Name searches remain limited to 10 and ignore Equipment access.
+    Name searches remain limited to 10 and ignore Equipment access. A logging
+    picker retains uncleared exercises so it can record what actually happened.
     """
     try:
         filters = exercise_filters_for(
@@ -145,7 +147,7 @@ async def search_exercises(
         (target_muscle or filters.has_curated_filters or filter_equipment_access) and not (query or "").strip()
     )
     # Replace filter-only browsing is unbounded so it never drops matching rows.
-    limit = None if filter_browse else 10
+    limit = None if filter_browse or replacing_exercise_id else 10
     equipment_access = None
     if (filter_browse or filter_equipment_access) and not (filter_equipment_access and show_all_equipment):
         equipment_access = map_equipment_access(
@@ -161,8 +163,12 @@ async def search_exercises(
         replacing_exercise_id=replacing_exercise_id,
     )
     profile = ledger.get_player_profile() or {}
+    if replacing_exercise_id and not for_logging:
+        from service.exercise_clearances import ExerciseClearancePolicy
+        policy = ExerciseClearancePolicy(ledger)
+        exercises = [row for row in exercises if policy.allows(row)]
     restrictions = profile.get("movement_restrictions") or []
-    if replacing_exercise_id and restrictions:
+    if replacing_exercise_id and restrictions and not for_logging:
         from core.movement_restrictions import is_movement_restricted
 
         exercises = [
@@ -172,11 +178,13 @@ async def search_exercises(
     if filter_equipment_access and not show_all_equipment:
         from utils.equipment_access import equipment_access_allows
         exercises = [row for row in exercises if equipment_access_allows(equipment_access, row.get("equipment"))]
+    if replacing_exercise_id and not filter_browse:
+        exercises = exercises[:10]
     return {
         # Filter-only browsing suggests options; typed searches stay bounded.
         "exercises": exercises,
-        "movement_restrictions_excluded": bool(replacing_exercise_id and restrictions),
-        "message_code": "program.movement_restricted.v1" if replacing_exercise_id and restrictions else None,
+        "movement_restrictions_excluded": bool(replacing_exercise_id and restrictions and not for_logging),
+        "message_code": "program.movement_restricted.v1" if replacing_exercise_id and restrictions and not for_logging else None,
     }
 
 

@@ -32,6 +32,7 @@ def test_active_program_reports_player_authority_without_assignment(fresh_store)
     program = _program()
     ledger = SimpleNamespace(
         get_active_program=lambda: program,
+        list_injury_records=lambda: [],
         get_program_position=lambda _program: SimpleNamespace(current_week=1),
         volume_review_exercise_targets=lambda _ids: {},
         program_exercise_metadata=fresh_store.ledger.program_exercise_metadata,
@@ -50,6 +51,7 @@ def test_active_program_reports_coach_authority_and_display_name(fresh_store):
     program.created_at = "2026-10-27T12:00:00+00:00"
     ledger = SimpleNamespace(
         get_active_program=lambda: program,
+        list_injury_records=lambda: [],
         get_program_position=lambda _program: SimpleNamespace(current_week=1),
         volume_review_exercise_targets=lambda _ids: {},
         program_exercise_metadata=fresh_store.ledger.program_exercise_metadata,

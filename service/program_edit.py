@@ -30,9 +30,11 @@ class ProgramEditErrorCode(str, Enum):
     EXERCISE_NOT_AVAILABLE = "exercise_not_available"
     DAY_LIMIT = "day_limit"
     MOVEMENT_RESTRICTED = "movement_restricted"
+    CLEARANCE_EXCLUDED = "clearance_excluded"
 
 
 PROGRAM_EDIT_ERRORS = {
+    ProgramEditErrorCode.CLEARANCE_EXCLUDED: "That exercise is not cleared or has no recorded clearance for an active injury. I can't confirm it's safe.",
     ProgramEditErrorCode.DAY_NOT_FOUND: "That day is not part of your current program.",
     ProgramEditErrorCode.EXERCISE_NOT_ON_DAY: "That exercise is not in that day of your current program.",
     ProgramEditErrorCode.DUPLICATE_EXERCISE: "Each exercise entry can appear only once in a Program edit.",
@@ -46,6 +48,7 @@ PROGRAM_EDIT_ERRORS = {
     ProgramEditErrorCode.MOVEMENT_RESTRICTED: "That exercise conflicts with a Movement restriction in your profile.",
 }
 PROGRAM_EDIT_MESSAGE_CODES = {
+    ProgramEditErrorCode.CLEARANCE_EXCLUDED: "program.clearance_excluded.v1",
     ProgramEditErrorCode.DAY_NOT_FOUND: "program.edit.day_not_found.v1",
     ProgramEditErrorCode.EXERCISE_NOT_ON_DAY: "program.edit.exercise_not_on_day.v1",
     ProgramEditErrorCode.DUPLICATE_EXERCISE: "program.edit.duplicate_exercise.v1",
@@ -99,6 +102,16 @@ def edit_active_program_day(db: Any, ledger: Any, edit_request: ProgramEdit) -> 
     prepared, failure = _prepare_program_edit(active, edit_request)
     if failure:
         return failure
+    from service.exercise_clearances import ExerciseClearancePolicy
+    policy = ExerciseClearancePolicy(ledger)
+    for item in edit_request.exercises:
+        # Retaining an existing restricted slot is allowed; new selections are not.
+        original = prepared.day["exercises"]
+        if item.source_index >= 0 and original[item.source_index]["exercise_id"] == item.exercise_id:
+            continue
+        candidate = db.get_exercise_library_entry(item.exercise_id)
+        if candidate and not policy.allows(candidate):
+            return _failure(ProgramEditErrorCode.CLEARANCE_EXCLUDED)
     if len(edit_request.exercises) > 10:
         return _failure(ProgramEditErrorCode.DAY_LIMIT)
     if any(item.source_index < 0 for item in edit_request.exercises):
@@ -117,7 +130,12 @@ def edit_active_program_day(db: Any, ledger: Any, edit_request: ProgramEdit) -> 
         warnings = _volume_warnings(
             ledger, active.model_dump(), ledger.get_player_profile() or {}, week_order
         )
-        return {**_updated_program_result(ledger, previous_version), "volume_warnings": warnings}
+        preview_payload = (
+            {**active.model_dump(), "previous_version": previous_version}
+            if edit_request.preview
+            else _updated_program_result(db, ledger, previous_version)
+        )
+        return {**preview_payload, "volume_warnings": warnings}
     _apply_program_edit(prepared, edit_request.exercises)
     _prepare_added_prescriptions(db, ledger, prepared.day, edit_request.exercises)
     restriction_failure = _restricted_program_edit(db, ledger, prepared.day)
@@ -182,7 +200,11 @@ def edit_active_program_day(db: Any, ledger: Any, edit_request: ProgramEdit) -> 
                             occurrence_mappings=mappings, removed_entries=removed_entries)
     warnings = _volume_warnings(ledger, prepared.program_copy, ledger.get_player_profile() or {}, day_key[0])
     if edit_request.preview:
-        return {**prepared.program_copy, "previous_version": active.version, "volume_warnings": warnings}
+        return {
+            **prepared.program_copy,
+            "previous_version": active.version,
+            "volume_warnings": warnings,
+        }
     prepared.program_copy.pop("created_at", None)
     ledger.save_training_program(
         prepared.program_copy,
@@ -192,7 +214,7 @@ def edit_active_program_day(db: Any, ledger: Any, edit_request: ProgramEdit) -> 
     updated = ledger.get_active_program()
     if updated is not None:
         capture_program_edited(edit_request.actor, updated, client=edit_request.client)
-    return {**_updated_program_result(ledger, previous_version), "volume_warnings": warnings}
+    return {**_updated_program_result(db, ledger, previous_version), "volume_warnings": warnings}
 
 
 def _volume_warnings(ledger: Any, program: dict[str, Any], profile: dict[str, Any], current_week: int) -> list[dict[str, Any]]:
@@ -366,11 +388,14 @@ def _prepare_added_prescriptions(db: Any, ledger: Any, day: dict[str, Any], requ
         }
 
 
-def _updated_program_result(ledger: Any, previous_version: int) -> dict[str, Any]:
+def _updated_program_result(db: Any, ledger: Any, previous_version: int) -> dict[str, Any]:
     updated = ledger.get_active_program()
     if updated is None:
         return _failure(ProgramEditErrorCode.NO_ACTIVE_PROGRAM)
-    return {**updated.model_dump(), "previous_version": previous_version}
+    result = updated.model_dump()
+    from service.exercise_clearances import annotate_program
+    annotate_program(db, ledger, result)
+    return {**result, "previous_version": previous_version}
 
 
 def edit_active_program_days(db: Any, ledger: Any, edits: list[ProgramEdit], *, baseline_program: Any = None) -> dict[str, Any]:
@@ -409,12 +434,14 @@ def edit_active_program_days(db: Any, ledger: Any, edits: list[ProgramEdit], *, 
     }.values())
     result["previous_version"] = active.version
     if all(edit.preview for edit in edits):
+        from service.exercise_clearances import annotate_program
+        annotate_program(db, ledger, result)
         return result
     baseline = baseline_program or active
     unchanged = (_same_program_content(baseline, result) if baseline_program is not None else
         _same_program_exercises(baseline.model_dump().get("days", []), result.get("days", [])))
     if unchanged:
-        return {**_updated_program_result(ledger, active.version), "volume_warnings": list({
+        return {**_updated_program_result(db, ledger, active.version), "volume_warnings": list({
             (item.get("muscle"), item.get("weekly_sets"), item.get("ceiling")): item
             for item in warnings
         }.values())}
@@ -428,7 +455,7 @@ def edit_active_program_days(db: Any, ledger: Any, edits: list[ProgramEdit], *, 
     updated = ledger.get_active_program()
     if updated is not None:
         capture_program_edited(edits[0].actor, updated, client=edits[0].client)
-    return {**_updated_program_result(ledger, active.version), "volume_warnings": list({
+    return {**_updated_program_result(db, ledger, active.version), "volume_warnings": list({
         (item.get("muscle"), item.get("weekly_sets"), item.get("ceiling")): item
         for item in warnings
     }.values())}
