@@ -1,12 +1,14 @@
 """MAYOS-owned Exercise library curation loaded from the curation CSV."""
 
 import csv
+import math
 import re
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 
 from agent.program_blueprints import SLOT_STAPLES
+from core.muscle_volume import MAIN_MUSCLE_GROUPS, default_muscle_credits, normalize_main_muscle
 from database.shared import BASE_DIR, _normalize_exercise_name
 from database.exercise_library.values import split_curation_values
 from database.exercise_library.vocabulary import (
@@ -28,7 +30,9 @@ CURATION_COLUMNS = (
     "load_type",
     "hidden",
     "duplicate_of",
+    "muscle_credits",
 )
+REQUIRED_CURATION_COLUMNS = CURATION_COLUMNS[:-1]
 
 
 @dataclass(frozen=True)
@@ -44,6 +48,7 @@ class ExerciseCuration:
     load_type: str
     hidden: bool
     duplicate_of: str
+    muscle_credits: tuple[tuple[str, float], ...]
 
 
 def load_exercise_curation(path: str | Path = DEFAULT_CURATION_CSV_PATH) -> dict[str, ExerciseCuration]:
@@ -54,7 +59,7 @@ def load_exercise_curation(path: str | Path = DEFAULT_CURATION_CSV_PATH) -> dict
 
 
 def _validate_curation_columns(fieldnames: list[str] | None) -> None:
-    missing_columns = set(CURATION_COLUMNS) - set(fieldnames or ())
+    missing_columns = set(REQUIRED_CURATION_COLUMNS) - set(fieldnames or ())
     if fieldnames and len(fieldnames) != len(set(fieldnames)):
         raise ValueError("Exercise curation CSV has duplicate columns")
     if missing_columns:
@@ -92,6 +97,9 @@ def _parse_curation_row(line_number: int, row: dict[str, str | None]) -> Exercis
         )
     primary_muscle = (row["primary_muscle"] or "").strip()
     _validate_primary_muscle(line_number, exercise_id, primary_muscle)
+    muscle_credits = _parse_muscle_credits(
+        line_number, exercise_id, row.get("muscle_credits") or ""
+    )
     load_type = (row["load_type"] or "").strip()
     _validate_load_type(line_number, exercise_id, load_type)
     return ExerciseCuration(
@@ -106,7 +114,56 @@ def _parse_curation_row(line_number: int, row: dict[str, str | None]) -> Exercis
         load_type=load_type,
         hidden=hidden_value.casefold() == "true",
         duplicate_of=(row["duplicate_of"] or "").strip(),
+        muscle_credits=muscle_credits,
     )
+
+
+def _parse_muscle_credits(
+    line_number: int, exercise_id: str, value: str
+) -> tuple[tuple[str, float], ...]:
+    credits: list[tuple[str, float]] = []
+    seen: set[str] = set()
+    for item in value.split("|"):
+        item = item.strip()
+        if not item:
+            continue
+        group, credit = _parse_muscle_credit(line_number, exercise_id, item)
+        if group in seen:
+            raise ValueError(
+                f"Exercise curation CSV line {line_number} id {exercise_id!r} "
+                f"repeats muscle credit group {group!r}"
+            )
+        seen.add(group)
+        credits.append((group, credit))
+    return tuple(credits)
+
+
+def _parse_muscle_credit(line_number: int, exercise_id: str, item: str) -> tuple[str, float]:
+    if "=" not in item:
+        raise ValueError(
+            f"Exercise curation CSV line {line_number} id {exercise_id!r} "
+            f"has invalid muscle_credits value {item!r}"
+        )
+    muscle, raw_credit = (part.strip() for part in item.split("=", 1))
+    group = normalize_main_muscle(muscle)
+    if group not in MAIN_MUSCLE_GROUPS:
+        raise ValueError(
+            f"Exercise curation CSV line {line_number} id {exercise_id!r} "
+            f"has unknown muscle credit group {muscle!r}"
+        )
+    try:
+        credit = float(raw_credit)
+    except ValueError as exc:
+        raise ValueError(
+            f"Exercise curation CSV line {line_number} id {exercise_id!r} "
+            f"has invalid credit {raw_credit!r}"
+        ) from exc
+    if not math.isfinite(credit) or not 0 <= credit <= 1:
+        raise ValueError(
+            f"Exercise curation CSV line {line_number} id {exercise_id!r} "
+            f"has out-of-range credit {raw_credit!r}"
+        )
+    return group, credit
 
 
 def _validate_curation_aliases(line_number: int, aliases: tuple[str, ...]) -> None:
@@ -168,17 +225,19 @@ def apply_exercise_curation(
     curation_path: str | Path = DEFAULT_CURATION_CSV_PATH,
 ) -> None:
     curation = load_exercise_curation(curation_path)
-    exercises = cursor.execute("SELECT id, name, equipment FROM exercises").fetchall()
-    exercise_ids = {str(exercise_id) for exercise_id, _, _ in exercises}
+    exercises = cursor.execute(
+        "SELECT id, name, equipment, target_muscle, body_part FROM exercises"
+    ).fetchall()
+    exercise_ids = {str(row[0]) for row in exercises}
     equipment_by_id = {
-        str(exercise_id): equipment for exercise_id, _, equipment in exercises
+        str(row[0]): row[2] for row in exercises
     }
     _validate_curation_references(curation, exercise_ids, equipment_by_id)
     effective_names = _effective_curation_names(
-        [(exercise_id, name) for exercise_id, name, _ in exercises], curation
+        [(row[0], row[1]) for row in exercises], curation
     )
-    for exercise_id, _, _ in exercises:
-        exercise_id = str(exercise_id)
+    for row in exercises:
+        exercise_id = str(row[0])
         record = curation.get(exercise_id)
         display_name = (
             effective_names[record.duplicate_of]
@@ -187,6 +246,51 @@ def apply_exercise_curation(
         )
         _upsert_exercise_names(cursor, exercise_id, record, display_name)
         _upsert_curated_fields(cursor, exercise_id, record)
+    _materialize_exercise_muscle_credits(cursor, exercises, curation)
+
+
+def _materialize_exercise_muscle_credits(cursor, exercises, curation) -> None:
+    secondaries: dict[str, list[str]] = {}
+    for exercise_id, muscle in cursor.execute(
+        "SELECT exercise_id, muscle FROM exercise_secondary_muscles ORDER BY exercise_id, muscle"
+    ).fetchall():
+        secondaries.setdefault(str(exercise_id), []).append(str(muscle))
+    cursor.execute("DELETE FROM exercise_muscle_credits")
+    credit_rows = [
+        credit_row
+        for row in exercises
+        for credit_row in _exercise_credit_rows(
+            row, curation.get(str(row[0])), secondaries.get(str(row[0]), ())
+        )
+    ]
+    cursor.executemany(
+        "INSERT INTO exercise_muscle_credits "
+        "(exercise_id, muscle, credit, is_primary, source) VALUES (?, ?, ?, ?, ?)",
+        credit_rows,
+    )
+
+
+def _exercise_credit_rows(row, record, helper_muscles):
+    exercise_id = str(row[0])
+    source = "reviewed" if record and record.muscle_credits else "default"
+    primary = (record.primary_muscle if record and record.primary_muscle else None) or row[3] or row[4]
+    if source == "reviewed":
+        credits = dict(record.muscle_credits)
+    else:
+        credits = default_muscle_credits(primary, helper_muscles)
+    direct_group = normalize_main_muscle(primary)
+    if source == "reviewed":
+        full_credit_group = next(
+            (group for group, credit in credits.items() if credit == 1.0), None
+        )
+        if full_credit_group:
+            direct_group = full_credit_group
+        elif direct_group not in credits:
+            direct_group = None
+    return [
+        (exercise_id, group, credit, int(group == direct_group), source)
+        for group, credit in credits.items()
+    ]
 
 
 def _effective_curation_names(

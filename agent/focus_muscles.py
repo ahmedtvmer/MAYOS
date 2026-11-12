@@ -1,6 +1,7 @@
 """Shared Focus muscle dose and exercise-slot policy."""
 
 from core.weak_points import WEAK_POINT_MUSCLES
+from core.muscle_volume import FOCUS_MAIN_GROUPS
 
 FOCUS_MULTIPLIER = 1.3
 
@@ -37,7 +38,7 @@ FOCUS_EXTRA_TABLE = {
         "candidate_slots": ("pullover", "upper_back_pull", "vertical_pull", "horizontal_row"),
         "main_slot": "vertical_pull",
     },
-    "shoulders": {"candidate_slots": ("shoulder_press", "rear_delts"), "main_slot": "shoulder_press"},
+    "shoulders": {"candidate_slots": ("shoulder_press", "side_delts"), "main_slot": "shoulder_press"},
     "side_delts": {"candidate_slots": ("side_delts",), "main_slot": "side_delts"},
     "biceps": {"candidate_slots": ("biceps_alt", "biceps_preacher"), "main_slot": "biceps_alt"},
     "triceps": {"candidate_slots": ("triceps_overhead", "triceps_pushdown"), "main_slot": "triceps_overhead"},
@@ -57,8 +58,8 @@ FOCUS_EXTRA_TABLE = {
 FOCUS_MUSCLE_SLOTS = {
     "chest": {"incline_press", "flat_press", "chest_fly"},
     "upper_chest": {"incline_press", "chest_fly"},
-    "back": {"vertical_pull", "horizontal_row", "upper_back_pull", "pullover", "shrug"},
-    "shoulders": {"shoulder_press", "side_delts", "rear_delts"},
+    "back": {"vertical_pull", "horizontal_row", "upper_back_pull", "pullover"},
+    "shoulders": {"shoulder_press", "side_delts"},
     "side_delts": {"side_delts"},
     "biceps": {"biceps_preacher", "biceps_alt"},
     "triceps": {"triceps_pushdown", "triceps_overhead"},
@@ -72,20 +73,8 @@ FOCUS_MUSCLE_SLOTS = {
 }
 
 FOCUS_REVIEW_MUSCLES = {
-    "chest": {"chest", "upper chest", "pectorals"},
-    "upper_chest": {"upper chest"},
-    "back": {"lats", "upper back"},
-    "shoulders": {"front delts", "side delts", "rear delts", "delts"},
-    "side_delts": {"side delts"},
-    "biceps": {"biceps"},
-    "triceps": {"triceps"},
-    "forearms": {"forearms"},
-    "quads": {"quads"},
-    "hamstrings": {"hamstrings"},
-    "glutes": {"glutes"},
-    "adductors": {"adductors"},
-    "calves": {"calves"},
-    "abs": {"abs"},
+    muscle: ({FOCUS_MAIN_GROUPS[muscle]} if FOCUS_MAIN_GROUPS.get(muscle) else set())
+    for muscle in WEAK_POINT_MUSCLES
 }
 
 assert set(FOCUS_EXTRA_TABLE) == set(WEAK_POINT_MUSCLES)

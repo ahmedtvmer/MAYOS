@@ -204,17 +204,26 @@ def _volume_warnings(ledger: Any, program: dict[str, Any], profile: dict[str, An
     weeks = normalize_program_weeks(program)
     days = next((week["days"] for week in weeks if int(week["week_order"]) == current_week), weeks[0]["days"] if weeks else [])
     exercises = [exercise for day in days for exercise in day.get("exercises", [])]
-    targets = ledger.volume_review_exercise_targets(sorted({str(ex["exercise_id"]) for ex in exercises}))
-    totals: dict[str, int] = {}
+    credits = ledger.volume_review_exercise_credits(sorted({str(ex["exercise_id"]) for ex in exercises}))
+    totals: dict[str, float] = {}
     for exercise in exercises:
-        muscle = targets.get(str(exercise["exercise_id"]))
-        if muscle:
-            totals[muscle] = totals.get(muscle, 0) + program_exercise_working_sets(exercise)
+        exercise_credits = credits.get(str(exercise["exercise_id"]), {})
+        for muscle, attribution in exercise_credits.items():
+            credit = float(attribution["credit"])
+            if credit > 0:
+                totals[muscle] = totals.get(muscle, 0.0) + program_exercise_working_sets(exercise) * credit
     focus_keys = {str(item.get("muscle", "")) for item in (program.get("program_rationale") or {}).get("focus_muscles", []) if isinstance(item, dict)}
-    focus_groups = {group.lower() for key in focus_keys for group in FOCUS_REVIEW_MUSCLES.get(key, set())}
-    return [{"muscle": muscle, "weekly_sets": sets, "ceiling": round(ceilings[level] * (1.3 if muscle.lower() in focus_groups else 1.0))}
-            for muscle, sets in sorted(totals.items())
-            if sets > round(ceilings[level] * (1.3 if muscle.lower() in focus_groups else 1.0))]
+    focus_groups = {group for key in focus_keys for group in FOCUS_REVIEW_MUSCLES.get(key, set())}
+    warnings = []
+    for muscle, sets in sorted(totals.items()):
+        ceiling = round(ceilings[level] * (1.3 if muscle in focus_groups else 1.0))
+        if sets > ceiling:
+            warnings.append({
+                "muscle": muscle,
+                "weekly_sets": round(sets, 2),
+                "ceiling": ceiling,
+            })
+    return warnings
 
 
 def _restricted_program_edit(db: Any, ledger: Any, day: dict[str, Any]) -> dict[str, Any] | None:
