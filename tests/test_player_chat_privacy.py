@@ -198,7 +198,6 @@ def test_chat_sse_done_frame_contains_structured_program_edit_preview(api):
 
 def test_active_program_tool_context_reports_player_authority_without_coach(api, monkeypatch):
     client, db = api
-    _force_free_form_coaching_intent(monkeypatch)
     registered = _register(client, "player-authority-chat")
     with db.open_ledger("player-authority-chat") as ledger:
         row = db.catalog_conn.execute("SELECT id, name FROM exercises ORDER BY id LIMIT 1").fetchone()
@@ -238,19 +237,6 @@ def test_chat_history_hides_preview_after_coach_takes_program_authority(api):
 
     assert response.status_code == 200
     assert "program_edit_preview" not in response.json()[-1]
-
-
-def _force_free_form_coaching_intent(monkeypatch):
-    monkeypatch.setattr(
-        assistant_graph,
-        "_classify_intent_with_llm",
-        lambda _query: assistant_graph.IntentClassification(intent="coaching_qa"),
-    )
-    monkeypatch.setattr(
-        assistant_graph,
-        "_classify_arabic_intent",
-        lambda _query, _config: {"intent": "coaching_qa", "intent_metadata": {}},
-    )
 
 
 def test_chat_writes_weak_points_in_english_and_arabic_without_guessing(api, monkeypatch):
@@ -661,7 +647,6 @@ def test_chat_turn_keeps_recent_six_full_and_trims_only_older_assistant_replies(
 ):
     # Cover short history, the 6/7 boundary, and the 10-message window; old
     # replies below/at/above 600 characters must count characters, not bytes.
-    _force_free_form_coaching_intent(monkeypatch)
     client, db = api
     username = "history-trimming"
     headers = _authed(_register(client, username)["access_token"])
@@ -720,7 +705,6 @@ def test_chat_turn_keeps_recent_six_full_and_trims_only_older_assistant_replies(
 def test_tool_bound_chat_fetches_profile_and_program_only_after_parallel_calls(
     api, monkeypatch, caplog
 ):
-    _force_free_form_coaching_intent(monkeypatch)
     client, db = api
     username = "private-tool-player"
     email = "private-tool-player@example.com"
@@ -855,7 +839,6 @@ def test_tool_bound_chat_fetches_profile_and_program_only_after_parallel_calls(
 
 
 def test_chat_search_finds_old_english_and_arabic_messages_with_filters(api, monkeypatch):
-    _force_free_form_coaching_intent(monkeypatch)
     client, db = api
     username = "chat-history-search"
     headers = _authed(_register(client, username)["access_token"])
@@ -950,7 +933,6 @@ def test_chat_search_finds_old_english_and_arabic_messages_with_filters(api, mon
 
 
 def test_chat_history_search_backfills_legacy_messages_on_first_mount(api, monkeypatch):
-    _force_free_form_coaching_intent(monkeypatch)
     client, db = api
     username = "chat-history-migration"
     headers = _authed(_register(client, username)["access_token"])
@@ -1001,7 +983,6 @@ def test_chat_history_search_backfills_legacy_messages_on_first_mount(api, monke
 
 
 def test_delete_chat_history_removes_old_messages_from_search(api, monkeypatch):
-    _force_free_form_coaching_intent(monkeypatch)
     client, db = api
     username = "chat-history-clear-search"
     headers = _authed(_register(client, username)["access_token"])
@@ -1045,7 +1026,6 @@ def test_delete_chat_history_removes_old_messages_from_search(api, monkeypatch):
 
 
 def test_arabic_tool_status_uses_fixed_localized_text(api, monkeypatch):
-    _force_free_form_coaching_intent(monkeypatch)
     client, _db = api
     headers = _authed(_register(client, "arabic-tool-status")["access_token"])
     model = ScriptedChatModel(
@@ -1075,7 +1055,6 @@ def test_arabic_tool_status_uses_fixed_localized_text(api, monkeypatch):
 
 
 def test_turn_without_tool_call_sends_no_profile_telemetry_or_program_data(api, monkeypatch):
-    _force_free_form_coaching_intent(monkeypatch)
     client, db = api
     username = "no-tool-data-player"
     registered = _register(client, username)
@@ -1228,7 +1207,6 @@ def test_large_merged_limitations_are_capped_through_tool_runner(populated_profi
 
 @pytest.mark.parametrize("question", ["How old am I?", "أنا عندي كام سنة؟"])
 def test_age_question_sends_body_without_injury_or_weak_point_data(api, monkeypatch, question):
-    _force_free_form_coaching_intent(monkeypatch)
     client, db = api
     headers = _authed(_register(client, "body-only-player")["access_token"])
     with db.open_ledger("body-only-player") as ledger:
@@ -1265,7 +1243,6 @@ def test_age_question_sends_body_without_injury_or_weak_point_data(api, monkeypa
 
 
 def test_unset_profile_fields_return_not_set_without_invented_defaults(api, monkeypatch):
-    _force_free_form_coaching_intent(monkeypatch)
     client, db = api
     username = "unset-profile-tool"
     headers = _authed(_register(client, username)["access_token"])
@@ -1296,7 +1273,6 @@ def test_unset_profile_fields_return_not_set_without_invented_defaults(api, monk
 
 
 def test_legacy_completed_profile_keeps_values_equal_to_storage_defaults(api, monkeypatch):
-    _force_free_form_coaching_intent(monkeypatch)
     client, db = api
     username = "legacy-default-profile"
     headers = _authed(_register(client, username)["access_token"])
@@ -1343,7 +1319,6 @@ def test_legacy_completed_profile_keeps_values_equal_to_storage_defaults(api, mo
 
 
 def test_explicit_none_limitations_answer_is_reported_as_none(api, monkeypatch):
-    _force_free_form_coaching_intent(monkeypatch)
     client, _db = api
     headers = _authed(_register(client, "none-limitations-profile")["access_token"])
     saved = client.put(
@@ -1371,7 +1346,6 @@ def test_explicit_none_limitations_answer_is_reported_as_none(api, monkeypatch):
 
 
 def test_weight_trend_tool_returns_bounded_dated_progress_facts(api, monkeypatch):
-    _force_free_form_coaching_intent(monkeypatch)
     client, db = api
     username = "weight-trend-tool"
     headers = _authed(_register(client, username)["access_token"])
@@ -1406,7 +1380,6 @@ def test_weight_trend_tool_returns_bounded_dated_progress_facts(api, monkeypatch
 
 
 def test_unyielded_text_before_tool_call_is_discarded(api, monkeypatch):
-    _force_free_form_coaching_intent(monkeypatch)
     client, _db = api
     headers = _authed(_register(client, "tool-round-text-buffer")["access_token"])
     model = ScriptedChatModel(
@@ -1437,7 +1410,6 @@ def test_unyielded_text_before_tool_call_is_discarded(api, monkeypatch):
 
 
 def test_yielded_text_before_tool_call_is_not_retracted(api, monkeypatch):
-    _force_free_form_coaching_intent(monkeypatch)
     client, _db = api
     headers = _authed(_register(client, "tool-round-yielded-text")["access_token"])
     model = ScriptedChatModel(
@@ -1473,7 +1445,6 @@ def test_http_stream_emits_before_model_requests_final_chunk(api, monkeypatch):
 
     from langchain_core.messages import AIMessageChunk
 
-    _force_free_form_coaching_intent(monkeypatch)
     client, _db = api
     headers = _authed(_register(client, "http-incremental-stream")["access_token"])
     first_token_sent = Event()
@@ -1534,7 +1505,6 @@ def test_http_stream_emits_before_model_requests_final_chunk(api, monkeypatch):
 
 
 def test_partial_profile_update_does_not_expose_storage_defaults(api, monkeypatch):
-    _force_free_form_coaching_intent(monkeypatch)
     client, _db = api
     headers = _authed(_register(client, "partial-profile-tool")["access_token"])
     assert client.put(
@@ -1563,7 +1533,6 @@ def test_partial_profile_update_does_not_expose_storage_defaults(api, monkeypatc
 
 
 def test_tool_loop_stops_after_three_rounds_and_still_streams_a_reply(api, monkeypatch):
-    _force_free_form_coaching_intent(monkeypatch)
     client, _db = api
     headers = _authed(_register(client, "three-tool-rounds")["access_token"])
     model = ScriptedChatModel(
@@ -1597,7 +1566,6 @@ def test_tool_loop_stops_after_three_rounds_and_still_streams_a_reply(api, monke
 
 
 def test_tool_timeout_returns_unavailable_and_turn_continues(api, monkeypatch):
-    _force_free_form_coaching_intent(monkeypatch)
     client, _db = api
     headers = _authed(_register(client, "slow-profile-tool")["access_token"])
 
@@ -1638,7 +1606,6 @@ def test_tool_timeout_returns_unavailable_and_turn_continues(api, monkeypatch):
 
 
 def test_oversized_tool_result_is_capped_at_four_kilobytes(api, monkeypatch):
-    _force_free_form_coaching_intent(monkeypatch)
     client, db = api
     username = "oversized-profile-tool"
     headers = _authed(_register(client, username)["access_token"])
@@ -1668,7 +1635,6 @@ def test_oversized_tool_result_is_capped_at_four_kilobytes(api, monkeypatch):
 
 
 def test_tool_result_keeps_followup_payload_under_the_prompt_ceiling(api, monkeypatch):
-    _force_free_form_coaching_intent(monkeypatch)
     client, db = api
     username = "prompt-ceiling-tool"
     headers = _authed(_register(client, username)["access_token"])
@@ -1755,7 +1721,6 @@ def _assistant_volume_program():
      "تمام، البايسبس عندك بياخد 2 سيت غير مباشر في الأسبوع: 4 سيت سحب بيتحسب كل واحد بنص سيت."),
 ])
 def test_indirect_biceps_question_receives_exact_tool_counts(api, monkeypatch, question, answer):
-    _force_free_form_coaching_intent(monkeypatch)
     client, db = api
     username = "indirect-volume-player"
     headers = _authed(_register(client, username)["access_token"])
@@ -3708,7 +3673,6 @@ def test_clinical_fixed_reply_survives_any_recording_failure(api, monkeypatch):
 
 
 def test_player_chat_reads_injuries_through_limitations_section(api, monkeypatch):
-    _force_free_form_coaching_intent(monkeypatch)
     client, db = api
     headers = _authed(_register(client, "injury-tool")['access_token'])
     with db.open_ledger("injury-tool") as ledger:
@@ -3750,7 +3714,6 @@ def test_player_chat_reads_injuries_through_limitations_section(api, monkeypatch
 
 
 def test_limitations_clearances_hide_internal_ids_but_keep_player_wording(api, monkeypatch):
-    _force_free_form_coaching_intent(monkeypatch)
     client, db = api
     headers = _authed(_register(client, "injury-clearance-tool")['access_token'])
     db.catalog_conn.execute(
@@ -3845,7 +3808,6 @@ def test_limitations_clearances_hide_internal_ids_but_keep_player_wording(api, m
 
 
 def test_physician_followup_appends_without_swallowing_chat_and_reasks_for_area_advice(api, monkeypatch):
-    _force_free_form_coaching_intent(monkeypatch)
     client, _db = api
     headers = _authed(_register(client, "injury-followup-chat")["access_token"])
     model = ScriptedChatModel(default_turn="CHAT MODEL RAN")
@@ -3903,7 +3865,6 @@ def test_physician_followup_appends_without_swallowing_chat_and_reasks_for_area_
 def test_physician_followup_only_skips_a_reply_ending_with_a_question_mark(
     api, monkeypatch, question_reply
 ):
-    _force_free_form_coaching_intent(monkeypatch)
     client, db = api
     model = ScriptedChatModel(
         [
@@ -3964,7 +3925,6 @@ def test_physician_followup_only_skips_a_reply_ending_with_a_question_mark(
 
 
 def test_physician_followup_stream_tokens_match_done_reply(api, monkeypatch):
-    _force_free_form_coaching_intent(monkeypatch)
     client, db = api
     headers = _authed(_register(client, "injury-followup-stream")["access_token"])
     with db.open_ledger("injury-followup-stream") as ledger:
@@ -3993,7 +3953,6 @@ def test_physician_followup_stream_tokens_match_done_reply(api, monkeypatch):
 
 
 def test_arabic_chat_appends_arabic_physician_followup(api, monkeypatch):
-    _force_free_form_coaching_intent(monkeypatch)
     client, db = api
     headers = _authed(_register(client, "injury-followup-arabic")["access_token"])
     with db.open_ledger("injury-followup-arabic") as ledger:
@@ -4044,7 +4003,6 @@ def test_full_physician_clearance_requires_player_confirmation(api, monkeypatch,
 
 
 def test_doctor_cleared_my_knee_is_not_saved_as_an_exercise_clearance(api, monkeypatch):
-    _force_free_form_coaching_intent(monkeypatch)
     client, db = api
     username = "doctor-cleared-knee"
     headers = _authed(_register(client, username)["access_token"])
@@ -4198,7 +4156,6 @@ def test_preference_limits_are_enforced_and_clear_chat_keeps_preferences(api, mo
 
 
 def test_preferences_api_edit_is_read_by_later_tool_call_and_ordinary_chat_does_not_write(api, monkeypatch):
-    _force_free_form_coaching_intent(monkeypatch)
     client, _db = api
     headers = _authed(_register(client, "preference-tool") ["access_token"])
     model = ScriptedChatModel(default_turn="Understood.")
@@ -4240,7 +4197,6 @@ def test_preferences_api_edit_is_read_by_later_tool_call_and_ordinary_chat_does_
 
 
 def test_player_nutrition_tool_omits_targets_after_positive_rescreen(api, monkeypatch):
-    _force_free_form_coaching_intent(monkeypatch)
     client, db = api
     username = "nutrition-tool-rescreen"
     headers = _authed(_register(client, username)["access_token"])
@@ -4297,7 +4253,6 @@ def test_player_nutrition_tool_omits_targets_after_positive_rescreen(api, monkey
 
 
 def test_player_nutrition_tool_returns_ready_payload_for_player_local_window(api, monkeypatch):
-    _force_free_form_coaching_intent(monkeypatch)
     client, db = api
     username = "nutrition-tool-ready"
     headers = _authed(_register(client, username)["access_token"])
@@ -4353,7 +4308,6 @@ def test_player_nutrition_tool_returns_ready_payload_for_player_local_window(api
 
 
 def test_player_nutrition_tool_reports_under_18_as_unavailable(api, monkeypatch):
-    _force_free_form_coaching_intent(monkeypatch)
     client, db = api
     username = "nutrition-tool-minor"
     headers = _authed(_register(client, username)["access_token"])

@@ -235,16 +235,18 @@ def test_coach_program_router_retains_authority(router_player, monkeypatch):
     "remember that I prefer 3 sets for biceps",
     "change squat to 3 sets on leg days",
 ])
-def test_safety_and_deterministic_writes_never_enter_context_router(router_player, monkeypatch, caplog, question):
+def test_safety_preempts_model_and_writes_use_selected_tools(router_player, monkeypatch, caplog, question):
     client, db, headers = router_player
     model = ScriptedChatModel(default_turn="UNEXPECTED HOSTED CALL")
+    if question.startswith(("remember", "change")):
+        from tests.fakes.chat_model import ToolCallsTurn
+        name = "manage_assistant_preference" if question.startswith("remember") else "preview_program_edit"
+        model.script(ToolCallsTurn(calls=[{"name": name, "args": {}, "id": "selected-action"}]))
     monkeypatch.setattr(assistant_graph, "llm", model)
     with caplog.at_level(logging.INFO):
         response = client.post("/chat/messages", headers=headers, json={"content": question})
     assert response.status_code == 200
     assert _done_content(response.text) != "UNEXPECTED HOSTED CALL"
-    assert not model.calls
-    assert not any("Context router topics=" in record.getMessage() for record in caplog.records)
     if question.startswith("remember"):
         with db.open_ledger("router-player") as ledger:
             assert ledger.list_assistant_preferences()[0]["text"] == "I prefer 3 sets for biceps"
@@ -253,6 +255,8 @@ def test_safety_and_deterministic_writes_never_enter_context_router(router_playe
         with db.open_ledger("router-player") as ledger:
             assert ledger.get_pending_chat_program_edit() is not None
     else:
+        assert not model.calls
+        assert not any("Context router topics=" in record.getMessage() for record in caplog.records)
         expected = (assistant_graph.CLINICAL_SAFEGUARD_RESPONSE if question.startswith("My")
                     else assistant_graph.ARABIC_CLINICAL_SAFEGUARD_RESPONSE)
         assert _done_content(response.text).startswith(expected)

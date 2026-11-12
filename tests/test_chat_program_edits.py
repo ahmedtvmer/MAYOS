@@ -277,9 +277,8 @@ def test_missing_removal_does_not_create_preview(fresh_store):
     assert ledger.get_active_program().version == before
 
 
-def test_composite_keeps_program_preview_bound_to_combined_reply(fresh_store, monkeypatch):
-    from agent.assistant_graph import composite_intent_node
-    from tests.fakes.chat_model import ScriptedChatModel
+def test_model_selected_edit_keeps_preview_bound_to_displayed_reply(fresh_store, monkeypatch):
+    from tests.fakes.chat_model import ScriptedChatModel, ToolCallsTurn
 
     db = fresh_store
     ledger = db.ledger
@@ -290,24 +289,19 @@ def test_composite_keeps_program_preview_bound_to_combined_reply(fresh_store, mo
     ledger.save_training_program(PersistedProgramSchema(program_name="Plan", split_type="Full Body",
         weekly_frequency=1, days=[day]).model_dump())
     monkeypatch.setattr("agent.assistant_graph.llm", ScriptedChatModel([
-        "Progress by adding a rep when you can."
+        ToolCallsTurn(content="Progress by adding a rep when you can.", calls=[{
+            "name": "preview_program_edit", "args": {}, "id": "day-edit",
+        }]),
     ]))
-    state = {"messages": [HumanMessage(content="Add biceps to leg days and how should I progress?")],
-        "player_account_id": "00000000-0000-4000-8000-000000000001", "display_language": "en",
-        "intent_metadata": {"raw_query": "Add biceps to leg days and how should I progress?",
-            "sub_intents": [
-                {"intent": "program_edit", "query": "Add biceps to leg days"},
-                {"intent": "program_edit", "query": "add triceps to leg days"},
-                {"intent": "coaching_qa", "query": "how should I progress?"},
-            ]}}
+    state = {"messages": [HumanMessage(content="Add biceps and triceps to leg days and how should I progress?")],
+        "player_account_id": "00000000-0000-4000-8000-000000000001", "display_language": "en"}
 
-    result = composite_intent_node(state, {"configurable": {"ledger": ledger, "store": db}})
+    list(stream_assistant_turn(state, ledger=ledger, store=db))
 
-    assert result.get("program_edit_preview")
-    assert len(result["program_edit_preview"]["days"][0]["exercises"]) == 3
+    assert state.get("program_edit_preview")
+    assert len(state["program_edit_preview"]["days"][0]["exercises"]) == 3
     pending = ledger.get_pending_chat_program_edit()
-    assert pending["offer_text"] == result["response_content"]
-
+    assert pending["offer_text"] == state["response_content"]
 
 def test_batch_noop_does_not_publish_a_version(fresh_store):
     db = fresh_store

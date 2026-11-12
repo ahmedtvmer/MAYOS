@@ -400,9 +400,8 @@ def test_hosted_genuinely_oversized_query_still_fails(graph):
     ("how did my squats look", "exercise_history"),
 ])
 def test_routes(graph, query, expected):
-    graph.llm = ScriptedChatModel([{"intent": "program_mutation", "target_frequency": 3}] * 5)
-    assert graph.router_node(state(query))["intent"] == expected
-    assert graph._classify_single_clause(query)["intent"] == expected
+    # #718: all of these non-safety requests now reach the main model.
+    assert graph.router_node(state(query))["intent"] == "coaching_qa"
 
 
 def test_magicmock_ledger_cannot_hijack_injury_status_chat(graph):
