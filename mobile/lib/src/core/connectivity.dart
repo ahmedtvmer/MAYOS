@@ -9,7 +9,6 @@ import '../providers.dart';
 import 'api_client.dart';
 import 'display_language/copy_context.dart';
 import 'connectivity_events.dart';
-import 'connectivity_message.dart';
 import 'saved_player_reads.dart';
 import '../features/player/auth/auth_controller.dart';
 import 'theme/mayos_spacing.dart';
@@ -28,14 +27,14 @@ final Provider<Stream<bool>> browserConnectivityEventsProvider =
     );
 
 /// Connectivity combines browser events with the API client's transport:
-/// browser events report navigator status, a transport failure means offline,
-/// and any API response means online (#127/#172).
+/// browser events report navigator status, transport failures mean offline,
+/// and completed API responses mean online (#127/#172).
 ///
 /// `true` is online. Shared screen frames read the provider for the banner.
 class ConnectivityController extends StateNotifier<bool> {
   ConnectivityController() : super(true);
 
-  /// A transport failure: the service could not be reached at all.
+  /// A transport failure or timeout prevents a complete response.
   void markOffline() {
     state = false;
   }
@@ -47,13 +46,6 @@ class ConnectivityController extends StateNotifier<bool> {
     }
   }
 }
-
-/// True for the Dio error that [isNetworkFailure] would report: no response,
-/// therefore no status code.
-bool _isTransportFailure(DioException error) => isNetworkFailure(ApiException(
-      error.message ?? '',
-      statusCode: error.response?.statusCode,
-    ));
 
 /// The app's connectivity flag, fed by browser events and interceptors on the
 /// shared [ApiClient]. A cached response never proves connectivity.
@@ -80,8 +72,8 @@ final StateNotifierProvider<ConnectivityController, bool>
       handler.next(response);
     },
     onError: (DioException error, ErrorInterceptorHandler handler) {
-      // A refusal still carries a response, so the service was reached.
-      if (_isTransportFailure(error)) {
+      // A completed refusal proves reachability; a timeout may be partial.
+      if (isTransportFailure(error)) {
         controller.markOffline();
       } else {
         controller.markOnline();
@@ -99,12 +91,12 @@ final StateNotifierProvider<ConnectivityController, bool>
   return controller;
 });
 
-/// Compact, non-blocking "You're offline" line shown in shared screen frames
-/// when either connectivity source reports offline.
+/// Compact, non-blocking connection or service status line in shared frames.
 class OfflineBanner extends StatelessWidget {
-  const OfflineBanner({this.showingSavedData = false, super.key});
+  const OfflineBanner({this.label, this.icon, super.key});
 
-  final bool showingSavedData;
+  final String? label;
+  final IconData? icon;
 
   /// The banner's line, exposed so tests can find it.
   static const String message = "You're offline";
@@ -122,14 +114,12 @@ class OfflineBanner extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            Icon(Icons.cloud_off,
+            Icon(icon ?? Icons.cloud_off,
                 size: MayosIconSizes.small, color: c.textSecondary),
             const SizedBox(width: MayosSpacing.xs),
             Flexible(
               child: Text(
-                showingSavedData
-                    ? displayCopyOf(context).offlineSavedData
-                    : displayCopyOf(context).offlineBanner,
+                label ?? displayCopyOf(context).offlineBanner,
                 style: MayosTypography.of(context).body.copyWith(color: c.textPrimary),
               ),
             ),
@@ -161,14 +151,27 @@ class OfflineBannerSlot extends ConsumerWidget {
         },
       );
     }
-    final bool saved = ref.watch(authControllerProvider).isOffline;
+    final SavedSessionIssue? savedIssue =
+        ref.watch(authControllerProvider).savedSessionIssue;
+    final bool saved = savedIssue != null;
     final bool online =
         enabled ? ref.watch(connectivityControllerProvider) : true;
+    final String? message = switch (savedIssue) {
+      null => null,
+      SavedSessionIssue.offline => displayCopyOf(context).offlineSavedData,
+      SavedSessionIssue.serviceProblem =>
+        displayCopyOf(context).serviceUnavailable,
+    };
     return Visibility(
       visible: saved || (enabled && !online),
       child: SizedBox(
         width: double.infinity,
-        child: OfflineBanner(showingSavedData: saved),
+        child: OfflineBanner(
+          label: message,
+          icon: savedIssue == SavedSessionIssue.serviceProblem
+              ? Icons.warning_amber_rounded
+              : null,
+        ),
       ),
     );
   }

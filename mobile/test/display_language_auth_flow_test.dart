@@ -63,6 +63,34 @@ void main() {
     expect(find.text('Invalid username or password.'), findsOneWidget);
   });
 
+  for (final String language in <String>['en', 'ar']) {
+    testWidgets('login 5xx shows the server problem in $language',
+        (WidgetTester tester) async {
+      final FakeMayosApi fake = FakeMayosApi()..loginServerError = true;
+      final InMemoryTokenStore tokens = InMemoryTokenStore();
+      final InMemoryDisplayLanguageStore languageStore =
+          InMemoryDisplayLanguageStore()..value = language;
+      await tester.pumpWidget(authApp(fake, tokens, extraOverrides: <Override>[
+        displayLanguageStoreProvider.overrideWithValue(languageStore),
+        systemDisplayLanguageProvider.overrideWithValue('en'),
+      ]));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byKey(const Key('login_username')), 'alice');
+      await tester.enterText(
+        find.byKey(const Key('login_password')),
+        'password-123',
+      );
+      await tester.tap(find.byKey(const Key('login_submit')));
+      await tester.pumpAndSettle();
+
+      final MayosCopy copy = MayosCopy(language);
+      expect(find.text(copy.serviceUnavailable), findsOneWidget);
+      expect(find.text(copy.offlineSavedData), findsNothing);
+      expect(find.text(copy.offlineBanner), findsNothing);
+    });
+  }
+
   testWidgets('Arabic auth screen keeps password-length digits Western',
       (WidgetTester tester) async {
     final FakeMayosApi fake = FakeMayosApi();

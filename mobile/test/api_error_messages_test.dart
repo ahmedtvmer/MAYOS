@@ -125,7 +125,7 @@ void main() {
     );
   });
 
-  test('network and bodyless service failures use localized generic copy',
+  test('network and 5xx failures use localized generic copy',
       () async {
     final ApiException network = await _expectApiException(
       _client(FakeApiAdapter((_) => const FakeResponse.networkFailure()),
@@ -147,11 +147,26 @@ void main() {
     );
     expect(
       MayosCopy('ar').failureMessage(apiFailureMessage(noBody)),
-      'الخدمة غير متاحة. حاول مجددًا.',
+      'واجهت MAYOS مشكلة. حاول مرة أخرى.',
     );
     expect(
       MayosCopy('en').failureMessage(apiFailureMessage(noBody)),
-      'The service is unavailable. Please retry.',
+      'MAYOS had a problem; try again.',
+    );
+
+    final ApiException withBody = await _expectApiException(
+      _client(FakeApiAdapter((_) => const FakeResponse(
+        503,
+        <String, dynamic>{'detail': 'Database unavailable.'},
+      ))).clearChatHistory,
+    );
+    expect(
+      MayosCopy('ar').failureMessage(apiFailureMessage(withBody)),
+      'واجهت MAYOS مشكلة. حاول مرة أخرى.',
+    );
+    expect(
+      MayosCopy('en').failureMessage(apiFailureMessage(withBody)),
+      'MAYOS had a problem; try again.',
     );
   });
 

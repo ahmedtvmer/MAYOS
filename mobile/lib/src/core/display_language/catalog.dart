@@ -37,6 +37,9 @@ class MayosCopy {
   String get offlineSavedData => isArabic
       ? 'أنت غير متصل، نعرض البيانات المحفوظة'
       : 'Offline, showing saved data';
+  String get serviceUnavailable => isArabic
+      ? 'واجهت MAYOS مشكلة. حاول مرة أخرى.'
+      : 'MAYOS had a problem; try again.';
   String get program => isArabic ? 'البرنامج التدريبي' : 'Program';
   String get progress => isArabic ? 'التقدم' : 'Progress';
   String get nutritionTab => nutrition.tab;
@@ -492,7 +495,7 @@ class MayosCopy {
                   AppFailureId.cannotReachService =>
                     'أنت غير متصل بالإنترنت. سنعيد المحاولة عند عودة الاتصال.',
                   AppFailureId.serviceUnavailable =>
-                    'الخدمة غير متاحة. حاول مجددًا.',
+                    serviceUnavailable,
                   AppFailureId.requestFailed =>
                     'فشل الطلب (\u2066$value\u2069).',
                   AppFailureId.serviceRejected => 'رفضت الخدمة هذا الطلب.',

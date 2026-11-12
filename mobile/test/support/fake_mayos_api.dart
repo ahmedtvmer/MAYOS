@@ -81,6 +81,7 @@ class FakeMayosApi {
   String? currentUsername;
   bool tokenValid = true;
   bool loginNetworkFails = false;
+  bool loginServerError = false;
   bool displayLanguageUpdateFails = false;
   bool analyticsAllowed = true;
   int tourSeenVersion = 1;
@@ -1443,6 +1444,12 @@ class FakeMayosApi {
   FakeResponse _login(FakeRequest request) {
     if (loginNetworkFails) {
       return const FakeResponse.networkFailure();
+    }
+    if (loginServerError) {
+      return const FakeResponse(
+        503,
+        <String, dynamic>{'detail': 'The service is unavailable.'},
+      );
     }
     final String? username = request.body['trainee_id'] as String?;
     final String? password = request.body['password'] as String?;
