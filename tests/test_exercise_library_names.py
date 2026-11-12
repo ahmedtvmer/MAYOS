@@ -17,6 +17,19 @@ CURATION_COLUMNS = [
     "hidden",
     "duplicate_of",
 ]
+NAME_SEARCH_ROWS = [
+    ["y-raise", "Y Raise", "Shoulders", "Traps", "cable", None, None, "Raise the arms into a Y."],
+    ["lat-pulldown", "Lat Pulldown", "Back", "Lats", "cable", None, None, "Pull the bar down."],
+    ["744", "Pendulum Squat", "Legs", "Quads", "leverage machine", None, None, "Squat on a sled."],
+    ["cable-raise", "Cable Raise", "Shoulders", "Delts", "cable", None, None, "Raise the cable."],
+    ["incline-raise", "Incline Raise", "Shoulders", "Delts", "dumbbell", None, None, "Raise on an incline."],
+    ["arabic-y-raise", "Cable Y Raise", "Shoulders", "Traps", "cable", None, None, "Raise the arms into a Y."],
+    ["arabic-incline-raise", "Incline Y Raise", "Shoulders", "Traps", "dumbbell", None, None, "Raise the arms into a Y."],
+]
+NAME_SEARCH_ALIASES = [
+    ("arabic-y-raise", "Cable Y Raise", "Cable Y Raise", "أَبْعَاد رفعة"),
+    ("arabic-incline-raise", "Incline Y Raise", "Incline Y Raise", "إبعاد رَفْعات"),
+]
 
 
 def _write_curation(path, rows):
@@ -52,6 +65,33 @@ def _seed_minimal_library(store, path, curation_path=None):
         store.initialize_and_seed(path, curation_path)
 
 
+def _seed_name_matching_library(store, tmp_path):
+    seed_path = tmp_path / "name-search-exercises.csv"
+    with seed_path.open("w", newline="", encoding="utf-8") as seed_file:
+        writer = csv.writer(seed_file)
+        writer.writerow(
+            ["id", "name", "bodyPart", "target", "equipment", "image_path", "gif_path", "instructions"]
+        )
+        writer.writerows(NAME_SEARCH_ROWS)
+    curation_path = tmp_path / "name-search-curation.csv"
+    _write_curation(curation_path, NAME_SEARCH_ALIASES)
+    store.initialize_and_seed(seed_path, curation_path)
+
+
+def _catalog_search_reply(store, query, language):
+    from agent.assistant_graph import catalog_search_node
+    from langchain_core.messages import HumanMessage
+
+    return catalog_search_node(
+        {
+            "messages": [HumanMessage(content=query)],
+            "intent_metadata": {"search_query": query},
+            "display_language": language,
+        },
+        {"configurable": {"ledger": store.ledger, "store": store}},
+    )
+
+
 @pytest.fixture
 def seed_store(tmp_path, monkeypatch):
     from database.database_manager import DatabaseManager
@@ -82,6 +122,7 @@ def test_unique_exact_exercise_id_lookup_uses_names_and_rejects_ambiguity(seed_s
     _seed_minimal_library(fresh_store, tmp_path / "seed.csv")
 
     assert fresh_store.find_unique_exercise_id_by_exact_name("Cable Row") == "9001"
+    assert fresh_store.find_exercise_by_name("Cable Row")["id"] == "9001"
     with fresh_store.catalog_locked() as conn:
         conn.execute(
             "UPDATE exercise_display_names SET display_name = ? WHERE exercise_id = ?",
@@ -106,6 +147,92 @@ def test_unique_exact_exercise_id_lookup_uses_names_and_rejects_ambiguity(seed_s
         )
         conn.commit()
     assert fresh_store.find_unique_exercise_id_by_exact_name("Cable Row Alias") is None
+    assert fresh_store.find_exercise_by_name("Cable Row Alias") is None
+
+
+@pytest.mark.parametrize("query", ["y raises", "Y-Raise", "y raise", "yraise"])
+def test_y_raise_spelling_variants_resolve_to_the_same_exercise(seed_store, tmp_path, query):
+    _seed_name_matching_library(seed_store, tmp_path)
+
+    matches = seed_store.find_exercises_by_name(query, limit=3)
+
+    assert [match["id"] for match in matches] == ["y-raise"]
+    assert seed_store.find_unique_exercise_id_by_exact_name(query) == "y-raise"
+    assert seed_store.find_exercise_by_name(query)["id"] == "y-raise"
+
+
+@pytest.mark.parametrize("query", ["pulldown", "lat pulldwon"])
+def test_nickname_and_typo_resolve_to_the_lat_pulldown(seed_store, tmp_path, query):
+    _seed_name_matching_library(seed_store, tmp_path)
+
+    matches = seed_store.find_exercises_by_name(query, limit=3)
+
+    assert [match["id"] for match in matches] == ["lat-pulldown"]
+
+
+def test_plural_search_does_not_bypass_near_miss_exercise_safety(seed_store, tmp_path):
+    _seed_name_matching_library(seed_store, tmp_path)
+
+    assert seed_store.find_exercises_by_name("pendulum squats") == []
+    assert seed_store.find_exercises_by_name("pendulum squat") == []
+    assert seed_store.find_unique_exercise_id_by_exact_name("pendulum squat") is None
+
+
+@pytest.mark.parametrize(
+    ("variant", "canonical"),
+    [
+        ("أ", "ا"),
+        ("إ", "ا"),
+        ("آ", "ا"),
+        ("ة", "ه"),
+        ("ى", "ي"),
+        ("رَفْعَة", "رفعات"),
+    ],
+)
+def test_arabic_exercise_name_forms_normalize_together(variant, canonical):
+    from database.shared import _normalize_exercise_name
+
+    assert _normalize_exercise_name(variant) == _normalize_exercise_name(canonical)
+
+
+@pytest.mark.parametrize(
+    ("query", "language", "expected_question", "expected_candidates"),
+    [
+        ("raise", "en", "Did you mean", ("Y Raise", "Cable Raise")),
+        (
+            "آبعاد رَفْعة",
+            "ar",
+            "هل تقصد",
+            ("Cable Y Raise", "Incline Y Raise"),
+        ),
+    ],
+)
+def test_ambiguous_exercise_names_ask_in_the_players_language(
+    seed_store, tmp_path, query, language, expected_question, expected_candidates
+):
+    _seed_name_matching_library(seed_store, tmp_path)
+    reply = _catalog_search_reply(seed_store, query, language)
+
+    assert expected_question in reply["response_content"]
+    assert all(name in reply["response_content"] for name in expected_candidates)
+
+
+def test_unresolved_near_miss_suggests_only_safe_closest_names(seed_store, tmp_path, monkeypatch):
+    from agent import assistant_graph
+    from database.schema.definitions import EMBEDDING_DIM
+
+    _seed_name_matching_library(seed_store, tmp_path)
+
+    class FixedEmbedding:
+        def embed_query(self, _text):
+            return [1.0] + [0.0] * (EMBEDDING_DIM - 1)
+
+    monkeypatch.setattr(assistant_graph, "EMBED_MODEL", FixedEmbedding())
+    reply = _catalog_search_reply(seed_store, "pendulum squat", "en")
+
+    assert "No exercises matching 'pendulum squat' were found." in reply["response_content"]
+    assert "Closest names:" in reply["response_content"]
+    assert "Pendulum Squat" not in reply["response_content"]
 
 
 def test_current_exercise_names_batches_visibility_and_matches_per_id_behavior(fresh_store):
