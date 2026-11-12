@@ -6,7 +6,7 @@ import 'tour_targets.dart';
 
 /// The shared Feature list used by the Tour and later discovery surfaces.
 const int tourCurrentVersion = 1;
-const int currentFeatureRelease = 6;
+const int currentFeatureRelease = 7;
 const int kReleaseShareCard = 3;
 const int kReleasePrCelebration = 3;
 const int kReleaseDurationCheck = 4;
@@ -63,6 +63,20 @@ List<String> validateFeatureEntries(
 }
 
 const List<FeatureEntry> featureList = <FeatureEntry>[
+  FeatureEntry(
+    id: 'isolation_first_order',
+    titleEn: 'A clearer exercise order',
+    sentenceEn:
+        'When a day allows, a small isolation exercise may come before a later compound for the same muscle; the main lift stays first for that muscle.',
+    titleAr: 'ترتيب أوضح للتمارين',
+    sentenceAr:
+        'عندما يسمح اليوم، قد يسبق تمرين العزل تمرينًا مركبًا لاحقًا للعضلة نفسها، مع بقاء تمرين القوة الأساسي قبل تمارين العضلة.',
+    target: 'program',
+    location: TourShellTabLocation(tabIndex: 1),
+    release: 7,
+    audience: 'lifter',
+    requiresProgramControl: true,
+  ),
   FeatureEntry(
     id: 'offline_start',
     titleEn: 'Open your saved training offline',
