@@ -47,6 +47,7 @@ from agent.program_rules import (
     resolve_split,
 )
 from agent.program_cardio import CoachCardioOptions, apply_program_cardio
+from agent.program_order import order_program_exercises
 from agent.focus_muscles import (
     FOCUS_EXTRA_TABLE, FOCUS_MUSCLE_SLOTS, FOCUS_MULTIPLIER, FOCUS_REGION_POLICY,
 )
@@ -90,7 +91,7 @@ from utils.logger import MayosLogger
 load_dotenv()
 logger = MayosLogger().get_logger("program_generator")
 
-PROGRAM_DESIGN_VERSION = 4
+PROGRAM_DESIGN_VERSION = 5
 
 MECHANIC_CUES = {
     "compound_press": "Control the 2-3s eccentric, pause briefly at full stretch, drive without locking out aggressively.",
@@ -985,9 +986,40 @@ def _build_program(
             day_rationale["skipped"] = exercise_reasons["skipped"]
         if exercise_reasons.get("cardio_restriction"):
             day_rationale["cardio_restriction"] = exercise_reasons["cardio_restriction"]
-    day_families = {day.day_order: day.family for day in split_plan.days}
+    day_families = {
+        day.day_order: day.family or day.warmup_family for day in split_plan.days
+    }
+    _order_generated_program(program, day_families, profile)
     _apply_focus_muscles(program, focus_muscles, profile, ledger, day_families)
+    if focus_muscles:
+        _order_generated_program(program, day_families, profile)
     return program, render_program_markdown(program)
+
+
+def _order_generated_program(program, day_families, profile):
+    experience_level = experience_level_for_training_age(profile.get("training_age_years", 0.0))
+    rationale_days = {
+        day["day_order"]: day for day in program.program_rationale["days"]
+    }
+    for day in program.days:
+        rationale_day = rationale_days[day.day_order]
+        exercise_reasons = rationale_day["exercises"]
+        ordered = order_program_exercises(
+            day.exercises,
+            [entry["rationale"] for entry in exercise_reasons],
+            day_family=day_families.get(day.day_order),
+            experience_level=experience_level,
+        )
+        reasons_by_id = {entry["exercise_id"]: entry for entry in exercise_reasons}
+        day.exercises = [entry.exercise for entry in ordered]
+        rationale_day["exercises"] = [
+            {
+                **reasons_by_id[entry.exercise.exercise_id],
+                "position": index,
+                "rationale": entry.rationale,
+            }
+            for index, entry in enumerate(ordered, start=1)
+        ]
 
 
 def _apply_focus_muscles(program, focus_muscles, profile, ledger, day_families):
@@ -1259,6 +1291,13 @@ def _recompute_focus_day_positions(day, rationale_day, focus_muscles_by_exercise
         position = reason["rationale"]["position"]
         position["params"]["index"] = index
         if exercise.exercise_id in focus_muscles_by_exercise:
+            continue
+        if position["code"] in {
+            "position.main_progressed_lift",
+            "position.beginner_compound_first",
+            "position.stabilizer_safety",
+            "position.pre_exhaust",
+        }:
             continue
         displaced_focus = _displaced_focus_muscle(
             rationale_day["exercises"][:index - 1], focus_muscles_by_exercise
