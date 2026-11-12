@@ -76,7 +76,8 @@ android {
 
     defaultConfig {
         applicationId = "com.mayos.mayos_mobile"
-        minSdk = flutter.minSdkVersion
+        // sentry_flutter 10 needs Android 8.0 (API 26).
+        minSdk = maxOf(flutter.minSdkVersion, 26)
         targetSdk = flutter.targetSdkVersion
         // versionCode/versionName come from pubspec.yaml (`version: 0.1.0+1`).
         // When using split APKs, 1000 * ABI_VERSION is added automatically by

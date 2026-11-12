@@ -4,6 +4,8 @@ import 'package:mayos_mobile/src/core/models.dart';
 
 import 'fake_api_adapter.dart';
 
+part 'fake_food_swap_requests.dart';
+
 String _equipmentCategoryForFake(Object? equipment) {
   switch ('$equipment'.trim().toLowerCase()) {
     case 'barbell':
@@ -119,6 +121,8 @@ class FakeMayosApi {
     'state': 'not_started', 'targets': null,
   };
   int waterGlasses = 0;
+  final Map<String, int> waterGlassesByDay = <String, int>{};
+  final Map<String, Map<String, dynamic>> foodLogPlannedMeals = <String, Map<String, dynamic>>{};
   bool waterChangeFails = false;
   String foodLogToday = '2026-11-05';
   final Map<String, List<Map<String, dynamic>>> foodLogEntries = <String, List<Map<String, dynamic>>>{};
@@ -126,6 +130,17 @@ class FakeMayosApi {
   bool foodSearchFails = false;
   bool foodLogFails = false;
   bool foodWriteFails = false;
+  bool mealSetupSaveFails = false;
+  Map<String, dynamic> plannedMealsState = <String, dynamic>{
+    'status': 'unavailable', 'reason': 'staples', 'enabled': false, 'meals': <dynamic>[],
+  };
+  List<Map<String, dynamic>> generatedMeals = <Map<String, dynamic>>[];
+  Map<String, dynamic>? lastPlannedMealLog;
+  Map<String, dynamic> mealSetupState = <String, dynamic>{
+    'meal_count': 3, 'training_time': 'evening',
+    'restrictions': <String, dynamic>{'allergies': <String>[], 'dislikes': <String>[], 'vegetarian': false},
+    'disliked_foods': <Map<String, dynamic>>[],
+  };
   int _foodEntryId = 0;
   final List<Map<String, dynamic>> injuries = <Map<String, dynamic>>[];
   int _injuryId = 0;
@@ -610,6 +625,8 @@ class FakeMayosApi {
 
   FakeResponse _handle(FakeRequest request) {
     final String path = request.path;
+    if (path.contains('/food-swap-requests')) return _foodSwapRequests(request);
+    if (path.endsWith('/nutrition/draft/foods')) return _foodSwapRequestFoods(request);
     if (path == '/nutrition/food-log/yesterday-meals') {
       return FakeResponse(200, <String, dynamic>{'today': foodLogToday,
         'meal_labels': _yesterdayFoodEntries.map((Map<String, dynamic> entry) => entry['meal_label']).toSet().toList()});
@@ -999,6 +1016,62 @@ class FakeMayosApi {
         final String query = '${request.query['q'] ?? ''}'.toLowerCase();
         return FakeResponse(200, <String, dynamic>{'foods': foodSearchResults.where((Map<String, dynamic> food) =>
           query.isEmpty || '${food['name']} ${food['arabic_name']}'.toLowerCase().contains(query)).toList()});
+      case '/nutrition/meal-setup':
+        if (request.method == 'PUT') {
+          if (mealSetupSaveFails) return const FakeResponse(503, <String, dynamic>{'detail': 'Could not save Meal setup.'});
+          mealSetupState = <String, dynamic>{...request.body,
+            'disliked_foods': foodSearchResults.where((Map<String, dynamic> food) =>
+              (request.body['restrictions']['dislikes'] as List<dynamic>).contains(food['id'])).toList()};
+        }
+        return FakeResponse(200, mealSetupState);
+      case '/nutrition/meals':
+        return FakeResponse(200, <String, dynamic>{'date': foodLogToday, ...plannedMealsState});
+      case '/nutrition/meals/enable':
+        if (foodWriteFails) return const FakeResponse(503, <String, dynamic>{'detail': 'Could not update meals.'});
+        if (plannedMealsState['author'] == 'Coach') return const FakeResponse(403,
+          <String, dynamic>{'detail': 'Your Coach sets your meals.'});
+        if (plannedMealsState['enabled'] == true) return FakeResponse(200, plannedMealsState);
+        plannedMealsState = <String, dynamic>{...plannedMealsState, 'status': 'ready',
+          'date': foodLogToday, 'enabled': true,
+          'plan_version_id': (plannedMealsState['plan_version_id'] as num? ?? 1).toInt() + 1,
+          'meals': generatedMeals};
+        return FakeResponse(200, plannedMealsState);
+      case '/nutrition/meals/disable':
+        if (foodWriteFails) return const FakeResponse(503, <String, dynamic>{'detail': 'Could not update meals.'});
+        if (plannedMealsState['author'] == 'Coach') return const FakeResponse(403,
+          <String, dynamic>{'detail': 'Your Coach sets your meals.'});
+        if (plannedMealsState['enabled'] != true) return FakeResponse(200, plannedMealsState);
+        plannedMealsState = <String, dynamic>{...plannedMealsState, 'status': 'disabled',
+          'enabled': false,
+          'plan_version_id': (plannedMealsState['plan_version_id'] as num).toInt() + 1,
+          'meals': <dynamic>[]};
+        return FakeResponse(200, plannedMealsState);
+      case '/nutrition/meals/log':
+        if (foodWriteFails) return const FakeResponse(503, <String, dynamic>{'detail': 'Could not save food.'});
+        if (request.body['entry_date'] != foodLogToday ||
+            request.body['plan_version_id'] != plannedMealsState['plan_version_id']) {
+          return const FakeResponse(409, <String, dynamic>{'detail': 'The day or Nutrition plan changed. Refresh meals and try again.'});
+        }
+        lastPlannedMealLog = Map<String, dynamic>.from(request.body);
+        final Map<String, dynamic> meal = (plannedMealsState['meals'] as List<dynamic>)
+          .cast<Map<String, dynamic>>().firstWhere((Map<String, dynamic> meal) => meal['slot'] == request.body['slot']);
+          final String slot = meal['slot'] as String;
+          final String label = meal['log_label'] as String? ?? (slot.endsWith('_snack') ? 'snack' : slot);
+          final String time = <String, String>{'breakfast': '08:00', 'morning_snack': '10:00',
+            'lunch': '13:00', 'afternoon_snack': '16:00', 'dinner': '20:00'}[slot]
+            ?? <String, String>{'breakfast': '08:00', 'lunch': '13:00', 'dinner': '20:00', 'snack': '16:00'}[label]!;
+        final List<Map<String, dynamic>> copied = <Map<String, dynamic>>[
+          for (final Map<String, dynamic> food in (meal['foods'] as List<dynamic>).cast<Map<String, dynamic>>())
+            <String, dynamic>{...food, 'id': 'food-${++_foodEntryId}', 'food_id': food['id'],
+              'kind': 'library_food', 'entry_date': foodLogToday, 'quantity': food['grams'],
+              'unit': 'grams', 'meal_label': label, 'logged_time': time,
+              'nutrients': <String, dynamic>{
+                for (final String key in <String>['energy_kcal', 'protein_g', 'carbohydrate_g', 'fat_g'])
+                  key: (food['nutrients_per_100g'][key] as num) * (food['grams'] as num) / 100,
+              }},
+        ];
+        foodLogEntries.putIfAbsent(foodLogToday, () => <Map<String, dynamic>>[]).addAll(copied);
+        return FakeResponse(201, <String, dynamic>{'entries': copied});
       case '/nutrition/personal-foods':
         if (foodWriteFails) return const FakeResponse(503, <String, dynamic>{'detail': 'Could not save food.'});
         final double scale = request.body['basis'] == 'portion' ? 100 / (request.body['portion_grams'] as num) : 1;
@@ -1020,6 +1093,7 @@ class FakeMayosApi {
           return const FakeResponse(409, <String, dynamic>{'detail': 'Water glass count limit.'});
         }
         waterGlasses += request.method == 'DELETE' ? -1 : 1;
+        nutritionState['today_water_glasses'] = waterGlasses;
         return FakeResponse(200, <String, dynamic>{'today_water_glasses': waterGlasses});
       case '/nutrition/setup':
         if (!_authorized(request)) {
@@ -1045,24 +1119,48 @@ class FakeMayosApi {
       case '/nutrition/adherence':
         nutritionAdherenceValues.add(request.body['value'] as String);
         if (request.body['entry_date'] != null) {
-          nutritionState = <String, dynamic>{...nutritionState,
+          nutritionState = <String, dynamic>{
+            ...nutritionState,
             'adherence_days': <Map<String, dynamic>>[
-              for (final Map<String, dynamic> day in
-                  (nutritionState['adherence_days'] as List<dynamic>).cast<Map<String, dynamic>>())
+              for (final Map<String, dynamic> day
+                  in (nutritionState['adherence_days'] as List<dynamic>)
+                      .cast<Map<String, dynamic>>())
                 if (day['date'] == request.body['entry_date'])
-                  <String, dynamic>{...day, 'value': request.body['value'], 'source': 'answered'}
-                else day,
+                  <String, dynamic>{
+                    ...day,
+                    'value': request.body['value'],
+                    'source': 'answered'
+                  }
+                else
+                  day,
             ],
           };
           return FakeResponse(200, nutritionState);
         }
-        nutritionState = <String, dynamic>{...nutritionState,
+        nutritionState = <String, dynamic>{
+          ...nutritionState,
           'today_adherence': request.body['value'],
           'adherence_days': <Map<String, dynamic>>[
-            <String, dynamic>{'date': '2026-10-24', 'value': request.body['value']},
-            ...List<Map<String, dynamic>>.generate(6, (int index) => <String, dynamic>{
-              'date': '2026-10-${23 - index}', 'value': index == 0 ? 'roughly' : null,
-            }),
+            for (int offset = 6; offset >= 0; offset--)
+              <String, dynamic>{
+                'date': DateTime.parse(foodLogToday)
+                    .subtract(Duration(days: offset))
+                    .toIso8601String()
+                    .substring(0, 10),
+                'value': offset == 0
+                    ? request.body['value']
+                    : (nutritionState['adherence_days'] as List<dynamic>? ??
+                            <dynamic>[])
+                        .cast<Map<String, dynamic>>()
+                        .where((Map<String, dynamic> day) =>
+                            day['date'] ==
+                            DateTime.parse(foodLogToday)
+                                .subtract(Duration(days: offset))
+                                .toIso8601String()
+                                .substring(0, 10))
+                        .map((Map<String, dynamic> day) => day['value'])
+                        .firstOrNull,
+              },
           ],
         };
         return FakeResponse(200, nutritionState);
@@ -5993,6 +6091,11 @@ class FakeMayosApi {
     return FakeResponse(200, <String, dynamic>{'date': date, 'today': foodLogToday,
       'editable': selected == today || selected == DateTime(today.year, today.month, today.day - 1),
       'entries': entries, 'totals': totals, 'targets': targets,
+      'water_glasses': date == foodLogToday ? waterGlasses : waterGlassesByDay[date] ?? 0,
+      'planned_meals': foodLogPlannedMeals[date],
+      'adherence': (nutritionState['adherence_days'] as List<dynamic>? ?? <dynamic>[])
+        .cast<Map<String, dynamic>>().where((Map<String, dynamic> entry) => entry['date'] == date)
+        .map((Map<String, dynamic> entry) => entry['value']).firstOrNull,
       'cardio_burned_kcal': selected == today ? nutritionState['cardio_burned_kcal'] ?? 0 : 0,
       'remaining': targets == null ? null : <String, dynamic>{
         for (final String key in targetKeys.keys)

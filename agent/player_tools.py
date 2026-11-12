@@ -21,6 +21,7 @@ from database.ledger.chat import MAX_CHAT_HISTORY_SEARCH_RESULTS
 from agent.focus_muscles import FOCUS_REVIEW_MUSCLES
 from service.injuries import render_public_injury_record
 from service.nutrition import assistant_projection
+from service.nutrition_assistant_meals import meal_page
 from service.food_log import NUTRIENT_KEYS
 from service.food_log_context import nutrient_totals
 from service.player_weight_context import render_player_weight_context
@@ -70,6 +71,12 @@ class FoodLogArgs(BaseModel):
     """One recent Player-local day, paginated within the hosted result cap."""
 
     day: str | None = None
+    offset: int = Field(default=0, ge=0)
+
+
+class PlayerNutritionArgs(BaseModel):
+    """Continue the selected day's saved meals within the hosted result cap."""
+
     offset: int = Field(default=0, ge=0)
 
 
@@ -302,10 +309,10 @@ def _read_chat_history_search(
     return _chat_history_search_result(matches)
 
 
-def _read_player_nutrition(ledger: Any) -> dict[str, Any]:
-    """Returns a privacy-safe projection of active targets and recent adherence."""
+def _read_player_nutrition(ledger: Any, args: PlayerNutritionArgs) -> dict[str, Any]:
+    """Returns active targets, saved meals and adherence without changing the plan."""
     today = player_local_date(ledger, ledger.ledger_id)
-    return assistant_projection(ledger, today)
+    return meal_page(assistant_projection(ledger, today), args.offset, MAX_TOOL_RESULT_BYTES)
 
 
 def _food_log_entry(entry: dict[str, Any]) -> dict[str, Any]:
@@ -646,11 +653,17 @@ PLAYER_READ_TOOL_REGISTRY: tuple[PlayerReadTool, ...] = (
         description=(
             "Read the current player's active Nutrition targets, author, Nutrition goal, pace, "
             "last-14-day adherence counts, and today's Cardio calories and calorie adjustment. "
-            "This is read-only; direct target changes "
-            "to the Nutrition tab."
+            "Includes today's planned meals for the current day_type, not a Food log. "
+            "If next_offset is set, call again with that food offset for the remaining meals. "
+            "For meal questions, use only the returned foods and grams; never invent a Coach's reason "
+            "or claim allergy safety without restriction data. "
+            "Read-only: explain meals and suggest which food to swap; never change the Nutrition plan "
+            "or claim a swap was made. Direct swaps to the food's swap action in Nutrition; "
+            "Coach-authored plans need a Food swap request. Direct target changes to Nutrition."
         ),
-        args_schema=EmptyToolArgs,
-        reader=_read_player_nutrition,
+        args_schema=PlayerNutritionArgs,
+        reader=lambda ledger: _read_player_nutrition(ledger, PlayerNutritionArgs()),
+        args_reader=_read_player_nutrition,
         status_en="Checking your Nutrition targets…",
         status_ar="ببص على أهداف التغذية بتاعتك…",
     ),

@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from database.food_library.builder import (
-    CURATION_PATH, FOOD_PATH, NUTRIENTS, PORTION_PATH, RECIPE_PATH, build_food_library,
+    ALLERGEN_PATH, CURATION_PATH, FOOD_PATH, NUTRIENTS, PORTION_PATH, RECIPE_PATH, build_food_library,
 )
 
 
@@ -15,6 +15,7 @@ class FoodLibraryPaths:
     portions: Path = PORTION_PATH
     curation: Path = CURATION_PATH
     recipes: Path = RECIPE_PATH
+    allergens: Path = ALLERGEN_PATH
 
 
 def _create_food_table(connection):
@@ -38,6 +39,16 @@ def ensure_food_meal_limits_schema(connection):
 
 
 def ensure_food_search_schema(connection):
+    columns = {row[1] for row in connection.execute("PRAGMA table_info(foods)")}
+    for name, definition in (
+        ("category", "TEXT NOT NULL DEFAULT ''"),
+        ("vegetarian", "INTEGER NOT NULL DEFAULT 1"),
+        ("allergens_json", "TEXT NOT NULL DEFAULT '[]'"),
+        ("allergens_reviewed", "INTEGER NOT NULL DEFAULT 0"),
+        ("staple_order", "INTEGER NOT NULL DEFAULT 0"),
+    ):
+        if name not in columns:
+            connection.execute(f"ALTER TABLE foods ADD COLUMN {name} {definition}")
     connection.execute("""CREATE TABLE IF NOT EXISTS food_search_revision (
         id INTEGER PRIMARY KEY CHECK(id=1), counter INTEGER NOT NULL DEFAULT 0
     )""")
@@ -59,6 +70,7 @@ def _storage_row(row):
         "aliases_ar_json": json.dumps(row["aliases_ar"], ensure_ascii=False),
         "staple_roles_json": json.dumps(row["staple_roles"], ensure_ascii=False),
         "ingredients_json": json.dumps(row.get("ingredients", []), ensure_ascii=False, sort_keys=True),
+        "allergens_json": json.dumps(row["allergens"]),
     }
 
 
@@ -67,22 +79,25 @@ def _upsert_food_rows(connection, rows):
     connection.executemany("""INSERT INTO foods
         (id,name,source_name,arabic_name,nutrients_json,portions_json,aliases_en_json,
          aliases_ar_json,staple_roles_json,hidden,reviewed,portion_label,portion_grams,ingredients_json,
-         min_grams,max_grams)
+         category,vegetarian,allergens_json,allergens_reviewed,staple_order,min_grams,max_grams)
         VALUES (:id,:name,:source_name,:arabic_name,:nutrients_json,:portions_json,:aliases_en_json,
          :aliases_ar_json,:staple_roles_json,:hidden,:reviewed,:portion_label,:portion_grams,:ingredients_json,
-         :min_grams,:max_grams)
+         :category,:vegetarian,:allergens_json,:allergens_reviewed,:staple_order,:min_grams,:max_grams)
         ON CONFLICT(id) DO UPDATE SET name=excluded.name, source_name=excluded.source_name,
          arabic_name=excluded.arabic_name,nutrients_json=excluded.nutrients_json,
          portions_json=excluded.portions_json,aliases_en_json=excluded.aliases_en_json,
          aliases_ar_json=excluded.aliases_ar_json,staple_roles_json=excluded.staple_roles_json,
          hidden=excluded.hidden,reviewed=excluded.reviewed,portion_label=excluded.portion_label,
          portion_grams=excluded.portion_grams,ingredients_json=excluded.ingredients_json,
+         category=excluded.category,vegetarian=excluded.vegetarian,
+         allergens_json=excluded.allergens_json,allergens_reviewed=excluded.allergens_reviewed,
+         staple_order=excluded.staple_order,
          min_grams=excluded.min_grams,max_grams=excluded.max_grams""",
         [_storage_row(row) for row in rows])
 
 
 def seed_food_library(connection, paths=FoodLibraryPaths()):
-    rows = build_food_library(paths.foods, paths.portions, paths.curation, paths.recipes)
+    rows = build_food_library(paths.foods, paths.portions, paths.curation, paths.recipes, paths.allergens)
     _create_food_table(connection)
     _upsert_food_rows(connection, rows)
     connection.commit()

@@ -13,7 +13,9 @@ from core.nutrition_targets import (ACTIVITY_FACTORS, NutritionCalculationInput,
 from core.cardio_calories import estimate_cardio_calories
 from core.cardio_prescriptions import parse_legacy_cardio_prescription
 from database.ledger.nutrition import NutritionPlanVersion, NutritionSetup
+from database.ledger.nutrition_meals import meals_still_allowed
 from service import nutrition_pace_check
+from service.nutrition_assistant_meals import meal_context
 
 
 SCREENING_KEYS = (
@@ -435,6 +437,8 @@ def read(
                 nutrition_state["pending_goal"] = resolved
                 nutrition_state["pending_goal_reason"] = reason
     nutrition_state.update(_adherence_state(ledger, today))
+    if nutrition_state.get("meals") and not meals_still_allowed(ledger, nutrition_state["meals"]):
+        nutrition_state["meals"] = []
     if nutrition_state.get("state") == "ready":
         _apply_cardio_day_adjustment(ledger, nutrition_state, today)
     proposal = ledger.get_nutrition_pace_proposal()
@@ -609,6 +613,7 @@ def assistant_projection(ledger: Any, today: date) -> dict[str, Any]:
         "adherence": _adherence_counts(adherence),
         "cardio_burned_kcal": nutrition_state.get("cardio_burned_kcal", 0),
         "cardio_adjustment_kcal": nutrition_state.get("cardio_adjustment_kcal", 0),
+        **meal_context(nutrition_state),
     }
 
 
@@ -764,6 +769,11 @@ def _read_without_plan(ledger: Any, answers: dict[str, bool] | None,
 
 
 def targets_for_day(ledger: Any, entry_date: date) -> dict[str, Any] | None:
+    state = state_for_day(ledger, entry_date)
+    return state["targets"] if state else None
+
+
+def state_for_day(ledger: Any, entry_date: date) -> dict[str, Any] | None:
     screening = ledger.get_nutrition_screening()
     if screening and any(json.loads(screening[0]).values()):
         return None
@@ -772,7 +782,7 @@ def targets_for_day(ledger: Any, entry_date: date) -> dict[str, Any] | None:
         return None
     state = _read_active_plan(plan, None, _is_training_day(ledger, entry_date))
     _apply_cardio_day_adjustment(ledger, state, entry_date)
-    return state["targets"]
+    return state
 
 
 def _nutrition_day_end(ledger: Any, entry_date: date) -> datetime:
@@ -795,7 +805,12 @@ def _read_active_plan(active_plan: Any, answers: dict[str, bool] | None,
         if is_day_target_map else targets
     )
     target_options = targets if is_day_target_map else {"daily": targets}
+    meal_payload = json.loads(active_plan["meals_json"]) if active_plan["meals_json"] else {}
+    meal_variant = meal_payload.get("variants", {}).get(day_type, {})
     return {"state": "ready", "goal": active_plan["goal"],
+            "meals": meal_variant.get("meals", []),
+            "meals_enabled": meal_payload.get("enabled", False),
+            "meals_targets_changed": meal_payload.get("targets_changed", False),
             "goal_reason": reason,
             "intensity": active_plan["intensity"], "daily_activity": active_plan["daily_activity"],
             "targets": selected_targets, "target_options": target_options, "target_day_type": day_type,

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/features/player/tour/feature_list.dart';
 import 'package:mayos_mobile/src/features/player/tour/tour_targets.dart';
+import 'package:mayos_mobile/src/router.dart';
 
 Set<String> _registeredTargetIds() {
   final Directory lib = Directory('lib');
@@ -96,6 +97,39 @@ void main() {
     expect(entry.target, 'food_log');
     expect(entry.location, const TourShellTabLocation(tabIndex: 2));
     expect(entry.audience, 'lifter');
+  });
+
+  test('Meal setup has bilingual discovery copy in release 6', () {
+    final FeatureEntry entry = featureList.singleWhere((FeatureEntry entry) => entry.id == 'meal_setup');
+    expect(entry.release, 6);
+    expect(currentFeatureRelease, 6);
+    expect(entry.titleEn, 'Meal setup and Food restrictions');
+    expect(entry.titleAr, 'إعداد الوجبات والقيود الغذائية');
+    expect(entry.sentenceEn, isNotEmpty);
+    expect(entry.sentenceAr, isNotEmpty);
+    expect(entry.sentenceEn, contains('swap foods in your own plan'));
+    expect(entry.sentenceEn, contains('coach'));
+    expect(entry.target, 'meal_setup');
+    expect(entry.location, const TourShellTabLocation(tabIndex: 2));
+    expect(entry.audience, 'lifter');
+  });
+
+  test('Spec B2 swap requests and assistant meals are discoverable in release 6', () {
+    final Map<String, String> targets = <String, String>{
+      'food_swap_requests': 'food_swap_requests', 'assistant_meals': 'assistant',
+    };
+    for (final MapEntry<String, String> feature in targets.entries) {
+      final FeatureEntry entry = featureList.singleWhere((FeatureEntry entry) => entry.id == feature.key);
+      expect(entry.release, 6);
+      expect(entry.titleEn, isNotEmpty);
+      expect(entry.titleAr, isNotEmpty);
+      expect(entry.sentenceEn, contains('coach'));
+      expect(entry.sentenceAr, isNotEmpty);
+      expect(entry.target, feature.value);
+      expect(entry.location, feature.key == 'assistant_meals'
+        ? const TourShellTabLocation(tabIndex: 0) : const TourRouteLocation(foodSwapRequestsPath));
+      expect(entry.audience, 'lifter');
+    }
   });
 
   test('Feature list copy, targets, and Tour stop ids are valid', () {

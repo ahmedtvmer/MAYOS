@@ -94,9 +94,10 @@ class CoachNutritionState {
     this.weightTrend = const <Map<String, dynamic>>[], this.waterDays = const <Map<String, dynamic>>[],
     this.todayWaterGlasses = 0, this.fiberEatenDays, this.targetWeight, this.nextPaceCheck,
     this.plannedWeeklyRatePct, this.paceProposal, this.cardioBurnedKcal = 0,
-    this.cardioAdjustmentKcal = 0});
+    this.cardioAdjustmentKcal = 0, this.mealsTargetsChanged = false});
 
   factory CoachNutritionState.fromJson(Map<String, dynamic> json) => CoachNutritionState(
+    mealsTargetsChanged: json['meals_targets_changed'] as bool? ?? false,
     authority: json['authority'] as String? ?? 'player',
     goal: json['goal'] as String?,
     dailyActivity: json['daily_activity'] as String?,
@@ -121,6 +122,7 @@ class CoachNutritionState {
     cardioAdjustmentKcal: (json['cardio_adjustment_kcal'] as num?)?.toInt() ?? 0,
   );
 
+  final bool mealsTargetsChanged;
   final String authority;
   final String? goal;
   final String? dailyActivity;
@@ -757,9 +759,8 @@ class ProgramRequestDraft {
   final String? desiredSplitPreference;
 }
 
-/// A player's request against a coach-controlled program and its resolution
-/// state (ADR 027). It pins the exact program version, day, and slot it targets;
-/// creating one never changes the program.
+/// An Assignment request and its response (ADR 027). Food swaps pin a Nutrition
+/// target in [foodSwap]; Training program requests pin a program version/day/slot.
 class ProgramRequest {
   const ProgramRequest({
     required this.requestId,
@@ -782,6 +783,7 @@ class ProgramRequest {
     this.resolvedAt,
     this.resolvedBy,
     this.playerUsername,
+    this.foodSwap,
   });
 
   factory ProgramRequest.fromJson(Map<String, dynamic> json) => ProgramRequest(
@@ -789,7 +791,8 @@ class ProgramRequest {
         assignmentId: json['assignment_id'] as String,
         playerUsername: json['player_username'] as String?,
         kind: json['kind'] as String,
-        programVersion: (json['program_version'] as num).toInt(),
+        programVersion: (json['program_version'] as num?)?.toInt() ?? 0,
+        foodSwap: json['food_swap'] as Map<String, dynamic>?,
         dayName: json['day_name'] as String?,
         weekOrder: (json['week_order'] as num?)?.toInt(),
         dayOrder: (json['day_order'] as num?)?.toInt(),
@@ -811,6 +814,7 @@ class ProgramRequest {
   final String requestId;
   final String assignmentId;
   final String kind;
+  /// Zero for Food swaps, whose Nutrition version lives in [foodSwap].
   final int programVersion;
   final String? dayName;
   final int? weekOrder;
@@ -834,6 +838,8 @@ class ProgramRequest {
   final String? playerUsername;
 
   bool get isPending => status == 'pending';
+  final Map<String, dynamic>? foodSwap;
+  bool get isFoodSwap => kind == 'food_swap';
   DateTime get createdOn => DateTime.parse(createdAt);
 
   /// Once applied the request is answered: the program carries a new version

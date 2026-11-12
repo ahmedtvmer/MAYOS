@@ -18,8 +18,15 @@ import 'client_dimensions.dart';
 import 'models.dart';
 import 'coach_food_log_models.dart';
 import 'food_log_models.dart';
+import 'meal_setup_models.dart';
+import 'planned_meals_models.dart';
+import 'food_swap_models.dart';
 import 'sse.dart';
 import 'token_store.dart';
+
+part 'nutrition_draft_api.dart';
+part 'food_swap_request_api.dart';
+part 'nutrition_template_api.dart';
 
 /// Raised for any failed service call, carrying the HTTP status when there was
 /// a response and a human-readable message from the service `detail` field.
@@ -2377,6 +2384,50 @@ class ApiClient {
       _invalidProfile,
       failureMessage: _invalidProfileFailure,
     );
+  }
+
+  Future<MealSetupState> mealSetup() async {
+    final response = await _send(() => _dio.get<dynamic>('/nutrition/meal-setup'));
+    return _parseBody(response.data, MealSetupState.fromJson,
+      'The service returned invalid Meal setup data.');
+  }
+
+  Future<PlannedMeals> plannedMeals({bool enable = false}) async {
+    final response = await _send(() => enable
+      ? _dio.post<dynamic>('/nutrition/meals/enable')
+      : _dio.get<dynamic>('/nutrition/meals'));
+    return _parseBody(response.data, PlannedMeals.fromJson,
+      'The service returned invalid Nutrition meals.');
+  }
+
+  Future<void> logPlannedMeal(PlannedMeals plan, String slot) async {
+    await _send(() => _dio.post<dynamic>('/nutrition/meals/log', data: <String, dynamic>{
+      'slot': slot, 'entry_date': plan.date, 'plan_version_id': plan.planVersionId,
+    }));
+  }
+
+  Future<PlannedMeals> disablePlannedMeals() async {
+    final response = await _send(() => _dio.post<dynamic>('/nutrition/meals/disable'));
+    return _parseBody(response.data, PlannedMeals.fromJson,
+      'The service returned invalid Nutrition meals.');
+  }
+
+  Future<FoodSwapCandidates> foodSwapCandidates(FoodSwapTarget target, String query) async {
+    final response = await _send(() => _dio.get<dynamic>('/nutrition/meals/swap-candidates',
+      queryParameters: <String, dynamic>{...target.toJson(), 'q': query}));
+    return _parseBody(response.data, FoodSwapCandidates.fromJson,
+      'The service returned invalid Food swap candidates.');
+  }
+
+  Future<void> swapPlannedFood(FoodSwapTarget target, String foodId) async {
+    await _send(() => _dio.post<dynamic>('/nutrition/meals/swap',
+      data: <String, dynamic>{...target.toJson(), 'food_id': foodId}));
+  }
+
+  Future<MealSetupState> saveMealSetup(MealSetupState setup) async {
+    final response = await _send(() => _dio.put<dynamic>('/nutrition/meal-setup', data: setup.toJson()));
+    return _parseBody(response.data, MealSetupState.fromJson,
+      'The service returned invalid Meal setup data.');
   }
 
   Future<List<FoodLibraryItem>> searchFoods(String query) async {

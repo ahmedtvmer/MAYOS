@@ -17,6 +17,7 @@ class NutritionPlanVersion:
     author: str = "Player"
     provenance: str = "automatic"
     authority_assignment_id: str | None = None
+    meals: dict | None = None
 
 
 @dataclass(frozen=True)
@@ -210,17 +211,21 @@ class LedgerNutritionMixin:
                 goal_source_snapshot=setup.plan.goal_source_snapshot,
                 author=setup.plan.author, provenance=setup.plan.provenance,
                 authority_assignment_id=setup.plan.authority_assignment_id,
+                meals=setup.plan.meals,
             ))
 
     def save_nutrition_plan(self, plan: NutritionPlanVersion):
+        from database.ledger.nutrition_meals import meals_for_version
+
+        meals = meals_for_version(self, plan)
         self.conn.execute("UPDATE nutrition_pace_proposals SET status='stale' "
                           "WHERE status='pending'")
         cursor = self.conn.execute(
-            "INSERT INTO nutrition_plan_versions(author, provenance, goal, goal_reason_data_json, intensity, daily_activity, targets_json, authority_assignment_id, created_at) "
-            "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO nutrition_plan_versions(author, provenance, goal, goal_reason_data_json, intensity, daily_activity, targets_json, authority_assignment_id, created_at, meals_json) "
+            "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (plan.author, plan.provenance, plan.goal, json.dumps(plan.reason), plan.intensity, plan.daily_activity,
              json.dumps(plan.targets), plan.authority_assignment_id,
-             plan.created_at or datetime.now(UTC).isoformat()),
+             plan.created_at or datetime.now(UTC).isoformat(), json.dumps(meals) if meals is not None else None),
         )
         if plan.goal_source_snapshot is not None:
             self.conn.execute(
