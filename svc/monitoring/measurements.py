@@ -30,11 +30,13 @@ class HourlyMeasurements:
     """Cumulative process totals, with dirty snapshots retried after write failure.
 
     Dimension values must come from bounded vocabularies, never user input.
-    There is no I/O here. Samples are retained for the page's seven-day window.
+    There is no I/O here. Retention covers the page window by default; delayed
+    client reports retain 30 days so an upload does not lose older dirty hours.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, *, retention_days: int = 7) -> None:
         self._lock = Lock()
+        self._retention_days = retention_days
         self._rows: dict[tuple, dict[str, Any]] = {}
         self._dirty: set[tuple] = set()
         self._last_pruned_hour: datetime | None = None
@@ -61,7 +63,7 @@ class HourlyMeasurements:
                 self._last_pruned_hour = hour
 
     def _prune(self, hour: datetime) -> None:
-        cutoff = (hour - timedelta(days=7)).isoformat()
+        cutoff = (hour - timedelta(days=self._retention_days)).isoformat()
         for key in tuple(self._rows):
             if key[0] < cutoff:
                 del self._rows[key]

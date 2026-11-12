@@ -3,6 +3,7 @@ import 'dart:async';
 import 'active_workout.dart';
 import 'baselines.dart';
 import 'chat_storage.dart';
+import 'connection_failures.dart';
 import 'workout_start_notice_store.dart';
 import 'workout_storage.dart';
 
@@ -25,12 +26,14 @@ class AccountDataEraser {
     required BaselineCacheStore baselines,
     required ActiveWorkoutStore activeWorkout,
     required WorkoutStartNoticeStore workoutStartNotice,
+    ConnectionFailureStore? connectionFailures,
   })  : _drafts = drafts,
         _workoutCache = workoutCache,
         _chatCache = chatCache,
         _baselines = baselines,
         _activeWorkout = activeWorkout,
-        _workoutStartNotice = workoutStartNotice;
+        _workoutStartNotice = workoutStartNotice,
+        _connectionFailures = connectionFailures;
 
   final DraftStore _drafts;
   final WorkoutCacheStore _workoutCache;
@@ -38,6 +41,7 @@ class AccountDataEraser {
   final BaselineCacheStore _baselines;
   final ActiveWorkoutStore _activeWorkout;
   final WorkoutStartNoticeStore _workoutStartNotice;
+  final ConnectionFailureStore? _connectionFailures;
 
   Future<void> erase(String accountId) async {
     // Same order as before: injected stores are awaited one at a time, while
@@ -78,6 +82,11 @@ class AccountDataEraser {
           erase: () => _workoutStartNotice.clearWorkoutStartNotice(accountId),
           usesPlatformStorage: false,
         ),
+        if (_connectionFailures case final ConnectionFailureStore failures)
+          (
+            erase: () => failures.deleteForAccount(accountId),
+            usesPlatformStorage: false,
+          ),
       ];
 
   bool _usesPlatformStorage(Object store) => switch (store) {

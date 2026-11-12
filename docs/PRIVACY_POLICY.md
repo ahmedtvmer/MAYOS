@@ -402,7 +402,14 @@ above.
   published stay in the players' own accounts (you appear as "Former coach"),
   because those records are part of their history.
 - **Service logs** are kept only as long as they remain useful for operations
-  and security.
+  and security. Connection failures are buffered on your device; after a later
+  authenticated request succeeds, the app attempts to upload them in a batch
+  with the time, failure type, offline status, platform, app build, and API route
+  template. MAYOS keeps
+  only hourly totals by failure type, platform, and route template in a
+  separate operational file for 30 days; the totals do not retain Account ids,
+  request bodies, or query strings. The Owner Monitoring page shows the last
+  seven days.
 
 ## Deleting your account
 

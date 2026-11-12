@@ -8,15 +8,19 @@ import 'package:mayos_mobile/src/app.dart';
 import 'package:mayos_mobile/src/core/active_workout.dart';
 import 'package:mayos_mobile/src/core/app_mode.dart';
 import 'package:mayos_mobile/src/core/baselines.dart';
+import 'package:mayos_mobile/src/core/browser_key_value_store.dart';
 import 'package:mayos_mobile/src/features/shared/mode_switch.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/chat_models.dart';
 import 'package:mayos_mobile/src/core/chat_storage.dart';
 import 'package:mayos_mobile/src/core/display_language.dart';
 import 'package:mayos_mobile/src/core/client_session_id.dart';
+import 'package:mayos_mobile/src/core/connection_failures.dart';
 import 'package:mayos_mobile/src/core/connectivity_message.dart';
 import 'package:mayos_mobile/src/core/device_timezone.dart';
 import 'package:mayos_mobile/src/core/models.dart';
+import 'package:mayos_mobile/src/core/saved_player_data.dart';
+import 'package:mayos_mobile/src/core/saved_player_reads.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/core/workout_storage.dart';
 import 'package:mayos_mobile/src/features/player/auth/auth_controller.dart';
@@ -25,6 +29,7 @@ import 'package:mayos_mobile/src/providers.dart';
 
 import 'support/fake_api_adapter.dart';
 import 'support/fake_mayos_api.dart';
+import 'support/in_memory_connection_failure_store.dart';
 
 const String _accountAlice = 'account-alice';
 
@@ -104,15 +109,6 @@ Future<void> _seedSignedIn(FakeMayosApi fake, InMemoryTokenStore tokens) async {
   fake.passwords['alice'] = 'correct-horse-1';
 }
 
-ApiClient _api(FakeMayosApi fake, TokenStore tokens) {
-  final ApiClient client = ApiClient(
-    tokens: tokens,
-    baseUrl: 'http://test.local',
-    adapter: fake.adapter,
-  );
-  return client;
-}
-
 ProviderContainer _container({
   required FakeMayosApi fake,
   required InMemoryTokenStore tokens,
@@ -121,9 +117,18 @@ ProviderContainer _container({
   required InMemoryChatCacheStore chat,
   DisplayLanguageStore? displayLanguageStore,
 }) {
+  final InMemoryConnectionFailureStore connectionFailures =
+      InMemoryConnectionFailureStore();
   return ProviderContainer(
     overrides: <Override>[
       tokenStoreProvider.overrideWithValue(tokens),
+      connectionFailureStoreProvider.overrideWithValue(connectionFailures),
+      savedPlayerDataStoreProvider.overrideWith((ref) {
+        final SavedPlayerDataStore store =
+            SavedPlayerDataStore(browser: createBrowserKeyValueStore());
+        ref.onDispose(store.dispose);
+        return store;
+      }),
       appModeStoreProvider.overrideWithValue(InMemoryAppModeStore()),
       draftStoreProvider.overrideWithValue(drafts),
       workoutCacheStoreProvider.overrideWithValue(cache),
@@ -137,7 +142,21 @@ ProviderContainer _container({
       baselineCacheStoreProvider
           .overrideWithValue(InMemoryBaselineCacheStore()),
       apiClientProvider.overrideWith((ref) {
-        final ApiClient client = _api(fake, ref.watch(tokenStoreProvider));
+        final ApiClient client = ApiClient(
+          tokens: ref.watch(tokenStoreProvider),
+          baseUrl: 'http://test.local',
+          adapter: fake.adapter,
+          retryDelay: (_) async {},
+          connectionFailureOptions: ConnectionFailureOptions(
+            store: connectionFailures,
+            offlineStatusLoader: () async => false,
+          ),
+        );
+        ref.onDispose(client.dispose);
+        client.dio.interceptors.add(SavedPlayerReads(
+          ref.watch(tokenStoreProvider),
+          ref.watch(savedPlayerDataStoreProvider),
+        ));
         final unauthorized = ref.watch(unauthorizedEventsProvider);
         final accountDeleted = ref.watch(accountDeletedEventsProvider);
         client.onUnauthorized = unauthorized.signal;
@@ -148,6 +167,38 @@ ProviderContainer _container({
       }),
     ],
   );
+}
+
+Future<void> _seedSavedAndFailureData(ProviderContainer container) async {
+  final SavedPlayerDataStore saved = container.read(savedPlayerDataStoreProvider);
+  final ConnectionFailureStore failures =
+      container.read(connectionFailureStoreProvider);
+  for (final String accountId in <String>[_accountAlice, 'account-alice-other']) {
+    await saved.write(accountId, '/dashboard/volume', <String, dynamic>{
+      'body': <String, double>{'Chest': 8},
+    }, saved.generation);
+    await failures.write(accountId, <ClientConnectionFailure>[
+      ClientConnectionFailure(
+        occurredAt: DateTime.utc(2026, 11, 11),
+        failureType: 'connect_timeout',
+        offlineReported: true,
+        platform: 'web',
+        appBuild: '42',
+        routeTemplate: '/dashboard/volume',
+      ),
+    ]);
+  }
+}
+
+Future<void> _expectSavedAndFailureDataErased(ProviderContainer container) async {
+  final SavedPlayerDataStore saved = container.read(savedPlayerDataStoreProvider);
+  final ConnectionFailureStore failures =
+      container.read(connectionFailureStoreProvider);
+  expect(await saved.read(_accountAlice, '/dashboard/volume'), isNull);
+  expect(await saved.session(_accountAlice), isNull);
+  expect(await failures.read(_accountAlice), isEmpty);
+  expect(await saved.read('account-alice-other', '/dashboard/volume'), isNotNull);
+  expect(await failures.read('account-alice-other'), hasLength(1));
 }
 
 Future<InMemoryDraftStore> _seedLocalData(
@@ -206,6 +257,7 @@ void main() {
           container.read(authControllerProvider.notifier);
       await auth.initialize();
       expect(container.read(authControllerProvider).isAuthenticated, isTrue);
+      await _seedSavedAndFailureData(container);
 
       await auth.deleteAccount('correct-horse-1');
 
@@ -224,6 +276,7 @@ void main() {
       expect(await displayLanguage.readAccount(_accountAlice), isNull);
       expect(await tokens.read(), isNull);
       expect(await tokens.readAccountId(), isNull);
+      await _expectSavedAndFailureDataErased(container);
     });
 
     test('wrong password changes nothing and keeps data', () async {
@@ -295,6 +348,7 @@ void main() {
       final ProviderContainer container = _container(
           fake: fake, tokens: tokens, drafts: drafts, cache: cache, chat: chat);
       addTearDown(container.dispose);
+      await _seedSavedAndFailureData(container);
       final AuthController auth =
           container.read(authControllerProvider.notifier);
 
@@ -309,6 +363,7 @@ void main() {
       expect(await cache.readProgram(_accountAlice), isNull);
       expect(await chat.readDisclosureAccepted(_accountAlice), isFalse);
       expect(await tokens.read(), isNull);
+      await _expectSavedAndFailureDataErased(container);
     });
 
     test('a draft-sync 401 account_deleted erases drafts without a prompt',
@@ -382,6 +437,8 @@ void main() {
       final InMemoryWorkoutCacheStore cache = InMemoryWorkoutCacheStore();
       final InMemoryChatCacheStore chat = InMemoryChatCacheStore();
       await drafts.write(_accountAlice, <WorkoutDraft>[_draft()]);
+      final InMemoryConnectionFailureStore connectionFailures =
+          InMemoryConnectionFailureStore();
 
       tester.view.physicalSize = const Size(1080, 2400);
       tester.view.devicePixelRatio = 2.0;
@@ -392,6 +449,14 @@ void main() {
         ProviderScope(
           overrides: <Override>[
             tokenStoreProvider.overrideWithValue(tokens),
+            connectionFailureStoreProvider
+                .overrideWithValue(connectionFailures),
+            savedPlayerDataStoreProvider.overrideWith((ref) {
+              final SavedPlayerDataStore store =
+                  SavedPlayerDataStore(browser: createBrowserKeyValueStore());
+              ref.onDispose(store.dispose);
+              return store;
+            }),
             appModeStoreProvider.overrideWithValue(InMemoryAppModeStore()),
             draftStoreProvider.overrideWithValue(drafts),
             workoutCacheStoreProvider.overrideWithValue(cache),
@@ -403,8 +468,21 @@ void main() {
             deviceTimezoneProvider
                 .overrideWithValue(Future<String>.value('America/New_York')),
             apiClientProvider.overrideWith((ref) {
-              final ApiClient client =
-                  _api(fake, ref.watch(tokenStoreProvider));
+              final ApiClient client = ApiClient(
+                tokens: ref.watch(tokenStoreProvider),
+                baseUrl: 'http://test.local',
+                adapter: fake.adapter,
+                retryDelay: (_) async {},
+                connectionFailureOptions: ConnectionFailureOptions(
+                  store: connectionFailures,
+                  offlineStatusLoader: () async => false,
+                ),
+              );
+              ref.onDispose(client.dispose);
+              client.dio.interceptors.add(SavedPlayerReads(
+                ref.watch(tokenStoreProvider),
+                ref.watch(savedPlayerDataStoreProvider),
+              ));
               final unauthorized = ref.watch(unauthorizedEventsProvider);
               final accountDeleted = ref.watch(accountDeletedEventsProvider);
               client.onUnauthorized = unauthorized.signal;

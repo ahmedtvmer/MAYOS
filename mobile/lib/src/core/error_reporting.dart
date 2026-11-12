@@ -58,7 +58,14 @@ String sentryRouteTemplate(String path) {
     'whats-new', 'assistant', 'chat', 'roster', 'invites', 'assignments',
     'checkpoint', 'checkpoints', 'water', 'weight', 'measurements',
     'versions', 'draft', 'publish', 'acknowledge', 'resolve', 'latest',
-    'summary', 'catalog',
+    'summary', 'catalog', 'injuries', 'clearances', 'client',
+    'connection-failures', 'dashboard', 'training-status', 'sessions',
+    'volume', 'personal-records', 'food-log', 'quick-add',
+    'personal-foods', 'setup', 'activity', 'adherence', 'goal', 'goal-offer',
+    'dismiss', 'pauses', 'intake', 'disclosure', 'design-offer', 'accept',
+    'generate', 'notices', 'read', 'program-requests', 'templates',
+    'capabilities', 'import', 'preview', 'create', 'update', 'delete', 'clear',
+    'end', 'revoke', 'version-policy', 'policy',
   };
   return '/${parts.map((String part) =>
       staticSegments.contains(part) ? part : ':id').join('/')}';

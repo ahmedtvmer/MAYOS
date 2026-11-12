@@ -10,6 +10,7 @@ import 'package:mayos_mobile/src/core/app_mode.dart';
 import 'package:mayos_mobile/src/core/baselines.dart';
 import 'package:mayos_mobile/src/core/chat_storage.dart';
 import 'package:mayos_mobile/src/core/client_session_id.dart';
+import 'package:mayos_mobile/src/core/connection_failures.dart';
 import 'package:mayos_mobile/src/core/device_timezone.dart';
 import 'package:mayos_mobile/src/core/models.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
@@ -23,6 +24,7 @@ import 'package:mayos_mobile/src/providers.dart';
 import 'support/fake_api_adapter.dart';
 import 'support/fake_google_auth.dart';
 import 'support/fake_mayos_api.dart';
+import 'support/in_memory_connection_failure_store.dart';
 
 /// Sign-in methods in Settings (#116): the section is driven by `GET /auth/me`
 /// and every Google and API call runs against the two fakes.
@@ -82,11 +84,15 @@ Future<void> _pumpSettings(
   final InMemoryWorkoutCacheStore cacheStore =
       cache ?? InMemoryWorkoutCacheStore();
   final InMemoryChatCacheStore chatStore = chat ?? InMemoryChatCacheStore();
+  final InMemoryConnectionFailureStore connectionFailures =
+      InMemoryConnectionFailureStore();
 
   await tester.pumpWidget(
     ProviderScope(
       overrides: <Override>[
         tokenStoreProvider.overrideWithValue(tokens),
+        connectionFailureStoreProvider
+            .overrideWithValue(connectionFailures),
         appModeStoreProvider.overrideWithValue(InMemoryAppModeStore()),
         draftStoreProvider.overrideWithValue(draftStore),
         workoutCacheStoreProvider.overrideWithValue(cacheStore),
@@ -103,6 +109,10 @@ Future<void> _pumpSettings(
             tokens: ref.watch(tokenStoreProvider),
             baseUrl: 'http://test.local',
             adapter: fake.adapter,
+            connectionFailureOptions: ConnectionFailureOptions(
+              store: connectionFailures,
+              offlineStatusLoader: () async => false,
+            ),
           );
           client.onUnauthorized = ref.watch(unauthorizedEventsProvider).signal;
           client.onAccountDeleted =

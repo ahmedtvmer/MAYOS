@@ -35,6 +35,15 @@ class ConnectivityEvents(context: Context, messenger: BinaryMessenger) {
                     stopListening()
                     result.success(null)
                 }
+                "hasInternetConnection" -> {
+                    try {
+                        @Suppress("DEPRECATION")
+                        val connected = manager.activeNetworkInfo?.isConnected == true
+                        result.success(connected)
+                    } catch (_: SecurityException) {
+                        result.error("connectivity_unavailable", null, null)
+                    }
+                }
                 else -> result.notImplemented()
             }
         }

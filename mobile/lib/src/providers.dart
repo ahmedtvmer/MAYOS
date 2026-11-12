@@ -18,6 +18,7 @@ import 'core/browser_key_value_store.dart';
 import 'core/chat_storage.dart';
 import 'core/client_dimensions.dart';
 import 'core/config.dart';
+import 'core/connection_failures.dart';
 import 'core/display_language/controller.dart';
 import 'core/display_language/store.dart';
 import 'core/models.dart';
@@ -50,6 +51,11 @@ final StateProvider<bool> playerChatStreamingProvider =
 
 final Provider<TokenStore> tokenStoreProvider = Provider<TokenStore>(
   (ref) => SecureTokenStore(),
+);
+
+final Provider<ConnectionFailureStore> connectionFailureStoreProvider =
+    Provider<ConnectionFailureStore>(
+  (ref) => SecureConnectionFailureStore(),
 );
 
 final Provider<SavedPlayerDataStore> savedPlayerDataStoreProvider =
@@ -106,6 +112,9 @@ final Provider<ApiClient> apiClientProvider = Provider<ApiClient>((ref) {
     tokens: tokens,
     baseUrl: apiBaseUrl,
     displayLanguageLoader: () => ref.read(displayLanguageProvider),
+    connectionFailureOptions: ConnectionFailureOptions(
+      store: ref.watch(connectionFailureStoreProvider),
+    ),
   );
   ref.onDispose(client.dispose);
   client.dio.interceptors.add(
@@ -183,6 +192,7 @@ final Provider<AuthRepository> authRepositoryProvider =
       baselines: ref.watch(baselineCacheStoreProvider),
       activeWorkout: ref.watch(activeWorkoutStoreProvider),
       workoutStartNotice: ref.watch(workoutStartNoticeStoreProvider),
+      connectionFailures: ref.watch(connectionFailureStoreProvider),
     ),
   ),
 );

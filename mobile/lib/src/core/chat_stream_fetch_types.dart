@@ -17,7 +17,12 @@ abstract interface class ChatStreamFetchRequest {
 
 /// Marks a failure from fetch itself or its response byte reader.
 class ChatStreamTransportException implements Exception {
-  const ChatStreamTransportException();
+  const ChatStreamTransportException([this.reason = '']);
+
+  final String reason;
+
+  @override
+  String toString() => reason;
 }
 
 class ChatStreamFetchResponse {

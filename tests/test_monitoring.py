@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from svc.connection_failures import ConnectionFailureMetrics
 from svc.monitoring.measurements import HourlyMeasurements, LATENCY_BUCKETS_MS, percentile_estimate
 from svc.monitoring.runtime import Monitoring, MonitoringView
 from svc.monitoring.store import MetricsStore
@@ -14,7 +15,9 @@ from svc.request_metrics import RequestMetrics
 
 
 def _monitoring():
-    app = SimpleNamespace(state=SimpleNamespace(request_metrics=RequestMetrics()))
+    app = SimpleNamespace(state=SimpleNamespace(
+        request_metrics=RequestMetrics(), connection_failure_metrics=ConnectionFailureMetrics(),
+    ))
     return app.state.request_metrics, Monitoring(app)
 
 

@@ -15,9 +15,11 @@ import 'baselines.dart';
 import 'chat_models.dart';
 import 'chat_stream_fetch.dart';
 import 'client_dimensions.dart';
+import 'connection_failures.dart';
 import 'models.dart';
 import 'coach_food_log_models.dart';
 import 'food_log_models.dart';
+import 'saved_player_reads.dart';
 import 'sse.dart';
 import 'token_store.dart';
 
@@ -142,6 +144,7 @@ class ApiClient {
     String Function()? clientHeaderLoader,
     String? Function()? buildHeaderLoader,
     String Function()? displayLanguageLoader,
+    ConnectionFailureOptions? connectionFailureOptions,
     Future<void> Function(Duration)? retryDelay,
   })  : _tokens = tokens,
         _baseUrl = baseUrl,
@@ -160,6 +163,15 @@ class ApiClient {
       ),
     );
     _dio.httpClientAdapter = adapter ?? _dio.httpClientAdapter;
+    final ConnectionFailureOptions failureOptions =
+        connectionFailureOptions ?? const ConnectionFailureOptions();
+    _connectionFailureReporter = PersistedConnectionFailureReporter(
+      tokens: _tokens,
+      dio: _dio,
+      store: failureOptions.store,
+      offlineStatusLoader: failureOptions.offlineStatusLoader,
+    );
+    unawaited(_warmAccountIdSnapshot());
     _dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: _attachToken,
@@ -173,7 +185,7 @@ class ApiClient {
     );
   }
 
-  static const String _skipAuth = 'skipAuth';
+  static const String _skipAuth = connectionFailureSkipAuthKey;
   static const String _sessionRequestToken = 'sessionRequestToken';
   static const String _allowRequestAfterSessionEnd =
       'allowRequestAfterSessionEnd';
@@ -261,6 +273,7 @@ class ApiClient {
   final Future<void> Function(Duration)? _retryDelay;
   final Random _retryRandom = Random();
   late final Dio _dio;
+  late final PersistedConnectionFailureReporter _connectionFailureReporter;
   final Set<CancelToken> _sessionRequestTokens = <CancelToken>{};
   final Map<CancelToken, Completer<void>> _sessionRequestCompletions =
       <CancelToken, Completer<void>>{};
@@ -336,6 +349,14 @@ class ApiClient {
     handler.next(options);
   }
 
+  Future<void> _warmAccountIdSnapshot() async {
+    try {
+      await _tokens.readAccountId();
+    } on Object {
+      // Account lookup is best effort for telemetry attribution.
+    }
+  }
+
   Future<bool> _attachBearer(
     RequestOptions options,
     RequestInterceptorHandler handler,
@@ -352,6 +373,10 @@ class ApiClient {
     }
     if (token != null && token.isNotEmpty) {
       options.headers['Authorization'] = 'Bearer $token';
+      final String? accountId = _tokens.lastKnownAccountId;
+      if (accountId != null && accountId.isNotEmpty) {
+        options.extra[connectionFailureAccountKey] = accountId;
+      }
     }
     return true;
   }
@@ -405,11 +430,13 @@ class ApiClient {
   }) =>
       '$platform/$version';
 
-  void _handleError(
-    DioException error,
-    ErrorInterceptorHandler handler,
-  ) {
+  void _handleError(DioException error, ErrorInterceptorHandler handler) {
     _forgetSessionRequest(error.requestOptions);
+    if (error.requestOptions.path == connectionFailuresEndpoint) {
+      // A stale telemetry upload must not sign out or redirect the Player.
+      handler.next(error);
+      return;
+    }
     final int? status = error.response?.statusCode;
     if (status != null) _addHttpBreadcrumb(error.requestOptions, status);
     final dynamic responseBody = error.response?.data;
@@ -473,12 +500,16 @@ class ApiClient {
     int retries = 0;
     while (true) {
       try {
-        return await run();
+        final Response<dynamic> response = await run();
+        _reportResponse(response);
+        return response;
       } on DioException catch (error) {
         if (_disposed ||
             retries == 3 ||
             !_canRetryRead(error) ||
             _sessionEndedFor(error.requestOptions, sessionRevision)) {
+          // Only the final attempt's failure is reported (ADR 114).
+          _recordConnectionFailure(error);
           // Cleanup may wait for work that needs this error to reach its caller.
           await _waitForDioErrorHandling(error);
           throw _toApiException(error);
@@ -496,6 +527,8 @@ class ApiClient {
         if (_disposed ||
             _sessionEndedFor(error.requestOptions, sessionRevision) ||
             error.requestOptions.cancelToken?.isCancelled == true) {
+          // Teardown ended the retries, but the transport failure still happened.
+          _recordConnectionFailure(error);
           throw _toApiException(error);
         }
       }
@@ -510,6 +543,33 @@ class ApiClient {
       (error.type == DioExceptionType.connectionError ||
           error.type == DioExceptionType.connectionTimeout ||
           error.type == DioExceptionType.receiveTimeout);
+
+  void _reportResponse(Response<dynamic> response) {
+    if (response.extra[SavedPlayerReads.cachedResponse] == true) {
+      final Object? failure = response.extra[SavedPlayerReads.transportFailure];
+      if (failure is DioException) _recordConnectionFailure(failure);
+      return;
+    }
+    if (response.statusCode != null &&
+        response.statusCode! >= 200 &&
+        response.statusCode! < 300) {
+      _connectionFailureReporter
+          .flushAfterSuccessfulRequest(response.requestOptions);
+    }
+  }
+
+  void _recordConnectionFailure(DioException error) {
+    if (error.response != null || error.type == DioExceptionType.cancel) return;
+    unawaited(_recordConnectionFailureSafely(error));
+  }
+
+  Future<void> _recordConnectionFailureSafely(DioException error) async {
+    try {
+      await _connectionFailureReporter.record(error);
+    } on Object {
+      // Device telemetry must not delay or replace the request's failure.
+    }
+  }
 
   static bool _belongsToSession(RequestOptions request) =>
       request.extra[_skipAuth] != true &&
@@ -3526,9 +3586,12 @@ class ApiClient {
         await _waitForDioErrorHandling(error);
         throw _errorFromResponse(errorStatus, raw);
       }
+      _recordConnectionFailure(error);
       await _waitForDioErrorHandling(error);
       throw _toApiException(error);
     }
+
+    _reportResponse(response);
 
     final dynamic body = response.data;
     final Stream<Uint8List>? bytes = body is ResponseBody ? body.stream : null;
@@ -3592,6 +3655,16 @@ class ApiClient {
     MultiStreamController<ChatStreamEvent> events,
   ) async {
     final Map<String, String> headers = await _chatStreamHeaders();
+    final String? accountId = _tokens.lastKnownAccountId;
+    final RequestOptions reportRequest = RequestOptions(
+      path: path,
+      method: 'POST',
+      headers: headers,
+      extra: <String, dynamic>{
+        if (accountId != null && accountId.isNotEmpty)
+          connectionFailureAccountKey: accountId,
+      },
+    );
     if (events.isClosed) return;
     final ChatStreamFetchRequest request = fetch(
       // Relative resolve against a slash-terminated base keeps any path
@@ -3601,8 +3674,37 @@ class ApiClient {
       headers: headers,
       body: jsonEncode(body),
     );
-    events.onCancel = request.abort;
-    await _pipeFetchSseResponse(request, parseDone, events);
+    bool cancelled = false;
+    events.onCancel = () {
+      cancelled = true;
+      request.abort();
+    };
+    final ChatStreamFetchResponse response;
+    try {
+      response = await request.response;
+    } on ChatStreamTransportException catch (error) {
+      if (!cancelled) {
+        _recordFetchConnectionFailure(reportRequest, error);
+      }
+      rethrow;
+    }
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      _connectionFailureReporter.flushAfterSuccessfulRequest(reportRequest);
+    }
+    await _pipeFetchSseResponse(response, parseDone, events);
+  }
+
+  void _recordFetchConnectionFailure(
+    RequestOptions request,
+    ChatStreamTransportException error,
+  ) {
+    _recordConnectionFailure(
+      DioException(
+        requestOptions: request,
+        type: DioExceptionType.connectionError,
+        error: error,
+      ),
+    );
   }
 
   void _forwardFetchFailure(
@@ -3642,11 +3744,10 @@ class ApiClient {
   }
 
   Future<void> _pipeFetchSseResponse(
-    ChatStreamFetchRequest request,
+    ChatStreamFetchResponse response,
     _AssistantDoneParser parseDone,
     MultiStreamController<ChatStreamEvent> events,
   ) async {
-    final ChatStreamFetchResponse response = await request.response;
     if (events.isClosed) return;
     if (response.statusCode < 200 || response.statusCode >= 300) {
       await _throwFetchResponseFailure(response);

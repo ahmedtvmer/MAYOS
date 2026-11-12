@@ -1,6 +1,6 @@
 """Pydantic request/response contracts for the FastAPI service."""
 
-from datetime import date
+from datetime import UTC, date, datetime
 from math import isfinite
 from typing import Any, Literal
 from urllib.parse import urlsplit
@@ -118,6 +118,8 @@ __all__ = [
     "CoachPlayerSessionExerciseOut",
     "CoachPlayerSummaryOut",
     "CoachProfileOut",
+    "ClientConnectionFailureBatchIn",
+    "ClientConnectionFailureIn",
     "CoachProfileUpdate",
     "CoachSettingsOut",
     "CoachSettingsUpdate",
@@ -247,6 +249,43 @@ class DisplayLanguageIn(BaseModel):
 # Legacy app compatibility; remove with the route after MIN_ANDROID_BUILD reaches 2 (#445).
 class AnalyticsPreferenceIn(BaseModel):
     analytics_allowed: bool
+
+
+class ClientConnectionFailureIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    occurred_at: datetime
+    failure_type: Literal[
+        "dns", "connect_timeout", "receive_timeout", "connection_reset", "other"
+    ]
+    offline_reported: bool
+    platform: Literal["web", "android"]
+    app_build: str = Field(
+        min_length=1,
+        max_length=64,
+        pattern=r"^[A-Za-z0-9._+-]+$",
+    )
+    route_template: str = Field(min_length=1, max_length=256)
+
+    @field_validator("occurred_at")
+    @classmethod
+    def require_aware_time(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("occurred_at must include a timezone")
+        return value.astimezone(UTC)
+
+    @field_validator("route_template")
+    @classmethod
+    def require_route_path(cls, value: str) -> str:
+        if not value.startswith("/"):
+            raise ValueError("route_template must start with '/'")
+        return value
+
+
+class ClientConnectionFailureBatchIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    failures: list[ClientConnectionFailureIn] = Field(min_length=1, max_length=200)
 
 
 class TourSeenVersionIn(BaseModel):

@@ -55,10 +55,10 @@ class _BrowserFetchRequest implements ChatStreamFetchRequest {
             ? const Stream<List<int>>.empty()
             : _read(responseBody),
       );
-    } on Object {
+    } on Object catch (error) {
       // JavaScript promises may reject with values outside Dart's Exception
       // hierarchy.
-      throw const ChatStreamTransportException();
+      throw ChatStreamTransportException(error.toString());
     }
   }
 
@@ -72,9 +72,9 @@ class _BrowserFetchRequest implements ChatStreamFetchRequest {
         final JSUint8Array? chunk = result.value as JSUint8Array?;
         if (chunk != null) yield chunk.toDart;
       }
-    } on Object {
+    } on Object catch (error) {
       // Normalize reader failures to the same transport error as fetch failures.
-      throw const ChatStreamTransportException();
+      throw ChatStreamTransportException(error.toString());
     } finally {
       reader?.releaseLock();
     }

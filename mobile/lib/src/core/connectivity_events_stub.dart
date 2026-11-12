@@ -41,3 +41,5 @@ Stream<bool> browserConnectivityEvents() {
   events = StreamController<bool>(onListen: start, onCancel: stop);
   return events.stream;
 }
+
+bool browserReportedOffline() => false;

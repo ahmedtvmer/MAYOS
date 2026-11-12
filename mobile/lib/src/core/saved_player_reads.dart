@@ -15,6 +15,7 @@ class SavedPlayerReads extends Interceptor {
   final SavedPlayerDataStore _store;
   static const String _contextKey = 'savedPlayerRead';
   static const String cachedResponse = 'savedPlayerResponse';
+  static const String transportFailure = 'savedPlayerTransportFailure';
   static const Set<String> _paths = <String>{
     '/auth/me',
     '/profile/schedule',
@@ -83,6 +84,7 @@ class SavedPlayerReads extends Interceptor {
       final Response<dynamic>? saved =
           await _savedResponse(error.requestOptions, context);
       if (saved != null) {
+        saved.extra[transportFailure] = error;
         _store.useSavedData();
         handler.resolve(saved);
         return;

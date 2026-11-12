@@ -415,6 +415,9 @@ assignment, Training ledger or model_usage records. Use operational database
 queries for current state, and a BI layer for joined historical finance and
 cohort reporting. Event delivery is fire-and-forget, so authoritative writes can
 outlive a lost analytics event if the process exits between commit and capture.
+Client connection failures are operational monitoring, not PostHog product
+analytics; the API folds authenticated, route-template-only reports into hourly
+counts in the separate Owner Monitoring store.
 
 The server uses the PostHog SDK background queue, sends nothing without a
 project key, and is a no-op in tests. Person deletion uses the MAYOS analytics

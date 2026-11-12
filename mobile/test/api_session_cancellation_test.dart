@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
+import 'package:mayos_mobile/src/core/connection_failures.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 
 import 'support/fake_api_adapter.dart';
@@ -30,10 +31,19 @@ void main() {
     final FakeApiAdapter adapter = FakeApiAdapter((_) => offline
         ? const FakeResponse.networkFailure()
         : const FakeResponse(200, <String, double>{'Chest': 8}));
+    final InMemoryTokenStore tokens = InMemoryTokenStore();
+    await tokens.save('token-alice');
+    await tokens.saveAccountId('account-alice');
+    final MemoryConnectionFailureStore failures = MemoryConnectionFailureStore();
     final ApiClient api = ApiClient(
-      tokens: InMemoryTokenStore(),
+      tokens: tokens,
       baseUrl: 'http://test.local',
       adapter: adapter,
+      clientHeaderLoader: () => 'web/1.2.3',
+      connectionFailureOptions: ConnectionFailureOptions(
+        store: failures,
+        offlineStatusLoader: () async => false,
+      ),
     );
     addTearDown(api.dispose);
     final Future<void> failedRead =
@@ -47,12 +57,16 @@ void main() {
     await _completeWithPumps(tester, failedRead);
     await tester.pump(const Duration(seconds: 10));
     expect(adapter.requests, hasLength(1));
+    expect(await failures.read('account-alice'), hasLength(1));
 
     // A subsequent session can read, without reviving the previous GET.
+    await tokens.save('token-bob');
+    await tokens.saveAccountId('account-bob');
     offline = false;
     await _completeWithPumps(tester,
         expectLater(api.volume(), completion(<String, double>{'Chest': 8})));
     expect(adapter.requests, hasLength(2));
+    expect(await failures.read('account-bob'), isEmpty);
   });
 
   testWidgets('ending a session finishes an in-flight GET cancellation',
@@ -61,10 +75,19 @@ void main() {
     final FakeApiAdapter adapter = FakeApiAdapter(
       (_) => const FakeResponse.networkFailure(),
     )..beforeRespond = (_) => releaseResponse.future;
+    final InMemoryTokenStore tokens = InMemoryTokenStore();
+    await tokens.save('token-alice');
+    await tokens.saveAccountId('account-alice');
+    final MemoryConnectionFailureStore failures = MemoryConnectionFailureStore();
     final ApiClient api = ApiClient(
-      tokens: InMemoryTokenStore(),
+      tokens: tokens,
       baseUrl: 'http://test.local',
       adapter: adapter,
+      clientHeaderLoader: () => 'web/1.2.3',
+      connectionFailureOptions: ConnectionFailureOptions(
+        store: failures,
+        offlineStatusLoader: () async => false,
+      ),
     );
     addTearDown(api.dispose);
     final Future<void> failedRead =
@@ -77,5 +100,6 @@ void main() {
     releaseResponse.complete();
     await tester.pump(Duration.zero);
     expect(adapter.requests, hasLength(1));
+    expect(await failures.read('account-alice'), isEmpty);
   });
 }
