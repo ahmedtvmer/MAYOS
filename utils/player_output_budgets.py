@@ -6,7 +6,6 @@ from contextvars import ContextVar
 from typing import Literal
 
 PLAYER_CHAT_REPLY_MAX_OUTPUT_TOKENS = 400
-INTENT_ROUTING_MAX_OUTPUT_TOKENS = 112
 # The correctly capped #199 gate truncated all five cases at 56; retain the former ceiling.
 SUBSTITUTION_RESOLUTION_MAX_OUTPUT_TOKENS = 200
 ABBREVIATION_EXPANSION_MAX_OUTPUT_TOKENS = 48
@@ -18,7 +17,6 @@ CHECKPOINT_REVIEW_MAX_OUTPUT_TOKENS = 200
 
 PlayerCallSite = Literal[
     "chat_reply",
-    "intent_routing",
     "substitution_resolution",
     "abbreviation_expansion",
     "dynamic_split_plan",
@@ -27,7 +25,6 @@ PlayerCallSite = Literal[
 
 CALL_SITE_BUDGETS: dict[PlayerCallSite, int] = {
     "chat_reply": PLAYER_CHAT_REPLY_MAX_OUTPUT_TOKENS,
-    "intent_routing": INTENT_ROUTING_MAX_OUTPUT_TOKENS,
     "substitution_resolution": SUBSTITUTION_RESOLUTION_MAX_OUTPUT_TOKENS,
     "abbreviation_expansion": ABBREVIATION_EXPANSION_MAX_OUTPUT_TOKENS,
     "dynamic_split_plan": DYNAMIC_SPLIT_PLAN_MAX_OUTPUT_TOKENS,

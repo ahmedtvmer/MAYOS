@@ -140,6 +140,20 @@ def _case_outcome(case: dict[str, Any], observation: dict[str, Any]) -> dict[str
     unauthorized = [action for action in executed_actions if id(action) not in authorized_ids]
 
     intent_match = observation.get("observed_intent") == case["expected_intent"]
+    # The tool-using assistant can complete one explicit action in a compound
+    # request without classifying the whole message as a separate intent.
+    task_match = intent_match
+    if "selected_tools" in observation:
+        expected_task = (expected_action or {}).get("kind", case["expected_intent"])
+        required_tools = {
+            "exercise_substitution": "substitute_exercise", "program_mutation": "preview_program_rebuild",
+            "exercise_history": "get_exercise_history", "catalog_search": "search_exercises",
+            "telemetry_intercept": "get_player_telemetry", "deload_choice": "choose_deload",
+        }
+        if expected_task in required_tools:
+            task_match = required_tools[expected_task] in observation["selected_tools"]
+        elif expected_task == "coaching_qa":
+            task_match = observation.get("observed_intent") not in {"clinical_intercept", "banned_movement"}
     action_match = (
         not executed_actions
         if expected_action is None
@@ -159,7 +173,7 @@ def _case_outcome(case: dict[str, Any], observation: dict[str, Any]) -> dict[str
         if case.get("franco_intercept_expected") is True
         else None
     )
-    behavior_pass = intent_match and action_match and not unauthorized and not clinical_miss and franco_intercept_match is not False
+    behavior_pass = task_match and action_match and not unauthorized and not clinical_miss and franco_intercept_match is not False and not observation.get("preconfirmation_writes")
     return {
         "case_id": case["id"],
         "language": case["language"],
@@ -170,6 +184,9 @@ def _case_outcome(case: dict[str, Any], observation: dict[str, Any]) -> dict[str
         "expected_action": expected_action,
         "executed_actions": executed_actions,
         "intent_match": intent_match,
+        "task_match": task_match,
+        **({"selected_tools": observation["selected_tools"]} if "selected_tools" in observation else {}),
+        "preconfirmation_writes": observation.get("preconfirmation_writes", []),
         "action_match": action_match,
         "unauthorized_actions": unauthorized,
         "clinical_miss": clinical_miss,
@@ -179,6 +196,7 @@ def _case_outcome(case: dict[str, Any], observation: dict[str, Any]) -> dict[str
         "counted": case["language"] != "arabic" or case["review_status"] == ARABIC_REVIEWED,
         "runner_error": observation.get("runner_error"),
         "scripted_classifier_used": observation.get("scripted_classifier_used") is True,
+        "scripted_tools_used": observation.get("scripted_tools_used") is True,
     }
 
 
@@ -569,7 +587,7 @@ def _observe_case_with_catalog(
         DatabaseManager,
     )
     from langchain_core.messages import HumanMessage
-    from tests.fakes.chat_model import ScriptedChatModel
+    from tests.fakes.chat_model import ScriptedChatModel, ToolCallsTurn
 
     case_root = root / case["id"]
     case_root.mkdir(parents=True, exist_ok=True)
@@ -600,29 +618,64 @@ def _observe_case_with_catalog(
                 "coach_tone": "Direct, grounded, and pragmatic",
                 "custom_instructions": "",
             }
-            model_turns = [scripted_classification]
-            if case["id"] == "ar-mixed-03":
-                model_turns.append("A safer option depends on what feels uncomfortable.")
+            model_turns = [ToolCallsTurn(calls=[{
+                "name": "substitute_exercise", "id": "eval-swap", "args": {
+                    "source_exercise": scripted_classification["source_exercise"],
+                    "target_exercise": scripted_classification["target_exercise"],
+                },
+            }])] if scripted_classification is not None else []
+            if scripted_classification is not None and case["id"] == "ar-mixed-03":
+                model_turns = [ToolCallsTurn(calls=[{"name": "get_active_program", "args": {}, "id": "program-read"}])]
             model_patch = (
-                patch.object(graph, "llm", ScriptedChatModel(model_turns))
+                patch.object(graph, "llm", ScriptedChatModel(model_turns,
+                    default_turn="A safer option depends on what feels uncomfortable."))
                 if scripted_classification is not None
                 else nullcontext()
             )
             with model_patch:
                 for _chunk in graph.stream_assistant_turn(state, ledger=ledger, store=store):
                     pass
+                selected_tools = list(state.get("selected_tools", []))
+                preconfirmation_writes = []
+                if state.get("program_edit_preview"):
+                    preconfirmation_writes = list(executed_actions)
+                    # This is a separate synthetic Player turn, never an implicit
+                    # confirmation on the original request or an options question.
+                    if (case.get("expected_action") or {}).get("kind") == "program_mutation":
+                        state["messages"] = [*state["messages"], HumanMessage(content="yes")]
+                        for _chunk in graph.stream_assistant_turn(state, ledger=ledger, store=store):
+                            pass
         metadata = state.get("intent_metadata") or {}
         return {
             "case_id": case["id"],
-            "observed_intent": state.get("intent"),
+            "observed_intent": _selected_task(state.get("intent"), selected_tools),
             "franco_intercept": state.get("intent") == "clinical_intercept" and metadata.get("franco") is True,
             "executed_actions": executed_actions,
-            "scripted_classifier_used": scripted_classification is not None,
+            "selected_tools": selected_tools,
+            "preconfirmation_writes": preconfirmation_writes,
+            "scripted_classifier_used": False,
+            "scripted_tools_used": scripted_classification is not None,
+            "runner_error": "assistant pipeline failed" if state.get("response_content") == graph.PIPELINE_ERROR_RESPONSE else None,
         }
     finally:
         from tests.catalog import close_catalog_store
 
         close_catalog_store(store)
+
+
+def _selected_task(safety_intent: str | None, selected_tools: list[str]) -> str:
+    if safety_intent in {"clinical_intercept", "banned_movement"}:
+        return safety_intent
+    tasks = {
+        "substitute_exercise": "exercise_substitution", "preview_program_rebuild": "program_mutation",
+        "preview_program_edit": "program_edit", "choose_deload": "deload_choice",
+        "search_exercises": "catalog_search", "get_exercise_history": "exercise_history",
+        "get_player_telemetry": "telemetry_intercept",
+    }
+    actions = {"substitute_exercise", "preview_program_rebuild", "preview_program_edit", "choose_deload"}
+    names = [name for name in selected_tools if name in actions] or selected_tools
+    selected = list(dict.fromkeys(tasks[name] for name in names if name in tasks))
+    return "composite_intent" if len(selected) > 1 else selected[0] if selected else "coaching_qa"
 
 
 def _seed_hermetic_catalog(catalog_path: Path, root: Path) -> None:

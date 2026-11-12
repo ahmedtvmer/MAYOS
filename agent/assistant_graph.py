@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, HumanMessage, SystemMessage
 from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from typing_extensions import NotRequired, TypedDict
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -55,12 +55,11 @@ from agent.program_generator import (
     get_biomechanical_cue,
 )
 from agent.program_blueprints import (
-    DEFAULT_SPLIT_BY_FREQUENCY,
     LEGACY_GLUTE_PRIORITY_SPLIT_NAMES,
     SPLIT_DISPLAY_NAMES,
     experience_level_for_training_age,
 )
-from agent.program_rules import SPLIT_FREQUENCY_NAMES, get_split_plan, match_split_keyword
+from agent.program_rules import SPLIT_FREQUENCY_NAMES, match_split_keyword
 from agent.program_weeks import normalize_program_weeks
 from agent.prompts import (
     ARABIC_CLINICAL_SAFEGUARD_RESPONSE,
@@ -84,15 +83,13 @@ from agent.player_prompt import (
     valid_preferred_name as _valid_preferred_name,
 )
 from agent.player_tools import (
-    build_player_read_tools,
     cap_tool_results_for_prompt,
-    run_player_tool_calls,
 )
 from agent.context_router import RoutedContext, route_player_context
+from agent.player_action_tools import build_player_chat_tools, run_player_chat_tool_calls
 from agent.telemetry_reconciler import (
     clean_movement_stem,
     extract_ledger_exercise_name,
-    reconcile_telemetry_query,
 )
 from database.exercise_library.schema import exercise_library_visible_sql
 from service.exercise_context import describe_exercise, describe_exercises
@@ -173,7 +170,6 @@ IntentType = Literal[
     "exercise_clearance_update",
     "exercise_clearance_disambiguation",
     "coaching_qa",
-    "composite_intent",
 ]
 
 # Tier-0a: unconditional acute-trauma signals (fail-closed; no fatigue bypass).
@@ -311,7 +307,7 @@ RE_BANNED_MOVEMENT = re.compile(
     r"\b(behind[\s-]the[\s-]neck|upright[\s-]rows?|(?:burn|activation)[\s-]sets?|(?:light\s+reps|burn\s+and\s+activation))\b",
     re.IGNORECASE,
 )
-RE_NUTRITION = re.compile(r"\b(calorie|caloric|macro|nutrition|diet|meal|food|protein|carb|fat)\b", re.IGNORECASE)
+# These patterns authorize already-selected tools; they never select a chat path.
 RE_EXPLICIT_SWAP = re.compile(
     r"\b(?:swap|replace|substitute|switch(?:\s+out)?|change)\b\s+(?P<source>.+?)\s+\b(?:for|with|instead of|to)\b\s+(?P<target>.+)",
     re.IGNORECASE,
@@ -321,65 +317,6 @@ RE_ARABIC_SWAP_REQUEST = re.compile(
     r"(?:(?:عايز|عاوز|عايزة|عاوزة|محتاج|محتاجة)\s+)?"
     r"(?:أ?بدل|أ?غير|استبدل)(?:\s+لي)?(?:\s|$)"
 )
-# Unicode \w treats Arabic letters as word characters; diacritics are removed first.
-RE_ARABIC_PROGRAM_COMMAND = re.compile(
-    r"(?:(?<!\w)(?:ظبط|غير|عدل|بدل|خلي|اعمل|زود|قلل)(?:لي)?(?!\w)|"
-    r"(?<!\w)(?:ممكن|لو\s+سمحت|يا\s+ريت|من\s+فضلك)\s+"
-    r"ت(?:ظبط|غير|عدل|بدل|خلي|عمل|زود|قلل)(?:لي)?(?!\w))"
-    r".{0,50}(?<!\w)(?:البرنامج|برنامج|التقسيمة|تقسيمة|الروتين|روتين|program|routine|split)(?!\w)",
-    re.IGNORECASE,
-)
-# Past-tense wishes and hedges («كنت عايز أغير… بس مش متأكد») are not requests.
-RE_ARABIC_HEDGED_PROGRAM_CHANGE = re.compile(
-    r"(?<!\w)(?:كنت|كان|كنا|يمكن|مش\s+متأكد|مش\s+متأكدة|مش\s+عارف|مش\s+عارفة|متردد|مترددة)(?!\w)"
-)
-RE_ARABIC_WANTED_PROGRAM_CHANGE = re.compile(
-    r"(?<!\w)(?:عايز|عاوز|عايزة|عاوزة|محتاج|محتاجة)\s+"
-    r"(?:أ|ا)?(?:ظبط|غير|عدل|بدل|خلي|عمل|زود|قلل)(?:لي)?(?!\w)"
-    r".{0,50}(?<!\w)(?:البرنامج|برنامج|التقسيمة|تقسيمة|الروتين|روتين|program|routine|split)(?!\w)",
-    re.IGNORECASE,
-)
-RE_ARABIC_NEGATED_PROGRAM_CHANGE = re.compile(
-    r"(?<!\w)(?:مش|ما|لا)\s+(?:عايز|عاوز|عايزة|عاوزة|محتاج|محتاجة)\s+"
-    r"(?:أ|ا)?(?:ظبط|غير|عدل|بدل|خلي|عمل|زود|قلل)(?:لي)?(?!\w)",
-    re.IGNORECASE,
-)
-RE_ARABIC_TRAIN_REST_QUESTION = re.compile(
-    r"(?<!\w)(?:أتمرن|اتمرن|أتدرب|اتدرب|ألعب|العب|أروح|اروح)"
-    r".{0,40}(?<!\w)(?:ولا|أم)\s*"
-    r"(?<!\w)(?:أريح|اريح|أرتاح|ارتاح|أستريح|استريح)(?!\w)|"
-    r"(?<!\w)(?:أريح|اريح|أرتاح|ارتاح|أستريح|استريح)"
-    r".{0,40}(?<!\w)(?:ولا|أم)\s*"
-    r"(?<!\w)(?:أتمرن|اتمرن|أتدرب|اتدرب|ألعب|العب|أروح|اروح)(?!\w)",
-    re.IGNORECASE,
-)
-RE_ARABIC_FREQUENCY_MENTION = re.compile(
-    r"(?<!\w)(?P<number>[0-9٠-٩]+|واحد|واحدة|اتنين|اثنين|يومين|تلاتة|ثلاثة|"
-    r"أربع|اربع|أربعة|اربعة|أربعين|خمسة|خمس|ستة|ست|سبعة|سبع)"
-    r"\s*(?:أيام?|ايام?|يومين|يوم|days?|d/wk)(?!\w)",
-    re.IGNORECASE,
-)
-ARABIC_DIGIT_TRANSLATION = str.maketrans("٠١٢٣٤٥٦٧٨٩", "0123456789")
-ARABIC_FREQUENCY_WORDS = {
-    "واحد": 1,
-    "واحدة": 1,
-    "اتنين": 2,
-    "اثنين": 2,
-    "يومين": 2,
-    "تلاتة": 3,
-    "ثلاثة": 3,
-    "أربع": 4,
-    "اربع": 4,
-    "أربعة": 4,
-    "اربعة": 4,
-    "أربعين": 40,
-    "خمسة": 5,
-    "خمس": 5,
-    "ستة": 6,
-    "ست": 6,
-    "سبعة": 7,
-    "سبع": 7,
-}
 RE_SINGLE_SWAP = re.compile(
     r"(?:(?:i\s+(?:just\s+)?want|show\s+me|give\s+me)\s+)?\b(?:swap|replace|substitute|alternatives?\s+(?:for|to)|switch(?:\s+out)?)\b\s+(?P<source>[a-zA-Z0-9\s\(\)\-\_]+)",
     re.IGNORECASE,
@@ -439,101 +376,17 @@ RE_ARABIC_NEGATED_DELOAD_CHOICE = re.compile(
 RE_ARABIC_NEGATION = re.compile(r"(?:^|\s)(?:لا|لن|ليس|مش|ما)\s")
 DELOAD_NO_CHANGE_CHOICE = "no_change"
 DELOAD_NO_CHANGE_RESPONSE = "There is nothing to change."
-RE_FREQ_DIGIT = re.compile(r"\b([1-5])\s*(?:days?|d/wk|days\s+a\s+week)\b", re.IGNORECASE)
-RE_SEARCH_TOKENS = re.compile(r"\b(search|find|lookup|show me|list exercises)\b", re.IGNORECASE)
-RE_ACTION_HINT = re.compile(
-    r"\b(swap|replace|substitute|change|split|routine|program|days|rebuild|alternatives?|exercises)\b",
-    re.IGNORECASE,
-)
 RE_INQUISITIVE_PREFIX = re.compile(
     r"^(?:should\s+i|can\s+(?:you|i)|could\s+(?:you|i)|would\s+it|what\s+if|why\s+(?:is|does|did)|is\s+it|how\s+(?:does|do|can|should)|explain|thoughts\s+on)\b",
     re.IGNORECASE,
 )
-RE_CLAUSE_SPLIT = re.compile(
-    r"(?:[;؛\n]+|(?:\.|\?|\!)\s+|\s+(?:and\s+also|and\s+then|also|plus|then)\s+|\s+and\s+(?=(?:swap|replace|substitute|switch|change|how|what|why|is|can|could|should|rebuild|new\s+split|search|find|behind[\s-]the[\s-]neck|upright[\s-]rows?)\b))",
+RE_SAFETY_CLAUSE_SPLIT = re.compile(
+    r"[;؛\n]+|[.?!]\s+|\s+(?:and\s+also|and\s+then|also|plus|then|and)\s+",
     re.IGNORECASE,
 )
 RE_EXERCISE_PERFORMANCE_QUERY = re.compile(
     r"\b(?:how\s+did\s+i\s+do\s+(?:in|on|for)|what\s+did\s+i\s+(?:do|hit|lift)\s+(?:in|on|for)|(?:my\s+last|check\s+(?:my\s+)?last)\s+session\s+(?:for|on|in)?)\s+(.+)",
     re.IGNORECASE,
-)
-
-
-class IntentClassification(BaseModel):
-    intent: str = Field(
-        description="One of: 'exercise_substitution', 'program_mutation', 'catalog_search', 'coaching_qa'"
-    )
-    source_exercise: str | None = None
-    target_exercise: str | None = None
-    target_frequency: int | None = None
-    search_query: str | None = None
-
-
-ROUTER_PROMPT = (
-    "Classify the trainee query into EXACTLY one category:\n"
-    "- exercise_substitution: Swapping/changing a specific movement in the routine.\n"
-    "- program_mutation: Rebuilding the split or altering weekly training days.\n"
-    "- catalog_search: Finding or listing movements from the database.\n"
-    "- coaching_qa: Biomechanics, technique cues, session reviews, fatigue, or general gym questions.\n\n"
-    "Extract entities where present."
-)
-
-
-class ArabicIntentClassification(BaseModel):
-    intent: Literal[
-        "exercise_substitution",
-        "composite_intent",
-        "program_change",
-        "exercise_history",
-        "coaching_qa",
-        "other",
-    ]
-    source_exercise: str | None = None
-    target_exercise: str | None = None
-    target_day: str | None = None
-    target_split_type: str | None = None
-    target_frequency: int | None = Field(default=None, strict=True)
-    history_exercise: str | None = None
-    history_whole_session: bool = False
-    has_swap: bool = False
-    has_additional_request: bool = False
-
-
-ARABIC_ROUTER_PROMPT = (
-    "Classify this Arabic or Arabic-dominant player message as exactly one of: "
-    "exercise_substitution, composite_intent, program_change, exercise_history, "
-    "coaching_qa, other. Use program_change for a direct request to change the Training "
-    "program, including its split family or weekly frequency. Affirmative Egyptian "
-    "desire forms such as عايز/عاوز/محتاج أغيّر are program_change requests even "
-    "when their target is missing; "
-    "questions or negated requests are not. Set target_split_type to "
-    "one of the allowed split family keys listed below, or null if no split was named; "
-    "set target_frequency to the requested number of days, or null if none was named. "
-    "Use exercise_history only to retrieve logged figures or summarize past workouts. "
-    "Questions asking what to do, including whether to train or rest because of fatigue, "
-    "are coaching_qa even if they mention yesterday's workout. For a question "
-    "about one exercise, set history_exercise to its English Exercise library-style name. "
-    "For a whole-session summary, set history_whole_session=true. The server validates "
-    "these proposals against the player's Training program and Exercise library. Use "
-    "exercise_substitution only when the player explicitly asks to replace or swap an "
-    "exercise and names the replacement, such as بدّل/غيّر/استبدل X بـ Y or "
-    "'swap X for Y'. Asking for a suggestion, an alternative, advice, or what to do "
-    "instead (including اقترح, بديل, إيه البديل, 'suggest', 'alternative', and "
-    "'what can I do instead') is coaching_qa, even when an exercise feels uncomfortable. "
-    "Never invent a replacement the player did not name. Use composite_intent when the "
-    "message combines an explicit named swap with another request, and set has_swap=true "
-    "only when it contains that explicit swap. For a swap, copy the source exactly from the current program "
-    "exercise names below. Return target_exercise as an English Exercise library-style "
-    "exercise name, translating Arabic gym terms instead of copying them. Examples: "
-    "بنش means Bench Press, دامبل means Dumbbell, بار means Barbell, ضغط مائل means "
-    "Incline Bench Press, ليج برس means Leg Press, سكوات means Squat, and رفرفة means "
-    "Fly or Raise. When the player names only equipment or a variant for the same "
-    "movement, apply it to the source movement: بالدامبل with Bench Press means "
-    "Dumbbell Bench Press; بالبار means Barbell; على السميث means Smith Machine. "
-    "Keep source_exercise copied exactly from the current program exercise names. If a "
-    "day is named for a swap, copy target_day exactly from the current program day names; "
-    "otherwise leave it empty. If the message has no swap, leave source_exercise, "
-    "target_exercise, and target_day empty. Return at most one swap."
 )
 
 
@@ -564,6 +417,9 @@ class AssistantState(TypedDict):
     response_content: str | None
     request_suggestion: dict[str, Any] | None
     pipeline_error: str | None
+    tool_action_result: NotRequired[dict[str, Any] | None]
+    selected_tools: NotRequired[list[str]]
+    program_edit_preview: NotRequired[dict[str, Any] | None]
 
 
 def _match_substitution_source(days: list[Any], source_name: str) -> tuple[Any, Any, float]:
@@ -839,6 +695,8 @@ def hydrate_context_node(state: AssistantState, config: dict[str, Any] | None = 
         recent_user, str(telemetry or ""), (ledger, store), display_language
     )
     return {
+        "selected_tools": [],
+        "tool_action_result": None,
         "coach_tone": state.get("coach_tone") or profile.get("coach_tone") or DEFAULT_ASSISTANT_STYLE,
         "custom_instructions": state.get("custom_instructions") or profile.get("custom_instructions", ""),
         "telemetry_context": telemetry,
@@ -877,23 +735,13 @@ def _name_response(state: AssistantState, ledger: Any = None) -> str | None:
     return f"تمام، هناديك {name}." if language == "ar" else f"Nice to meet you, {name}."
 
 
-RE_HISTORY_INDICATOR = re.compile(
-    r"\b(?:how\s+did\s+(?:my|i)|what\s+did\s+i|history|logged|last\s+(?:session|workout)|"
-    r"previous\s+(?:session|workout)|compare|comparison|progress\s+on)\b", re.IGNORECASE
-)
-RE_FOOD_LOG_QUERY = re.compile(
-    r"\b(?:eat|ate|eaten|food\s+log|meals?)\b|"
-    r"\b(?:أكلت|اكلت|كلت|تناولت|وجباتي|طعامي)\b|سجل\s+(?:الطعام|الأكل|الاكل)",
-    re.IGNORECASE,
-)
-RE_FOLLOWUP_EXERCISE = re.compile(r"^\s*(?:what\s+(?:about|of)|how\s+about)\s+(.+?)[?!.]*\s*$", re.IGNORECASE)
 RE_HISTORY_SCOPE = re.compile(
     r"\b(?:compar\w*|versus|vs|since|between|before|after|over\s+time|trend\w*|progress\w*|"
     r"yesterday|today|(?:last|this|past|previous)\s+(?:week|month|year)|"
     r"(?:last|past|previous)\s+\d+\s+(?:days?|weeks?|months?|sessions?)|"
     r"monday|tuesday|wednesday|thursday|friday|saturday|sunday|"
     r"january|february|march|april|may|june|july|august|september|october|november|december|"
-    r"\d{4}-\d{2}-\d{2})\b", re.IGNORECASE
+    r"\d{4}-\d{2}-\d{2})\b", re.IGNORECASE,
 )
 RE_PROGRESS_COMPARISON = re.compile(
     r"\b(?:advance|improv\w*|progress\w*|compar\w*|how\s+much\s+(?:did|has|have)\s+(?:my|the)|"
@@ -903,10 +751,6 @@ RE_PROGRESS_COMPARISON = re.compile(
     r"كام\s+(?:زاد|تحسن|اتحسن|اتقدم|تقدم|فرق))"
 )
 AUTHORIZATION_RESPONSE = "Routine changes require an explicit directive, such as 'switch routine to 3 days' or 'swap bench press for incline press'."
-
-
-def _is_food_log_query(query: str) -> bool:
-    return bool(RE_FOOD_LOG_QUERY.search(RE_ARABIC_DIACRITICS.sub("", query)))
 
 
 def _extract_frequency(text: str) -> int | None:
@@ -921,15 +765,6 @@ def _extract_frequency(text: str) -> int | None:
         if re.search(rf"\b{word}\s*(?:days?\b|-day|d/wk|days\s+a\s+week)", lowered):
             return number
     return None
-
-
-def _mentioned_arabic_frequency(query: str) -> int | None:
-    normalized = query.translate(ARABIC_DIGIT_TRANSLATION)
-    match = RE_ARABIC_FREQUENCY_MENTION.search(normalized)
-    if not match:
-        return None
-    number = match.group("number")
-    return int(number) if number.isdigit() else ARABIC_FREQUENCY_WORDS.get(number)
 
 
 def _action_command(query: str) -> str:
@@ -989,135 +824,14 @@ def _authorized_action(query: str, intent: str) -> bool:
         return bool(RE_PROGRAM_MUTATION.match(command))
     if intent == "program_edit":
         return bool(RE_PROGRAM_DAY_EDIT.search(command) or RE_ARABIC_PROGRAM_DAY_EDIT.search(command))
-    return bool(RE_EXPLICIT_SWAP.match(command) or RE_SINGLE_SWAP.match(command)) and not bool(RE_PROGRAM_MUTATION.match(command))
-
-
-def _classify_single_clause(clause: str, telemetry: str = "", messages: Sequence[BaseMessage] = ()) -> dict[str, Any] | None:
-    c = clause.strip(" ,;?!.")
-    if not c:
-        return None
-
-    clinical_metadata = _clinical_candidate_metadata(c)
-    if clinical_metadata is not None:
-        return {
-            "intent": "clinical_intercept",
-            "intent_metadata": {"raw_query": c, **clinical_metadata},
-            "query": c,
-        }
-
-    if RE_BANNED_MOVEMENT.search(c):
-        return {"intent": "banned_movement", "intent_metadata": {"raw_query": c}, "query": c}
-
-    # Food recall shares history phrasing and dates, but needs the Food log tool.
-    if _is_food_log_query(c):
-        return {"intent": "coaching_qa", "intent_metadata": {}, "query": c}
-
-    if _whole_session_query(c) or RE_EXERCISE_PERFORMANCE_QUERY.search(c) or RE_HISTORY_INDICATOR.search(c):
-        return {"intent": "exercise_history", "intent_metadata": {"raw_query": c}, "query": c}
-
-    telemetry_resp = reconcile_telemetry_query(c, telemetry)
-    if telemetry_resp:
-        return {
-            "intent": "telemetry_intercept",
-            "intent_metadata": {"response_content": telemetry_resp, "raw_query": c},
-            "query": c,
-        }
-
-    if RE_NUTRITION.search(c):
-        return {"intent": "coaching_qa", "intent_metadata": {}, "query": c}
-
-    if (
-        (RE_PROGRAM_DAY_EDIT.search(c) or RE_ARABIC_PROGRAM_DAY_EDIT.search(c))
-        and not _authorized_action(c, "program_mutation")
-    ):
-        return {"intent": "program_edit", "intent_metadata": {"raw_query": c}, "query": c}
-
-    choice = _deload_choice(c)
-    if choice:
-        return {"intent": "deload_choice", "intent_metadata": {"choice": choice}, "query": c}
-
-    if _authorized_action(c, "program_mutation"):
-        return {
-            "intent": "program_mutation",
-            "intent_metadata": {"target_frequency": _extract_frequency(c)},
-            "query": c,
-        }
-
-    command = _action_command(c)
-    if not command or RE_INQUISITIVE_PREFIX.search(command):
-        return {"intent": "coaching_qa", "intent_metadata": {}, "query": c}
-
-    explicit_match = RE_EXPLICIT_SWAP.match(command)
-    if explicit_match:
-        data = explicit_match.groupdict()
-        src, tgt = data["source"].strip(), data["target"].strip().rstrip(".!?")
-        if src.lower() not in ["split", "routine", "program", "schedule"] and not RE_FREQ_DIGIT.search(tgt):
-            return {
-                "intent": "exercise_substitution",
-                "intent_metadata": {"mode": "direct_swap", "source_exercise": src, "target_exercise": tgt},
-                "query": c,
-            }
-
-    single_match = RE_SINGLE_SWAP.match(command)
-    if single_match:
-        src = single_match.group("source").strip().rstrip(".!?")
-        if src.lower() not in ["split", "routine", "program", "schedule"]:
-            return {
-                "intent": "exercise_substitution",
-                "intent_metadata": {"mode": "lookup_candidates", "source_exercise": src, "target_exercise": None},
-                "query": c,
-            }
-
-    if RE_SEARCH_TOKENS.search(c):
-        return {
-            "intent": "catalog_search",
-            "intent_metadata": {"search_query": RE_SEARCH_TOKENS.sub("", c).strip().rstrip(".!?")},
-            "query": c,
-        }
-
-    return {"intent": "coaching_qa", "intent_metadata": {}, "query": c}
-
-
-def _classify_intent_with_llm(query: str) -> IntentClassification:
-    structured_llm = structured_output_model(llm).with_structured_output(
-        IntentClassification,
-        max_completion_tokens=player_output_budgets.player_output_budget("intent_routing")
-    )
-    return structured_llm.invoke(
-        [SystemMessage(content=ROUTER_PROMPT), HumanMessage(content=query)]
-    )
-
-
-def _arabic_program_context(program: Any) -> str:
-    return "\n".join(
-        f"- {day.day_name}: " + ", ".join(
-            exercise.exercise_name for exercise in day.exercises
-        )
-        for day in getattr(program, "days", [])
-    ) or "- None"
-
-
-def _arabic_router_system_prompt(program: Any) -> str:
-    split_types = ", ".join(
-        split_type for split_type in ARABIC_SPLIT_PREFERENCES
-        if split_type in SPLIT_DISPLAY_NAMES
-    )
-    return (
-        f"{ARABIC_ROUTER_PROMPT}\n\n"
-        f"Allowed split family keys: {split_types}.\n"
-        f"Current Training program exercise names:\n{_arabic_program_context(program)}"
-    )
-
-
-def _classify_arabic_intent_with_llm(
-    query: str, program: Any
-) -> ArabicIntentClassification:
-    structured_llm = structured_output_model(llm).with_structured_output(
-        ArabicIntentClassification,
-        max_completion_tokens=player_output_budgets.player_output_budget("intent_routing")
-    )
-    return structured_llm.invoke(
-        [SystemMessage(content=_arabic_router_system_prompt(program)), HumanMessage(content=query)]
+    if not command:
+        return False
+    # The model has already selected substitution; inspect actual Player clauses
+    # for write permission without using them to select an operation.
+    return any(
+        bool(RE_EXPLICIT_SWAP.match(_action_command(clause)) or RE_SINGLE_SWAP.match(_action_command(clause)))
+        and not RE_PROGRAM_MUTATION.match(_action_command(clause))
+        for clause in RE_SAFETY_CLAUSE_SPLIT.split(query)
     )
 
 
@@ -1129,24 +843,6 @@ def _is_arabic_dominant(query: str) -> bool:
 ARABIC_SPLIT_PREFERENCES = {
     split_type: split_type for split_type in SPLIT_DISPLAY_NAMES
 }
-
-
-def _resolve_arabic_day(program: Any, requested_name: str) -> Any | None:
-    if not program or not requested_name.strip():
-        return None
-    requested = requested_name.strip().casefold()
-    exact = [day for day in program.days if day.day_name.strip().casefold() == requested]
-    if len(exact) == 1:
-        return exact[0]
-    words = set(re.findall(r"[a-z0-9]+", requested))
-    if not words:
-        return None
-    matches = [
-        day
-        for day in program.days
-        if words <= set(re.findall(r"[a-z0-9]+", day.day_name.casefold()))
-    ]
-    return matches[0] if len(matches) == 1 else None
 
 
 def _current_split_family(program: Any) -> str | None:
@@ -1163,127 +859,6 @@ def _current_split_family(program: Any) -> str | None:
     if split_name in LEGACY_GLUTE_PRIORITY_SPLIT_NAMES:
         return "female_full_body"
     return match_split_keyword(split_name)
-
-
-def _arabic_split_family(value: str) -> str | None:
-    normalized = value.strip().casefold()
-    if normalized in ARABIC_SPLIT_PREFERENCES:
-        return normalized
-    for split_type, display_name in SPLIT_DISPLAY_NAMES.items():
-        if display_name.casefold() == normalized:
-            return split_type if split_type in ARABIC_SPLIT_PREFERENCES else None
-    if "arnold" in normalized and ("upper" in normalized or "lower" in normalized):
-        return "arnold_x_ul"
-    matched = match_split_keyword(normalized)
-    return matched if matched in ARABIC_SPLIT_PREFERENCES else None
-
-
-def _arabic_program_change_is_directive(query: str) -> bool:
-    normalized = RE_ARABIC_DIACRITICS.sub("", query).strip()
-    if normalized.endswith(("؟", "?")) or re.match(
-        r"^(?:ينفع|إزاي|ازاي|ازاى|كيف|هل|لو(?!\s+سمحت)|مش|ما|لا|تنصحني|ايه رأيك|إيه رأيك)(?=\s|$)",
-        normalized,
-    ):
-        return False
-    if RE_ARABIC_NEGATED_PROGRAM_CHANGE.search(normalized) or re.search(
-        r"(?<!\w)(?:مش|ما|لا)\s+(?:تغير|تظبط|تعدل|تبدل|تخلي|تعمل|تزود|تقلل)(?:لي)?(?!\w)",
-        normalized,
-    ):
-        return False
-    if RE_ARABIC_HEDGED_PROGRAM_CHANGE.search(normalized):
-        return False
-    return _authorized_action(query, "program_mutation") or bool(
-        RE_ARABIC_PROGRAM_COMMAND.search(normalized)
-        or RE_ARABIC_WANTED_PROGRAM_CHANGE.search(normalized)
-    )
-
-
-def _arabic_change_frequency(
-    query: str, requested_frequency: int | None, current_frequency: Any
-) -> int | None:
-    mentioned_frequency = _mentioned_arabic_frequency(query)
-    if requested_frequency is not None and (
-        type(requested_frequency) is not int or not 1 <= requested_frequency <= 5
-    ):
-        return None
-    if mentioned_frequency is not None and requested_frequency != mentioned_frequency:
-        return None
-    if type(current_frequency) is not int or not 1 <= current_frequency <= 5:
-        return None
-    return requested_frequency if requested_frequency is not None else current_frequency
-
-
-def _default_arabic_split(frequency: int, profile: dict[str, Any]) -> str:
-    gender = str(profile.get("gender", "male")).lower()
-    split_type = DEFAULT_SPLIT_BY_FREQUENCY.get(gender, {}).get(frequency)
-    if split_type not in ARABIC_SPLIT_PREFERENCES:
-        split_type = DEFAULT_SPLIT_BY_FREQUENCY["male"].get(frequency, "full_body")
-    return split_type
-
-
-def _preserved_arabic_split(program: Any, profile: dict[str, Any], frequency: int) -> str:
-    gender = profile.get("gender", "male")
-    split_type = _current_split_family(program)
-    if split_type == "female_full_body":
-        return "full_body"
-    if split_type not in ARABIC_SPLIT_PREFERENCES:
-        return _default_arabic_split(frequency, profile)
-    if split_type == "arnold_x_ul" and frequency < 4:
-        split_type = "arnold"
-    if get_split_plan(split_type, frequency, gender) is None:
-        return _default_arabic_split(frequency, profile)
-    return split_type
-
-
-def _validated_arabic_split(
-    classification: ArabicIntentClassification,
-    program: Any,
-    profile: dict[str, Any],
-    frequency: int,
-) -> str | None:
-    requested_split = (
-        _arabic_split_family(classification.target_split_type)
-        if classification.target_split_type
-        else None
-    )
-    if classification.target_split_type and requested_split is None:
-        return None
-    gender = profile.get("gender", "male")
-    if requested_split == "arnold_x_ul" and frequency < 4:
-        return None
-    split_type = requested_split or _preserved_arabic_split(program, profile, frequency)
-    return split_type if get_split_plan(split_type, frequency, gender) else None
-
-
-def _validated_arabic_program_change(
-    query: str, classification: ArabicIntentClassification, ledger: Any
-) -> dict[str, Any] | None:
-    if not _arabic_program_change_is_directive(query):
-        return None
-    if classification.target_frequency is None and not classification.target_split_type:
-        return None
-    profile = ledger.get_player_profile() or {}
-    program = ledger.get_active_program()
-    current_frequency = getattr(program, "weekly_frequency", None) or profile.get("weekly_frequency")
-    frequency = _arabic_change_frequency(query, classification.target_frequency, current_frequency)
-    if frequency is None:
-        return None
-    split_type = _validated_arabic_split(classification, program, profile, frequency)
-    if split_type is None:
-        return None
-    return _arabic_program_mutation_route(frequency, split_type)
-
-
-def _arabic_program_mutation_route(frequency: int, split_type: str) -> dict[str, Any]:
-    return {
-        "intent": "program_mutation",
-        "intent_metadata": {
-            "target_frequency": frequency,
-            "split_preference": SPLIT_DISPLAY_NAMES[split_type],
-            "split_family": ARABIC_SPLIT_PREFERENCES[split_type],
-            "arabic_data_validated": True,
-        },
-    }
 
 
 def _arabic_source_candidates(
@@ -1378,19 +953,6 @@ def _resolve_arabic_target(
     return None
 
 
-def _arabic_swap_source(
-    program: Any, intent: ArabicIntentClassification
-) -> tuple[Any, Any] | None:
-    if not program or not intent.source_exercise:
-        return None
-    day = _resolve_arabic_day(program, intent.target_day) if intent.target_day else None
-    if intent.target_day and day is None:
-        return None
-    return _resolve_arabic_source(
-        program, intent.source_exercise, requested_day=day.day_name if day else None
-    )
-
-
 def _arabic_swap_metadata(
     source_day: Any, source: Any, target_id: str, target_entry: dict[str, Any]
 ) -> dict[str, Any]:
@@ -1402,21 +964,6 @@ def _arabic_swap_metadata(
         "target_exercise": target_entry["name"],
         "target_exercise_id": str(target_id),
     }
-
-
-def _validated_arabic_swap(
-    program: Any, store: Any, intent: ArabicIntentClassification
-) -> dict[str, Any] | None:
-    if not intent.target_exercise:
-        return None
-    source_match = _arabic_swap_source(program, intent)
-    if source_match is None:
-        return None
-    source_day, source = source_match
-    target = _resolve_arabic_target(store, source, source_day, intent.target_exercise)
-    if target is None:
-        return None
-    return _arabic_swap_metadata(source_day, source, *target)
 
 
 def _arabic_history_program_match(program: Any, requested_name: str) -> tuple[str, str] | None:
@@ -1460,116 +1007,7 @@ def _resolve_arabic_history_exercise(
     )
 
 
-def _classify_arabic_program_change(
-    query: str, classification: ArabicIntentClassification, ledger: Any
-) -> dict[str, Any]:
-    proposal = _validated_arabic_program_change(query, classification, ledger)
-    if proposal is not None:
-        return proposal
-    if _arabic_program_change_is_directive(query):
-        return _arabic_clarification_route("program_change")
-    return {"intent": "coaching_qa", "intent_metadata": {}}
-
-
-def _arabic_clarification_route(kind: str | None = None) -> dict[str, Any]:
-    metadata = {"clarification_kind": kind} if kind else {}
-    return {"intent": "arabic_swap_clarification", "intent_metadata": metadata}
-
-
-def _arabic_history_route(exercise_id: str, exercise_name: str) -> dict[str, Any]:
-    return {
-        "intent": "exercise_history",
-        "intent_metadata": {
-            "raw_query": f"how did I do on {exercise_name} last session",
-            "arabic_history": True,
-            "history_exercise_id": exercise_id,
-            "history_exercise_name": exercise_name,
-        },
-    }
-
-
-def _classify_arabic_history(
-    classification: ArabicIntentClassification, program: Any, store: Any
-) -> dict[str, Any]:
-    if classification.history_whole_session and not classification.history_exercise:
-        return {
-            "intent": "exercise_history",
-            "intent_metadata": {
-                "raw_query": "how did I perform last session",
-                "arabic_history": True,
-            },
-        }
-    if not classification.history_exercise or store is None:
-        return _arabic_clarification_route("history")
-    resolved = _resolve_arabic_history_exercise(program, store, classification.history_exercise)
-    if resolved is None:
-        return _arabic_clarification_route("history")
-    return _arabic_history_route(*resolved)
-
-
-def _arabic_swap_route(
-    classification: ArabicIntentClassification,
-    metadata: dict[str, Any] | None,
-) -> dict[str, Any]:
-    if metadata is None:
-        return _arabic_clarification_route(
-            "program_reference" if classification.target_day else None
-        )
-    if classification.intent == "composite_intent" or classification.has_additional_request:
-        metadata["has_additional_request"] = True
-        return {"intent": "composite_intent", "intent_metadata": {"arabic_validated_swap": metadata}}
-    return {"intent": "exercise_substitution", "intent_metadata": {**metadata, "arabic_data_validated": True}}
-
-
-def _classify_arabic_swap(
-    query: str, classification: ArabicIntentClassification, program: Any, store: Any
-) -> dict[str, Any]:
-    if not (
-        RE_EXPLICIT_SWAP.search(query)
-        or RE_ARABIC_SWAP_REQUEST.search(RE_ARABIC_DIACRITICS.sub("", query))
-    ):
-        return {"intent": "coaching_qa", "intent_metadata": {}}
-    metadata = _validated_arabic_swap(program, store, classification) if store is not None else None
-    return _arabic_swap_route(classification, metadata)
-
-
-def _classify_arabic_intent(query: str, config: dict[str, Any] | None) -> dict[str, Any]:
-    if _is_food_log_query(query):
-        return {"intent": "coaching_qa", "intent_metadata": {}}
-    ledger, store = _graph_context(config)
-    program = ledger.get_active_program() if ledger is not None else None
-    try:
-        classification = _classify_arabic_intent_with_llm(query, program)
-    except Exception:
-        logger.exception("Arabic player intent classification failed.")
-        return {"intent": "coaching_qa", "intent_metadata": {}}
-    if classification.intent in {"exercise_substitution", "composite_intent"} and (
-        classification.intent == "exercise_substitution" or classification.has_swap
-    ):
-        return _classify_arabic_swap(query, classification, program, store)
-    if classification.intent == "program_change":
-        return _classify_arabic_program_change(query, classification, ledger)
-    if classification.intent == "exercise_history":
-        normalized = RE_ARABIC_DIACRITICS.sub("", query)
-        if RE_ARABIC_TRAIN_REST_QUESTION.search(normalized):
-            return {"intent": "coaching_qa", "intent_metadata": {}}
-        return _classify_arabic_history(classification, program, store)
-    return {"intent": "coaching_qa", "intent_metadata": {}}
-
-
-def arabic_swap_clarification_node(
-    state: AssistantState, config: dict[str, Any] | None = None
-) -> dict[str, Any]:
-    kind = (state.get("intent_metadata") or {}).get("clarification_kind")
-    response = {
-        "program_change": ARABIC_PROGRAM_CHANGE_CLARIFICATION_RESPONSE,
-        "program_reference": ARABIC_ACTION_CLARIFICATION_RESPONSE,
-        "history": ARABIC_HISTORY_CLARIFICATION_RESPONSE,
-    }.get(kind, ARABIC_SWAP_CLARIFICATION_RESPONSE)
-    return _response(response)
-
-
-def _clinical_turn_metadata(query: str, sub_intents=()) -> dict[str, Any] | None:
+def _clinical_turn_metadata(query: str) -> dict[str, Any] | None:
     # Offer IDs are opaque: UUID groups can resemble Franco-Arabic words.
     if RE_MOVEMENT_RESTRICTION_DECISION.fullmatch(query):
         return None
@@ -1580,52 +1018,11 @@ def _clinical_turn_metadata(query: str, sub_intents=()) -> dict[str, Any] | None
     franco_clinical = franco_clinical_check(query)
     if franco_detected or franco_clinical:
         return {"raw_query": query, "franco": True}
-    queries = [query] + [part.strip() for part in RE_CLAUSE_SPLIT.split(query) if part.strip() != query]
-    for sub in sub_intents:
-        if sub.get("intent") == "clinical_intercept":
-            return {**(sub.get("intent_metadata") or {}), "raw_query": query}
-        if sub.get("query"):
-            queries.append(sub["query"])
+    queries = [query] + [part.strip() for part in RE_SAFETY_CLAUSE_SPLIT.split(query) if part.strip() != query]
     for candidate in queries:
         clinical_metadata = _clinical_candidate_metadata(candidate)
         if clinical_metadata is not None:
             return {"raw_query": query, **clinical_metadata}
-    return None
-
-
-def _redundant_veto_followup(query: str) -> bool:
-    return bool(re.fullmatch(
-        r"(?:(?:should|can|could|may) i (?:add|do|include|try|use|perform) (?:it|them|that|those|this)(?: (?:exercise|movement|rows?))?"
-        r"(?: (?:to|in) my (?:routine|program|split|workout))?|(?:is|are) (?:it|that|this|they|those) (?:safe|worth it|a good idea))",
-        query.strip(" ,;?!."), re.IGNORECASE,
-    ))
-
-
-def _last_history_exchange(messages: Sequence[BaseMessage]) -> str | None:
-    if not messages:
-        return None
-    if _is_food_log_query(_get_message_text(messages[-1])):
-        return None
-    followup = RE_FOLLOWUP_EXERCISE.fullmatch(_get_message_text(messages[-1]))
-    if not followup:
-        return None
-    for message in reversed(messages[:-1]):
-        if _message_role(message) != "user":
-            continue
-        prior = _get_message_text(message)
-        if _is_food_log_query(prior):
-            return None
-        if RE_FOLLOWUP_EXERCISE.fullmatch(prior):
-            continue
-        if not (_whole_session_query(prior) or RE_EXERCISE_PERFORMANCE_QUERY.search(prior) or RE_HISTORY_INDICATOR.search(prior)):
-            return None
-        target = re.sub(r"^(?:my|the)\s+", "", followup.group(1), flags=re.IGNORECASE).strip(" ?.")
-        supported = _supported_history_query(prior)
-        if RE_HISTORY_SCOPE.search(supported):
-            return f"history for {target} {supported}"
-        if re.search(r"\blast\s+logged\s+occurrence\b", prior, re.IGNORECASE):
-            return f"last logged occurrence of {target}"
-        return f"how did I do on {target} last session?"
     return None
 
 
@@ -2186,107 +1583,32 @@ def assistant_preference_delete_node(state: AssistantState, config: dict[str, An
 
 
 def router_node(state: AssistantState, config: dict[str, Any] | None = None) -> dict[str, Any]:
+    """The only pre-model branch is the fail-closed safety gate."""
     if state.get("pipeline_error"):
         return {"intent": "telemetry_intercept", "intent_metadata": {"response_content": state["pipeline_error"]}}
     messages = state.get("messages", [])
-    if not messages:
-        return {"intent": "coaching_qa", "intent_metadata": {}}
+    query = _get_message_text(messages[-1]) if messages else ""
+    clinical = _clinical_turn_metadata(query) if query else None
+    if clinical is not None:
+        ledger, _store = _graph_context(config)
+        if ledger is not None:
+            ledger.clear_pending_assistant_preference_deletion()
+            ledger.clear_pending_goal_weak_point_suggestion()
+        return {"intent": "clinical_intercept", "intent_metadata": clinical, "active_intents": []}
+    if RE_BANNED_MOVEMENT.search(query):
+        return {"intent": "banned_movement", "intent_metadata": {"raw_query": query}, "active_intents": []}
+    return {"intent": "coaching_qa", "intent_metadata": {}, "active_intents": []}
 
-    query = _get_message_text(messages[-1])
-    telemetry = state.get("telemetry_context") or ""
-    arabic_dominant = _is_arabic_dominant(query)
+
+def _injury_update_route(state: AssistantState, config: dict[str, Any] | None) -> dict[str, Any]:
+    """Validate an injury update only after the model requests that tool."""
+    from service import injuries as injuries_service
 
     ledger, _store = _graph_context(config)
-    pending = None
-    if ledger is not None:
-        from service import injuries as injuries_service
-
-        pending = injuries_service.pending_clarification(ledger)
-
-    clinical = _clinical_turn_metadata(query)
-    if clinical is not None:
-        if ledger is not None:
-            ledger.clear_pending_assistant_preference_deletion()
-            ledger.clear_pending_goal_weak_point_suggestion()
-        if (
-            not clinical.get("franco")
-            and pending is not None
-            and isinstance(pending.get("id"), str)
-            and _previous_assistant_message_is_injury_area_question(messages)
-        ):
-            from service import injuries as injuries_service
-
-            injuries_service.consume_pending_clarification(ledger, pending["id"])
-        return {"intent": "clinical_intercept", "intent_metadata": clinical, "active_intents": []}
-
-    safety_classification = next((classified for clause in RE_CLAUSE_SPLIT.split(query)
-        if (classified := _classify_single_clause(clause, telemetry, messages)) is not None
-        and classified.get("intent") in {"banned_movement", "telemetry_intercept"}), None)
-    has_program_change = bool(
-        RE_PROGRAM_DAY_EDIT.search(query)
-        or RE_ARABIC_PROGRAM_DAY_EDIT.search(query)
-        or _positive_rebuild_request(query)
-    )
-    if safety_classification and has_program_change:
-        if ledger is not None:
-            ledger.clear_pending_assistant_preference_deletion()
-            ledger.clear_pending_goal_weak_point_suggestion()
-        return {key: value for key, value in safety_classification.items() if key != "query"}
-
-    if ledger is not None:
-        pending_edit = ledger.get_pending_chat_program_edit()
-        if pending_edit is not None:
-            latest_assistant = next((_get_message_text(item) for item in reversed(messages[:-1])
-                                     if isinstance(item, AIMessage)), "")
-            if latest_assistant.strip() == pending_edit["offer_text"].strip():
-                answer = _program_edit_confirmation_kind(query, pending_edit)
-                if answer in {"yes", "no"}:
-                    return {"intent": "program_edit_confirmation", "intent_metadata": {
-                        "preview_id": pending_edit["offer_id"], "confirm": answer == "yes",
-                        "include_optional": _chat_edit_optional_selection(query, pending_edit),
-                    }}
-                if _is_program_edit_clarification(query, pending_edit):
-                    return {"intent": "program_edit_reprompt", "intent_metadata": {
-                        "preview_id": pending_edit["offer_id"]}}
-            ledger.clear_pending_chat_program_edit()
-
-    if _positive_rebuild_request(query) and (
-        RE_PROGRAM_DAY_EDIT.search(query) or RE_ARABIC_PROGRAM_DAY_EDIT.search(query)
-    ):
-        return {"intent": "program_edit", "intent_metadata": {"raw_query": query}}
-
-    if ledger is not None:
-        movement_restriction_intent = _movement_restriction_chat_intent(
-            query, ledger, _graph_context(config)[1], state
-        )
-        if movement_restriction_intent is not None:
-            return {"intent": "telemetry_intercept", "intent_metadata": {
-                "response_content": movement_restriction_intent["response_content"],
-                "program_updated": movement_restriction_intent.get("program_updated", False),
-                "movement_restrictions_updated": movement_restriction_intent.get("movement_restrictions_updated", False),
-            }}
-        goal_write = _goal_write_intent(
-            query, ledger, _graph_context(config)[1], state
-        )
-        if goal_write is not None:
-            return {
-                "intent": "telemetry_intercept",
-                "intent_metadata": {"response_content": goal_write["response_content"]},
-            }
-        weak_point_intent = _weak_point_write_intent(
-            query, ledger, _graph_context(config)[1], state.get("player_account_id")
-        )
-        if weak_point_intent is not None:
-            return {"intent": "telemetry_intercept", "intent_metadata": {"response_content": weak_point_intent["response_content"]}}
-        preference_intent = _preference_write_intent(
-            query, ledger, messages, allow_write=False
-        )
-        if preference_intent is not None:
-            return preference_intent
-
+    messages = state.get("messages", [])
+    query = _get_message_text(messages[-1]) if messages else ""
+    pending = injuries_service.pending_clarification(ledger)
     if pending is not None and isinstance(pending.get("id"), str):
-        from service import injuries as injuries_service
-
         if ledger is not None:
             ledger.clear_pending_assistant_preference_deletion()
 
@@ -2388,93 +1710,7 @@ def router_node(state: AssistantState, config: dict[str, Any] | None = None) -> 
                 "active_intents": [],
             }
 
-    if ledger is not None:
-        preference_intent = _preference_write_intent(query, ledger, messages)
-        if preference_intent is not None:
-            return preference_intent
-
-    choice = _deload_choice(query)
-    if choice:
-        return {"intent": "deload_choice", "intent_metadata": {"choice": choice}}
-
-    history_followup = _last_history_exchange(messages)
-    if (
-        not arabic_dominant
-        and history_followup is not None
-        and not RE_BANNED_MOVEMENT.search(query)
-        and len(RE_CLAUSE_SPLIT.split(query)) == 1
-    ):
-        return {"intent": "exercise_history", "intent_metadata": {"raw_query": history_followup}, "active_intents": []}
-
-    name_response = _name_response(state, _graph_context(config)[0])
-    if name_response:
-        return {"intent": "telemetry_intercept", "intent_metadata": {"response_content": name_response}, "preferred_name": state.get("preferred_name")}
-
-    if arabic_dominant:
-        deterministic = _classify_single_clause(query, telemetry, messages)
-        if deterministic and deterministic["intent"] in {
-            "banned_movement",
-            "telemetry_intercept",
-            "deload_choice",
-            "catalog_search",
-            "program_edit",
-        }:
-            return {k: v for k, v in deterministic.items() if k != "query"}
-        return _classify_arabic_intent(query, config)
-
-    # Clause Splitting for Compound / Multi-Intent Queries
-    clauses = [p.strip(" ,;?!.") for p in RE_CLAUSE_SPLIT.split(query) if p.strip(" ,;?!.")]
-    if len(clauses) > 1:
-        sub_results = [_classify_single_clause(c, telemetry, messages[:-1] + [HumanMessage(content=c)]) for c in clauses]
-        sub_results = [r for r in sub_results if r is not None]
-        clinical_sub = next((r for r in sub_results if r["intent"] == "clinical_intercept"), None)
-        if clinical_sub:
-            return {"intent": "clinical_intercept", "intent_metadata": {**clinical_sub["intent_metadata"], "raw_query": query}, "active_intents": []}
-        if re.search(r"\b(?:if|unless|should|would|hypothetically|maybe|might)\b", query, re.IGNORECASE):
-            for result in sub_results:
-                if result["intent"] in {"program_mutation", "exercise_substitution"}:
-                    result.update(intent="coaching_qa", intent_metadata={})
-        actionable = [r for r in sub_results if r["intent"] != "coaching_qa"]
-        if len(actionable) >= 2 or (len(actionable) == 1 and len(sub_results) >= 2):
-            return {
-                "intent": "composite_intent",
-                "intent_metadata": {"sub_intents": sub_results, "raw_query": query},
-                "active_intents": sub_results,
-            }
-
-    classified = _classify_single_clause(query, telemetry, messages)
-    if classified and (classified["intent"] != "coaching_qa" or classified["intent_metadata"].get("clarification")):
-        return {k: v for k, v in classified.items() if k != "query"}
-    if not RE_ACTION_HINT.search(query) or not _action_command(query):
-        return {"intent": "coaching_qa", "intent_metadata": {}}
-
-    # LLM Router Fallback
-    try:
-        res = _classify_intent_with_llm(query)
-        metadata: dict[str, Any] = {}
-        if res.intent not in {"exercise_substitution", "program_mutation", "program_edit", "catalog_search", "coaching_qa"}:
-            return {"intent": "coaching_qa", "intent_metadata": {}}
-        if res.intent in {"exercise_substitution", "program_mutation"} and not _authorized_action(query, res.intent):
-            return {"intent": "coaching_qa", "intent_metadata": {}}
-        if res.intent == "exercise_substitution":
-            src = res.source_exercise
-            if not src:
-                match = re.search(r"\b(?:for|to|swap|replace|substitute)\s+([a-zA-Z0-9\s\(\)\-\_]+)", query, re.IGNORECASE)
-                if match:
-                    src = match.group(1).strip()
-            metadata = {
-                "mode": "direct_swap" if res.target_exercise else "lookup_candidates",
-                "source_exercise": src,
-                "target_exercise": res.target_exercise,
-            }
-        elif res.intent == "program_mutation":
-            metadata = {"target_frequency": res.target_frequency}
-        elif res.intent == "catalog_search":
-            metadata = {"search_query": res.search_query}
-
-        return {"intent": res.intent, "intent_metadata": metadata}
-    except Exception:
-        return {"intent": "coaching_qa", "intent_metadata": {}}
+    return {}
 
 
 def clinical_intercept_node(state: AssistantState, config: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -3847,6 +3083,9 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
         if resolved_tgt:
             target_desc = expand_fitness_abbreviations(resolved_tgt)
 
+    if meta.get("read_only"):
+        target_desc = ""
+
     matched_ex, target_day, best_similarity = _match_substitution_source(
         current_week_days, source_name
     )
@@ -5121,9 +4360,9 @@ def _invoke_player_tool_loop(
     config: dict[str, Any] | None,
     payload: list[BaseMessage],
 ) -> Any:
-    """Invokes the same bounded read-tool loop for non-streaming graph callers."""
+    """Invokes the same bounded tool loop for non-streaming graph callers."""
     ledger, _store = _graph_context(config)
-    tools, definitions = build_player_read_tools(ledger, _store, state.get("player_account_id"))
+    tools, definitions = build_player_chat_tools(state, config)
     bound_model = llm.bind_tools(tools)
     context = RoutedContext(list(payload))
     if (state.get("intent") or "coaching_qa") == "coaching_qa":
@@ -5138,14 +4377,17 @@ def _invoke_player_tool_loop(
             tool_calls = list(getattr(response, "tool_calls", ()) or ())
             if not tool_calls:
                 return response
+            state.setdefault("selected_tools", []).extend(call["name"] for call in tool_calls)
             model_fetched_more = True
             _ensure_tool_call_ids(tool_calls)
             response = response.model_copy(update={"tool_calls": tool_calls})
-            tool_messages, _telemetry = run_player_tool_calls(
+            tool_messages, _telemetry = run_player_chat_tool_calls(
                 tool_calls, tools=tools, definitions=definitions, language=_tool_reply_language(state),
             )
             tool_messages = cap_tool_results_for_prompt([*messages, response], tool_messages)
             messages.extend([response, *tool_messages])
+            if state.get("tool_action_result") is not None:
+                return AIMessage(content=state["tool_action_result"]["response_content"])
         return llm.invoke(messages)
     finally:
         _record_context_retrieval(context, model_fetched_more)
@@ -5205,112 +4447,14 @@ def generation_node(state: AssistantState, config: dict[str, Any] | None = None)
         if _finish_limited(response):
             content = _trim_to_last_complete_sentence(content)
             content = f"{content}\n\n{OUTPUT_LIMIT_RESPONSE}" if content else OUTPUT_LIMIT_RESPONSE
-        return {"response_content": content, "program_updated": False, "messages": [AIMessage(content=content)]}
+        action_result = state.pop("tool_action_result", None)
+        result = action_result if action_result is not None else _response(content)
+        return {**result, "selected_tools": state.get("selected_tools", [])}
     except PromptBudgetError as exc:
         return _response(str(exc))
     except Exception:
         logger.exception("Assistant generation failed")
         return _response(PIPELINE_ERROR_RESPONSE)
-
-
-def composite_intent_node(state: AssistantState, config: dict[str, Any] | None = None) -> dict[str, Any]:
-    meta = state.get("intent_metadata", {})
-    arabic_swap = meta.get("arabic_validated_swap")
-    if isinstance(arabic_swap, dict):
-        return _apply_validated_swap(state, config, arabic_swap)
-
-    sub_intents = meta.get("sub_intents") or state.get("active_intents") or []
-    program_edit_subs = [sub for sub in sub_intents if sub.get("intent") == "program_edit"]
-    if len(program_edit_subs) > 1:
-        combined_edit = {
-            **program_edit_subs[0],
-            "query": " and ".join(str(sub.get("query") or "") for sub in program_edit_subs),
-        }
-        first_edit_index = next(index for index, sub in enumerate(sub_intents)
-                                if sub.get("intent") == "program_edit")
-        sub_intents = [sub for sub in sub_intents if sub.get("intent") != "program_edit"]
-        sub_intents.insert(first_edit_index, combined_edit)
-    original_msgs = list(state.get("messages", []))
-    original_query = meta.get("raw_query") or (_get_message_text(original_msgs[-1]) if original_msgs else "")
-    clinical = _clinical_turn_metadata(original_query, sub_intents)
-    if clinical is not None:
-        return clinical_intercept_node({**state, "intent_metadata": clinical}, config)
-    if not sub_intents:
-        return generation_node(state, config)
-
-    responses = []
-    preceding = []
-    veto_pending = False
-    any_program_updated = False
-    program_change = None
-    request_suggestion = None
-    program_edit_preview = None
-
-    handler_map = {
-        "clinical_intercept": clinical_intercept_node,
-        "banned_movement": banned_movement_node,
-        "telemetry_intercept": telemetry_intercept_node,
-        "exercise_history": exercise_history_node,
-        "exercise_substitution": exercise_substitution_node,
-        "program_mutation": program_mutation_node,
-        "program_edit": program_edit_chat_node,
-        "deload_choice": deload_choice_node,
-        "catalog_search": catalog_search_node,
-        "injury_area_clarification": injury_area_clarification_node,
-        "injury_status_update": injury_status_update_node,
-        "injury_physician_followup": injury_physician_followup_node,
-        "exercise_clearance_update": injury_clearance_update_node,
-        "exercise_clearance_disambiguation": exercise_clearance_disambiguation_node,
-        "coaching_qa": generation_node,
-    }
-
-    for sub in sub_intents:
-        sub_intent = sub.get("intent", "coaching_qa")
-        sub_query = sub.get("query") or _get_message_text(state["messages"][-1])
-        if veto_pending and sub_intent == "coaching_qa" and _redundant_veto_followup(sub_query):
-            continue
-        handler = handler_map.get(sub_intent, generation_node)
-
-        sub_state: AssistantState = dict(state)
-        sub_state["intent"] = sub_intent
-        sub_state["intent_metadata"] = {**(sub.get("intent_metadata") or {}), "original_query": original_query}
-        sub_state["messages"] = original_msgs + preceding + [HumanMessage(content=sub_query)]
-        veto_pending = sub_intent == "banned_movement"
-
-        try:
-            res = handler(sub_state, config)
-            if res.get("program_updated"):
-                any_program_updated = True
-                program_change = res.get("program_change", program_change)
-            if res.get("program_edit_preview") is not None:
-                program_edit_preview = res["program_edit_preview"]
-            if request_suggestion is None:
-                request_suggestion = res.get("request_suggestion")
-            content = res.get("response_content", "")
-            if content and content.strip():
-                responses.append(content.strip())
-                model_context = res.get("model_context_content", content)
-                preceding.extend(
-                    [HumanMessage(content=sub_query), AIMessage(content=str(model_context).strip())]
-                )
-        except Exception as e:
-            logger.error(f"Error handling sub-intent {sub_intent}: {e}")
-            responses.append(f"Could not complete action for: '{sub_query}'.")
-
-    combined_response = "\n\n---\n\n".join(responses) if responses else "Actions processed."
-    result = {
-        "program_updated": any_program_updated,
-        "program_change": program_change,
-        "request_suggestion": request_suggestion,
-        "response_content": combined_response,
-        "messages": [AIMessage(content=combined_response)],
-    }
-    if program_edit_preview is not None:
-        ledger, _store = _graph_context(config)
-        if ledger is not None:
-            ledger.update_pending_chat_program_edit_offer(program_edit_preview["id"], combined_response)
-        result["program_edit_preview"] = program_edit_preview
-    return result
 
 
 def _safe_node(handler):
@@ -5337,76 +4481,22 @@ def _safe_node(handler):
     return run
 
 
-# StateGraph Assembly
+# StateGraph Assembly: safety is the only branch before model tool selection.
 builder = StateGraph(AssistantState)
 builder.add_node("hydrate_context", _safe_node(hydrate_context_node))
 builder.add_node("router", _safe_node(router_node))
 builder.add_node("clinical_intercept", _safe_node(clinical_intercept_node))
 builder.add_node("banned_movement", _safe_node(banned_movement_node))
 builder.add_node("telemetry_intercept", _safe_node(telemetry_intercept_node))
-builder.add_node("exercise_history", _safe_node(exercise_history_node))
-builder.add_node("exercise_substitution", _safe_node(exercise_substitution_node))
-builder.add_node("arabic_swap_clarification", _safe_node(arabic_swap_clarification_node))
-builder.add_node("program_mutation", _safe_node(program_mutation_node))
-builder.add_node("program_edit", _safe_node(program_edit_chat_node))
-builder.add_node("program_edit_confirmation", _safe_node(program_edit_confirmation_node))
-builder.add_node("program_edit_reprompt", _safe_node(program_edit_reprompt_node))
-builder.add_node("deload_choice", _safe_node(deload_choice_node))
-builder.add_node("catalog_search", _safe_node(catalog_search_node))
-builder.add_node("injury_area_clarification", _safe_node(injury_area_clarification_node))
-builder.add_node("injury_status_update", _safe_node(injury_status_update_node))
-builder.add_node("injury_physician_followup", _safe_node(injury_physician_followup_node))
-builder.add_node("exercise_clearance_update", _safe_node(injury_clearance_update_node))
-builder.add_node("exercise_clearance_disambiguation", _safe_node(exercise_clearance_disambiguation_node))
-builder.add_node("assistant_preference_delete_confirmed", _safe_node(assistant_preference_delete_node))
-builder.add_node("composite_intent", _safe_node(composite_intent_node))
 builder.add_node("generation", _safe_node(generation_node))
-
 builder.set_entry_point("hydrate_context")
 builder.add_edge("hydrate_context", "router")
-
-builder.add_conditional_edges(
-    "router",
-    lambda state: state.get("intent", "coaching_qa"),
-    {
-        "clinical_intercept": "clinical_intercept",
-        "banned_movement": "banned_movement",
-        "telemetry_intercept": "telemetry_intercept",
-        "exercise_history": "exercise_history",
-        "exercise_substitution": "exercise_substitution",
-        "arabic_swap_clarification": "arabic_swap_clarification",
-        "program_mutation": "program_mutation",
-        "program_edit": "program_edit",
-        "program_edit_confirmation": "program_edit_confirmation",
-        "program_edit_reprompt": "program_edit_reprompt",
-        "deload_choice": "deload_choice",
-        "catalog_search": "catalog_search",
-        "injury_area_clarification": "injury_area_clarification",
-        "injury_status_update": "injury_status_update",
-        "injury_physician_followup": "injury_physician_followup",
-        "exercise_clearance_update": "exercise_clearance_update",
-        "exercise_clearance_disambiguation": "exercise_clearance_disambiguation",
-        "assistant_preference_delete_confirmed": "assistant_preference_delete_confirmed",
-        "composite_intent": "composite_intent",
-        "coaching_qa": "generation",
-    },
-)
-
-for node in [
-    "clinical_intercept", "banned_movement", "telemetry_intercept",
-    "exercise_substitution", "arabic_swap_clarification", "program_mutation", "program_edit", "program_edit_confirmation", "program_edit_reprompt",
-    "catalog_search", "injury_area_clarification", "injury_status_update",
-    "injury_physician_followup", "exercise_clearance_update", "exercise_clearance_disambiguation",
-    "assistant_preference_delete_confirmed",
-    "composite_intent", "generation",
-]:
+builder.add_conditional_edges("router", lambda state: state.get("intent", "coaching_qa"), {
+    "clinical_intercept": "clinical_intercept", "banned_movement": "banned_movement",
+    "telemetry_intercept": "telemetry_intercept", "coaching_qa": "generation",
+})
+for node in ("clinical_intercept", "banned_movement", "telemetry_intercept", "generation"):
     builder.add_edge(node, END)
-
-builder.add_conditional_edges(
-    "exercise_history",
-    lambda state: "generation" if state.get("intent") == "exercise_history_fallback" else END,
-    {"generation": "generation", END: END},
-)
 
 assistant_graph = builder.compile()
 
@@ -5563,40 +4653,13 @@ def stream_assistant_turn(
             "telemetry_intercept": telemetry_intercept_node,
             "clinical_intercept": clinical_intercept_node,
             "banned_movement": banned_movement_node,
-            "exercise_substitution": exercise_substitution_node,
-            "arabic_swap_clarification": arabic_swap_clarification_node,
-            "program_mutation": program_mutation_node,
-            "program_edit": program_edit_chat_node,
-            "program_edit_confirmation": program_edit_confirmation_node,
-            "program_edit_reprompt": program_edit_reprompt_node,
-            "deload_choice": deload_choice_node,
-            "catalog_search": catalog_search_node,
-            "injury_area_clarification": injury_area_clarification_node,
-            "injury_status_update": injury_status_update_node,
-            "injury_physician_followup": injury_physician_followup_node,
-            "exercise_clearance_update": injury_clearance_update_node,
-            "exercise_clearance_disambiguation": exercise_clearance_disambiguation_node,
-            "assistant_preference_delete_confirmed": assistant_preference_delete_node,
-            "composite_intent": composite_intent_node,
         }
-        if intent == "exercise_history":
-            result = exercise_history_node(state, config)
-            if result.get("intent") == "exercise_history_fallback":
-                arabic_history = (state.get("intent_metadata") or {}).get("arabic_history") is True
-                state.update({key: value for key, value in result.items() if key != "intent"})
-                intent = "exercise_history_fallback"
-                # Arabic history still uses generated answers; fallback is only the answer path.
-                if not arabic_history:
-                    state["intent"] = intent
-                result = None
-        if result is not None:
-            telemetry = {}
-        elif intent in handlers:
+        if intent in handlers:
             result = handlers[intent](state, config)
             telemetry = {}
         else:
             payload = build_prompt_payload(state)
-            tools, definitions = build_player_read_tools(ledger, store, state.get("player_account_id"))
+            tools, definitions = build_player_chat_tools(state, config)
             bound_model = llm.bind_tools(tools)
             routed_context = RoutedContext(list(payload))
             if intent == "coaching_qa":
@@ -5614,12 +4677,13 @@ def stream_assistant_turn(
                 if not streamed_answer.tool_calls:
                     telemetry = streamed_answer.telemetry
                     break
+                state.setdefault("selected_tools", []).extend(call["name"] for call in streamed_answer.tool_calls)
                 model_fetched_more = True
                 _ensure_tool_call_ids(streamed_answer.tool_calls)
                 response_message = streamed_answer.message.model_copy(
                     update={"tool_calls": streamed_answer.tool_calls}
                 )
-                tool_messages, round_metrics = run_player_tool_calls(
+                tool_messages, round_metrics = run_player_chat_tool_calls(
                     streamed_answer.tool_calls,
                     tools=tools,
                     definitions=definitions,
@@ -5631,6 +4695,10 @@ def stream_assistant_turn(
                 )
                 tool_metrics.extend(round_metrics)
                 model_messages.extend([response_message, *tool_messages])
+                if state.get("tool_action_result") is not None:
+                    result = state.pop("tool_action_result")
+                    telemetry = {}
+                    break
             else:
                 # The three tool rounds are complete. A plain model call gets
                 # the results and must answer without starting another round.
@@ -5689,7 +4757,7 @@ def stream_assistant_turn(
         visible.append(piece)
         yield piece
     content = "".join(visible)
-    if ledger is not None and _can_append_physician_followup(
+    if ledger is not None and not (result and result.get("program_edit_preview")) and _can_append_physician_followup(
         intent, content, pending_area_clarification
     ):
         followup = _pending_physician_followup(ledger, query)
@@ -5705,6 +4773,8 @@ def stream_assistant_turn(
                 visible.append(followup_chunk)
                 content += followup_chunk
                 yield followup_chunk
+    if ledger is not None and result and result.get("program_edit_preview"):
+        ledger.update_pending_chat_program_edit_offer(result["program_edit_preview"]["id"], content)
     state.update(
         response_content=content,
         program_updated=bool(result and result.get("program_updated")),

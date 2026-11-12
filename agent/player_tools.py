@@ -85,6 +85,40 @@ class PlayerNutritionArgs(BaseModel):
     offset: int = Field(default=0, ge=0)
 
 
+class ProgramOptionsArgs(BaseModel):
+    days: int | None = Field(default=None, ge=1, le=5, strict=True)
+
+
+_SPLIT_SUITABILITY = {
+    "full_body": "Players who prefer training the whole body each session and spreading practice across the week.",
+    "upper_lower": "Players who prefer separate upper and lower sessions, with extra upper-body practice at five days.",
+    "anterior_posterior": "Players who prefer grouping front-of-body and back-of-body work on separate days.",
+    "arnold": "Players who enjoy pairing chest/back and shoulders/arms, with a separate leg day.",
+    "arnold_x_ul": "Players who enjoy Arnold pairings plus upper/lower sessions across five days.",
+    "ppl": "Players who prefer separate push, pull and leg sessions.",
+    "ppl_x_ul": "Players who prefer push/pull/legs plus upper/lower sessions across five days.",
+}
+
+
+def _read_program_options(ledger: Any, args: ProgramOptionsArgs) -> dict[str, Any]:
+    from agent.program_rules import valid_splits_for
+
+    profile = _player_profile(ledger)
+    program = ledger.get_active_program()
+    days = args.days if args.days is not None else (
+        getattr(program, "weekly_frequency", None) or profile.get("weekly_frequency")
+    )
+    if type(days) is not int or days not in range(1, 6):
+        return {"status": "not_set", "message": "Ask how many days per week the Player wants."}
+    return {
+        "status": "ok", "days": days,
+        "options": [{"split_type": key, "name": name, "suits": _SPLIT_SUITABILITY[key]}
+                    for key, name in valid_splits_for(days, profile.get("gender", "male"))],
+        "message": "Read-only choices; suitability describes preferences, not medical clearance. "
+                   "Changing the program requires a preview and a separate confirmation.",
+    }
+
+
 class ChatHistorySearchArgs(BaseModel):
     """Keyword search and optional UTC date bounds for older chat messages."""
 
@@ -620,6 +654,17 @@ def _read_program_rationale(ledger: Any, args: ProgramRationaleArgs) -> dict[str
 
 
 PLAYER_READ_TOOL_REGISTRY: tuple[PlayerReadTool, ...] = (
+    PlayerReadTool(
+        name="list_program_options",
+        description="List supported Training program types and who each suits for days per week. "
+                    "Use for other programs, splits or available program types, never exercise search. "
+                    "Omit days to use the active program or saved frequency. Does not change anything.",
+        args_schema=ProgramOptionsArgs,
+        reader=_read_program_options,
+        args_reader=_read_program_options,
+        status_en="Checking program options…",
+        status_ar="ببص على اختيارات البرنامج…",
+    ),
     PlayerReadTool(
         name="get_player_profile",
         description=(

@@ -137,9 +137,11 @@ def test_program_mutation_rejects_a_different_split_family(split_type):
 
 def test_en_history_03_whole_session_request_stays_on_history_route(tmp_path, monkeypatch):
     from agent import assistant_graph
-    from tests.fakes.chat_model import ScriptedChatModel
+    from tests.fakes.chat_model import ScriptedChatModel, ToolCallsTurn
 
-    scripted_model = ScriptedChatModel(["History fallback should not be used."])
+    scripted_model = ScriptedChatModel([ToolCallsTurn(calls=[{
+        "name": "get_exercise_history", "args": {}, "id": "history",
+    }]), "No completed sets were recorded in this synthetic session."])
     monkeypatch.setattr(assistant_graph, "llm", scripted_model)
     case = next(case for case in _load_routing_cases() if case["id"] == "en-history-03")
 
@@ -147,7 +149,7 @@ def test_en_history_03_whole_session_request_stays_on_history_route(tmp_path, mo
 
     assert observation.get("runner_error") is None
     assert observation["observed_intent"] == "exercise_history"
-    assert scripted_model.calls == []
+    assert observation["selected_tools"] == ["get_exercise_history"]
 
 
 def test_hermetic_routing_counts_every_owner_reviewed_case():
@@ -161,7 +163,7 @@ def test_hermetic_routing_counts_every_owner_reviewed_case():
     graph_cases = {
         case["case_id"]
         for case in record["cases"]
-        if case["scripted_classifier_used"]
+        if case["scripted_tools_used"]
     }
     assert graph_cases == {
         "ar-egyptian-01",
@@ -173,7 +175,8 @@ def test_hermetic_routing_counts_every_owner_reviewed_case():
         "ar-mixed-03",
     }
     composite = next(case for case in record["cases"] if case["case_id"] == "ar-egyptian-07")
-    assert composite["observed_intent"] == "composite_intent"
+    assert composite["observed_intent"] == "exercise_substitution"
+    assert composite["task_match"] is True
     assert len(composite["executed_actions"]) == 1
     assert composite["action_match"] is True
     leg_press = next(case for case in record["cases"] if case["case_id"] == "ar-egyptian-03")
