@@ -73,6 +73,7 @@ from agent.ProgramState import (
     ProgramExerciseSchema,
     ProgramSchema,
 )
+from agent.program_order import main_muscles_for_slot, shares_main_muscle
 from agent.UserState import PlayerProfileSchema
 
 
@@ -230,6 +231,169 @@ def test_generated_program_draft_carries_structured_rationale(monkeypatch):
     assert rationale["split"]["code"] == "split.frequency_default"
     assert rationale["day_order"]["code"] == "day_order.template"
     assert rationale["days"][0]["exercises"][0]["rationale"]["prescription"]["sets"]["code"] == "sets.coach_dose"
+
+
+def _order_test_program_day(
+    monkeypatch,
+    slots,
+    *,
+    family="upper",
+    experience="intermediate",
+    equipment_by_slot=None,
+):
+    equipment_by_slot = equipment_by_slot or {}
+
+    def candidates_for_slot(slot_key, *_args, **_kwargs):
+        return [
+            {
+                "id": f"test-{slot_key}",
+                "name": f"Test {slot_key}",
+                "equipment": equipment_by_slot.get(slot_key, "Cable"),
+                "_candidate_source": program_rules.SLOT_CANDIDATE_SIGNATURE,
+            }
+        ], False
+
+    monkeypatch.setattr(program_generator, "_fetch_generation_candidates", candidates_for_slot)
+    monkeypatch.setattr(program_generator, "build_warmup_block", lambda *_args, **_kwargs: [])
+    day_plan = CustomDayPlan(
+        day_order=1,
+        day_name="Ordering test",
+        target_slots=slots,
+        warmup_family=family,
+        family=family,
+    )
+    context = program_generator.DayGenerationContext(
+        equipment_access="Commercial gym",
+        limitations="None",
+        rep_preference="balanced",
+        recovery_cut=False,
+        experience_level=experience,
+    )
+    day, exercise_reasons = program_generator.assemble_program_day(
+        day_plan, context, set(), ledger=object()
+    )
+    program = GeneratedProgramSchema(
+        program_name="Ordering test",
+        split_type="custom",
+        weekly_frequency=1,
+        days=[day],
+        program_rationale={
+            "days": [{"day_order": 1, "exercises": exercise_reasons}],
+        },
+    )
+    training_age = {"beginner": 0.5, "intermediate": 3.0, "advanced": 6.0}[experience]
+    program_generator._order_generated_program(
+        program, {1: family}, {"training_age_years": training_age}
+    )
+    return program.days[0], program.program_rationale["days"][0]["exercises"]
+
+
+def test_generator_pre_exhausts_lats_and_chest_before_later_compounds(monkeypatch):
+    day, rationale = _order_test_program_day(
+        monkeypatch,
+        ["horizontal_row", "pullover", "vertical_pull", "chest_fly", "flat_press", "incline_press"],
+    )
+
+    assert [exercise.slot_key for exercise in day.exercises] == [
+        "horizontal_row", "pullover", "vertical_pull", "chest_fly", "flat_press", "incline_press",
+    ]
+    reasons = {entry["exercise_id"]: entry["rationale"]["position"] for entry in rationale}
+    for slot in ("pullover", "chest_fly"):
+        position = reasons[f"test-{slot}"]
+        assert position["code"] == "position.pre_exhaust"
+        assert "small isolation exercise" in position["params"]["reason_en"]
+        assert "5–15% less load" in position["params"]["reason_en"]
+        assert "تمرين العزل" in position["params"]["reason_ar"]
+        assert "٥–١٥٪" in position["params"]["reason_ar"]
+    assert reasons["test-horizontal_row"]["code"] == "position.main_progressed_lift"
+
+
+def test_main_lift_precedes_its_owner_group_muscle_and_rear_delts_stay_separate(monkeypatch):
+    day, rationale = _order_test_program_day(
+        monkeypatch,
+        ["side_delts", "shoulder_press", "rear_delts", "flat_press"],
+    )
+
+    assert [exercise.slot_key for exercise in day.exercises][:2] == ["shoulder_press", "side_delts"]
+    assert main_muscles_for_slot("side_delts") == main_muscles_for_slot("shoulder_press")
+    assert not shares_main_muscle("rear_delts", "horizontal_row")
+    reasons = {entry["exercise_id"]: entry["rationale"]["position"] for entry in rationale}
+    assert reasons["test-shoulder_press"]["code"] == "position.main_progressed_lift"
+    assert reasons["test-shoulder_press"]["params"]["reason_ar"]
+
+
+def test_beginner_keeps_compounds_ahead_of_isolations(monkeypatch):
+    day, rationale = _order_test_program_day(
+        monkeypatch,
+        ["chest_fly", "flat_press", "horizontal_row", "pullover"],
+        family="full",
+        experience="beginner",
+    )
+
+    assert [exercise.slot_key for exercise in day.exercises] == [
+        "flat_press", "horizontal_row", "chest_fly", "pullover",
+    ]
+    positions = [entry["rationale"]["position"]["code"] for entry in rationale]
+    assert "position.pre_exhaust" not in positions
+    assert positions[:2] == ["position.main_progressed_lift", "position.beginner_compound_first"]
+
+
+def test_crowded_upper_day_can_keep_template_order_without_pre_exhaust(monkeypatch):
+    day, rationale = _order_test_program_day(
+        monkeypatch,
+        [
+            "horizontal_row", "flat_press", "incline_press", "chest_fly",
+            "vertical_pull", "side_delts", "rear_delts", "shrug",
+        ],
+    )
+
+    slots = [exercise.slot_key for exercise in day.exercises]
+    assert slots.index("chest_fly") > slots.index("flat_press")
+    assert slots.index("chest_fly") > slots.index("incline_press")
+    assert all(entry["rationale"]["position"]["code"] != "position.pre_exhaust" for entry in rationale)
+
+
+@pytest.mark.parametrize("press_slot", ["flat_press", "incline_press"])
+def test_stabilizer_isolation_follows_barbell_bench(monkeypatch, press_slot):
+    day, rationale = _order_test_program_day(
+        monkeypatch,
+        ["triceps_pushdown", press_slot, "horizontal_row"],
+        equipment_by_slot={press_slot: "Barbell"},
+    )
+
+    slots = [exercise.slot_key for exercise in day.exercises]
+    assert slots.index(press_slot) < slots.index("triceps_pushdown")
+    position = next(
+        entry["rationale"]["position"]
+        for entry in rationale
+        if entry["exercise_id"] == "test-triceps_pushdown"
+    )
+    assert position["code"] == "position.stabilizer_safety"
+    assert position["params"]["reason_en"]
+    assert position["params"]["reason_ar"]
+
+
+def test_pre_exhaust_caps_sets_and_effort(monkeypatch):
+    original_slot_sets = program_generator.slot_working_sets
+
+    def three_set_fly(slot_key, *args, **kwargs):
+        return 3 if slot_key == "chest_fly" else original_slot_sets(slot_key, *args, **kwargs)
+
+    monkeypatch.setattr(program_generator, "slot_working_sets", three_set_fly)
+    day, rationale = _order_test_program_day(
+        monkeypatch,
+        ["horizontal_row", "chest_fly", "flat_press"],
+        family="arms",
+    )
+
+    fly = next(exercise for exercise in day.exercises if exercise.slot_key == "chest_fly")
+    assert fly.working_sets == 2
+    assert all(1 <= group.target_rir <= 3 for group in fly.set_groups)
+    fly_rationale = next(
+        entry["rationale"] for entry in rationale if entry["exercise_id"] == "test-chest_fly"
+    )
+    assert fly_rationale["prescription"]["sets"]["params"]["count"] == 2
+    assert fly_rationale["prescription"]["rir"]["params"]["target_rir"] == 2
 
 
 def test_structured_fat_loss_cardio_keeps_its_program_rationale():

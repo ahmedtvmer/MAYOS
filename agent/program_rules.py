@@ -61,9 +61,9 @@ SLANG_TO_SQL_MAP = {
     "hamstrings": "LOWER(target_muscle) = 'hamstrings'",
     "glutes": "LOWER(target_muscle) = 'glutes'",
     "calves": "LOWER(target_muscle) = 'calves' OR LOWER(body_part) = 'lower legs'",
-    "lats": "LOWER(target_muscle) = 'lats'",
-    "upper back": "LOWER(target_muscle) IN ('upper back', 'traps', 'spine')",
-    "traps": "LOWER(target_muscle) IN ('traps', 'upper back')",
+    "lats": "LOWER(target_muscle) IN ('lats', 'latissimus dorsi')",
+    "upper back": "LOWER(target_muscle) IN ('upper back', 'upper-back', 'mid back', 'mid-back', 'middle back', 'middle-back', 'rhomboid', 'rhomboids', 'traps', 'upper traps', 'mid traps', 'middle traps', 'lower traps', 'trapezius', 'upper trapezius', 'mid trapezius', 'middle trapezius', 'lower trapezius')",
+    "traps": "LOWER(target_muscle) IN ('traps', 'upper traps', 'mid traps', 'middle traps', 'lower traps', 'trapezius', 'upper trapezius', 'mid trapezius', 'middle trapezius', 'lower trapezius', 'upper back', 'upper-back', 'mid back', 'mid-back', 'middle back', 'middle-back', 'rhomboid', 'rhomboids')",
     "biceps": "LOWER(target_muscle) IN ('biceps', 'brachialis')",
     "chest": "LOWER(target_muscle) = 'pectorals' OR LOWER(body_part) = 'chest'",
     "side delts": "LOWER(name) LIKE '%lateral raise%' OR (LOWER(target_muscle) = 'delts' AND LOWER(name) LIKE '%side%')",
@@ -224,13 +224,14 @@ Rules:
 1. Day Count: The number of days MUST equal exactly {frequency} (hard limit: max 5 days).
 2. Permitted Slots: use ONLY these exact slot keys:
    chest: 'incline_press', 'flat_press', 'chest_fly'
-   back: 'vertical_pull', 'horizontal_row', 'upper_back_pull', 'pullover', 'shrug'
+   lats: 'vertical_pull', 'pullover', 'horizontal_row'
+   traps: 'horizontal_row', 'upper_back_pull', 'shrug'
    shoulders: 'shoulder_press', 'side_delts', 'rear_delts'
    arms: 'biceps_preacher', 'biceps_alt', 'triceps_pushdown', 'triceps_overhead', 'forearm_wrist', 'forearm_reverse'
    legs: 'quad_compound', 'quad_lunge', 'quad_iso', 'ham_curl', 'ham_hinge', 'glute_thrust', 'glute_iso', 'adductors', 'calf'
    core: 'abs'
 3. Session Size: for 3 days, use 8-10 slots per day; for 4 days, use 6-8; for 5 days, use 5-6. Keep sessions balanced, never use more than 12 slots in a day, and list no more than 2 double_slots per day.
-4. Weekly Coverage (mandatory): chest uses incline_press and flat_press on separate days, with chest_fly as an optional third exposure; back uses vertical_pull and horizontal_row on separate days, with shrug as an optional third exposure; shoulders use side_delts and rear_delts on separate days, with shoulder_press as an optional third exposure; include both biceps slots, both triceps slots, and forearm_wrist or forearm_reverse across 2 days; include quad, hamstring, glute, adductors, calf, and abs work across 2 days. Spread all groups across distinct days.
+4. Weekly Coverage (mandatory): chest uses incline_press and flat_press on separate days, with chest_fly as an optional third exposure; lats use vertical_pull and pullover on separate days, with horizontal_row as an optional helper exposure; traps use horizontal_row and upper_back_pull on separate days, with shrug as an optional third exposure; shoulders use side_delts and rear_delts on separate days, with shoulder_press as an optional third exposure; include both biceps slots, both triceps slots, and forearm_wrist or forearm_reverse across 2 days; include quad, hamstring, glute, adductors, calf, and abs work across 2 days. Spread all groups across distinct days.
 5. Weekly Volume and Frequency: start every muscle at 4-6 working sets per week, regardless of experience, and train each muscle on 2-3 separate days. Spread slots across the week so repeated work is not concentrated on one day.
 6. Staples: include calf, side_delts, and adductors every week.
 7. Ordering: a priority or small muscle may open a day, and a pre-exhaust isolation may precede compounds. Never place two hard compounds for the same muscle back-to-back after a pre-exhaust unless the requested coach template explicitly does so.
@@ -278,7 +279,7 @@ SPLIT_FREQUENCY_NAMES: dict[tuple[str, int], str] = {
     ("female_upper_lower", 4): "Lower (Glute Bias) / Upper & Core",
     ("female_upper_lower", 5): "Glute & Upper Hypertrophy 5-Day",
     ("arnold", 2): "Arnold Split (Condensed)",
-    ("arnold", 3): "Arnold Split (Chest & Back / Shoulders & Arms / Legs)",
+    ("arnold", 3): "Arnold Split (Chest, Lats & Traps / Shoulders & Arms / Legs)",
     ("arnold_x_ul", 5): "Arnold × Upper/Lower",
     ("anterior_posterior", 2): "Anterior / Posterior Split",
     ("anterior_posterior", 3): "Anterior / Posterior Split",

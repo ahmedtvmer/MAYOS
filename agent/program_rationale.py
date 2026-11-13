@@ -5,7 +5,10 @@ split.unsupported_frequency; day_order.template; selection.staple,
 selection.equipment_access_staple, selection.already_used_today, selection.hidden,
 selection.signature_match, selection.limitation_substitute, selection.fallback; position.small_muscle_opener,
 position.heavy_compound, position.medium_compound, position.isolation,
-position.pre_exhaust; sets.coach_dose, sets.recovery_cut; reps.movement_class,
+position.pre_exhaust, position.follows_pre_exhaust,
+position.after_pre_exhaust_block, position.main_progressed_lift,
+position.beginner_compound_first, position.stabilizer_safety;
+sets.coach_dose, sets.recovery_cut; reps.movement_class,
 reps.rep_preference; rir.experience_level, rir.test_set_rule; rest.movement_class; warmup.template;
 sets.player_edit;
 cardio.fat_loss_finisher, cardio.coach_option; day_order.full_body_distributed,
@@ -53,6 +56,11 @@ POSITION_HEAVY_COMPOUND = "position.heavy_compound"
 POSITION_MEDIUM_COMPOUND = "position.medium_compound"
 POSITION_ISOLATION = "position.isolation"
 POSITION_PRE_EXHAUST = "position.pre_exhaust"
+POSITION_FOLLOWS_PRE_EXHAUST = "position.follows_pre_exhaust"
+POSITION_AFTER_PRE_EXHAUST_BLOCK = "position.after_pre_exhaust_block"
+POSITION_MAIN_PROGRESSED_LIFT = "position.main_progressed_lift"
+POSITION_BEGINNER_COMPOUND_FIRST = "position.beginner_compound_first"
+POSITION_STABILIZER_SAFETY = "position.stabilizer_safety"
 SETS_COACH_DOSE = "sets.coach_dose"
 SETS_RECOVERY_CUT = "sets.recovery_cut"
 SETS_PLAYER_EDIT = "sets.player_edit"
@@ -110,6 +118,8 @@ def _selection_reason(candidate: dict[str, Any], slot_key: str) -> dict[str, Any
 
 def _position_code(slot_key: str, day_slots: tuple[str, ...]) -> str:
     from agent.program_blueprints import SLOT_SPECS, _SMALL_MUSCLE_OPENERS
+    from agent.program_order import shares_main_muscle
+
     spec = SLOT_SPECS[slot_key]
     if slot_key in _SMALL_MUSCLE_OPENERS and day_slots and day_slots[0] == slot_key:
         return POSITION_SMALL_MUSCLE_OPENER
@@ -117,7 +127,7 @@ def _position_code(slot_key: str, day_slots: tuple[str, ...]) -> str:
         later_slots = day_slots[day_slots.index(slot_key) + 1:] if slot_key in day_slots else ()
         if any(
             SLOT_SPECS[later].archetype != "isolation"
-            and set(spec.primary_muscles).intersection(SLOT_SPECS[later].primary_muscles)
+            and shares_main_muscle(slot_key, later)
             for later in later_slots if later in SLOT_SPECS
         ):
             return POSITION_PRE_EXHAUST
@@ -125,6 +135,63 @@ def _position_code(slot_key: str, day_slots: tuple[str, ...]) -> str:
     if spec.archetype == "heavy_compound":
         return POSITION_HEAVY_COMPOUND
     return POSITION_MEDIUM_COMPOUND
+
+
+_POSITION_REASON_COPY = {
+    POSITION_PRE_EXHAUST: (
+        "This small isolation exercise comes first to wake up the same muscle before a later compound. "
+        "The compound may use 5–15% less load; that is not a regression.",
+        "يأتي تمرين العزل أولًا لتنشيط العضلة نفسها قبل تمرين مركب لاحق. "
+        "قد يقل حمل التمرين المركب بنسبة ٥–١٥٪، وهذا لا يعني تراجعًا.",
+    ),
+    POSITION_FOLLOWS_PRE_EXHAUST: (
+        "A short same-muscle isolation block comes first in this program version; "
+        "a lighter load here can be expected while you adjust.",
+        "يسبق هذا التمرين المركب جزء عزل قصير للعضلة نفسها في هذا الإصدار من البرنامج؛ "
+        "ومن المتوقع استخدام حمل أخف هنا أثناء التكيف.",
+    ),
+    POSITION_AFTER_PRE_EXHAUST_BLOCK: (
+        "This isolation follows the compound so the earlier pre-exhaust block stays "
+        "within two working sets; its sets remain in your weekly volume.",
+        "يأتي تمرين العزل هذا بعد التمرين المركب ليظل جزء العزل السابق في حدود مجموعتين؛ "
+        "وتظل مجموعاته ضمن حجمك الأسبوعي.",
+    ),
+    POSITION_MAIN_PROGRESSED_LIFT: (
+        "This is the day's main progressed lift, so it stays ahead of other exercises for the same muscle.",
+        "هذا هو تمرين القوة الأساسي المتدرج في اليوم، لذلك يسبق التمارين الأخرى للعضلة نفسها.",
+    ),
+    POSITION_BEGINNER_COMPOUND_FIRST: (
+        "Compound lifts come first so you can practise them with fresh muscles.",
+        "تأتي التمارين المركبة أولًا لتتدرب عليها والعضلات في حالة نشاط.",
+    ),
+    POSITION_STABILIZER_SAFETY: (
+        "This isolation follows a lift that needs the same muscles fresh for support or grip.",
+        "يأتي تمرين العزل بعد الرفعة التي تحتاج إلى نشاط العضلات نفسها للتثبيت أو القبضة.",
+    ),
+}
+
+
+def position_rationale(
+    slot_key: str,
+    day_slots: tuple[str, ...],
+    order_reason: str | None = None,
+    index: int | None = None,
+) -> dict[str, Any]:
+    codes = {
+        "pre_exhaust": POSITION_PRE_EXHAUST,
+        "follows_pre_exhaust": POSITION_FOLLOWS_PRE_EXHAUST,
+        "after_pre_exhaust_block": POSITION_AFTER_PRE_EXHAUST_BLOCK,
+        "main_progressed_lift": POSITION_MAIN_PROGRESSED_LIFT,
+        "beginner_compound_first": POSITION_BEGINNER_COMPOUND_FIRST,
+        "stabilizer_safety": POSITION_STABILIZER_SAFETY,
+    }
+    code = codes[order_reason] if order_reason in codes else _position_code(slot_key, day_slots)
+    params: dict[str, Any] = {"slot": slot_key}
+    if index is not None:
+        params["index"] = index
+    if code in _POSITION_REASON_COPY:
+        params["reason_en"], params["reason_ar"] = _POSITION_REASON_COPY[code]
+    return {"code": code, "params": params}
 
 
 def exercise_rationale(
@@ -145,7 +212,7 @@ def exercise_rationale(
     movement_class = prescription.spec.archetype
     return {
         "selection": selection,
-        "position": {"code": _position_code(slot_key, options.day_slots), "params": {"slot": slot_key}},
+        "position": position_rationale(slot_key, options.day_slots),
         "prescription": {
             "sets": {
                 "code": options.sets_code,

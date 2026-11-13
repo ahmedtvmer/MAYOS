@@ -823,3 +823,14 @@ class LedgerWorkoutsMixin:
             (session_row[0], exercise_id),
         )
         return [dict(r) for r in cursor.fetchall()]
+
+    def get_last_performance_program_version(self, exercise_id: str) -> int | None:
+        """Program version attached to this exercise's latest performance session."""
+        row = self.conn.execute(
+            f"SELECT s.program_version FROM workout_sessions s "
+            "JOIN workout_sets ws ON ws.session_id = s.id "
+            f"WHERE ws.exercise_id = ? AND {PREVIOUS_PERFORMANCE_PREDICATE} "
+            f"ORDER BY {LAST_SESSION_ORDER} LIMIT 1",
+            (str(exercise_id),),
+        ).fetchone()
+        return int(row[0]) if row is not None and row[0] is not None else None

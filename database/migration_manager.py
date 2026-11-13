@@ -3,6 +3,7 @@ import json
 import sqlite3
 import uuid
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -18,7 +19,7 @@ from utils.equipment_access import (
 logger = MayosLogger().get_logger(__name__)
 
 # Current target schema version for all user ledgers
-CURRENT_LEDGER_SCHEMA_VERSION: int = 57
+CURRENT_LEDGER_SCHEMA_VERSION: int = 58
 
 CHAT_HISTORY_FTS_DDL: tuple[str, ...] = (
     "CREATE VIRTUAL TABLE IF NOT EXISTS chat_history_fts USING fts5("
@@ -1295,6 +1296,118 @@ def _migrate_v56_to_v57(conn: sqlite3.Connection) -> None:
     )
 
 
+_LEGACY_BACK_DAY_LABELS = {
+    "chest & back": "Chest, Lats & Traps",
+    "chest and back": "Chest, Lats & Traps",
+}
+
+
+def _replace_legacy_back_muscle(stored_value, *, string_list: bool = False):
+    """Rename legacy Focus values and the retired Chest & Back day label."""
+    if isinstance(stored_value, dict):
+        return _replace_legacy_back_fields(stored_value)
+    if isinstance(stored_value, list):
+        return _replace_legacy_back_list(stored_value, string_list=string_list)
+    return stored_value, False
+
+
+def _replace_legacy_back_fields(stored_object: dict):
+    migrated_object = {}
+    has_changes = False
+    for key, nested_value in stored_object.items():
+        if key in {"muscle", "focus_muscle"} and nested_value == "back":
+            migrated_object[key] = "lats"
+            has_changes = True
+            continue
+        if key == "day_name" and isinstance(nested_value, str):
+            label = _LEGACY_BACK_DAY_LABELS.get(nested_value.strip().casefold())
+            if label is not None:
+                migrated_object[key] = label
+                has_changes = True
+                continue
+        if key in {"muscles", "focus_muscles", "weak_points"} and isinstance(nested_value, list):
+            migrated_nested_value, nested_changed = _replace_legacy_back_muscle(
+                nested_value, string_list=True
+            )
+        else:
+            migrated_nested_value, nested_changed = _replace_legacy_back_muscle(nested_value)
+        migrated_object[key] = migrated_nested_value
+        has_changes = has_changes or nested_changed
+    return migrated_object, has_changes
+
+
+def _replace_legacy_back_list(stored_list: list, *, string_list: bool):
+    migrated_values = []
+    has_changes = False
+    for nested_value in stored_list:
+        if string_list and nested_value == "back":
+            migrated_values.append("lats")
+            has_changes = True
+            continue
+        migrated_nested_value, nested_changed = _replace_legacy_back_muscle(nested_value)
+        migrated_values.append(migrated_nested_value)
+        has_changes = has_changes or nested_changed
+    return migrated_values, has_changes
+
+
+@dataclass(frozen=True)
+class _JsonMigrationTarget:
+    table: str
+    column: str
+    where: str = ""
+    params: tuple = ()
+    string_list: bool = False
+
+
+def _migrate_legacy_muscle_json(
+    conn: sqlite3.Connection, target: _JsonMigrationTarget
+) -> None:
+    if not _ledger_table_exists(conn, target.table):
+        return
+    columns = {row[1] for row in conn.execute(f"PRAGMA table_info({target.table})")}
+    if target.column not in columns:
+        return
+    suffix = f" WHERE {target.where}" if target.where else ""
+    rows = conn.execute(
+        f"SELECT rowid, {target.column} FROM {target.table}{suffix}", target.params
+    ).fetchall()
+    for rowid, raw_json in rows:
+        if raw_json is None:
+            continue
+        stored_value = json.loads(raw_json)
+        migrated_value, has_changes = _replace_legacy_back_muscle(
+            stored_value, string_list=target.string_list
+        )
+        if has_changes:
+            conn.execute(
+                f"UPDATE {target.table} SET {target.column} = ? WHERE rowid = ?",
+                (json.dumps(migrated_value, ensure_ascii=False, separators=(",", ":")), rowid),
+            )
+
+
+def _migrate_v57_to_v58(conn: sqlite3.Connection) -> None:
+    """Splits the old combined region; ambiguous saved values move to lats."""
+    for target in (
+        _JsonMigrationTarget("user_profile", "weak_points_json"),
+        _JsonMigrationTarget("volume_reviews", "payload_json"),
+        _JsonMigrationTarget("training_programs", "program_rationale_json"),
+        _JsonMigrationTarget("program_drafts", "draft_json"),
+        _JsonMigrationTarget(
+            "assistant_goal_weak_point_pending", "muscles_json",
+            "kind != 'movement_restriction'", string_list=True,
+        ),
+        _JsonMigrationTarget(
+            "intake_answers", "value", "field = ?", ("weak_points",)
+        ),
+    ):
+        _migrate_legacy_muscle_json(conn, target)
+    if _ledger_table_exists(conn, "program_days"):
+        conn.execute(
+            "UPDATE program_days SET day_name = 'Chest, Lats & Traps' "
+            "WHERE lower(trim(day_name)) IN ('chest & back', 'chest and back')"
+        )
+
+
 def get_ledger_schema_version(conn: sqlite3.Connection) -> int:
     """Reads the current user_version PRAGMA from the SQLite connection."""
     cursor = conn.cursor()
@@ -1448,6 +1561,7 @@ MIGRATION_REGISTRY: dict[int, MigrationCallable] = {
     54: _migrate_v54_to_v55,
     55: _migrate_v55_to_v56,
     56: _migrate_v56_to_v57,
+    57: _migrate_v57_to_v58,
 }
 
 
