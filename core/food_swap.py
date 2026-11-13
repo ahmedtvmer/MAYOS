@@ -2,7 +2,7 @@
 
 from math import isfinite
 
-from core.meal_generator import NUTRIENT_KEYS, _meal_food, meal_target_deviation, meal_totals
+from core.meal_generator import NUTRIENT_KEYS, TARGET_KEYS, _meal_food, day_gap_note, meal_target_deviation, meal_totals
 from core.meal_portions import portion_amounts, portion_normality
 
 
@@ -34,3 +34,16 @@ def swap_meal(meal, role, replacement):
     totals = meal_totals(foods)
     return {**meal, "foods": foods, "totals": totals,
             "target_deviation": meal_target_deviation(totals, meal.get("targets", {}))}
+
+
+def swap_day(variant, replacements):
+    """Replay swaps in order, preserving other foods and refreshing the day's gap."""
+    if variant["status"] != "ready" or not replacements:
+        return variant
+    meals = variant["meals"]
+    for replacement in replacements:
+        meals = [swap_meal(meal, replacement["role"], replacement["food"])
+                 if meal["slot"] == replacement["slot"] else meal for meal in meals]
+    totals = {key: sum(meal["totals"][key] for meal in meals) for key in TARGET_KEYS}
+    targets = {key: sum(meal["targets"][key] for meal in meals) for key in TARGET_KEYS}
+    return {**variant, "meals": meals, "totals": totals, "gap_note": day_gap_note(totals, targets)}

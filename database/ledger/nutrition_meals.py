@@ -7,6 +7,7 @@ import json
 from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING
 
+from core.food_swap import swap_day
 from core.meal_generator import MealGenerationInput
 from core.meal_setup import restriction_reasons
 from core.meal_execution import generate_meals_bounded
@@ -14,7 +15,7 @@ from database.food_library.lookup import _food
 from database.ledger.nutrition import NutritionMealGenerationCacheKey
 from database.ledger.nutrition_swap_foods import library_food, swap_allowed
 
-MEAL_GENERATION_CACHE_VERSION = 1
+MEAL_GENERATION_CACHE_VERSION = 2
 
 if TYPE_CHECKING:
     from database.ledger.handle import TrainingLedger
@@ -79,8 +80,9 @@ def _variant_requests(ledger, targets, previous):
     return requests, swaps
 
 
-def _variant_fingerprint(request):
-    content = json.dumps({"version": MEAL_GENERATION_CACHE_VERSION, "request": asdict(request)},
+def _variant_fingerprint(request, replacements):
+    content = json.dumps({"version": MEAL_GENERATION_CACHE_VERSION, "request": asdict(request),
+                          "replacements": replacements},
                          sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
@@ -143,26 +145,45 @@ class _VariantCache:
         return variant
 
 
-def _generate_requests(requests, swaps, scope=""):
-    variants = {}
-    for day_type, request in requests.items():
-        key = f"{scope}:{day_type}:{_variant_fingerprint(request)}"
-        variants[day_type] = generate_meals_bounded(request, key)
-    return {"enabled": True, "variants": variants, "swaps": swaps, "targets_changed": False}
-
-
 def generate_variants(ledger, targets, previous):
+    """Pin inputs now; solve each day type only when a reader requests it."""
     requests, swaps = _variant_requests(ledger, targets, previous)
-    return _generate_requests(requests, swaps, ledger.ledger_id)
+    return {"enabled": True, "variants": {}, "swaps": swaps, "targets_changed": False,
+            "generation_requests": {day_type: asdict(request) for day_type, request in requests.items()}}
 
 
-def cached_variants_for_plan(ledger, plan, entry_date):
+def resolve_variant(ledger, plan, payload, day_type):
+    saved = payload.get("variants", {}).get(day_type)
+    if saved is not None:
+        return saved
+    frozen = payload.get("generation_requests", {}).get(day_type)
+    if not payload.get("enabled") or frozen is None:
+        return {"status": "unavailable", "reason": "staples", "meals": []}
+    request = MealGenerationInput(**frozen)
+    replacements = payload.get("deferred_swaps", {}).get(day_type, [])
+    fingerprint = _variant_fingerprint(request, replacements)
+    # Pinned inputs belong to the immutable version, not the date of a later read.
+    cache_key = NutritionMealGenerationCacheKey(plan["created_at"][:10], plan["id"], fingerprint, day_type)
+    return _resolved_generation(ledger, cache_key, request, replacements)
+
+
+def _resolved_generation(ledger, cache_key, request, replacements):
+    variant = ledger.get_nutrition_meal_generation_cache(cache_key)
+    if variant is None:
+        key = _variant_generation_key(ledger, cache_key.entry_date, cache_key.variant, cache_key.fingerprint)
+        variant = generate_meals_bounded(request, key)
+        variant = swap_day(variant, replacements)
+        if not ledger.conn.execute("PRAGMA query_only").fetchone()[0]:
+            ledger.save_nutrition_meal_generation_cache(cache_key, variant)
+    return variant
+
+
+def cached_variants_for_plan(ledger, plan, entry_date, day_type):
     targets = _variant_targets(json.loads(plan["targets_json"]))
     setup = ledger.get_meal_setup()
     food_identity, staples = _food_cache_identity(ledger)
     cache = _VariantCache(ledger, plan["id"], str(entry_date), setup, food_identity, staples)
-    variants = {day_type: cache.get_or_generate(day_type, day_targets)
-                for day_type, day_targets in targets.items()}
+    variants = {day_type: cache.get_or_generate(day_type, targets[day_type])}
     return {"enabled": True, "variants": variants, "swaps": {}, "targets_changed": False}
 
 

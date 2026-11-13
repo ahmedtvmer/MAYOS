@@ -3,7 +3,7 @@
 import json
 import sqlite3
 from dataclasses import replace
-from datetime import timedelta
+from datetime import date, timedelta
 
 import pytest
 
@@ -79,13 +79,52 @@ def test_repeated_disabled_meal_reads_reuse_persisted_day_variants(meals_api):
     client, db, headers, today = meals_api
     first = client.get("/nutrition/meals", headers=headers).json()
     rows_before = _meal_cache_rows(db, _ledger_id(db), today, first["plan_version_id"])
-    assert {row["variant"] for row in rows_before} == {"training_day", "rest_day"}
+    assert {row["variant"] for row in rows_before} == {first["day_type"]}
 
     second = client.get("/nutrition/meals", headers=headers).json()
 
     rows_after = _meal_cache_rows(db, _ledger_id(db), today, second["plan_version_id"])
     assert second == first
     assert [row["created_at"] for row in rows_after] == [row["created_at"] for row in rows_before]
+
+
+def test_other_day_type_is_generated_on_demand_from_pinned_foods(meals_api):
+    client, db, headers, today = meals_api
+    first = _enable(client, headers)
+    ledger_id = _ledger_id(db)
+    other = "rest_day" if first["day_type"] == "training_day" else "training_day"
+    with db.open_ledger(ledger_id) as ledger:
+        active = ledger.get_active_nutrition_plan()
+        pinned = active["meals_json"]
+        anchor = date.fromisoformat(active["created_at"][:10])
+        assert set(json.loads(pinned)["variants"]) == {first["day_type"]}
+        assert not _meal_cache_rows(db, ledger_id, anchor, active["id"])
+        weekday = today.isoweekday() if other == "training_day" else today.isoweekday() % 7 + 1
+        ledger.append_training_schedule(ledger_id, [weekday], "UTC", today.isoformat(),
+                                        "2026-01-01T00:00:00Z")
+    with db.catalog_locked() as connection:
+        changed = {**dict.fromkeys(NUTRIENTS, 0), "energy_kcal": 999, "protein_g": 90}
+        connection.execute("UPDATE foods SET nutrients_json=? WHERE id IN ('protein','alternative')",
+                           (json.dumps(changed),))
+        connection.commit()
+
+    with db.open_ledger(ledger_id) as ledger:
+        changes = ledger.conn.total_changes
+        ledger.conn.execute("PRAGMA query_only=ON")
+        read_only = meals.read(ledger, today)
+        assert ledger.conn.total_changes == changes
+    assert not _meal_cache_rows(db, ledger_id, anchor, first["plan_version_id"])
+    demanded = client.get("/nutrition/meals", headers=headers).json()
+
+    assert demanded == read_only
+    assert demanded["status"] == "ready" and demanded["day_type"] == other
+    assert demanded["plan_version_id"] == first["plan_version_id"]
+    assert all(meal["foods"][0]["nutrients_per_100g"]["energy_kcal"] == 128 for meal in demanded["meals"])
+    rows = _meal_cache_rows(db, ledger_id, anchor, first["plan_version_id"])
+    assert {row["variant"] for row in rows} == {other}
+    assert client.get("/nutrition/meals", headers=headers).json() == demanded
+    with db.open_ledger(ledger_id) as ledger:
+        assert ledger.get_active_nutrition_plan()["meals_json"] == pinned
 
 
 def test_meal_cache_fingerprint_changes_with_setup_foods_and_targets(meals_api):

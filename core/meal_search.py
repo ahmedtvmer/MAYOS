@@ -1,16 +1,17 @@
-"""Bounded day search; score the complete finite portion grid in array batches."""
+"""Approximate day fit with fixed food, portion-neighborhood and beam budgets."""
 
 from dataclasses import dataclass
-from math import prod
+from itertools import product
 
 import numpy as np
 
-from core.meal_portions import portion_amounts, portion_normality
+from core.meal_portions import portion_grid, portion_limits
 
 TOLERANCES = (.05, .05, .10, .10)
-MEAL_CANDIDATES = 64
-DAY_BEAM = 256
-BATCH_SIZE = 4096
+FOODS_PER_ROLE = 4
+PORTION_SWEEPS = 12
+MEAL_CANDIDATES = 16
+DAY_BEAM = 32
 
 
 @dataclass(frozen=True)
@@ -22,11 +23,14 @@ class Candidate:
 
 
 @dataclass(frozen=True)
-class CandidateGrid:
-    options: tuple
-    nutrient_vectors: tuple
-    normalities: tuple
-    targets: np.ndarray
+class PortionFood:
+    food: dict
+    order: int
+    nutrients: tuple
+    lower: float
+    upper: float
+    step: float
+    midpoint: float
 
 
 def fit_error(totals, targets):
@@ -42,137 +46,160 @@ def _rank(candidate, targets):
 def _shortlist(candidates, targets, limit):
     best_by_totals = {}
     for candidate in candidates:
-        key = tuple(round(nutrient_amount, 8) for nutrient_amount in candidate.totals)
+        key = tuple(round(amount, 8) for amount in candidate.totals)
         previous = best_by_totals.get(key)
         if previous is None or (candidate.normality, candidate.order) < (previous.normality, previous.order):
             best_by_totals[key] = candidate
-    ordered = list(best_by_totals.values())
-    if not ordered:
-        return []
-    totals = np.asarray([candidate.totals for candidate in ordered])
-    relative = np.abs(totals - targets) / np.maximum(targets, 1)
-    gaps = np.maximum(relative - TOLERANCES - 1e-9, 0)
-    curation_order = sorted(range(len(ordered)), key=lambda index: ordered[index].order)
-    order_rank = np.empty(len(ordered), dtype=np.int64)
-    order_rank[curation_order] = np.arange(len(ordered))
-    ranked = np.lexsort((order_rank, [candidate.normality for candidate in ordered],
-                         (relative ** 2).sum(axis=1), (gaps ** 2).sum(axis=1)))
-    ordered = [ordered[index] for index in ranked]
+    ordered = sorted(best_by_totals.values(), key=lambda candidate: _rank(candidate, targets))
     return _retain_diversity(ordered, targets, limit)
 
 
 def _retain_diversity(ordered, targets, limit):
     selected = {candidate.order: candidate for candidate in ordered[:limit]}
-    directions = {}
+    directions = set()
     extremes = {}
     for candidate in ordered:
         direction = tuple(amount >= target for amount, target in zip(candidate.totals, targets))
-        if directions.get(direction, 0) < 2:
+        if direction not in directions:
             selected[candidate.order] = candidate
-            directions[direction] = directions.get(direction, 0) + 1
+            directions.add(direction)
         for index, amount in enumerate(candidate.totals):
-            low, high = extremes.get(index, (None, None))
-            if low is None or amount < low.totals[index]:
-                low = candidate
-            if high is None or amount > high.totals[index]:
-                high = candidate
-            extremes[index] = low, high
-    for low_candidate, high_candidate in extremes.values():
-        selected[low_candidate.order] = low_candidate
-        selected[high_candidate.order] = high_candidate
+            low, high = extremes.get(index, (candidate, candidate))
+            extremes[index] = (candidate if amount < low.totals[index] else low,
+                               candidate if amount > high.totals[index] else high)
+    for low, high in extremes.values():
+        selected[low.order], selected[high.order] = low, high
     return sorted(selected.values(), key=lambda candidate: _rank(candidate, targets))
 
 
-def _batch_indices(totals, normality, targets):
-    relative = np.abs(totals - targets) / np.maximum(targets, 1)
-    gaps = np.maximum(relative - TOLERANCES - np.full(4, 1e-9), 0)
-    order = np.lexsort((np.arange(len(totals)), normality, (relative ** 2).sum(axis=1), (gaps ** 2).sum(axis=1)))
-    indices = set(order[:MEAL_CANDIDATES].tolist())
-    directions = ((totals >= targets) * (1 << np.arange(4))).sum(axis=1)
-    for direction in np.unique(directions):
-        indices.update(order[directions[order] == direction][:2].tolist())
-    indices.update(np.argmin(totals, axis=0).tolist())
-    indices.update(np.argmax(totals, axis=0).tolist())
-    return sorted(indices)
-
-
-def _options(foods, nutrient_keys):
-    best_by_nutrients = {}
-    portion_order = 0
-    for food in foods:
-        nutrient_amounts = [food["nutrients"].get(key) for key in nutrient_keys]
-        if (any(amount is None or not np.isfinite(amount) or amount < 0 for amount in nutrient_amounts)
-                or not any(nutrient_amounts)):
+def _practical_foods(foods, nutrient_keys):
+    practical = {}
+    for order, food in enumerate(foods):
+        nutrients = [food["nutrients"].get(key) for key in nutrient_keys]
+        if (any(amount is None or not np.isfinite(amount) or amount < 0 for amount in nutrients)
+                or not any(nutrients)):
             continue
-        for grams in portion_amounts(food):
-            nutrients = tuple(amount * grams / 100 for amount in nutrient_amounts)
-            normality = portion_normality(food, grams)
-            key = tuple(round(nutrient_amount, 8) for nutrient_amount in nutrients)
-            role_option = (food, grams, nutrients, normality, portion_order)
-            previous = best_by_nutrients.get(key)
-            if previous is None or (normality, portion_order) < (previous[3], previous[4]):
-                best_by_nutrients[key] = role_option
-            portion_order += 1
-    return [role_option[:4] for role_option in sorted(
-        best_by_nutrients.values(), key=lambda role_option: role_option[4],
-    )]
+        grid = portion_grid(food)
+        if grid is not None:
+            midpoint = sum(portion_limits(food)) / 2
+            key = (tuple(nutrients), grid, midpoint)
+            practical.setdefault(key, PortionFood(food, order, tuple(amount / 100 for amount in nutrients),
+                                                   *grid, midpoint))
+    return list(practical.values())
 
 
-def _candidate_batch(grid, start, stop):
-    role_sizes = tuple(len(role) for role in grid.options)
-    flat = np.arange(start, stop)
-    role_indices = (flat // (role_sizes[1] * role_sizes[2]),
-                    (flat // role_sizes[2]) % role_sizes[1], flat % role_sizes[2])
-    totals = (grid.nutrient_vectors[0][role_indices[0]] + grid.nutrient_vectors[1][role_indices[1]]
-              + grid.nutrient_vectors[2][role_indices[2]])
-    normality = (grid.normalities[0][role_indices[0]] + grid.normalities[1][role_indices[1]]
-                 + grid.normalities[2][role_indices[2]])
-    return [Candidate(tuple(float(amount) for amount in totals[index]), float(normality[index]),
-                      tuple(int(role[index]) for role in role_indices),
-                      tuple(grid.options[role][role_indices[role][index]][:2] for role in range(3)))
-            for index in _batch_indices(totals, normality, grid.targets)]
+def _food_fit(option, targets, nutrient):
+    vector = np.asarray(option.nutrients)
+    grams = np.clip(targets[nutrient] / max(vector[nutrient], 1e-9), option.lower, option.upper)
+    relative = (vector * grams - targets) / np.maximum(targets, 1)
+    # Other roles can fill a deficit, but cannot undo this food's excess.
+    return relative[nutrient] ** 2 + sum(np.maximum(relative, 0) ** 2), option.order
 
 
-def _prune_role_options(options, targets):
-    vectors = [np.asarray([option[2] for option in role]) for role in options]
-    minima = [role.min(axis=0) for role in vectors]
-    maxima = [role.max(axis=0) for role in vectors]
-    scale = np.maximum(targets, 1)
-    lower = targets - (np.asarray(TOLERANCES) + 1e-9) * scale
-    upper = targets + (np.asarray(TOLERANCES) + 1e-9) * scale
-    viable = []
-    for role_index, role_vectors in enumerate(vectors):
-        other_minimum = sum(minima[index] for index in range(3) if index != role_index)
-        other_maximum = sum(maxima[index] for index in range(3) if index != role_index)
-        viable.append(np.all((role_vectors + other_minimum <= upper)
-                             & (role_vectors + other_maximum >= lower), axis=1))
-    # A slot with no individually viable role still needs its portions for day-level complements.
-    if not all(role_viable.any() for role_viable in viable):
+def _select_foods(options, targets, nutrient):
+    if len(options) <= FOODS_PER_ROLE:
         return options
-    pruned = []
-    for role_index, role_options in enumerate(options):
-        extremes = {int(index) for nutrient in range(4)
-                    for index in (np.argmin(vectors[role_index][:, nutrient]),
-                                  np.argmax(vectors[role_index][:, nutrient]))}
-        pruned.append([option for index, option in enumerate(role_options)
-                       if viable[role_index][index] or index in extremes])
-    return pruned
+    ranked = sorted(options, key=lambda option: _food_fit(option, targets, nutrient))
+    selected = {option.order: option for option in ranked[:FOODS_PER_ROLE - 2]}
+    # Lean/rich alternatives let another meal compensate for an off-target slot.
+    def fat_density(option):
+        return option.nutrients[3] / max(option.nutrients[0], 1e-9)
+
+    for option in (min(options, key=lambda option: (fat_density(option), option.order)),
+                   min(options, key=lambda option: (-fat_density(option), option.order))):
+        selected[option.order] = option
+    for option in ranked:
+        if len(selected) == FOODS_PER_ROLE:
+            break
+        selected[option.order] = option
+    return sorted(selected.values(), key=lambda option: option.order)
+
+
+def _continuous_portions(triples, targets):
+    vectors = np.asarray([[option.nutrients for option in triple] for triple in triples])
+    lower = np.asarray([[option.lower for option in triple] for triple in triples])
+    upper = np.asarray([[option.upper for option in triple] for triple in triples])
+    grams = (lower + upper) / 2
+    scaled = vectors / (np.maximum(targets, 1) * TOLERANCES)
+    residual = targets / (np.maximum(targets, 1) * TOLERANCES) - (scaled * grams[:, :, None]).sum(axis=1)
+    for _ in range(PORTION_SWEEPS):
+        for role in range(3):
+            column = scaled[:, role]
+            adjustment = (residual * column).sum(axis=1) / np.maximum((column ** 2).sum(axis=1), 1e-12)
+            updated = np.clip(grams[:, role] + adjustment, lower[:, role], upper[:, role])
+            residual -= column * (updated - grams[:, role])[:, None]
+            grams[:, role] = updated
+    return vectors, grams
+
+
+def _nearby_amounts(option, optimum):
+    # Fixed intervals collapse to one amount; off-grid bounds stay unavailable.
+    unit = optimum / option.step
+    nearest = np.floor(unit + .5)
+    return sorted({round(float(np.clip(index * option.step, option.lower, option.upper)), 6)
+                   for index in (nearest - 1, nearest, nearest + 1)})
+
+
+def _portion_neighborhood(triple, optimum):
+    nearby = [_nearby_amounts(option, grams) for option, grams in zip(triple, optimum)]
+    portions = set(product(*nearby))
+    snapped = tuple(min(amounts, key=lambda amount: (abs(amount - grams), amount))
+                    for amounts, grams in zip(nearby, optimum))
+    # Endpoints preserve nutrient extremes without enumerating each portion step.
+    for role, option in enumerate(triple):
+        for endpoint in (option.lower, option.upper):
+            portions.add(snapped[:role] + (endpoint,) + snapped[role + 1:])
+    portions.update((tuple(option.lower for option in triple), tuple(option.upper for option in triple)))
+    return sorted(portions)
+
+
+def _portion_arrays(triples, targets):
+    vectors, optima = _continuous_portions(triples, targets)
+    amounts, totals, normalities, triple_indices = [], [], [], []
+    for index, (triple, vector, optimum) in enumerate(zip(triples, vectors, optima)):
+        portions = np.asarray(_portion_neighborhood(triple, optimum))
+        midpoints = np.asarray([option.midpoint for option in triple])
+        amounts.extend(portions)
+        totals.extend(portions @ vector)
+        normalities.extend((((portions - midpoints) / midpoints) ** 2).sum(axis=1))
+        triple_indices.extend([index] * len(portions))
+    return np.asarray(amounts), np.asarray(totals), np.asarray(normalities), triple_indices
+
+
+def _retained_indices(totals, normalities, targets):
+    normal_order = np.lexsort((np.arange(len(totals)), normalities))
+    _, distinct = np.unique(np.round(totals[normal_order], 8), axis=0, return_index=True)
+    indices = normal_order[distinct]
+    relative = np.abs(totals[indices] - targets) / np.maximum(targets, 1)
+    gaps = np.maximum(relative - TOLERANCES - 1e-9, 0)
+    ranked = indices[np.lexsort((indices, normalities[indices], (relative ** 2).sum(axis=1), (gaps ** 2).sum(axis=1)))]
+    selected = set(ranked[:MEAL_CANDIDATES].tolist())
+    directions = ((totals >= targets) * (1 << np.arange(4))).sum(axis=1)
+    for direction in np.unique(directions[ranked]):
+        selected.add(int(ranked[directions[ranked] == direction][0]))
+    selected.update(indices[np.argmin(totals[indices], axis=0)].tolist())
+    selected.update(indices[np.argmax(totals[indices], axis=0)].tolist())
+    return sorted(selected)
+
+
+def _meal_candidates(triples, targets):
+    portions, totals, normalities, triple_indices = _portion_arrays(triples, targets)
+    candidates = []
+    for index in _retained_indices(totals, normalities, targets):
+        triple, grams = triples[triple_indices[index]], portions[index]
+        candidates.append(Candidate(tuple(float(amount) for amount in totals[index]), float(normalities[index]),
+                                    (tuple(option.order for option in triple), tuple(float(amount) for amount in grams)),
+                                    tuple((option.food, float(amount)) for option, amount in zip(triple, grams))))
+    return _shortlist(candidates, targets, MEAL_CANDIDATES)
 
 
 def meal_candidates(choices, targets, nutrient_keys):
-    options = [_options(foods, nutrient_keys) for foods in choices]
+    targets = np.asarray(targets)
+    options = [_select_foods(_practical_foods(foods, nutrient_keys), targets, nutrient)
+               for foods, nutrient in zip(choices, (1, 2, 3))]
     if not all(options):
         return []
-    options = _prune_role_options(options, np.asarray(targets))
-    vectors = tuple(np.asarray([option[2] for option in role]) for role in options)
-    normalities = tuple(np.asarray([option[3] for option in role]) for role in options)
-    grid = CandidateGrid(tuple(options), vectors, normalities, np.asarray(targets))
-    total = prod(len(role) for role in options)
-    retained = []
-    for start in range(0, total, BATCH_SIZE):
-        batch = _candidate_batch(grid, start, min(start + BATCH_SIZE, total))
-        retained = _shortlist((*retained, *batch), targets, MEAL_CANDIDATES)
-    return retained
+    return _meal_candidates(list(product(*options)), targets)
 
 
 def choose_day(candidates, targets, shares):
@@ -181,7 +208,7 @@ def choose_day(candidates, targets, shares):
     for meals, share in zip(candidates, shares):
         consumed_targets = [amount + target for amount, target in zip(consumed_targets, share)]
         combined = (Candidate(tuple(a + b for a, b in zip(state.totals, meal.totals)),
-                              state.normality + meal.normality, state.order + (index,), state.choices + (meal,))
-                    for state in states for index, meal in enumerate(meals))
+                              state.normality + meal.normality, state.order + (meal.order,), state.choices + (meal,))
+                    for state in states for meal in meals)
         states = _shortlist(combined, consumed_targets, DAY_BEAM)
     return min(states, key=lambda candidate: _rank(candidate, targets))

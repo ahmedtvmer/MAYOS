@@ -1,13 +1,17 @@
 """Table-driven tests of the pure generator, using reviewed fixture Staples."""
 
+import json
 from copy import deepcopy
 from dataclasses import replace
+from math import prod
+from pathlib import Path
 from random import Random
 from time import perf_counter
 
 import pytest
 
-from core.meal_generator import MealGenerationInput, generate_meals
+from core.meal_generator import MealGenerationInput, NUTRIENT_KEYS, ROLES, generate_meals, role_matches
+from core.meal_portions import portion_amounts
 from core.meal_setup import MEAL_LAYOUTS
 
 
@@ -223,7 +227,7 @@ def test_complementary_meals_fit_the_day_even_when_slots_cannot_fit():
                for meal in generated["meals"])
 
 
-def test_all_food_combinations_are_scored_instead_of_stopping_at_first_fit():
+def test_better_food_in_the_shortlist_wins_instead_of_stopping_at_first_fit():
     request = replace(_request(), targets={"calories": 2310, "protein_g": 135, "carbs_g": 375, "fat_g": 30},
         staples=[_food("first", "protein", protein=29, min_grams=150, max_grams=150),
                  _food("exact", "protein", protein=30, min_grams=150, max_grams=150),
@@ -234,7 +238,8 @@ def test_all_food_combinations_are_scored_instead_of_stopping_at_first_fit():
     assert {meal["foods"][0]["id"] for meal in generated["meals"]} == {"exact"}
 
 
-def test_realistic_food_grid_generates_a_full_day_within_three_seconds():
+@pytest.mark.parametrize("portion_grams", [None, .001])
+def test_synthetic_food_grid_generates_a_full_day_within_three_seconds(portion_grams):
     staples = []
     for index in range(12):
         staples.append(_food(f"protein-{index}", "protein", protein=12 + index,
@@ -242,6 +247,9 @@ def test_realistic_food_grid_generates_a_full_day_within_three_seconds():
         staples.append(_food(f"carb-{index}", "carb", carbs=35 + index * 2))
         staples.append(_food(f"vegetable-fat-{index}", "vegetable_fat",
                              protein=index / 10, fat=5 + index * 1.5))
+    if portion_grams is not None:
+        # #678: tiny curated steps must not expand the full portion grid.
+        staples = [{**food, "portion_grams": portion_grams} for food in staples]
     request = replace(_request(training=True), staples=staples)
 
     started = perf_counter()
@@ -251,6 +259,52 @@ def test_realistic_food_grid_generates_a_full_day_within_three_seconds():
     assert elapsed < 3
     assert generated["status"] == "ready"
     assert len(generated["meals"]) == 3
+    if portion_grams is not None:
+        for meal in generated["meals"]:
+            for food in meal["foods"]:
+                assert 100 <= food["grams"] <= (250 if food["role"] == "protein" else 300)
+                units = food["grams"] / portion_grams
+                assert units == pytest.approx(round(units))
+
+
+@pytest.fixture(scope="module")
+def real_staples():
+    from database.food_library.builder import build_food_library
+
+    folder = Path(__file__).resolve().parents[1] / "data"
+    paths = [folder / name for name in (
+        "food_library.csv", "food_portions.csv", "food_curation.csv", "food_recipes.csv", "food_allergens.csv",
+    )]
+    missing = [str(path.relative_to(folder.parent)) for path in paths if not path.is_file()]
+    if missing:
+        pytest.skip("Real meal-generation benchmark needs local CSVs: " + ", ".join(missing))
+    rows = build_food_library(*paths)
+    return [{**row, "nutrients": {key: row[key] for key in NUTRIENT_KEYS}}
+            for row in sorted(rows, key=lambda row: (row["staple_order"], row["id"]))
+            if row["reviewed"] and not row["hidden"] and row["staple_roles"]]
+
+
+@pytest.mark.parametrize(("count", "training"), [(2, False), (3, False), (3, True)])
+def test_real_food_library_day_generates_within_two_seconds(real_staples, count, training, record_property):
+    request = replace(_request(count, training=training), staples=real_staples,
+                      targets={"calories": 2520, "protein_g": 150, "carbs_g": 300, "fat_g": 80})
+    census = {}
+    for slot in MEAL_LAYOUTS[count]:
+        foods = [[{**food, "role": role} for food in real_staples if role_matches(food, slot, role)]
+                 for role in ROLES]
+        steps = [{food["id"]: len(portion_amounts(food)) for food in role} for role in foods]
+        census[slot] = {"roles": ROLES, "foods_per_role": [len(role) for role in foods], "steps_per_food": steps,
+                        "full_portion_combinations": prod(sum(role.values()) for role in steps)}
+    record_property("unpruned_search_size", json.dumps(census, sort_keys=True))
+
+    # CSV loading and the census are deliberately outside the per-day CPU work.
+    started = perf_counter()
+    generated = generate_meals(request)
+    elapsed = perf_counter() - started
+
+    assert generated["status"] == "ready"
+    assert len(generated["meals"]) == count
+    assert elapsed < 2, f"Real-library meal day took {elapsed:.3f}s (budget 2s)"
 
 
 def test_normal_amounts_win_before_curation_order_for_equal_nutrient_fit():
