@@ -17,6 +17,12 @@ CURATION_COLUMNS = [
     "hidden",
     "duplicate_of",
 ]
+NAME_SEARCH_ROWS = [
+    ["lat-pulldown", "Lat Pulldown", "Back", "Lats", "cable", None, None, "Pull the bar down."],
+    ["744", "Pendulum Squat", "Legs", "Quads", "leverage machine", None, None, "Squat on a sled."],
+    ["cable-raise", "Cable Raise", "Shoulders", "Delts", "cable", None, None, "Raise the cable."],
+    ["incline-raise", "Incline Raise", "Shoulders", "Delts", "dumbbell", None, None, "Raise on an incline."],
+]
 
 
 def _write_curation(path, rows):
@@ -52,6 +58,61 @@ def _seed_minimal_library(store, path, curation_path=None):
         store.initialize_and_seed(path, curation_path)
 
 
+def _seed_name_matching_library(store, tmp_path):
+    seed_path = tmp_path / "name-search-exercises.csv"
+    with seed_path.open("w", newline="", encoding="utf-8") as seed_file:
+        writer = csv.writer(seed_file)
+        writer.writerow(
+            ["id", "name", "bodyPart", "target", "equipment", "image_path", "gif_path", "instructions"]
+        )
+        writer.writerows(NAME_SEARCH_ROWS)
+    curation_path = tmp_path / "name-search-curation.csv"
+    _write_curation(curation_path, [])
+    store.initialize_and_seed(seed_path, curation_path)
+
+
+def _catalog_search_reply(store, query, language):
+    from agent.assistant_graph import catalog_search_node
+    from langchain_core.messages import HumanMessage
+
+    return catalog_search_node(
+        {
+            "messages": [HumanMessage(content=query)],
+            "intent_metadata": {"search_query": query},
+            "display_language": language,
+        },
+        {"configurable": {"ledger": store.ledger, "store": store}},
+    )
+
+
+def _insert_name_alias(store, exercise_id, alias):
+    from database.shared import _normalize_exercise_name
+
+    with store.catalog_locked() as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO exercise_aliases (exercise_id, alias, normalized_alias) "
+            "VALUES (?, ?, ?)",
+            (exercise_id, alias, _normalize_exercise_name(alias)),
+        )
+        conn.commit()
+
+
+def _insert_matching_exercise(store, exercise_id, name, matching_entry):
+    with store.catalog_locked() as conn:
+        conn.execute(
+            "INSERT INTO exercises (id, name, body_part, target_muscle, equipment) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (
+                exercise_id,
+                name,
+                matching_entry["body_part"],
+                matching_entry["target_muscle"],
+                matching_entry["equipment"],
+            ),
+        )
+        conn.commit()
+
+
 @pytest.fixture
 def seed_store(tmp_path, monkeypatch):
     from database.database_manager import DatabaseManager
@@ -82,6 +143,7 @@ def test_unique_exact_exercise_id_lookup_uses_names_and_rejects_ambiguity(seed_s
     _seed_minimal_library(fresh_store, tmp_path / "seed.csv")
 
     assert fresh_store.find_unique_exercise_id_by_exact_name("Cable Row") == "9001"
+    assert fresh_store.find_exercise_by_name("Cable Row")["id"] == "9001"
     with fresh_store.catalog_locked() as conn:
         conn.execute(
             "UPDATE exercise_display_names SET display_name = ? WHERE exercise_id = ?",
@@ -106,6 +168,315 @@ def test_unique_exact_exercise_id_lookup_uses_names_and_rejects_ambiguity(seed_s
         )
         conn.commit()
     assert fresh_store.find_unique_exercise_id_by_exact_name("Cable Row Alias") is None
+    assert fresh_store.find_exercise_by_name("Cable Row Alias") is None
+
+
+@pytest.mark.parametrize("query", ["y raises", "Y-Raise", "y raise", "yraise"])
+def test_real_y_raise_variants_ask_between_curated_exercises(real_library_store, query):
+    matches = real_library_store.find_exercises_by_name(query, limit=3)
+
+    assert {match["id"] for match in matches} == {"3541", "mayos:3"}
+    assert real_library_store.find_unique_exercise_id_by_exact_name(query) is None
+    assert real_library_store.find_exercise_by_name(query) is None
+
+    reply = _catalog_search_reply(real_library_store, query, "en")
+    assert "Did you mean" in reply["response_content"]
+    assert "Incline Y-Raise (Dumbbell)" in reply["response_content"]
+    assert "Cable Y-Raise" in reply["response_content"]
+
+
+def test_english_y_raise_swap_prefers_the_player_program_match(real_library_store):
+    from agent import assistant_graph
+    from langchain_core.messages import HumanMessage
+
+    curated_entry = real_library_store.get_exercise_library_entry("3541")
+    _insert_matching_exercise(
+        real_library_store, "english-y-swap-source", "Cable Lateral Raise", curated_entry
+    )
+    real_library_store.ledger.save_training_program(
+        {
+            "program_name": "Y-Raise Resolution",
+            "weekly_frequency": 3,
+            "split_type": "Upper/Lower",
+            "days": [
+                {
+                    "day_name": "Shoulders 1",
+                    "day_order": 1,
+                    "exercises": [
+                        {
+                            "exercise_id": "english-y-swap-source",
+                            "target_sets": 3,
+                            "target_reps_min": 8,
+                            "target_reps_max": 12,
+                            "target_rpe": 8.5,
+                        }
+                    ],
+                },
+                {
+                    "day_name": "Shoulders 2",
+                    "day_order": 2,
+                    "exercises": [
+                        {
+                            "exercise_id": "3541",
+                            "target_sets": 3,
+                            "target_reps_min": 8,
+                            "target_reps_max": 12,
+                            "target_rpe": 8.5,
+                        }
+                    ],
+                },
+            ],
+        }
+    )
+    query = "swap Cable Lateral Raise for y raises"
+    result = assistant_graph.exercise_substitution_node(
+        {
+            "messages": [HumanMessage(content=query)],
+            "intent_metadata": {
+                "mode": "direct_swap",
+                "source_exercise": "Cable Lateral Raise",
+                "target_exercise": "y raises",
+            },
+        },
+        {"configurable": {"ledger": real_library_store.ledger, "store": real_library_store}},
+    )
+
+    assert result["program_updated"] is True
+    active_program = real_library_store.ledger.get_active_program()
+    assert active_program.days[0].exercises[0].exercise_id == "3541"
+
+
+@pytest.mark.parametrize("query", ["pulldown", "lat pulldwon"])
+def test_real_lat_pulldown_nickname_and_typo_match_curated_row(real_library_store, query):
+    matches = real_library_store.find_exercises_by_name(query, limit=3)
+
+    assert "150" in {match["id"] for match in matches}
+
+
+def test_plural_search_does_not_bypass_near_miss_exercise_safety(seed_store, tmp_path):
+    _seed_name_matching_library(seed_store, tmp_path)
+
+    assert seed_store.find_exercises_by_name("pendulum squats") == []
+    assert seed_store.find_exercises_by_name("pendulum squat") == []
+    assert seed_store.find_unique_exercise_id_by_exact_name("pendulum squat") is None
+
+
+def test_real_exercise_curation_loads_with_normalized_duplicate_aliases():
+    from database.exercise_library.curation import load_exercise_curation
+    from database.shared import _normalize_exercise_name
+
+    records = load_exercise_curation()
+    aliases = records["2133"].aliases
+
+    assert aliases == ("farmers walk", "farmer carry")
+    normalized_aliases = [_normalize_exercise_name(alias) for alias in aliases]
+    assert len(normalized_aliases) == len(set(normalized_aliases))
+
+
+def test_curation_deduplicates_farmer_carry_plural_aliases(tmp_path):
+    from database.exercise_library.curation import load_exercise_curation
+
+    curation_path = tmp_path / "farmer-carry-curation.csv"
+    _write_curation(
+        curation_path,
+        [("2133", "farmers walk", "Farmer's Walk", "farmer carry|farmers carry")],
+    )
+
+    assert load_exercise_curation(curation_path)["2133"].aliases == ("farmer carry",)
+
+
+@pytest.mark.parametrize(
+    ("variant", "canonical"),
+    [
+        ("أ", "ا"),
+        ("إ", "ا"),
+        ("آ", "ا"),
+        ("ة", "ه"),
+        ("ى", "ي"),
+        ("تمارين", "تمرينات"),
+    ],
+)
+def test_arabic_exercise_name_forms_normalize_together(variant, canonical):
+    from database.shared import _normalize_exercise_name
+
+    assert _normalize_exercise_name(variant) == _normalize_exercise_name(canonical)
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("presses", "press"),
+        ("wishes", "wish"),
+        ("crunches", "crunch"),
+        ("boxes", "box"),
+        ("abs", "abs"),
+        ("flyes", "fly"),
+        ("التمرين", "التمرين"),
+    ],
+)
+def test_exercise_singularization_preserves_required_forms(name, expected):
+    from database.shared import _normalize_exercise_name
+
+    assert _normalize_exercise_name(name) == expected
+
+
+def test_food_search_keeps_matching_plural_food_names():
+    from core.food_search import food_match_rank, normalize_food_query
+
+    normalized_query = normalize_food_query("chicken breasts")
+
+    assert normalized_query == "chicken breast"
+    assert food_match_rank({"chicken breast"}, set(), normalized_query) == 0
+
+
+@pytest.mark.parametrize(
+    ("query", "language", "expected_question", "expected_candidates"),
+    [
+        ("y raise", "en", "Did you mean", ("Incline Y-Raise (Dumbbell)", "Cable Y-Raise")),
+        (
+            "واي رفعة",
+            "ar",
+            "هل تقصد",
+            ("Incline Y-Raise (Dumbbell)", "Cable Y-Raise"),
+        ),
+    ],
+)
+def test_ambiguous_exercise_names_ask_in_the_players_language(
+    real_library_store, query, language, expected_question, expected_candidates
+):
+    if language == "ar":
+        _insert_name_alias(real_library_store, "3541", "واي رفعة")
+        _insert_name_alias(real_library_store, "mayos:3", "واي رفعة")
+    reply = _catalog_search_reply(real_library_store, query, language)
+
+    assert expected_question in reply["response_content"]
+    assert all(name in reply["response_content"] for name in expected_candidates)
+
+
+@pytest.mark.parametrize("program_contains_match", [False, True])
+def test_arabic_y_raise_swap_clarifies_unless_the_program_has_a_candidate(
+    real_library_store, program_contains_match
+):
+    from types import SimpleNamespace
+
+    from agent import assistant_graph
+
+    _insert_name_alias(real_library_store, "3541", "واي رفعة")
+    _insert_name_alias(real_library_store, "mayos:3", "واي رفعة")
+    curated_entry = real_library_store.get_exercise_library_entry("3541")
+    _insert_matching_exercise(
+        real_library_store, "arabic-swap-source", "Cable Lateral Raise", curated_entry
+    )
+
+    source = SimpleNamespace(
+        exercise_id="arabic-swap-source", exercise_name="Cable Lateral Raise"
+    )
+    day = SimpleNamespace(day_name="Shoulders", exercises=[source])
+    program = SimpleNamespace(days=[day])
+    if program_contains_match:
+        day.exercises.append(
+            SimpleNamespace(exercise_id="3541", exercise_name=curated_entry["name"])
+        )
+    classification = assistant_graph.ArabicIntentClassification(
+        intent="exercise_substitution",
+        source_exercise="Cable Lateral Raise",
+        target_exercise="واي رفعة",
+    )
+    query = "بدل Cable Lateral Raise ب واي رفعة"
+
+    route = assistant_graph._classify_arabic_swap(
+        query, classification, program, real_library_store
+    )
+    if program_contains_match:
+        assert route["intent"] == "exercise_substitution"
+        assert route["intent_metadata"]["target_exercise_id"] == "3541"
+    else:
+        reply = assistant_graph.arabic_swap_clarification_node(
+            {"intent_metadata": route["intent_metadata"]}
+        )
+        assert route["intent"] == "arabic_swap_clarification"
+        assert "هل تقصد" in reply["response_content"]
+        assert "Incline Y-Raise (Dumbbell)" in reply["response_content"]
+        assert "Cable Y-Raise" in reply["response_content"]
+
+
+def test_arabic_swap_keeps_a_fuzzy_english_target_match(real_library_store):
+    from types import SimpleNamespace
+
+    from agent import assistant_graph
+
+    target = real_library_store.get_exercise_library_entry("150")
+    source_id = "arabic-fuzzy-swap-source"
+    _insert_matching_exercise(real_library_store, source_id, "Cable Row", target)
+
+    source = SimpleNamespace(exercise_id=source_id, exercise_name="Cable Row")
+    day = SimpleNamespace(day_name="Back", exercises=[source])
+    program = SimpleNamespace(days=[day])
+    classification = assistant_graph.ArabicIntentClassification(
+        intent="exercise_substitution",
+        source_exercise="Cable Row",
+        target_exercise="lat pulldwon",
+    )
+    query = "بدل Cable Row ب lat pulldwon"
+
+    route = assistant_graph._classify_arabic_swap(
+        query, classification, program, real_library_store
+    )
+
+    if route["intent"] == "exercise_substitution":
+        assert route["intent_metadata"]["target_exercise_id"] == "150"
+    else:
+        assert route["intent"] == "arabic_swap_clarification"
+        candidates = route["intent_metadata"]["clarification_candidates"]
+        assert "150" in {candidate["id"] for candidate in candidates}
+        reply = assistant_graph.arabic_swap_clarification_node(
+            {"intent_metadata": route["intent_metadata"]}
+        )
+        assert "هل تقصد" in reply["response_content"]
+        assert target["name"] in reply["response_content"]
+
+
+def test_farmer_carry_plural_still_scopes_the_curated_exercise(real_library_store):
+    from types import SimpleNamespace
+
+    from agent.context_router import _program_scopes
+
+    exercise = real_library_store.get_exercise_library_entry("2133")
+    day = SimpleNamespace(
+        day_name="Day 1",
+        week_order=1,
+        day_order=1,
+        exercises=[
+            SimpleNamespace(exercise_id="2133", exercise_name=exercise["name"])
+        ],
+    )
+    program = SimpleNamespace(days=[day])
+    ledger = SimpleNamespace(
+        get_active_program=lambda: program,
+        get_program_position=lambda _program: SimpleNamespace(current_week=1),
+    )
+
+    assert _program_scopes("How many sets for farmers carry?", ledger, real_library_store) == [
+        {"exercise_id": "2133"}
+    ]
+
+
+def test_unresolved_near_miss_suggests_only_safe_closest_names(seed_store, tmp_path, monkeypatch):
+    from agent import assistant_graph
+    from database.schema.definitions import EMBEDDING_DIM
+
+    _seed_name_matching_library(seed_store, tmp_path)
+
+    class FixedEmbedding:
+        def embed_query(self, _text):
+            return [1.0] + [0.0] * (EMBEDDING_DIM - 1)
+
+    monkeypatch.setattr(assistant_graph, "EMBED_MODEL", FixedEmbedding())
+    reply = _catalog_search_reply(seed_store, "pendulum squat", "en")
+
+    assert "No exercises matching 'pendulum squat' were found." in reply["response_content"]
+    assert "Closest names:" in reply["response_content"]
+    assert "Pendulum Squat" not in reply["response_content"]
 
 
 def test_current_exercise_names_batches_visibility_and_matches_per_id_behavior(fresh_store):
