@@ -67,10 +67,10 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
     id: 'assistant_exercise_lookup',
     titleEn: 'Search exercises by the name you know',
     sentenceEn:
-        'Search with nicknames, singular or plural names, and common typos; choose from close matches when a name could mean more than one exercise.',
+        'Search by nicknames, singular or plural forms, and common spelling variations; choose from close matches when a name could mean more than one exercise.',
     titleAr: 'ابحث عن التمرين بالاسم الذي تعرفه',
     sentenceAr:
-        'ابحث في مكتبة التمارين بالأسماء البديلة والمفرد والجمع، وستظهر لك الخيارات الأقرب عندما يحتمل الاسم أكثر من تمرين.',
+        'ابحث بالأسماء البديلة والمفرد والجمع واختلافات الكتابة الشائعة، واختر من الخيارات الأقرب عندما يحتمل الاسم أكثر من تمرين.',
     target: 'whats_new_assistant_why',
     location: TourRouteLocation(chatPath),
     release: 7,
