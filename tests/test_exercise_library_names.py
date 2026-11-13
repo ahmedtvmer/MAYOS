@@ -178,6 +178,30 @@ def test_plural_search_does_not_bypass_near_miss_exercise_safety(seed_store, tmp
     assert seed_store.find_unique_exercise_id_by_exact_name("pendulum squat") is None
 
 
+def test_real_exercise_curation_loads_with_normalized_duplicate_aliases():
+    from database.exercise_library.curation import load_exercise_curation
+    from database.shared import _normalize_exercise_name
+
+    records = load_exercise_curation()
+    aliases = records["2133"].aliases
+
+    assert aliases == ("farmers walk", "farmer carry")
+    normalized_aliases = [_normalize_exercise_name(alias) for alias in aliases]
+    assert len(normalized_aliases) == len(set(normalized_aliases))
+
+
+def test_curation_deduplicates_farmer_carry_plural_aliases(tmp_path):
+    from database.exercise_library.curation import load_exercise_curation
+
+    curation_path = tmp_path / "farmer-carry-curation.csv"
+    _write_curation(
+        curation_path,
+        [("2133", "farmers walk", "Farmer's Walk", "farmer carry|farmers carry")],
+    )
+
+    assert load_exercise_curation(curation_path)["2133"].aliases == ("farmer carry",)
+
+
 @pytest.mark.parametrize(
     ("variant", "canonical"),
     [
