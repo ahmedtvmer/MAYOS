@@ -407,7 +407,10 @@ def test_placement_adds_existing_set_before_second_staple(fresh_store, slot_key)
         {"training_age_years": 3, "weekly_frequency": 2},
         now,
     )
-    chest = next(item for item in facts["muscles"] if item["muscle"] == target[0])
+    chest = next(
+        item for item in facts["muscles"]
+        if item["muscle"] == normalize_main_muscle(target[0])
+    )
     assert chest["edits"][0]["target_sets"] == 3
     assert chest["edits"][1]["add_exercise"]["exercise_id"] == second_id
     assert chest["edits"][1]["day_order"] == 2

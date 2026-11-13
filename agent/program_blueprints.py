@@ -1322,7 +1322,8 @@ FEMALE_UL_DAYS: tuple[DayBlueprint, ...] = (
 # starters open the day before the remaining work is ordered by movement class.
 _COACH_PATTERN_EVENTS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("chest", ("incline_press", "flat_press", "chest_fly")),
-    ("lats", ("vertical_pull", "pullover")),
+    # Keep both lats exposures resolvable when the catalog has no pullover slot.
+    ("lats", ("vertical_pull", "vertical_pull")),
     ("traps", ("horizontal_row", "upper_back_pull", "shrug")),
     ("shoulders", ("shoulder_press", "side_delts", "rear_delts")),
     ("biceps", ("biceps_preacher", "biceps_alt")),
@@ -1346,8 +1347,8 @@ _COACH_PATTERN_THREE_DAY_SLOTS: tuple[tuple[str, ...], ...] = (
         "triceps_overhead", "forearm_wrist", "glute_thrust", "calf", "abs",
     ),
     (
-        "chest_fly", "shrug", "rear_delts", "forearm_reverse", "quad_iso",
-        "ham_hinge", "glute_iso", "adductors", "abs",
+        "chest_fly", "vertical_pull", "horizontal_row", "shrug", "rear_delts",
+        "forearm_reverse", "quad_iso", "ham_hinge", "glute_iso", "adductors", "abs",
     ),
 )
 
@@ -1439,8 +1440,8 @@ def coach_upper_lower_days(frequency: int) -> list[DayBlueprint]:
         DayBlueprint(
             "Upper 1",
             (
-                "side_delts", "incline_press", "vertical_pull", "biceps_preacher",
-                "triceps_pushdown", "forearm_wrist",
+                "side_delts", "incline_press", "vertical_pull", "horizontal_row",
+                "biceps_preacher", "triceps_pushdown", "forearm_wrist",
             ),
             family="upper",
             sets_family="coach",
@@ -1456,8 +1457,8 @@ def coach_upper_lower_days(frequency: int) -> list[DayBlueprint]:
         DayBlueprint(
             "Upper 2",
             (
-                "rear_delts", "flat_press", "horizontal_row", "shoulder_press",
-                "biceps_alt", "triceps_overhead", "forearm_reverse", "shrug",
+                "rear_delts", "flat_press", "horizontal_row", "vertical_pull",
+                "shoulder_press", "biceps_alt", "triceps_overhead", "forearm_reverse", "shrug",
             ),
             family="upper",
             sets_family="coach",
@@ -1481,8 +1482,8 @@ def coach_ppl_upper_lower_days(frequency: int) -> list[DayBlueprint]:
         DayBlueprint(
             "Upper",
             (
-                "forearm_wrist", "flat_press", "vertical_pull", "biceps_preacher",
-                "triceps_pushdown",
+                "forearm_wrist", "flat_press", "vertical_pull", "horizontal_row",
+                "biceps_preacher", "triceps_pushdown",
             ),
             family="upper",
             sets_family="coach",
@@ -1504,7 +1505,10 @@ def coach_ppl_upper_lower_days(frequency: int) -> list[DayBlueprint]:
         ),
         DayBlueprint(
             "Pull",
-            ("rear_delts", "horizontal_row", "shrug", "biceps_alt", "forearm_reverse"),
+            (
+                "rear_delts", "vertical_pull", "horizontal_row", "shrug",
+                "biceps_alt", "forearm_reverse",
+            ),
             family="upper",
             sets_family="coach",
         ),

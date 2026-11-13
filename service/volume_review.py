@@ -10,7 +10,11 @@ from agent.program_rationale import CHANGE_VOLUME_REVIEW
 from agent.progression_engine import set_e1rm
 from agent.ProgramState import program_exercise_working_sets
 from agent.program_blueprints import SLOT_STAPLES, experience_level_for_training_age
-from agent.focus_muscles import FOCUS_MULTIPLIER, FOCUS_REVIEW_MUSCLES
+from agent.focus_muscles import (
+    FOCUS_MULTIPLIER,
+    FOCUS_REVIEW_MUSCLES,
+    FOCUS_REVIEW_PRIMARY_TARGETS,
+)
 from agent.program_weeks import flatten_program_days, normalize_program_weeks
 from utils.equipment_access import equipment_access_allows
 
@@ -18,15 +22,26 @@ BASE_CEILINGS = {"beginner": 8, "intermediate": 10, "advanced": 13}
 REMOVAL_FLOOR = 4
 
 
-def _review_focus_muscles(program: Any) -> set[str]:
-    """Map version-pinned Weak point keys to Volume review muscle groups."""
+def _review_focus_muscles(
+    program: Any, primary_muscles: dict[str, str | None]
+) -> set[str]:
+    """Map version-pinned Weak points to matching credited muscle groups."""
     rationale = getattr(program, "program_rationale", None) or {}
-    return {
-        review_muscle
-        for item in rationale.get("focus_muscles", [])
-        if isinstance(item, dict) and item.get("muscle")
-        for review_muscle in FOCUS_REVIEW_MUSCLES.get(str(item["muscle"]).strip().lower(), set())
+    primary_labels = {
+        str(primary).strip().casefold().replace("_", " ").replace("-", " ")
+        for primary in primary_muscles.values()
+        if primary
     }
+    focused_groups = set()
+    for item in rationale.get("focus_muscles", []):
+        if not isinstance(item, dict) or not item.get("muscle"):
+            continue
+        focus_key = str(item["muscle"]).strip().lower()
+        exact_primary = FOCUS_REVIEW_PRIMARY_TARGETS.get(focus_key)
+        if exact_primary and exact_primary not in primary_labels:
+            continue
+        focused_groups.update(FOCUS_REVIEW_MUSCLES.get(focus_key, set()))
+    return focused_groups
 
 
 def review_facts(ledger: Any, program: Any, profile: dict[str, Any], as_of: date) -> dict[str, Any]:
@@ -44,9 +59,17 @@ def review_facts(ledger: Any, program: Any, profile: dict[str, Any], as_of: date
     history_rows = ledger.volume_review_workout_rows(
         active_version, changed.isoformat(), as_of.isoformat()
     )
+    current_exercise_ids = sorted(
+        {
+            str(exercise["exercise_id"])
+            for day in current_days
+            for exercise in day["exercises"]
+        }
+    )
     credits = _exercise_credits(
         ledger, current_days, [str(row["exercise_id"]) for row in history_rows]
     )
+    primary_muscles = ledger.volume_review_exercise_targets(current_exercise_ids)
     sets_by_muscle: dict[str, float] = {}
     exercises_by_muscle: dict[str, list[tuple[Any, Any, str, float]]] = {}
     for day in current_days:
@@ -63,7 +86,7 @@ def review_facts(ledger: Any, program: Any, profile: dict[str, Any], as_of: date
     adherence = _adherence(ledger, active_version, changed, as_of, elapsed_weeks, program.weekly_frequency)
     experience = float(profile.get("training_age_years") or 0)
     level = experience_level_for_training_age(experience)
-    focus_muscles = _review_focus_muscles(program)
+    focus_muscles = _review_focus_muscles(program, primary_muscles)
     results = []
     for muscle in sorted(sets_by_muscle):
         muscle_rows = by_muscle.get(muscle, [])

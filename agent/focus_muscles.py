@@ -83,6 +83,11 @@ FOCUS_REVIEW_MUSCLES = {
     for muscle in WEAK_POINT_MUSCLES
 }
 
+FOCUS_REVIEW_PRIMARY_TARGETS = {
+    "upper_chest": "upper chest",
+    "side_delts": "side delts",
+}
+
 assert set(FOCUS_EXTRA_TABLE) == set(WEAK_POINT_MUSCLES)
 assert set(FOCUS_REGION_POLICY) == set(WEAK_POINT_MUSCLES)
 assert set(FOCUS_MUSCLE_SLOTS) == set(WEAK_POINT_MUSCLES)

@@ -19,8 +19,11 @@ from agent.program_weeks import (
     normalize_program_weeks,
     progress_for_program,
 )
-from database.exercise_resolution import EXERCISE_DISPLAY_EQUIPMENT_SQL
-from database.exercise_resolution import exercise_display_join, exercise_display_name_sql
+from database.exercise_resolution import (
+    EXERCISE_DISPLAY_EQUIPMENT_SQL,
+    exercise_display_join,
+    exercise_display_name_sql,
+)
 from database.program_cache import active_program
 
 from utils.logger import MayosLogger
@@ -347,13 +350,15 @@ class LedgerTrainingProgramMixin:
         if published_by_coach_account_id:
             params.append(str(published_by_coach_account_id))
         rows = self.conn.execute(
-            f"SELECT ids.id, COALESCE(e.name, ce.name) FROM (SELECT value AS id FROM json_each(?)) ids "
+            f"SELECT ids.id, {exercise_display_name_sql('ids.id')} "
+            "FROM (SELECT value AS id FROM json_each(?)) ids "
             f"{exercise_display_join('ids.id')} "
             "WHERE (EXISTS (SELECT 1 FROM catalog.exercises library WHERE library.id = ids.id) "
             "OR EXISTS (SELECT 1 FROM program_exercises pe "
             "JOIN program_days pd ON pd.id = pe.day_id "
             "JOIN training_programs tp ON tp.id = pd.program_id WHERE pe.exercise_id = ids.id) "
-            f"{coach_visibility}) AND COALESCE(e.name, ce.name) IS NOT NULL",
+            f"{coach_visibility}) AND "
+            "COALESCE(edn.display_name, e.name, ce.name) IS NOT NULL",
             tuple(params),
         ).fetchall()
         return {str(row[0]): row[1] for row in rows}

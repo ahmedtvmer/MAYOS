@@ -1767,7 +1767,7 @@ def test_indirect_biceps_question_receives_exact_tool_counts(api, monkeypatch, q
         assert [row["name"] for row in scoped["days"][0]["exercises"]] == ["Row", "Volume Curl"]
         row = scoped["days"][0]["exercises"][0]
         assert row["movement_pattern"] == "Shoulder Extension"
-        assert set(row["secondary_muscles"]) == {"biceps", "lats", "traps"}
+        assert set(row["secondary_muscles"]) == {"biceps", "lats", "rear delts", "traps"}
         assert row["muscle"] == "traps"
         assert all("back" not in muscle for muscle in row["secondary_muscles"])
         assert row["sets"] == 4
@@ -1838,7 +1838,10 @@ def test_logged_tool_volume_equals_dashboard_for_same_player(api, monkeypatch, h
         dashboard = client.get("/dashboard/volume", headers=headers)
         assert dashboard.status_code == 200
         expected = dashboard.json()
-        assert expected["Back"] == 2
+        assert expected["Lats"] == 1
+        assert expected["Traps"] == 2
+        assert expected["Rear Delts"] == 1
+        assert "Back" not in expected
         assert expected["Biceps"] == 2
         assert expected["Triceps"] == 0.5
         assert expected["Chest"] == 1
@@ -1881,7 +1884,7 @@ def test_active_program_tool_returns_weekly_muscle_totals_and_scoped_day(fresh_s
     assert result["weekly_sets_by_muscle"]["triceps"] == 3
     assert result["message"]
     assert "day_name" in result["message"]
-    assert result["days"] == [{"day": "Pull", "muscles": ["biceps", "triceps", "not set"]}]
+    assert result["days"] == [{"day": "Pull", "muscles": ["biceps", "triceps"]}]
     assert "Curl" not in json.dumps(result)
     scoped = json.loads(tool.invoke({"day_name": "pull"}))
     assert scoped["days"][0]["day"] == "Pull"
@@ -1974,11 +1977,11 @@ def test_active_program_day_can_be_narrowed_to_one_complete_exercise(fresh_store
     ({"day_name": " pull "}, {"Pull": ["Curl", "Row", "Rear Fly"]}),
     ({"exercise_name": " curl "}, {"Pull": ["Curl"], "Arms": ["Curl"]}),
     ({"exercise_id": "curl-2"}, {"Arms": ["Curl"]}),
-    ({"muscle": " BICEPS "}, {"Pull": ["Curl"], "Arms": ["Curl"]}),
+    ({"muscle": " BICEPS "}, {"Pull": ["Curl", "Row"], "Arms": ["Curl"]}),
     ({"muscle": "back"}, {}),
     ({"muscle": "traps"}, {"Pull": ["Row"]}),
     ({"muscle": "upper back"}, {"Pull": ["Row"]}),
-    ({"muscle": "shoulders"}, {"Pull": ["Rear Fly"], "Arms": ["Lateral Raise"]}),
+    ({"muscle": "shoulders"}, {"Arms": ["Lateral Raise"]}),
     ({"muscle": "side_delts"}, {"Arms": ["Lateral Raise"]}),
     ({"day_name": "Arms", "muscle": "biceps"}, {"Arms": ["Curl"]}),
     ({"day_name": "Pull", "exercise_id": "curl-2"}, {}),
@@ -2179,7 +2182,7 @@ def test_generated_programs_fit_active_program_tool_cap_and_report_arm_sets(
             offset = scoped["next_offset"]
         assert [row["name"] for row in rows] == [exercise.exercise_name for exercise in day.exercises]
         for exercise, row in zip(day.exercises, rows, strict=True):
-            assert set(row["secondary_muscles"]) == {"biceps", "Biceps", "triceps", "delts"}
+            assert set(row["secondary_muscles"]) == {"biceps", "shoulders", "triceps"}
             catalog_entry = fresh_store.get_exercise_library_entry(exercise.exercise_id)
             assert row["movement_pattern"] == (catalog_entry["primary_action"] or None)
             if len({group.target_rir for group in exercise.set_groups}) > 1:

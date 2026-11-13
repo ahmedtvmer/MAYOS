@@ -1014,7 +1014,12 @@ def _apply_focus_muscles(program, focus_muscles, profile, ledger, day_families):
                 "muscle": muscle,
                 "source": focus.get("source", "named"),
                 "status": "unavailable",
-                "reason": "This Focus muscle is not part of a main volume group.",
+                "reason": _focus_unavailable_reason(
+                    muscle,
+                    context.equipment_access,
+                    0,
+                    _focus_restriction_reason(focus_policy, context, ledger),
+                ),
             })
             continue
         baseline_ids = [

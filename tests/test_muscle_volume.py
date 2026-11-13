@@ -72,6 +72,7 @@ def test_reviewed_credits_and_defaults_are_materialized_per_exercise(
     }
     assert credits["mayos:1"] == {
         "traps": {"credit": 1.0, "is_primary": True, "source": "default"},
+        "lats": {"credit": 0.5, "is_primary": False, "source": "default"},
     }
     assert credits["mayos:3"] == {
         "shoulders": {"credit": 1.0, "is_primary": True, "source": "reviewed"},

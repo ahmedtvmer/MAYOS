@@ -166,10 +166,10 @@ def test_current_exercise_names_batches_visibility_and_matches_per_id_behavior(f
         return {
             str(row[0]): row[1]
             for row in ledger.conn.execute(
-                "SELECT ids.id, COALESCE(e.name, ce.name) FROM "
+                "SELECT ids.id, COALESCE(edn.display_name, e.name, ce.name) FROM "
                 "(SELECT value AS id FROM json_each(?)) ids "
                 f"{exercise_display_join('ids.id')} "
-                "WHERE COALESCE(e.name, ce.name) IS NOT NULL",
+                "WHERE COALESCE(edn.display_name, e.name, ce.name) IS NOT NULL",
                 (json.dumps(visible_ids),),
             ).fetchall()
         }
