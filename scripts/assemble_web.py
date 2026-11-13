@@ -265,8 +265,8 @@ def assemble(flutter_build: Path, landing: Path, output: Path) -> None:
         "apiBaseUrl": os.environ.get("MAYOS_API_BASE_URL", "https://api.mayos.online"),
         "posthogKey": os.environ.get("POSTHOG_CLIENT_KEY", ""),
         "businessEmail": "ahmedtamerhejazi@gmail.com",
-        "instagramHandle": "ahmedtvmer",
-        "tiktokHandle": "ahmedforges",
+        "instagramHandle": "mayosapp",
+        "tiktokHandle": "mayosapp",
     }
     landing_html = output / "index.html"
     landing_source = landing_html.read_text(encoding="utf-8")
