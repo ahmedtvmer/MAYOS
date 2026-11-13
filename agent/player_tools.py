@@ -21,7 +21,6 @@ from database.ledger.chat import MAX_CHAT_HISTORY_SEARCH_RESULTS
 from core.muscle_volume import (
     MAIN_MUSCLE_GROUPS,
     default_muscle_credits,
-    main_group_for_focus,
     normalize_main_muscle,
 )
 from service.injuries import render_public_injury_record
@@ -369,7 +368,9 @@ def _program_muscle_groups(muscle: str | None) -> list[str]:
     return [group] if group else []
 
 
-def _program_exercise_credits(ledger: Any, exercise_ids: list[str], targets, metadata):
+def _program_exercise_credits(
+    ledger: Any, exercise_ids: list[str], targets, metadata
+):
     reader = getattr(ledger, "volume_review_exercise_credits", None)
     if callable(reader):
         return reader(exercise_ids)
@@ -379,6 +380,7 @@ def _program_exercise_credits(ledger: Any, exercise_ids: list[str], targets, met
             for group, credit in default_muscle_credits(
                 targets.get(exercise_id),
                 metadata.get(exercise_id, {}).get("secondary_muscles", ()),
+                exercise_name=metadata.get(exercise_id, {}).get("exercise_name"),
             ).items()
         }
         for exercise_id in exercise_ids
@@ -392,43 +394,74 @@ def _program_exercise_matches(exercise: Any, muscles: Sequence[str], args: Activ
         return False
     if args.muscle:
         selected = args.muscle.strip().casefold()
-        selected_group = normalize_main_muscle(selected) or main_group_for_focus(selected)
+        if selected == "back":
+            return False
+        selected_group = normalize_main_muscle(selected)
         return any(
-            selected == str(muscle or "").strip().casefold()
+            (selected_group is None and selected == str(muscle or "").strip().casefold())
             or bool(selected_group and selected_group in _program_muscle_groups(muscle))
             for muscle in muscles
         )
     return True
 
 
-def _program_exercise_prescription(exercise: Any, muscle: str | None, metadata: dict[str, Any]) -> dict[str, Any]:
+def _program_exercise_secondary_groups(metadata: dict[str, Any]) -> list[str]:
+    return sorted(
+        {
+            group
+            for helper_muscle in (metadata.get("secondary_muscles") or ())
+            if (group := normalize_main_muscle(helper_muscle))
+        }
+    )
+
+
+def _program_exercise_prescription(
+    exercise: Any, muscle: str | None, metadata: dict[str, Any]
+) -> dict[str, Any]:
     from agent.ProgramState import program_exercise_working_sets
 
     sets = program_exercise_working_sets(exercise)
     rir = 10 - float(exercise.target_rpe)
+    secondary_groups = _program_exercise_secondary_groups(metadata)
     row = {
         "name": exercise.exercise_name, "sets": sets,
         "reps_min": exercise.target_reps_min, "reps_max": exercise.target_reps_max,
-        "rir": rir, "muscle": muscle or "not set",
+        "rir": rir, "muscle": normalize_main_muscle(muscle) or "not set",
         "rest_seconds": exercise.rest_seconds if exercise.rest_seconds is not None else "not set",
-        **metadata,
+        "secondary_muscles": secondary_groups,
+        "movement_pattern": metadata.get("movement_pattern"),
     }
-    groups = exercise.set_groups or ()
-    flat = (sets, exercise.target_reps_min, exercise.target_reps_max, rir, getattr(exercise, "load", None), False)
-    if groups and any(
-        (group.sets, group.reps_min, group.reps_max, group.target_rir,
-         group.load, group.amrap_last_set) != flat for group in groups
-    ):
-        row["set_groups"] = [
-            {
-                "sets": group.sets, "reps_min": group.reps_min,
-                "reps_max": group.reps_max, "rir": group.target_rir,
-                **({"load": group.load.model_dump()} if group.load else {}),
-                **({"amrap_last_set": True} if group.amrap_last_set else {}),
-            }
-            for group in groups
-        ]
+    set_group_details = _program_exercise_set_group_details(exercise, sets, rir)
+    if set_group_details is not None:
+        row["set_groups"] = set_group_details
     return row
+
+
+def _program_exercise_set_group_details(
+    exercise: Any, sets: int, rir: float
+) -> list[dict[str, Any]] | None:
+    set_groups = exercise.set_groups or ()
+    flat_prescription = (
+        sets, exercise.target_reps_min, exercise.target_reps_max, rir,
+        getattr(exercise, "load", None), False,
+    )
+    if not set_groups or not any(
+        (
+            group.sets, group.reps_min, group.reps_max, group.target_rir,
+            group.load, group.amrap_last_set,
+        ) != flat_prescription
+        for group in set_groups
+    ):
+        return None
+    return [
+        {
+            "sets": group.sets, "reps_min": group.reps_min,
+            "reps_max": group.reps_max, "rir": group.target_rir,
+            **({"load": group.load.model_dump()} if group.load else {}),
+            **({"amrap_last_set": True} if group.amrap_last_set else {}),
+        }
+        for group in set_groups
+    ]
 
 
 def _program_restriction_skips(program: Any, days: Sequence[Any]) -> dict[str, list[str]]:
@@ -451,8 +484,8 @@ def _program_volume_context(ledger: Any) -> dict[str, Any]:
     return {
         "logged_volume_7d": volume_attribution(None, ledger.ledger_id, 7, ledger),
         "how_mayos_counts": {
-            "en": "Working sets use the 12 main muscle groups. Each exercise has per-muscle credits: default 1 for its primary group and 0.5 for each distinct helper group; reviewed exercise credits replace those defaults. Sub-regions map to one group. Warm-ups are excluded. Unknown groups are uncounted.",
-            "ar": "تُحسب المجموعات العاملة ضمن 12 مجموعة عضلية رئيسية. لكل تمرين أرصدة لكل عضلة: 1 للمجموعة الأساسية و0.5 لكل مجموعة مساعدة مختلفة، وتستبدل الأرصدة المراجعة الافتراضات. تُحوّل المناطق الفرعية إلى مجموعة واحدة؛ لا تُحسب مجموعات الإحماء أو العضلات غير المعروفة.",
+            "en": "Working sets use 12 main muscle groups. Lats means latissimus dorsi; traps includes upper, mid and lower trapezius plus rhomboids and upper/mid back. Each exercise has per-muscle credits: default 1 for its primary group and 0.5 for each distinct helper group; reviewed credits replace those defaults. A generic source label of back is ambiguous and uncounted unless a specific target resolves it. Warm-ups and unlisted muscles are excluded.",
+            "ar": "تُحسب المجموعات العاملة ضمن 12 مجموعة عضلية رئيسية. اللاتس (الظهر العريض) هي العضلة الظهرية العريضة، والترابيس تشمل ألياف الترابيس العلوية والوسطى والسفلية والعضلات المعينية ومنتصف وأعلى الظهر. لكل تمرين رصيد: 1 للعضلة الأساسية و0.5 لكل عضلة مساعدة مختلفة؛ وتحل الأرصدة المراجعة محل الافتراضات. وصف المصدر العام «ظهر» غير محدد ولا يُحسب إلا إذا أوضحت العضلة المستهدفة ذلك. لا تُحسب مجموعات الإحماء أو العضلات غير المدرجة.",
         },
     }
 
@@ -540,9 +573,23 @@ def _read_active_program(ledger: Any, args: ActiveProgramArgs | None = None, sto
     })
     targets = ledger.volume_review_exercise_targets(exercise_ids)
     metadata = ledger.program_exercise_metadata(exercise_ids)
+    exercise_names = {
+        str(exercise.exercise_id): str(exercise.exercise_name)
+        for day in all_days for exercise in (getattr(day, "exercises", ()) or ())
+        if getattr(exercise, "exercise_id", None)
+    }
+    metadata = {
+        exercise_id: {
+            **metadata.get(exercise_id, {}),
+            "exercise_name": exercise_names.get(exercise_id),
+        }
+        for exercise_id in exercise_ids
+    }
     summary: dict[str, float] = {muscle: 0.0 for muscle in MAIN_MUSCLE_GROUPS}
     indirect: dict[str, float] = {}
-    credits_by_exercise = _program_exercise_credits(ledger, exercise_ids, targets, metadata)
+    credits_by_exercise = _program_exercise_credits(
+        ledger, exercise_ids, targets, metadata
+    )
     days = []
     for day in all_days:
         exercises = []
@@ -632,7 +679,7 @@ PLAYER_READ_TOOL_REGISTRY: tuple[PlayerReadTool, ...] = (
             "Read active Program overview: ordered days and muscles, weekly sets, authority and "
             "restriction skips; no prescriptions. Defaults to current week; week_order selects another. "
             "Scope day_name, exercise_name/exercise_id or muscle for matching prescriptions only. "
-            "Rows include secondary_muscles and movement_pattern (curated primary action or null). "
+            "Rows include canonical secondary_muscles group labels and movement_pattern. "
             "weekly_sets_by_muscle gives direct sets by main group; weekly_volume_by_muscle gives planned weighted direct/indirect/total sets for the 12 main muscle groups; logged_volume_7d "
             "gives Home weighted sets, even without a program. how_mayos_counts explains attribution. "
             "Muscle matches primary or secondary muscles and maps sub-regions to one main group. "

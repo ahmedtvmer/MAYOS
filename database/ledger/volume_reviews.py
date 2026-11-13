@@ -77,6 +77,14 @@ class LedgerVolumeReviewsMixin:
     def _fill_default_exercise_credits(self, exercise_ids, credits) -> None:
         placeholders = ",".join("?" for _ in exercise_ids)
         targets = self.volume_review_exercise_targets(exercise_ids)
+        names = {
+            str(exercise_id): str(name)
+            for exercise_id, name in self.conn.execute(
+                "SELECT id, name FROM catalog.exercises "
+                f"WHERE id IN ({placeholders})",
+                exercise_ids,
+            )
+        }
         helpers = {exercise_id: [] for exercise_id in exercise_ids}
         for exercise_id, muscle in self.conn.execute(
             "SELECT exercise_id, muscle FROM catalog.exercise_secondary_muscles "
@@ -88,7 +96,8 @@ class LedgerVolumeReviewsMixin:
             credits[exercise_id].update({
                 group: {"credit": credit, "is_primary": credit == 1.0, "source": "default"}
                 for group, credit in default_muscle_credits(
-                    targets.get(exercise_id), helpers[exercise_id]
+                    targets.get(exercise_id), helpers[exercise_id],
+                    exercise_name=names.get(exercise_id),
                 ).items()
             })
 

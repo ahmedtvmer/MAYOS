@@ -265,7 +265,7 @@ CANONICAL_FIXTURE: dict[str, Any] = {
                             },
                             {
                                 "name": "Row",
-                                "description": "Row — Primary action: Horizontal Pull; Primary muscle: Back; Equipment category: Free weight",
+                                "description": "Row — Primary action: Horizontal Pull; Primary muscle: Upper Back; Equipment category: Free weight",
                                 "sets": 3,
                                 "reps": "8-12",
                                 "rpe": 8.0,

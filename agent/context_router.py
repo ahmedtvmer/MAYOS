@@ -156,8 +156,8 @@ def _catalog_exercise_mentions(text, vocabulary, active, short_names) -> list[_M
 
 
 _MAIN_GROUP_REGION = {
-    "chest": "upper", "back": "upper", "shoulders": "upper",
-    "rear delts": "upper", "traps": "upper", "biceps": "upper",
+    "chest": "upper", "lats": "upper", "traps": "upper", "shoulders": "upper",
+    "rear delts": "upper", "biceps": "upper",
     "triceps": "upper", "quads": "lower", "hamstrings": "lower",
     "glutes": "lower", "calves": "lower", "core": "neutral",
 }
@@ -206,10 +206,17 @@ def _region_day_names(text: str, days: Sequence[Any], ledger: Any) -> set[str]:
             credits = credit_reader(exercise_ids)
         else:
             targets = ledger.volume_review_exercise_targets(exercise_ids)
+            exercise_names = {
+                str(exercise.exercise_id): str(exercise.exercise_name)
+                for day in days for exercise in day.exercises
+            }
             credits = {
                 exercise_id: {
                     group: {"credit": credit}
-                    for group, credit in default_muscle_credits(targets.get(exercise_id)).items()
+                    for group, credit in default_muscle_credits(
+                        targets.get(exercise_id),
+                        exercise_name=exercise_names.get(exercise_id),
+                    ).items()
                 }
                 for exercise_id in exercise_ids
             }
@@ -244,7 +251,7 @@ def _day_words(days: Sequence[Any]) -> list[tuple[str, str]]:
 
 
 def _without_day_names(text: str, days: Sequence[Any]) -> str:
-    # Day labels such as Chest & Back scope the whole day, not only those muscles.
+    # Named muscle days scope the whole day, not only matching exercises.
     characters = list(text)
     for match in _mentions(text, _day_words(days)):
         characters[match.start:match.end] = " " * (match.end - match.start)

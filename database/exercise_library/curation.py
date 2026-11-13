@@ -277,8 +277,14 @@ def _exercise_credit_rows(row, record, helper_muscles):
     if source == "reviewed":
         credits = dict(record.muscle_credits)
     else:
-        credits = default_muscle_credits(primary, helper_muscles)
+        credits = default_muscle_credits(
+            primary, helper_muscles, exercise_name=row[1]
+        )
     direct_group = normalize_main_muscle(primary)
+    if source == "default":
+        direct_group = next(
+            (group for group, credit in credits.items() if credit == 1.0), None
+        )
     if source == "reviewed":
         full_credit_group = next(
             (group for group, credit in credits.items() if credit == 1.0), None

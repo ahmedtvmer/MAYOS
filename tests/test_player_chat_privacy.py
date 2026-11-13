@@ -257,7 +257,8 @@ def test_chat_writes_weak_points_in_english_and_arabic_without_guessing(api, mon
     headers = _authed(_register(client, "chat-weakpoints")["access_token"])
     for request_text, expected in (
         ("My weak points are chest and upper chest", ["chest", "upper_chest"]),
-        ("نقاط ضعفي هي الصدر والظهر", ["chest", "back"]),
+        ("نقاط ضعفي هي الصدر والظهر", ["chest", "lats"]),
+        ("My weak points are lats and traps", ["lats", "traps"]),
     ):
         response = client.post(
             "/chat/messages", headers=headers, json={"content": request_text}
@@ -269,7 +270,6 @@ def test_chat_writes_weak_points_in_english_and_arabic_without_guessing(api, mon
         assert [point["muscle"] for point in profile["weak_points"]] == expected
 
     for invalid_request in (
-        "My weak points are traps",
         "My weak points are chest and chest",
         "My weak points are chest, back and quads",
     ):
@@ -280,7 +280,7 @@ def test_chat_writes_weak_points_in_english_and_arabic_without_guessing(api, mon
         )
         assert response.status_code == 200, response.text
         profile = client.get("/profile", headers=headers).json()
-        assert [point["muscle"] for point in profile["weak_points"]] == ["chest", "back"]
+        assert [point["muscle"] for point in profile["weak_points"]] == ["lats", "traps"]
 
 
 @pytest.mark.parametrize(
@@ -1722,7 +1722,7 @@ def _seed_assistant_volume_catalog(db):
         conn.executemany(
             "INSERT INTO exercise_secondary_muscles (exercise_id, muscle) VALUES (?, ?)",
             [("row", "biceps"), ("row", "biceps"), ("row", "Biceps"),
-             ("row", "lats"), ("row", "upper back"),
+             ("row", "lats"), ("row", "upper back"), ("row", "rear delts"),
              ("volume-curl", "biceps"), ("bp", "triceps")],
         )
 
@@ -1767,7 +1767,9 @@ def test_indirect_biceps_question_receives_exact_tool_counts(api, monkeypatch, q
         assert [row["name"] for row in scoped["days"][0]["exercises"]] == ["Row", "Volume Curl"]
         row = scoped["days"][0]["exercises"][0]
         assert row["movement_pattern"] == "Shoulder Extension"
-        assert set(row["secondary_muscles"]) == {"biceps", "Biceps", "lats", "upper back"}
+        assert set(row["secondary_muscles"]) == {"biceps", "lats", "traps"}
+        assert row["muscle"] == "traps"
+        assert all("back" not in muscle for muscle in row["secondary_muscles"])
         assert row["sets"] == 4
         assert [group["sets"] for group in row["set_groups"]] == [1, 3]
         uncurated = json.loads(tool.invoke({"exercise_id": "sq"}))["days"][0]["exercises"][0]
@@ -1785,7 +1787,10 @@ def test_indirect_biceps_question_receives_exact_tool_counts(api, monkeypatch, q
     tool_result = json.loads(model.calls[-1]["messages"][-1].content)
     assert tool_result["weekly_volume_by_muscle"]["biceps"] == {"direct": 3, "indirect": 2, "total": 5}
     assert tool_result["weekly_volume_by_muscle"]["triceps"] == {"direct": 0, "indirect": 1, "total": 1}
-    assert tool_result["weekly_volume_by_muscle"]["back"] == {"direct": 4, "indirect": 0, "total": 4}
+    assert tool_result["weekly_volume_by_muscle"]["traps"] == {"direct": 4, "indirect": 0, "total": 4}
+    assert tool_result["weekly_volume_by_muscle"]["lats"] == {"direct": 0, "indirect": 2, "total": 2}
+    assert tool_result["weekly_volume_by_muscle"]["rear delts"] == {"direct": 0, "indirect": 2, "total": 2}
+    assert "back" not in tool_result["weekly_volume_by_muscle"]
     assert tool_result["how_mayos_counts"]["en"]
     assert tool_result["how_mayos_counts"]["ar"]
     initial = str(model.calls[0]["messages"][0].content)
@@ -1970,7 +1975,8 @@ def test_active_program_day_can_be_narrowed_to_one_complete_exercise(fresh_store
     ({"exercise_name": " curl "}, {"Pull": ["Curl"], "Arms": ["Curl"]}),
     ({"exercise_id": "curl-2"}, {"Arms": ["Curl"]}),
     ({"muscle": " BICEPS "}, {"Pull": ["Curl"], "Arms": ["Curl"]}),
-    ({"muscle": "back"}, {"Pull": ["Row"]}),
+    ({"muscle": "back"}, {}),
+    ({"muscle": "traps"}, {"Pull": ["Row"]}),
     ({"muscle": "upper back"}, {"Pull": ["Row"]}),
     ({"muscle": "shoulders"}, {"Pull": ["Rear Fly"], "Arms": ["Lateral Raise"]}),
     ({"muscle": "side_delts"}, {"Arms": ["Lateral Raise"]}),
@@ -2011,6 +2017,10 @@ def test_active_program_scope_returns_only_matching_prescriptions(fresh_store, s
     assert all("sets" in ex and "rest_seconds" in ex for day in decoded["days"] for ex in day["exercises"])
     assert "weekly_sets_by_muscle" not in decoded
     assert [day["day"] for day in decoded["days"]] == list(expected)
+    if scope.get("muscle") == "upper back":
+        row = decoded["days"][0]["exercises"][0]
+        assert row["muscle"] == "traps"
+        assert "back" not in row["muscle"]
 
 
 def test_active_program_overview_bounds_repeated_restriction_skips_to_selected_week(fresh_store):
@@ -2264,7 +2274,8 @@ def test_ppl_upper_lower_muscle_totals_follow_volume_review_groups(fresh_store):
             for group, attribution in credits_by_exercise.get(exercise.exercise_id, {}).items():
                 if attribution["is_primary"]:
                     expected_direct[group] += sets * float(attribution["credit"])
-    assert summary["back"] > 0
+    assert summary["lats"] > 0
+    assert summary["traps"] > 0
     assert summary["shoulders"] > 0
     assert summary["chest"] == expected_direct["chest"]
     assert summary["biceps"] == expected_direct["biceps"]

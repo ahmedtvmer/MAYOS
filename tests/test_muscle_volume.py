@@ -12,6 +12,7 @@ from agent.progression_engine import get_weekly_muscle_volume
 from core.muscle_volume import (
     MAIN_MUSCLE_GROUPS,
     default_muscle_credits,
+    main_group_for_focus,
     normalize_main_muscle,
 )
 from database.exercise_library.curation import load_exercise_curation
@@ -19,7 +20,19 @@ from database.exercise_library.curation import load_exercise_curation
 
 def test_subregions_map_to_one_main_group_and_helpers_are_deduplicated():
     assert normalize_main_muscle("Upper Chest") == "chest"
-    assert normalize_main_muscle("Lats") == normalize_main_muscle("Upper Back") == "back"
+    assert normalize_main_muscle("Lats") == "lats"
+    assert all(
+        normalize_main_muscle(muscle) == "traps"
+        for muscle in (
+            "Upper Back", "Mid Back", "Mid-Back", "Middle Back", "Rhomboid", "Rhomboids",
+            "Trapezius", "Upper Traps", "Mid Traps", "Lower Traps",
+        )
+    )
+    assert normalize_main_muscle("Back") is None
+    assert default_muscle_credits("Back") == {}
+    assert main_group_for_focus("back") == "lats"
+    assert main_group_for_focus("lats") == "lats"
+    assert main_group_for_focus("traps") == "traps"
     assert normalize_main_muscle("Front Delts") == "shoulders"
     assert normalize_main_muscle("Side Delts") == "shoulders"
     assert normalize_main_muscle("Rear Delts") == "rear delts"
@@ -27,6 +40,9 @@ def test_subregions_map_to_one_main_group_and_helpers_are_deduplicated():
     assert normalize_main_muscle("Lower Back") is None
     assert all(len(groups) <= 1 for groups in FOCUS_REVIEW_MUSCLES.values())
     assert len(MAIN_MUSCLE_GROUPS) == 12
+    assert "back" not in MAIN_MUSCLE_GROUPS
+    assert FOCUS_REVIEW_MUSCLES["lats"] == {"lats"}
+    assert FOCUS_REVIEW_MUSCLES["traps"] == {"traps"}
 
     assert default_muscle_credits(
         "Upper Chest", ["Chest", "Front Delts", "Side Delts", "Triceps"]
@@ -56,7 +72,6 @@ def test_reviewed_credits_and_defaults_are_materialized_per_exercise(
     }
     assert credits["mayos:1"] == {
         "traps": {"credit": 1.0, "is_primary": True, "source": "default"},
-        "back": {"credit": 0.5, "is_primary": False, "source": "default"},
     }
     assert credits["mayos:3"] == {
         "shoulders": {"credit": 1.0, "is_primary": True, "source": "reviewed"},
@@ -69,7 +84,7 @@ def test_starting_reviewed_overrides_match_program_design_table():
     expected = {
         "3541": {"shoulders": 1.0, "traps": 0.75},
         "584": {"shoulders": 1.0, "traps": 0.25},
-        "571": {"back": 1.0, "rear delts": 0.5, "biceps": 0.5, "traps": 0.25},
+        "571": {"traps": 1.0, "lats": 0.5, "rear delts": 0.5, "biceps": 0.5},
         "3562": {"glutes": 1.0, "hamstrings": 0.25},
         "739": {"quads": 1.0, "glutes": 0.5},
         "2368": {"quads": 1.0, "glutes": 0.75},
@@ -80,6 +95,38 @@ def test_starting_reviewed_overrides_match_program_design_table():
         for exercise_id in expected
     }
     assert actual == expected
+
+
+def test_pull_row_shrug_and_reverse_fly_credits_follow_the_split():
+    curation = load_exercise_curation()
+    pull_credits = {
+        exercise_id: default_muscle_credits(
+            curation[exercise_id].primary_muscle,
+            exercise_name=curation[exercise_id].source_name,
+        )
+        for exercise_id in ("15", "150")
+    }
+    assert pull_credits == {"15": {"lats": 1.0}, "150": {"lats": 1.0}}
+    assert default_muscle_credits("Lats", ["Biceps"]) == {
+        "lats": 1.0, "biceps": 0.5,
+    }
+    assert default_muscle_credits("Traps") == {"traps": 1.0}
+    assert default_muscle_credits(
+        "Upper Back", ["Lats", "Rear Delts", "Biceps"], exercise_name="Cable Row"
+    ) == {
+        "traps": 1.0, "lats": 0.5, "rear delts": 0.5, "biceps": 0.5,
+    }
+    assert default_muscle_credits(
+        "Lats", ["Biceps"], exercise_name="Machine High Row"
+    ) == {"traps": 1.0, "lats": 0.5, "rear delts": 0.5, "biceps": 0.5}
+    assert default_muscle_credits("Traps", exercise_name="Barbell Shrug") == {
+        "traps": 1.0,
+    }
+    assert dict(curation["184"].muscle_credits) == {"lats": 1.0, "triceps": 0.25}
+    assert dict(curation["602"].muscle_credits) == {"rear delts": 1.0, "traps": 0.5}
+    assert dict(curation["571"].muscle_credits) == {
+        "traps": 1.0, "lats": 0.5, "rear delts": 0.5, "biceps": 0.5,
+    }
 
 
 def test_active_program_volume_uses_reviewed_credits_once_per_main_group(

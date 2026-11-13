@@ -8,7 +8,8 @@ FOCUS_MULTIPLIER = 1.3
 FOCUS_REGION_POLICY = {
     "chest": {"home_region": "upper", "isolation_cross_regions": ()},
     "upper_chest": {"home_region": "upper", "isolation_cross_regions": ()},
-    "back": {"home_region": "upper", "isolation_cross_regions": ()},
+    "lats": {"home_region": "upper", "isolation_cross_regions": ()},
+    "traps": {"home_region": "upper", "isolation_cross_regions": ()},
     "shoulders": {"home_region": "upper", "isolation_cross_regions": ()},
     "side_delts": {"home_region": "upper", "isolation_cross_regions": ("lower",)},
     "biceps": {"home_region": "upper", "isolation_cross_regions": ("lower",)},
@@ -34,9 +35,13 @@ FOCUS_EXTRA_TABLE = {
         "preferred_exercise_ids_by_slot": {"chest_fly": ("171",)},
         "excluded_equipment": ("barbell", "ez barbell"),
     },
-    "back": {
+    "lats": {
         "candidate_slots": ("pullover", "upper_back_pull", "vertical_pull", "horizontal_row"),
         "main_slot": "vertical_pull",
+    },
+    "traps": {
+        "candidate_slots": ("horizontal_row", "upper_back_pull", "shrug"),
+        "main_slot": "horizontal_row",
     },
     "shoulders": {"candidate_slots": ("shoulder_press", "side_delts"), "main_slot": "shoulder_press"},
     "side_delts": {"candidate_slots": ("side_delts",), "main_slot": "side_delts"},
@@ -58,7 +63,8 @@ FOCUS_EXTRA_TABLE = {
 FOCUS_MUSCLE_SLOTS = {
     "chest": {"incline_press", "flat_press", "chest_fly"},
     "upper_chest": {"incline_press", "chest_fly"},
-    "back": {"vertical_pull", "horizontal_row", "upper_back_pull", "pullover"},
+    "lats": {"vertical_pull", "pullover", "horizontal_row"},
+    "traps": {"horizontal_row", "upper_back_pull", "shrug"},
     "shoulders": {"shoulder_press", "side_delts"},
     "side_delts": {"side_delts"},
     "biceps": {"biceps_preacher", "biceps_alt"},

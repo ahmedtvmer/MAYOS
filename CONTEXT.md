@@ -161,13 +161,23 @@ Search filters may match one or more Primary muscles; the source row's
 `target_muscle` remains a separate catalog field.
 _Arabic_: العضلة الأساسية
 
+**Lats**:
+The latissimus dorsi, a separate Main muscle group.
+_Arabic_: اللاتس (الظهر العريض)
+
+**Traps**:
+The upper, middle and lower trapezius, including rhomboids and the mid/upper-back region, as one Main muscle group.
+_Arabic_: الترابيس
+
 **Main muscle group**:
-The single volume-counting group credited for a muscle: chest, back (lats and
-upper back), shoulders, rear delts, traps, quads, hamstrings, glutes, biceps,
-triceps, calves or core. Upper chest maps to chest; lats and upper back map to
-back; front and side delts map to shoulders; rear delts stay separate; abs and
-obliques map to core. A set can credit several distinct groups, but each group
-receives at most one credit for that exercise.
+The single volume-counting group credited for a muscle: chest, lats, shoulders,
+rear delts, traps (including rhomboids and mid/upper back), quads, hamstrings,
+glutes, biceps, triceps, calves or core. Upper chest maps to chest; latissimus
+dorsi maps to lats; upper/mid back, rhomboids and trapezius map to traps; front
+and side delts map to shoulders; rear delts stay separate; abs and obliques map
+to core. A generic source label of `back` is ambiguous and receives no credit
+unless a more specific target muscle resolves it. A set can credit several
+distinct groups, but each group receives at most one credit for that exercise.
 
 **Exercise muscle credit**:
 The per-exercise contribution of one working set to a Main muscle group. The

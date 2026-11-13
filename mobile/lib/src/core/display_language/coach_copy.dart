@@ -32,7 +32,8 @@ class CoachCopy {
   String muscleName(String key) => switch (key) {
         'chest' => isArabic ? 'الصدر' : 'Chest',
         'upper_chest' => isArabic ? 'أعلى الصدر' : 'Upper chest',
-        'back' => isArabic ? 'الظهر' : 'Back',
+        'back' || 'lats' => isArabic ? 'اللاتس (الظهر العريض)' : 'Lats',
+        'traps' => isArabic ? 'الترابيس' : 'Traps',
         'shoulders' => isArabic ? 'الأكتاف' : 'Shoulders',
         'side_delts' => isArabic ? 'الأكتاف الجانبية' : 'Side delts',
         'biceps' => isArabic ? 'العضلة ذات الرأسين' : 'Biceps',

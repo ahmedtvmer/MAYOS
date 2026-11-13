@@ -82,12 +82,14 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
     id: 'assistant_volume',
     titleEn: 'Ask about training volume',
     sentenceEn:
-        'Ask about weekly sets by main muscle group using each exercise’s '
-        'credits, logged volume, and clearly labelled estimates with their basis.',
+        'Ask about weekly sets for lats, traps and other main muscle groups '
+        'using each exercise’s credits, logged volume, and clearly labelled '
+        'estimates with their basis.',
     titleAr: 'اسأل عن مجموعات التدريب',
     sentenceAr:
-        'اسأل عن المجموعات الأسبوعية المباشرة وغير المباشرة حسب المجموعة '
-        'العضلية الرئيسية ورصيد كل تمرين، والحجم المسجل والتقديرات المعلّمة بوضوح مع أساس حسابها.',
+        'اسأل عن مجموعات اللاتس (الظهر العريض) والترابيس والمجموعات العضلية '
+        'الرئيسية الأخرى، مع رصيد كل تمرين والحجم المسجل والتقديرات المعلّمة '
+        'مع أساس حسابها.',
     target: 'whats_new_assistant_why',
     location: TourRouteLocation(chatPath),
     release: 6,

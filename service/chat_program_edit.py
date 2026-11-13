@@ -535,7 +535,7 @@ def _is_lower_day(db, day):
 
 
 def _is_upper_day(db, day):
-    return re.search(r"\b(?:upper|push|pull|chest|back|arms?)\b", str(day.get("day_name", "")), re.IGNORECASE) is not None
+    return re.search(r"\b(?:upper|push|pull|chest|lats|traps|arms?)\b", str(day.get("day_name", "")), re.IGNORECASE) is not None
 
 
 def resolve_chat_program_edit(

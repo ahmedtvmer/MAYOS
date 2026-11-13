@@ -3,7 +3,7 @@
 from typing import Any
 
 WEAK_POINT_MUSCLES = (
-    "chest", "upper_chest", "back", "shoulders", "side_delts", "biceps",
+    "chest", "upper_chest", "lats", "shoulders", "side_delts", "traps", "biceps",
     "triceps", "forearms", "quads", "hamstrings", "glutes", "adductors",
     "calves", "abs",
 )
@@ -16,9 +16,11 @@ def validate_weak_points(value: Any) -> list[dict[str, str]]:
     validated_entries = []
     seen_muscles = set()
     for weak_point in value:
-        if not isinstance(weak_point, dict) or weak_point.get("muscle") not in WEAK_POINT_MUSCLES:
+        if not isinstance(weak_point, dict):
             raise ValueError("Weak point muscle is unknown.")
-        muscle = weak_point["muscle"]
+        muscle = "lats" if weak_point.get("muscle") == "back" else weak_point.get("muscle")
+        if muscle not in WEAK_POINT_MUSCLES:
+            raise ValueError("Weak point muscle is unknown.")
         source = weak_point.get("source", "named")
         if (
             muscle in seen_muscles

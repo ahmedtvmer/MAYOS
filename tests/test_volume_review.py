@@ -212,8 +212,7 @@ def test_volume_limits_have_distinct_no_change_verdicts(fresh_store, trend, sets
 def test_focus_volume_limits_come_from_reviewed_program_version(
     fresh_store, trend, sets, focus, expected_verdict, expected_delta, minimum_sets
 ):
-    # Use a supported Weak point key, not the catalog's first muscle label
-    # (for example, "Lats" is a review muscle but the Weak point key is "back").
+    # Focus is stored as a Weak point key and translated to its separate volume group.
     ledger, program, profile, today, muscle = _seed_review(fresh_store, trend, target_muscle="Quads")
     program.days[0].exercises[0].set_groups[0].sets = sets
     profile["training_age_years"] = 3
@@ -235,8 +234,8 @@ def test_focus_volume_limits_come_from_reviewed_program_version(
 @pytest.mark.parametrize(
     ("primary_muscle", "weak_point", "sets", "expected_verdict", "expected_delta"),
     [
-        ("Lats", "back", 11, "stalled", 2),
-        ("Upper Back", "back", 11, "stalled", 2),
+        ("Lats", "lats", 11, "stalled", 2),
+        ("Upper Back", "traps", 11, "stalled", 2),
         ("Upper Chest", "upper_chest", 11, "stalled", 2),
         ("Chest", "upper_chest", 10, "at_ceiling", 0),
     ],
