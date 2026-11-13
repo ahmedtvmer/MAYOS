@@ -136,17 +136,20 @@ void main() {
         tester.element(find.byType(MayosApp)),
         listen: false,
       );
+      final MayosCopy copy = MayosCopy(language);
+      final Finder serviceProblemBanner = find.text(copy.serviceUnavailable);
       for (var attempt = 0;
           attempt < 20 &&
-              container.read(authControllerProvider).savedSessionIssue == null;
+              (container.read(authControllerProvider).savedSessionIssue ==
+                      null ||
+                  serviceProblemBanner.evaluate().isEmpty);
           attempt++) {
         await tester.pump();
       }
       final controller = container.read(authControllerProvider.notifier);
-      final MayosCopy copy = MayosCopy(language);
 
       // #721 regression: cache activation must not overwrite the startup 5xx.
-      expect(find.text(copy.serviceUnavailable), findsOneWidget);
+      expect(serviceProblemBanner, findsOneWidget);
       expect(find.text(copy.offlineSavedData), findsNothing);
 
       // A session snapshot update must retain the 5xx classification.
