@@ -126,9 +126,9 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
   FeatureEntry(
     id: 'assistant',
     titleEn: 'Assistant',
-    sentenceEn: 'Ask about program types, Exercises, working sets or recent food; rebuilding your current program shows its exercises and sets straight away, then waits for your confirmation.',
+    sentenceEn: 'Ask about programs, Exercises or recent food, remember your training preferences, and confirm before deleting a preference or saving a program preview.',
     titleAr: 'المساعد',
-    sentenceAr: 'اسأل عن أنواع البرامج التدريبية أو التمارين والمجموعات وطعامك مؤخرًا؛ إعادة بناء برنامجك الحالي تعرض تمارينه ومجموعاته فورًا، ثم تنتظر تأكيدك.',
+    sentenceAr: 'اسأل عن البرامج أو التمارين أو طعامك مؤخرًا، واحفظ تفضيلاتك في التدريب، ثم أكّد قبل حذف تفضيل أو حفظ معاينة برنامج.',
     target: 'assistant',
     location: TourShellTabLocation(tabIndex: 0),
     release: 0,

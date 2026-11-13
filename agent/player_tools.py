@@ -487,7 +487,7 @@ def _weekly_program_volume(direct: dict[str, int], indirect: dict[str, float]) -
 def _program_prescription_page(response: dict[str, Any], offset: int) -> dict[str, Any]:
     # Empty / exact fit / multi-page / oversized single row: never split a prescription.
     rows = [(day, exercise) for day in response["days"] for exercise in day["exercises"]]
-    page = {**response, "days": [], "next_offset": None}
+    page = {**_with_program_management(response), "days": [], "next_offset": None}
     for index in range(offset, len(rows)):
         day, exercise = rows[index]
         if not page["days"] or page["days"][-1]["day"] != day["day"]:
@@ -752,11 +752,15 @@ PLAYER_READ_TOOL_REGISTRY: tuple[PlayerReadTool, ...] = (
 )
 
 
+def _with_program_management(tool_result: dict[str, Any]) -> dict[str, Any]:
+    return {**tool_result, "internal_fields": ["program_authority"],
+            "program_management": "Your coach manages this program." if tool_result["program_authority"] == "coach"
+            else "You manage your program."}
+
+
 def _encode_tool_result(tool_result: Any) -> str:
     if isinstance(tool_result, dict) and "program_authority" in tool_result:
-        tool_result = {**tool_result, "internal_fields": ["program_authority"],
-                       "program_management": "Your coach manages this program." if tool_result["program_authority"] == "coach"
-                       else "You manage your program."}
+        tool_result = _with_program_management(tool_result)
     rendered = tool_result if isinstance(tool_result, str) else json.dumps(
         tool_result, ensure_ascii=False, separators=(",", ":"), allow_nan=False
     )

@@ -41,6 +41,7 @@ class RebuildArgs(BaseModel):
 class PlayerToolTurn:
     state: dict[str, Any]
     config: dict[str, Any] | None
+    preference_result: dict[str, Any] | None = None
 
     @property
     def handles(self):
@@ -117,6 +118,8 @@ def _substitute_exercise(turn: PlayerToolTurn, **kwargs: Any) -> dict[str, Any]:
         if not graph.RE_ARABIC_SWAP_REQUEST.search(graph.RE_ARABIC_DIACRITICS.sub("", turn.query)):
             return turn.finish(graph._response(graph.AUTHORIZATION_RESPONSE))
         program = ledger.get_active_program()
+        if args.day_name and program and not any(day.day_name == args.day_name for day in program.days):
+            return turn.finish(graph._response(graph.ARABIC_ACTION_CLARIFICATION_RESPONSE))
         source = graph._resolve_arabic_source(program, args.source_exercise, args.day_name) if program else None
         target = graph._resolve_arabic_target(store, source[1], source[0], args.target_exercise) \
             if source and args.target_exercise else None
@@ -150,6 +153,8 @@ def _preview_rebuild(turn: PlayerToolTurn, **kwargs: Any) -> dict[str, Any]:
         return _rebuild_failure(turn, "needs_days")
     choices = dict(valid_splits_for(days, profile.get("gender", "male")))
     split_type = args.split_type or graph._current_split_family(active)
+    if not args.split_type and split_type == "female_full_body":
+        split_type = "full_body"
     if split_type not in choices:
         split_type = resolve_split_type(match_split_keyword(split_type) or "", days)
     if args.split_type and split_type not in choices:
@@ -210,7 +215,7 @@ def _confirm_program_edit(turn: PlayerToolTurn) -> dict[str, Any]:
     pending = ledger.get_pending_chat_program_edit()
     previous = next((graph._get_message_text(message) for message in reversed(turn.state["messages"][:-1])
                      if isinstance(message, graph.AIMessage)), "")
-    if pending is None or previous.strip() != pending["offer_text"].strip():
+    if pending is None or not graph._matches_displayed_offer(previous, pending["offer_text"]):
         return {"status": "no_current_preview"}
     answer = graph._program_edit_confirmation_kind(turn.query, pending)
     state = {**turn.state, "intent_metadata": {"preview_id": pending["offer_id"],
@@ -235,13 +240,17 @@ def _update_injury(turn: PlayerToolTurn) -> dict[str, Any]:
 
 def _update_preference(turn: PlayerToolTurn) -> dict[str, Any]:
     from agent import assistant_graph as graph
+    if turn.preference_result is not None:
+        return turn.preference_result
     ledger, _store = turn.handles
     result = graph._preference_write_intent(turn.query, ledger, turn.state["messages"])
     if result is None:
         return {"status": "needs_explicit_request"}
     if result.get("intent") == "assistant_preference_delete_confirmed":
-        return turn.finish(graph.assistant_preference_delete_node({**turn.state, **result}, turn.config))
-    return turn.finish(graph._response(result["intent_metadata"]["response_content"]))
+        turn.preference_result = turn.finish(graph.assistant_preference_delete_node({**turn.state, **result}, turn.config))
+    else:
+        turn.preference_result = turn.finish(graph._response(result["intent_metadata"]["response_content"]))
+    return turn.preference_result
 
 
 def build_player_chat_tools(state: dict[str, Any], config: dict[str, Any] | None):

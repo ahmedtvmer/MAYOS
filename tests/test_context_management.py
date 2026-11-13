@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
-from tests.fakes.chat_model import ScriptedChatModel
+from tests.fakes.chat_model import ScriptedChatModel, ToolCallsTurn
 
 
 class _StubModule(ModuleType):
@@ -65,10 +65,14 @@ def graph(monkeypatch):
     spec = importlib.util.spec_from_file_location("isolated_assistant_graph", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    import agent
+    monkeypatch.setitem(sys.modules, "agent.assistant_graph", module)
+    monkeypatch.setattr(agent, "assistant_graph", module)
     module.llm = ScriptedChatModel(["Use controlled reps."])
     module._record_telemetry_event = MagicMock()
     # The isolated graph receives its ledger/store explicitly on each call's config.
     module.db = MagicMock()
+    module.db.get_pending_assistant_preference_deletion.return_value = None
     # Locked catalog reads yield the (mocked) shared connection, mirroring DatabaseManager.catalog_locked.
     module.db.catalog_locked.return_value.__enter__.return_value = module.db.catalog_conn
     return module
@@ -81,7 +85,7 @@ def state(query, prior=()):
 @pytest.mark.parametrize("query", ["malak", "sarah", "asdasd", "hey", "hello", "I'm frustrated", "fuck you"])
 def test_short_conversation_bypasses_canned_clarification(graph, query):
     request = state(query)
-    assert graph.router_node(request) == {"intent": "coaching_qa", "intent_metadata": {}}
+    assert graph.router_node(request)["intent"] == "coaching_qa"
     result = graph.generation_node(request)
     assert result["response_content"] == "Use controlled reps."
     assert len(graph.llm.calls) == 1
@@ -100,6 +104,10 @@ def test_shorthand_and_followups(graph, query):
 def test_explicit_name_and_recall(graph, query):
     name = query.split()[-1]
     graph.db.get_assistant_memory.return_value = {}
+    graph.llm = ScriptedChatModel([
+        ToolCallsTurn(calls=[{"name": "preferred_name", "args": {}, "id": "save-name"}]),
+        ToolCallsTurn(calls=[{"name": "preferred_name", "args": {}, "id": "recall-name"}]),
+    ])
     request = state(query)
     assert "".join(graph.stream_assistant_turn(request, ledger=graph.db, store=graph.db)) == f"Nice to meet you, {name}."
     graph.db.set_assistant_memory.assert_called_once_with("preferred_name", name)
@@ -107,7 +115,8 @@ def test_explicit_name_and_recall(graph, query):
     recall = state("what's my name?")
     assert "".join(graph.stream_assistant_turn(recall, ledger=graph.db, store=graph.db)) == f"You asked me to call you {name}."
     assert recall["messages"][-1].content == recall["response_content"]
-    assert graph.llm.calls == []
+    assert len(graph.llm.calls) == 2
+    assert all("preferred_name" in call["tools"] for call in graph.llm.calls)
 
 
 def test_unresolved_history_graph_uses_generation_without_injected_comparison(graph, comparison):

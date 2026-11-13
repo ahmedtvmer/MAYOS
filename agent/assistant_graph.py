@@ -1075,6 +1075,13 @@ def _forget_proposal(text: str, language: str) -> str:
     return f'تحب أحذف التفضيل ده: «{text}»؟ رد بنعم للحذف أو لا للاحتفاظ به.'
 
 
+def _matches_displayed_offer(latest: str | None, offer: str) -> bool:
+    # A streamed prefix can precede the offer; a later question must invalidate it.
+    latest = (latest or "").strip()
+    offer = offer.strip()
+    return bool(offer) and (latest == offer or latest.endswith("\n\n" + offer))
+
+
 def _pending_preference_confirmation(
     query: str, ledger: Any, messages: list[Any]
 ) -> dict[str, Any] | None:
@@ -1105,7 +1112,7 @@ def _pending_preference_confirmation(
         return None
     text = preference["text"]
     proposals = {_forget_proposal(text, "en"), _forget_proposal(text, "ar")}
-    if latest_assistant not in proposals:
+    if not any(_matches_displayed_offer(latest_assistant, proposal) for proposal in proposals):
         ledger.clear_pending_assistant_preference_deletion()
         return None
     if confirmation:
@@ -1254,7 +1261,7 @@ def _goal_confirmation_turn(messages: list[Any], pending: dict[str, Any]) -> str
          if isinstance(message, AIMessage)),
         "",
     )
-    if not latest or latest.strip() != pending.get("offer_text", "").strip():
+    if not _matches_displayed_offer(latest, pending.get("offer_text", "")):
         return None
     return pending.get("kind") if pending.get("offer_id") else None
 
@@ -1415,7 +1422,8 @@ def _movement_restriction_chat_intent(query: str, ledger: Any, store: Any, state
             )
         latest = next((_get_message_text(item) for item in reversed(state.get("messages", [])[:-1]) if isinstance(item, AIMessage)), "")
         id_matches_pending = bool(offer_decision and offer_decision.group(2) == pending["offer_id"])
-        text_matches_pending = latest.strip().split("\n<!--movement-offer:", 1)[0] == pending["offer_text"].strip()
+        text_matches_pending = _matches_displayed_offer(
+            latest.strip().split("\n<!--movement-offer:", 1)[0], pending["offer_text"])
         if id_matches_pending or text_matches_pending:
             answer = (
                 offer_decision.group(1).lower()
@@ -1614,7 +1622,7 @@ def _pending_offer_response(state: AssistantState, config: dict[str, Any] | None
     if isinstance(pending, dict):
         previous = next((_get_message_text(message) for message in reversed(messages[:-1])
                          if isinstance(message, AIMessage)), "")
-        if previous.strip() == pending["offer_text"].strip():
+        if _matches_displayed_offer(previous, pending["offer_text"]):
             answer = _program_edit_confirmation_kind(query, pending)
             metadata = {"preview_id": pending["offer_id"], "confirm": answer == "yes",
                         "include_optional": _chat_edit_optional_selection(query, pending)}
@@ -3964,6 +3972,7 @@ def _finish_limited(message: Any) -> bool:
 @dataclass
 class _PlayerStreamOutput:
     visible: list[str]
+    language: str = "en"
     scrubber: CoachOutputScrubber | None = None
     pending_output: str = ""
     round_visible_count: int = 0
@@ -3984,7 +3993,7 @@ class _PlayerStreamOutput:
             self.pending_output += cleaned
             release_end = self._visible_prefix_end()
             if release_end:
-                visible_text = self.pending_output[:release_end]
+                visible_text = player_facing_text(self.pending_output[:release_end], self.language)
                 self.pending_output = self.pending_output[release_end:]
                 self.visible.append(visible_text)
                 self.first_visible_released = True
@@ -3995,6 +4004,9 @@ class _PlayerStreamOutput:
         if sentence_end:
             return sentence_end
         if not self.first_visible_released:
+            # Keep control phrases and identifiers together for player-facing replacements.
+            if re.search(r"\b(?:player|coach|authority)\b|_", self.pending_output, re.I):
+                return 0
             return _first_clean_prefix_end(
                 self.pending_output,
                 followed_by_whitespace=bool(self.scrubber.spacing),
@@ -4012,8 +4024,9 @@ class _PlayerStreamOutput:
                 " \t\r\n,;:—،؛"
             )
         if self.pending_output:
-            self.visible.append(self.pending_output)
-            yield self.pending_output
+            cleaned_output = player_facing_text(self.pending_output, self.language)
+            self.visible.append(cleaned_output)
+            yield cleaned_output
             self.pending_output = ""
         if len(self.visible) == self.round_visible_count and not limited:
             self.visible.append(EMPTY_RESPONSE_FALLBACK)
@@ -4334,10 +4347,25 @@ def _stream_player_answer(
     empty_response: str = EMPTY_RESPONSE_FALLBACK,
     language: str = "en",
 ) -> Generator[str, None, _StreamedPlayerAnswer]:
+    output.language = language
     output.begin_answer()
     capture = _PlayerModelStream()
+    deferred_text = ""
+    opening_decided = False
     for chunk in chunks:
         capture.accept(chunk)
+        if not capture.tool_mode:
+            piece = chunk.content if hasattr(chunk, "content") else str(chunk)
+            deferred_text += str(piece)
+            if not opening_decided:
+                opening = deferred_text.lstrip().casefold()
+                # Keep action narration and hidden-reasoning rounds private until completion.
+                narration = ("let me", "i will", "i can", "i am going to", "<think>")
+                if any(prefix.startswith(opening) or opening.startswith(prefix) for prefix in narration):
+                    continue
+                opening_decided = True
+            yield from output.add_text(deferred_text)
+            deferred_text = ""
     message = capture.message()
     tool_calls = list(getattr(message, "tool_calls", ()) or ())
     capture.tool_mode = capture.tool_mode or bool(tool_calls)
@@ -4345,13 +4373,13 @@ def _stream_player_answer(
         output.scrubber = None
         output.pending_output = ""
         return _StreamedPlayerAnswer(message, tool_calls, {})
-    # Providers can send narration before the first tool-call chunk. Nothing
-    # from the round is safe to publish until its complete tool choice is known.
-    text = (_invalid_player_tool_reply(language) if capture.tool_mode or getattr(message, "invalid_tool_calls", None)
-            else scrub_coach_output(player_facing_text("".join(capture.raw_pieces), language)))
-    if text == EMPTY_RESPONSE_FALLBACK:
-        text = empty_response
-    yield from output.add_text(text or ("" if capture.limited else empty_response))
+    if capture.tool_mode or getattr(message, "invalid_tool_calls", None):
+        output.begin_answer()
+        yield from output.add_text(_invalid_player_tool_reply(language))
+    elif not capture.raw_pieces or not any(capture.raw_pieces):
+        yield from output.add_text("" if capture.limited else empty_response)
+    elif deferred_text:
+        yield from output.add_text(deferred_text)
     yield from output.finish_answer(capture.limited)
     return _StreamedPlayerAnswer(message, [], capture.telemetry())
 
@@ -4473,7 +4501,8 @@ def _first_clean_prefix_end(text: str, followed_by_whitespace: bool = False) -> 
             between_digits = False
         if has_following_whitespace and not between_digits:
             return len(text[:index].rstrip())
-    if len(text) < _FIRST_VISIBLE_PREFIX_TARGET:
+    # Numeric claims need a complete clause before they can leave a tool round.
+    if len(text) < _FIRST_VISIBLE_PREFIX_TARGET or re.search(r"\d", text):
         return 0
     word_boundary = re.search(r"\s", text[_FIRST_VISIBLE_PREFIX_START:])
     return _FIRST_VISIBLE_PREFIX_START + word_boundary.start() if word_boundary else 0
@@ -4803,8 +4832,9 @@ def stream_assistant_turn(
             if cleaned:
                 stream_output.pending_output += cleaned
             if stream_output.pending_output:
-                visible.append(stream_output.pending_output)
-                yield stream_output.pending_output
+                cleaned_output = player_facing_text(stream_output.pending_output, _tool_reply_language(state))
+                visible.append(cleaned_output)
+                yield cleaned_output
         result = _response(PIPELINE_ERROR_RESPONSE, bool(result and result.get("program_updated")))
     finally:
         if routed_context is not None:

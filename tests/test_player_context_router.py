@@ -16,7 +16,7 @@ from agent.ProgramState import (
 from tests.fakes.chat_model import ScriptedChatModel, ToolCallsTurn
 from tests.test_player_chat_privacy import api  # noqa: F401  (pytest fixture)
 from tests.test_player_chat_privacy import (
-    _assigned_player, _authed, _done_content, _register,
+    _assigned_player, _authed, _done_content, _fill_prompt_history, _register,
 )
 
 
@@ -263,9 +263,7 @@ def test_safety_preempts_model_and_writes_use_selected_tools(router_player, monk
 def test_router_drops_pieces_that_do_not_fit_prompt_reserve(router_player, monkeypatch, caplog):
     client, db, headers = router_player
     with db.open_ledger("router-player") as ledger:
-        # History trimming (#524) keeps the latest replies whole, so those carry the prompt pressure.
-        for _ in range(9):
-            ledger.add_chat_message("assistant", "Earlier answer. " + "x" * 4_800)
+        _fill_prompt_history(ledger, "What are my sets for bi and tri on leg days?")
     model = ScriptedChatModel(["Please narrow the question."])
     monkeypatch.setattr(assistant_graph, "llm", model)
     with caplog.at_level(logging.INFO):
