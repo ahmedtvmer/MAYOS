@@ -82,8 +82,7 @@ def _parse_curation_row(line_number: int, row: dict[str, str | None]) -> Exercis
     source_name = (row["source_name"] or "").strip()
     if not exercise_id or not source_name:
         raise ValueError(f"Exercise curation CSV line {line_number} needs an id and source_name")
-    aliases = split_curation_values(row["aliases"])
-    _validate_curation_aliases(line_number, aliases)
+    aliases = _deduplicate_curation_aliases(split_curation_values(row["aliases"]))
     primary_action = (row["primary_action"] or "").strip()
     _validate_action(line_number, exercise_id, primary_action, "primary_action")
     secondary_actions = split_curation_values(row["secondary_actions"])
@@ -170,6 +169,19 @@ def _validate_curation_aliases(line_number: int, aliases: tuple[str, ...]) -> No
     normalized_aliases = [_normalize_exercise_name(alias) for alias in aliases]
     if len(set(normalized_aliases)) != len(normalized_aliases):
         raise ValueError(f"Exercise curation CSV line {line_number} repeats an alias")
+
+
+def _deduplicate_curation_aliases(aliases: tuple[str, ...]) -> tuple[str, ...]:
+    """Keep the first spelling for each alias after name normalization."""
+    seen: set[str] = set()
+    unique: list[str] = []
+    for alias in aliases:
+        normalized = _normalize_exercise_name(alias)
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        unique.append(alias)
+    return tuple(unique)
 
 
 def _validate_primary_muscle(
