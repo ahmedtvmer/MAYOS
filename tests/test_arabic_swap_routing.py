@@ -1,12 +1,15 @@
-import pytest
-from langchain_core.messages import HumanMessage
+import json
 
+import pytest
+
+from langchain_core.messages import HumanMessage, ToolMessage
+
+from agent import assistant_graph
 from agent.ProgramState import GeneratedProgramSchema, ProgramDaySchema, ProgramExerciseSchema
 from agent.assistant_graph import stream_assistant_turn
-from tests.fakes.chat_model import ScriptedChatModel
+from tests.fakes.chat_model import ScriptedChatModel, ToolCallsTurn
 
 ARABIC_SWAP_CLARIFICATION = "أنهي تمرين عايز تغيّره؟"
-ARABIC_ONE_AT_A_TIME_NOTE = "هبدّل التمرين ده الأول، وبعدها قولي تحب أساعدك في إيه كمان؟"
 COACHING_REPLY = "خد راحة كفاية حسب إحساسك، وخلّي مجهودك مناسب لحالتك."
 
 
@@ -54,17 +57,29 @@ def _turn(message):
     }
 
 
-def test_standard_arabic_swap_resolves_classifier_natural_names(fresh_store, monkeypatch):
+def _tool_call(name, args=None):
+    return ToolCallsTurn(calls=[{"name": name, "args": args or {}, "id": "selected-tool"}])
+
+
+def _substitution_call(source, target=None, day_name=None):
+    args = {"source_exercise": source, "target_exercise": target}
+    if day_name is not None:
+        args["day_name"] = day_name
+    return _tool_call("substitute_exercise", args)
+
+
+def _tool_results(model, name):
+    return [
+        json.loads(message.content)
+        for call in model.calls
+        for message in call["messages"]
+        if isinstance(message, ToolMessage) and message.name == name
+    ]
+
+
+def test_standard_arabic_swap_resolves_model_selected_natural_names(fresh_store, monkeypatch):
     before = _seed_program(fresh_store)
-    model = ScriptedChatModel(
-        [
-            {
-                "intent": "exercise_substitution",
-                "source_exercise": "Barbell Bench Press",
-                "target_exercise": "Dumbbell Bench Press",
-            }
-        ]
-    )
+    model = ScriptedChatModel([_substitution_call("Barbell Bench Press", "Dumbbell Bench Press")])
     monkeypatch.setattr("agent.assistant_graph.llm", model)
     state = _turn("استبدل تمرين Barbell Bench Press بتمرين Dumbbell Bench Press.")
 
@@ -72,28 +87,17 @@ def test_standard_arabic_swap_resolves_classifier_natural_names(fresh_store, mon
 
     after = fresh_store.ledger.get_active_program()
     names = [exercise.exercise_name for exercise in after.days[0].exercises]
-    assert state["intent"] == "exercise_substitution"
+    assert state["selected_tools"] == ["substitute_exercise"]
+    assert "substitute_exercise" in model.calls[0]["tools"]
     assert state["program_updated"] is True
     assert after.version == before.version + 1
     assert "Bench Press (Dumbbell)" in names
     assert "Bench Press (Barbell)" not in names
-    classifier_prompt = model.calls[0]["messages"][0].content
-    assert "Current Training program exercise names:" in classifier_prompt
-    assert "Bench Press (Barbell)" in classifier_prompt
-    assert "arabic_swap_test" not in classifier_prompt
 
 
 def test_egyptian_bench_request_resolves_single_program_match(fresh_store, monkeypatch):
     before = _seed_program(fresh_store)
-    model = ScriptedChatModel(
-        [
-            {
-                "intent": "exercise_substitution",
-                "source_exercise": "Bench Press",
-                "target_exercise": "Dumbbell Bench Press",
-            }
-        ]
-    )
+    model = ScriptedChatModel([_substitution_call("Bench Press", "Dumbbell Bench Press")])
     monkeypatch.setattr("agent.assistant_graph.llm", model)
     state = _turn("بدّل لي البنش بالدامبل.")
 
@@ -101,7 +105,7 @@ def test_egyptian_bench_request_resolves_single_program_match(fresh_store, monke
 
     after = fresh_store.ledger.get_active_program()
     names = [exercise.exercise_name for exercise in after.days[0].exercises]
-    assert state["intent"] == "exercise_substitution"
+    assert state["selected_tools"] == ["substitute_exercise"]
     assert state["program_updated"] is True
     assert after.version == before.version + 1
     assert "Bench Press (Dumbbell)" in names
@@ -110,15 +114,9 @@ def test_egyptian_bench_request_resolves_single_program_match(fresh_store, monke
 
 def test_egyptian_incline_request_resolves_library_style_target(fresh_store, monkeypatch):
     before = _seed_program(fresh_store)
-    model = ScriptedChatModel(
-        [
-            {
-                "intent": "exercise_substitution",
-                "source_exercise": "Bench Press (Barbell)",
-                "target_exercise": "Incline Bench Press (Barbell)",
-            }
-        ]
-    )
+    model = ScriptedChatModel([
+        _substitution_call("Bench Press (Barbell)", "Incline Bench Press (Barbell)")
+    ])
     monkeypatch.setattr("agent.assistant_graph.llm", model)
     state = _turn("عايز أبدّل البنش بضغط مائل بالبار.")
 
@@ -126,6 +124,7 @@ def test_egyptian_incline_request_resolves_library_style_target(fresh_store, mon
 
     after = fresh_store.ledger.get_active_program()
     names = [exercise.exercise_name for exercise in after.days[0].exercises]
+    assert state["selected_tools"] == ["substitute_exercise"]
     assert state["program_updated"] is True
     assert after.version == before.version + 1
     assert "Incline Bench Press (Barbell)" in names
@@ -165,15 +164,7 @@ def test_leg_press_target_matches_the_english_named_target_path(fresh_store, mon
         for day in before.days
         for exercise in day.exercises
     }
-    model = ScriptedChatModel(
-        [
-            {
-                "intent": "exercise_substitution",
-                "source_exercise": "Back Squat (Barbell)",
-                "target_exercise": "Leg Press",
-            }
-        ]
-    )
+    model = ScriptedChatModel([_substitution_call("Back Squat (Barbell)", "Leg Press")])
     monkeypatch.setattr("agent.assistant_graph.llm", model)
     arabic_state = _turn("بدّل السكوات بالليج برس.")
     list(stream_assistant_turn(arabic_state, ledger=fresh_store.ledger, store=fresh_store))
@@ -186,20 +177,13 @@ def test_leg_press_target_matches_the_english_named_target_path(fresh_store, mon
 
     assert english_target == arabic_target
     assert english_target == "45° Leg Press (Plate-Loaded)"
+    assert arabic_state["selected_tools"] == ["substitute_exercise"]
     assert arabic_state["program_updated"] is True
 
 
 def test_arabic_target_clarifies_without_mutation(fresh_store, monkeypatch):
     before = _seed_program(fresh_store)
-    model = ScriptedChatModel(
-        [
-            {
-                "intent": "exercise_substitution",
-                "source_exercise": "Bench Press (Barbell)",
-                "target_exercise": "دامبل",
-            }
-        ]
-    )
+    model = ScriptedChatModel([_substitution_call("Bench Press (Barbell)", "دامبل")])
     monkeypatch.setattr("agent.assistant_graph.llm", model)
     state = _turn("بدّل لي البنش بالدامبل.")
 
@@ -207,7 +191,7 @@ def test_arabic_target_clarifies_without_mutation(fresh_store, monkeypatch):
 
     after = fresh_store.ledger.get_active_program()
     names = [exercise.exercise_name for exercise in after.days[0].exercises]
-    assert state["intent"] == "arabic_swap_clarification"
+    assert state["selected_tools"] == ["substitute_exercise"]
     assert state["program_updated"] is False
     assert after.version == before.version
     assert "Bench Press (Barbell)" in names
@@ -216,17 +200,7 @@ def test_arabic_target_clarifies_without_mutation(fresh_store, monkeypatch):
 
 def test_ar_mixed_03_suggestion_never_executes_scripted_swap(fresh_store, monkeypatch):
     before = _seed_program(fresh_store)
-    model = ScriptedChatModel(
-        [
-            {
-                "intent": "exercise_substitution",
-                "source_exercise": "Back Squat (Barbell)",
-                "target_exercise": "Goblet Squat",
-                "has_swap": True,
-            },
-            COACHING_REPLY,
-        ]
-    )
+    model = ScriptedChatModel([_substitution_call("Back Squat (Barbell)", "Goblet Squat")])
     monkeypatch.setattr("agent.assistant_graph.llm", model)
     state = _turn("الـ squat مش مريح، can you suggest a safer alternative?")
 
@@ -234,14 +208,14 @@ def test_ar_mixed_03_suggestion_never_executes_scripted_swap(fresh_store, monkey
 
     after = fresh_store.ledger.get_active_program()
     names = [exercise.exercise_name for exercise in after.days[0].exercises]
-    assert state["intent"] == "coaching_qa"
+    assert state["selected_tools"] == ["substitute_exercise"]
     assert state["program_updated"] is False
     assert after.version == before.version
     assert names == [
         exercise.exercise_name for exercise in before.days[0].exercises
     ]
     assert "45° Leg Press (Plate-Loaded)" not in names
-    assert response == COACHING_REPLY
+    assert response == assistant_graph.AUTHORIZATION_RESPONSE
 
 
 def test_ar_mixed_03_mismatched_name_hit_clarifies_without_mutation(fresh_store, monkeypatch):
@@ -256,44 +230,25 @@ def test_ar_mixed_03_mismatched_name_hit_clarifies_without_mutation(fresh_store,
 
     monkeypatch.setattr(fresh_store, "find_unique_exercise_id_by_exact_name", lambda _name: None)
     monkeypatch.setattr(fresh_store, "find_exercises_by_name", name_search)
-    model = ScriptedChatModel(
-        [
-            {
-                "intent": "exercise_substitution",
-                "source_exercise": "Back Squat (Barbell)",
-                "target_exercise": "Goblet Squat",
-                "has_swap": True,
-            }
-        ]
-    )
+    model = ScriptedChatModel([_substitution_call("Back Squat (Barbell)", "Goblet Squat")])
     monkeypatch.setattr("agent.assistant_graph.llm", model)
     state = _turn("بدّل السكوات ب Goblet Squat.")
 
     response = "".join(stream_assistant_turn(state, ledger=fresh_store.ledger, store=fresh_store))
 
     after = fresh_store.ledger.get_active_program()
-    assert state["intent"] == "arabic_swap_clarification"
+    assert state["selected_tools"] == ["substitute_exercise"]
     assert state["program_updated"] is False
     assert after.version == before.version
     assert "45° Leg Press (Plate-Loaded)" not in {exercise.exercise_name for exercise in after.days[0].exercises}
     assert response == ARABIC_SWAP_CLARIFICATION
 
 
-def test_arabic_composite_swap_and_weight_progression_question_stays_composite(
+def test_arabic_swap_with_weight_question_executes_the_selected_operation(
     fresh_store, monkeypatch
 ):
     before = _seed_program(fresh_store)
-    model = ScriptedChatModel(
-        [
-            {
-                "intent": "composite_intent",
-                "source_exercise": "Bench Press (Barbell)",
-                "target_exercise": "Dumbbell Bench Press",
-                "has_swap": True,
-                "has_additional_request": True,
-            }
-        ]
-    )
+    model = ScriptedChatModel([_substitution_call("Bench Press (Barbell)", "Dumbbell Bench Press")])
     monkeypatch.setattr("agent.assistant_graph.llm", model)
     state = _turn("بدّل لي البنش بالدامبل. وقولّي أزوّد الوزن إمتى؟")
 
@@ -301,139 +256,118 @@ def test_arabic_composite_swap_and_weight_progression_question_stays_composite(
 
     after = fresh_store.ledger.get_active_program()
     names = [exercise.exercise_name for exercise in after.days[0].exercises]
-    assert state["intent"] == "composite_intent"
+    assert state["selected_tools"] == ["substitute_exercise"]
     assert state["program_updated"] is True
     assert after.version == before.version + 1
     assert names.count("Bench Press (Dumbbell)") == 1
     assert "Bench Press (Barbell)" not in names
 
 
-def test_preferred_name_request_stays_deterministic_before_arabic_classification(
+def test_preferred_name_request_is_written_by_the_selected_tool(
     fresh_store, monkeypatch
 ):
     _seed_program(fresh_store)
-    model = ScriptedChatModel()
+    model = ScriptedChatModel([_tool_call("preferred_name")])
     monkeypatch.setattr("agent.assistant_graph.llm", model)
     state = _turn("ناديني سلمى")
 
     response = "".join(stream_assistant_turn(state, ledger=fresh_store.ledger, store=fresh_store))
 
-    assert state["intent"] == "telemetry_intercept"
+    assert state["selected_tools"] == ["preferred_name"]
     assert fresh_store.ledger.get_assistant_memory()["preferred_name"] == "سلمى"
     assert response == "تمام، هناديك سلمى."
 
 
 def test_ambiguous_source_clarifies_without_mutation(fresh_store, monkeypatch):
     before = _seed_program(fresh_store, duplicate_bench=True)
-    model = ScriptedChatModel(
-        [
-            {
-                "intent": "exercise_substitution",
-                "source_exercise": "Bench Press",
-                "target_exercise": "Incline Bench Press",
-            }
-        ]
-    )
+    model = ScriptedChatModel([_substitution_call("Bench Press", "Incline Bench Press")])
     monkeypatch.setattr("agent.assistant_graph.llm", model)
     state = _turn("بدّل لي البنش")
 
     response = "".join(stream_assistant_turn(state, ledger=fresh_store.ledger, store=fresh_store))
 
     after = fresh_store.ledger.get_active_program()
-    assert state["intent"] == "arabic_swap_clarification"
+    assert state["selected_tools"] == ["substitute_exercise"]
     assert state["program_updated"] is False
     assert after.version == before.version
     assert response == ARABIC_SWAP_CLARIFICATION
 
 
 @pytest.mark.parametrize(
-    ("message", "classification"),
+    "message",
     [
-        ("أريح قد إيه بين المجموعات؟", {"intent": "coaching_qa"}),
-        ("أتمرن النهارده ولا أريح؟ رجلي مرهقة من تمرين امبارح.", {"intent": "coaching_qa"}),
-        ("سؤال تاني عن النادي.", {"intent": "other"}),
+        "أريح قد إيه بين المجموعات؟",
+        "أتمرن النهارده ولا أريح؟ رجلي مرهقة من تمرين امبارح.",
+        "سؤال تاني عن النادي.",
     ],
 )
 def test_arabic_coaching_questions_get_normal_coaching_answer(
-    fresh_store, monkeypatch, message, classification
+    fresh_store, monkeypatch, message
 ):
     before = _seed_program(fresh_store)
-    model = ScriptedChatModel([classification, COACHING_REPLY])
+    model = ScriptedChatModel([COACHING_REPLY])
     monkeypatch.setattr("agent.assistant_graph.llm", model)
     state = _turn(message)
 
     response = "".join(stream_assistant_turn(state, ledger=fresh_store.ledger, store=fresh_store))
 
     after = fresh_store.ledger.get_active_program()
-    assert state["intent"] == "coaching_qa"
     assert state["program_updated"] is False
+    assert not state.get("selected_tools")
     assert after.version == before.version
     assert response == COACHING_REPLY
 
 
-def test_composite_swap_executes_once_and_handles_the_other_request_later(
+def test_composite_swap_request_executes_only_the_selected_operation(
     fresh_store, monkeypatch
 ):
     before = _seed_program(fresh_store)
-    model = ScriptedChatModel(
-        [
-            {
-                "intent": "composite_intent",
-                "has_swap": True,
-                "source_exercise": "Barbell Bench Press",
-                "target_exercise": "Dumbbell Bench Press",
-            }
-        ]
-    )
+    model = ScriptedChatModel([_substitution_call("Barbell Bench Press", "Dumbbell Bench Press")])
     monkeypatch.setattr("agent.assistant_graph.llm", model)
     state = _turn("بدّل البنش بالدامبل وقولّي عملت إيه في السكوات")
 
-    response = "".join(stream_assistant_turn(state, ledger=fresh_store.ledger, store=fresh_store))
+    list(stream_assistant_turn(state, ledger=fresh_store.ledger, store=fresh_store))
 
     after = fresh_store.ledger.get_active_program()
     names = [exercise.exercise_name for exercise in after.days[0].exercises]
-    assert state["intent"] == "composite_intent"
+    assert state["selected_tools"] == ["substitute_exercise"]
     assert state["program_updated"] is True
     assert after.version == before.version + 1
     assert "Bench Press (Dumbbell)" in names
     assert "Back Squat (Barbell)" in names
-    assert ARABIC_ONE_AT_A_TIME_NOTE in response
 
 
 def test_unresolved_swap_target_clarifies_without_mutation(fresh_store, monkeypatch):
     before = _seed_program(fresh_store)
-    model = ScriptedChatModel(
-        [
-            {
-                "intent": "exercise_substitution",
-                "source_exercise": "Barbell Bench Press",
-                "target_exercise": "Imaginary Press",
-            }
-        ]
-    )
+    model = ScriptedChatModel([_substitution_call("Barbell Bench Press", "Imaginary Press")])
     monkeypatch.setattr("agent.assistant_graph.llm", model)
     state = _turn("عايز أبدّل البنش بتمرين تاني")
 
     response = "".join(stream_assistant_turn(state, ledger=fresh_store.ledger, store=fresh_store))
 
     after = fresh_store.ledger.get_active_program()
-    assert state["intent"] == "arabic_swap_clarification"
+    assert state["selected_tools"] == ["substitute_exercise"]
     assert state["program_updated"] is False
     assert after.version == before.version
     assert response == ARABIC_SWAP_CLARIFICATION
 
 
-def test_english_swap_with_arabic_politeness_keeps_the_english_route(monkeypatch):
-    from agent.assistant_graph import router_node
-
-    model = ScriptedChatModel()
+def test_english_swap_with_arabic_politeness_is_authorized_by_selected_operation(
+    fresh_store, monkeypatch
+):
+    before = _seed_program(fresh_store)
+    model = ScriptedChatModel([_substitution_call("Back Squat (Barbell)", "Leg Press")])
     monkeypatch.setattr("agent.assistant_graph.llm", model)
-    routed = router_node(
-        {"messages": [HumanMessage(content="swap bench press for dumbbell press يا كابتن")]}
-    )
+    state = _turn("swap Back Squat (Barbell) for Leg Press يا كابتن")
 
-    assert routed["intent"] == "exercise_substitution"
-    assert "arabic_data_validated" not in routed["intent_metadata"]
+    list(stream_assistant_turn(state, ledger=fresh_store.ledger, store=fresh_store))
+
+    after = fresh_store.ledger.get_active_program()
+    names = [exercise.exercise_name for exercise in after.days[0].exercises]
+    assert state["selected_tools"] == ["substitute_exercise"]
+    assert state["program_updated"] is True
+    assert after.version == before.version + 1
+    assert "45° Leg Press (Plate-Loaded)" in names
 
 
 @pytest.mark.parametrize(
@@ -458,60 +392,54 @@ def test_arabic_clinical_and_franco_messages_are_intercepted_before_swap_routing
 
 
 @pytest.mark.parametrize(
-    ("message", "classification"),
+    ("message", "exercise_name", "expected_exercise"),
     [
-        (
-            "عملت كام تكرار في آخر تمرين للقرفصاء؟",
-            {"intent": "exercise_history", "history_exercise": "Back Squat (Barbell)"},
-        ),
-        (
-            "آخر مرة لعبت ضغط صدر بالبار، رفعت كام؟",
-            {"intent": "exercise_history", "history_exercise": "Bench Press (Barbell)"},
-        ),
-        (
-            "ما الوزن الذي سجلته في تمرين squat خلال آخر جلسة؟",
-            {"intent": "exercise_history", "history_exercise": "Squat"},
-        ),
+        ("عملت كام تكرار في آخر تمرين للقرفصاء؟", "Back Squat (Barbell)", "Back Squat (Barbell)"),
+        ("آخر مرة لعبت ضغط صدر بالبار، رفعت كام؟", "Bench Press (Barbell)", "Bench Press (Barbell)"),
+        ("ما الوزن الذي سجلته في تمرين squat خلال آخر جلسة؟", "Squat", "Back Squat (Barbell)"),
     ],
 )
-def test_live_arabic_history_targets_remain_history_routes(
-    fresh_store, monkeypatch, message, classification
+def test_model_selected_history_tool_resolves_arabic_exercise_names(
+    fresh_store, monkeypatch, message, exercise_name, expected_exercise
 ):
     program = _seed_program(fresh_store)
-    program_exercise_ids = {
-        str(exercise.exercise_id)
+    program_exercise_names = {
+        exercise.exercise_name
         for day in program.days
         for exercise in day.exercises
     }
-    model = ScriptedChatModel([classification, "البيانات المسجلة للتمرين موجودة في السياق."])
+    model = ScriptedChatModel([
+        _tool_call("get_exercise_history", {
+            "exercise_name": exercise_name,
+            "scope": "last_occurrence",
+        }),
+        "البيانات المسجلة للتمرين موجودة في السياق.",
+    ])
     monkeypatch.setattr("agent.assistant_graph.llm", model)
     state = _turn(message)
 
     response = "".join(stream_assistant_turn(state, ledger=fresh_store.ledger, store=fresh_store))
 
-    assert state["intent"] == "exercise_history"
-    assert state["intent_metadata"]["arabic_history"] is True
-    assert state["intent_metadata"]["history_exercise_id"] in program_exercise_ids
-    assert state["intent_metadata"]["history_exercise_name"]
+    assert state["selected_tools"] == ["get_exercise_history"]
     assert state["program_updated"] is False
     assert response == "البيانات المسجلة للتمرين موجودة في السياق."
+    [result] = _tool_results(model, "get_exercise_history")
+    assert result["status"] == "ok"
+    assert result["exercise"] == expected_exercise
+    assert result["exercise"] in program_exercise_names
 
 
-def test_arabic_train_or_rest_advice_overrides_misclassified_history(
+def test_arabic_train_or_rest_advice_does_not_mutate_program(
     fresh_store, monkeypatch
 ):
-    _seed_program(fresh_store)
-    model = ScriptedChatModel(
-        [
-            {"intent": "exercise_history", "history_whole_session": True},
-            COACHING_REPLY,
-        ]
-    )
+    before = _seed_program(fresh_store)
+    model = ScriptedChatModel([COACHING_REPLY])
     monkeypatch.setattr("agent.assistant_graph.llm", model)
     state = _turn("أتمرن النهارده ولا أريح؟ رجلي مرهقة من تمرين امبارح.")
 
     response = "".join(stream_assistant_turn(state, ledger=fresh_store.ledger, store=fresh_store))
 
-    assert state["intent"] == "coaching_qa"
+    assert not state.get("selected_tools")
     assert state["program_updated"] is False
+    assert fresh_store.ledger.get_active_program().version == before.version
     assert response == COACHING_REPLY

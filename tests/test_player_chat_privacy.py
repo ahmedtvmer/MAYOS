@@ -2881,7 +2881,7 @@ def _install_chat_program_generator(monkeypatch):
         current_program = ledger.get_active_program()
         frequency = frequency_override or current_program.weekly_frequency
         profile = ledger.get_player_profile() or {}
-        split_plan = assistant_graph.get_split_plan(
+        split_plan = program_rules.get_split_plan(
             user_split_override, frequency, profile.get("gender", "male")
         ) if user_split_override else None
         split_type = split_plan.split_name if split_plan else current_program.split_type

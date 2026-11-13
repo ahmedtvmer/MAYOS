@@ -2,7 +2,7 @@
 
 Codes: split.frequency_default, split.lifter_request, split.coach_pick,
 split.unsupported_frequency; day_order.template; selection.staple,
-selection.equipment_access_staple, selection.already_used_today, selection.hidden,
+selection.equipment_access_staple, selection.already_used_today, selection.rebuild_variety, selection.hidden,
 selection.signature_match, selection.limitation_substitute, selection.fallback; position.small_muscle_opener,
 position.heavy_compound, position.medium_compound, position.isolation,
 position.pre_exhaust, position.main_progressed_lift,
@@ -49,6 +49,7 @@ SELECTION_SIGNATURE_MATCH = "selection.signature_match"
 SELECTION_LIMITATION_SUBSTITUTE = "selection.limitation_substitute"
 SELECTION_FALLBACK = "selection.fallback"
 SELECTION_ALREADY_USED_TODAY = "selection.already_used_today"
+SELECTION_REBUILD_VARIETY = "selection.rebuild_variety"
 SELECTION_HIDDEN = "selection.hidden"
 POSITION_SMALL_MUSCLE_OPENER = "position.small_muscle_opener"
 POSITION_HEAVY_COMPOUND = "position.heavy_compound"

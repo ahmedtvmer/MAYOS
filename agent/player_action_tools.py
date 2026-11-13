@@ -1,5 +1,6 @@
 """Model-selected Player operations, bound to the original turn and its ledger."""
 
+import sqlite3
 import time
 from dataclasses import dataclass
 from typing import Any, Literal
@@ -131,6 +132,7 @@ def _preview_rebuild(turn: PlayerToolTurn, **kwargs: Any) -> dict[str, Any]:
     from agent.ProgramState import PersistedProgramSchema
     from agent.program_generator import ProgramGenerationRequest, generate_program_draft_pipeline
     from agent.program_rules import valid_splits_for
+    from agent.program_blueprints import match_split_keyword, resolve_split_type
     from service.chat_program_edit import plan_chat_program_rebuild
 
     args = RebuildArgs(**kwargs)
@@ -144,19 +146,46 @@ def _preview_rebuild(turn: PlayerToolTurn, **kwargs: Any) -> dict[str, Any]:
     active = ledger.get_active_program()
     days = args.days or getattr(active, "weekly_frequency", None) or profile.get("weekly_frequency")
     if type(days) is not int or days not in range(1, 6):
-        return {"status": "needs_days"}
+        return _rebuild_failure(turn, "needs_days")
     choices = dict(valid_splits_for(days, profile.get("gender", "male")))
-    if args.split_type and args.split_type not in choices:
-        return {"status": "unsupported_split", "message": "Read list_program_options for supported choices."}
     split_type = args.split_type or graph._current_split_family(active)
+    if split_type not in choices:
+        split_type = resolve_split_type(match_split_keyword(split_type) or "", days)
+    if args.split_type and split_type not in choices:
+        return _rebuild_failure(turn, "unsupported_split")
     request = ProgramGenerationRequest(frequency_override=days,
-                                      split_id_override=split_type if split_type in choices else None)
-    generated, _markdown = generate_program_draft_pipeline(request, ledger=ledger, profile=profile)
-    planned = plan_chat_program_rebuild(store, ledger, account_id,
-                                      PersistedProgramSchema.model_validate(generated.model_dump()))
-    if "error" in planned:
-        return planned
-    return _save_preview(turn, planned["proposal"])
+        split_id_override=split_type if split_type in choices else None,
+        previous_exercise_ids=tuple(str(row.exercise_id) for day in active.days
+                                     for row in day.exercises) if active else ())
+    try:
+        generated, _markdown = generate_program_draft_pipeline(request, ledger=ledger, profile=profile)
+        planned = plan_chat_program_rebuild(store, ledger, account_id,
+                                          PersistedProgramSchema.model_validate(generated.model_dump()))
+        if "error" in planned:
+            return _rebuild_failure(turn, planned["error"])
+        return _save_preview(turn, planned["proposal"])
+    except (ValueError, sqlite3.Error):
+        graph.logger.exception("Program rebuild preview could not be generated")
+        return _rebuild_failure(turn, "generation_failed")
+
+
+def _rebuild_failure(turn: PlayerToolTurn, reason: str) -> dict[str, Any]:
+    from agent import assistant_graph as graph
+    if reason == "coach_controls":
+        return turn.finish(graph._response(graph._coach_program_refusal(turn.query)))
+    copy = {
+        "needs_days": ("How many days per week should I use for the rebuild preview? Nothing changed.",
+                       "تمام، تحب معاينة إعادة بناء البرنامج تبقى كام يوم في الأسبوع؟ مفيش حاجة اتغيرت."),
+        "unsupported_split": ("That split is not available for the requested number of days. Choose an available split or change the days; nothing changed.",
+                              "التقسيمة دي مش متاحة لعدد الأيام المطلوب. اختار تقسيمة متاحة أو غيّر عدد الأيام؛ مفيش حاجة اتغيرت."),
+        "no_program": ("There is no active program to rebuild. Nothing changed.",
+                       "مفيش برنامج حالي أقدر أعيد بناءه. مفيش حاجة اتغيرت."),
+    }
+    default = ("I couldn't generate the program rebuild preview. Nothing changed; please try the rebuild again.",
+               "مقدرتش أجهز معاينة إعادة بناء البرنامج. مفيش حاجة اتغيرت؛ جرّب تطلب إعادة البناء تاني.")
+    english, arabic = copy.get(reason, default)
+    reply = arabic if graph._tool_reply_language(turn.state) == "ar" else english
+    return turn.finish(graph._response(reply))
 
 
 def _save_preview(turn: PlayerToolTurn, proposal: dict[str, Any]) -> dict[str, Any]:
@@ -226,7 +255,7 @@ def build_player_chat_tools(state: dict[str, Any], config: dict[str, Any] | None
          EmptyToolArgs, lambda: {"telemetry": ledger.get_compact_telemetry()}),
         ("substitute_exercise", "Replace a named program exercise only on an explicit swap directive. Copy source/day from program; translate target to English. Omit target to request alternatives without saving.",
          SubstitutionArgs, lambda **args: _substitute_exercise(turn, **args)),
-        ("preview_program_rebuild", "Prepare a new split/frequency preview only when requested. Use split_type from list_program_options. Never saves the program; a later user turn must confirm.",
+        ("preview_program_rebuild", "Prepare a rebuild preview when requested, including rebuilding the CURRENT split with fresh exercise choices. Use split_type from list_program_options; supported display names are also accepted. Never saves the program; a later user turn must confirm.",
          RebuildArgs, lambda **args: _preview_rebuild(turn, **args)),
         ("preview_program_edit", "Prepare requested day additions/removals/set changes from the original message; does not save. Ask a separate confirmation.",
          EmptyToolArgs, lambda: turn.finish(graph.program_edit_chat_node(state, config))),
@@ -241,7 +270,7 @@ def build_player_chat_tools(state: dict[str, Any], config: dict[str, Any] | None
          EmptyToolArgs, lambda: _update_preference(turn)),
         ("update_training_goal", "Save an explicitly stated current/long-term goal or answer its focus-muscle offer; code checks the original message.",
          EmptyToolArgs, lambda: _profile_update(turn, graph._goal_write_intent)),
-        ("update_weak_points", "Save explicitly stated Weak points; code validates the original request and Coach authority.",
+        ("update_weak_points", "Save explicitly stated Weak points; code validates the original request and whether the Coach manages the program.",
          EmptyToolArgs, lambda: _profile_update(turn, graph._weak_point_write_intent)),
         ("update_movement_restrictions", "Answer a pending Movement restriction offer; code validates the original message and offer before saving.",
          EmptyToolArgs, lambda: _profile_update(turn, graph._movement_restriction_chat_intent)),

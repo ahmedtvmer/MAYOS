@@ -103,7 +103,7 @@ from utils.logger import MayosLogger
 from utils.equipment_access import COMMERCIAL_GYM, equipment_access_allows, map_equipment_access
 from utils.model_downloader import llm, structured_output_model
 from utils import player_output_budgets
-from utils.text_scrubber import CoachOutputScrubber, EMPTY_RESPONSE_FALLBACK, PIPELINE_ERROR_RESPONSE, finalize_coach_output
+from utils.text_scrubber import CoachOutputScrubber, EMPTY_RESPONSE_FALLBACK, PIPELINE_ERROR_RESPONSE, finalize_coach_output, player_facing_text, scrub_coach_output
 
 load_dotenv()
 logger = MayosLogger().get_logger(__name__)
@@ -3919,7 +3919,7 @@ def _response(
     program_change: str | None = None,
     movement_restrictions_updated: bool = False,
 ) -> dict[str, Any]:
-    cleaned = finalize_coach_output(content)
+    cleaned = finalize_coach_output(player_facing_text(content, "ar" if ARABIC_SCRIPT_RE.search(content) else "en"))
     return {
         "response_content": cleaned,
         "program_updated": program_updated,
@@ -4311,34 +4311,53 @@ def _stream_model_with_first_token_deadline(
 def _stream_player_answer(
     chunks: Any,
     output: _PlayerStreamOutput,
+    empty_response: str = EMPTY_RESPONSE_FALLBACK,
+    language: str = "en",
 ) -> Generator[str, None, _StreamedPlayerAnswer]:
     output.begin_answer()
     capture = _PlayerModelStream()
     for chunk in chunks:
-        tool_chunks = getattr(chunk, "tool_call_chunks", None) or getattr(chunk, "tool_calls", None)
-        has_tool_calls = bool(tool_chunks)
         capture.accept(chunk)
-        if has_tool_calls:
-            # Keep complete sentences already shown, but discard the rest of
-            # this tool-call round. The next answer round gets a fresh scrubber.
-            output.scrubber = None
-            output.pending_output = ""
-            continue
-        if not capture.tool_mode:
-            piece = chunk.content if hasattr(chunk, "content") else str(chunk)
-            yield from output.add_text(str(piece))
     message = capture.message()
     tool_calls = list(getattr(message, "tool_calls", ()) or ())
     capture.tool_mode = capture.tool_mode or bool(tool_calls)
-    if capture.tool_mode:
+    if tool_calls:
         output.scrubber = None
         output.pending_output = ""
         return _StreamedPlayerAnswer(message, tool_calls, {})
+    # Providers can send narration before the first tool-call chunk. Nothing
+    # from the round is safe to publish until its complete tool choice is known.
+    text = (_invalid_player_tool_reply(language) if capture.tool_mode or getattr(message, "invalid_tool_calls", None)
+            else scrub_coach_output(player_facing_text("".join(capture.raw_pieces), language)))
+    if text == EMPTY_RESPONSE_FALLBACK:
+        text = empty_response
+    yield from output.add_text(text or ("" if capture.limited else empty_response))
     yield from output.finish_answer(capture.limited)
     return _StreamedPlayerAnswer(message, [], capture.telemetry())
 
 
 MAX_PLAYER_TOOL_ROUNDS = 3
+
+
+def _invalid_player_tool_reply(language: str) -> str:
+    return ("مقدرتش أقرأ تفاصيل الطلب عشان أجهزه. مفيش حاجة اتغيرت؛ جرّب تاني."
+            if language == "ar" else
+            "I couldn't read the requested action details, so I couldn't prepare it. Nothing changed; please try again.")
+
+
+def _empty_player_tool_reply(state: dict[str, Any]) -> str:
+    if not state.get("selected_tools"):
+        return EMPTY_RESPONSE_FALLBACK
+    query = _get_message_text(state["messages"][-1])
+    rebuild = ("preview_program_rebuild" in state["selected_tools"] or _positive_rebuild_request(query)
+               or bool(re.search(r"(?:أعيد|اعيد|إعادة|اعادة)\s+بناء", query)))
+    if rebuild:
+        return ("مقدرتش أجهز معاينة إعادة بناء البرنامج. مفيش حاجة اتغيرت؛ جرّب تطلب إعادة البناء تاني."
+                if _tool_reply_language(state) == "ar" else
+                "I couldn't prepare the program rebuild preview. Nothing changed; please try the rebuild again.")
+    return ("مقدرتش أكمل الرد من البيانات اللي راجعتها. جرّب تاني."
+            if _tool_reply_language(state) == "ar" else
+            "I couldn't finish the answer from the checked data. Please try again.")
 
 
 def _tool_reply_language(state: dict[str, Any]) -> str:
@@ -4376,6 +4395,8 @@ def _invoke_player_tool_loop(
             response = bound_model.invoke(messages)
             tool_calls = list(getattr(response, "tool_calls", ()) or ())
             if not tool_calls:
+                if getattr(response, "invalid_tool_calls", None):
+                    return AIMessage(content=_invalid_player_tool_reply(_tool_reply_language(state)))
                 return response
             state.setdefault("selected_tools", []).extend(call["name"] for call in tool_calls)
             model_fetched_more = True
@@ -4388,7 +4409,10 @@ def _invoke_player_tool_loop(
             messages.extend([response, *tool_messages])
             if state.get("tool_action_result") is not None:
                 return AIMessage(content=state["tool_action_result"]["response_content"])
-        return llm.invoke(messages)
+        response = llm.invoke(messages)
+        if getattr(response, "tool_calls", None) or getattr(response, "invalid_tool_calls", None):
+            return AIMessage(content=_invalid_player_tool_reply(_tool_reply_language(state)))
+        return response
     finally:
         _record_context_retrieval(context, model_fetched_more)
 
@@ -4443,7 +4467,9 @@ def generation_node(state: AssistantState, config: dict[str, Any] | None = None)
     try:
         payload = build_prompt_payload(state)
         response = _invoke_player_tool_loop(state, config, payload)
-        content = finalize_coach_output(response.content)
+        content = scrub_coach_output(player_facing_text(response.content, _tool_reply_language(state)))
+        if not content or content == EMPTY_RESPONSE_FALLBACK:
+            content = _empty_player_tool_reply(state)
         if _finish_limited(response):
             content = _trim_to_last_complete_sentence(content)
             content = f"{content}\n\n{OUTPUT_LIMIT_RESPONSE}" if content else OUTPUT_LIMIT_RESPONSE
@@ -4673,6 +4699,8 @@ def stream_assistant_turn(
                 streamed_answer = yield from _stream_player_answer(
                     _stream_model_with_first_token_deadline(bound_model, model_messages),
                     stream_output,
+                    _empty_player_tool_reply(state),
+                    _tool_reply_language(state),
                 )
                 if not streamed_answer.tool_calls:
                     telemetry = streamed_answer.telemetry
@@ -4705,8 +4733,12 @@ def stream_assistant_turn(
                 final_answer = yield from _stream_player_answer(
                     _stream_model_with_first_token_deadline(llm, model_messages),
                     stream_output,
+                    _empty_player_tool_reply(state),
+                    _tool_reply_language(state),
                 )
                 telemetry = final_answer.telemetry
+                if final_answer.tool_calls:
+                    result = _response(_invalid_player_tool_reply(_tool_reply_language(state)))
             _record_telemetry_event(
                 intent,
                 router_ms,

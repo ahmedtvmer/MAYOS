@@ -536,93 +536,6 @@ def test_coach_controlled_chat_edit_offers_program_request(fresh_store, query, e
     assert result["response_content"] == expected_reply
 
 
-def test_unrelated_yes_cannot_confirm_pending_chat_preview(fresh_store):
-    from agent.assistant_graph import router_node
-
-    db = fresh_store
-    ledger = db.ledger
-    row = db.catalog_conn.execute("SELECT id, name FROM exercises ORDER BY id LIMIT 1").fetchone()
-    day = PersistedProgramDaySchema(day_name="Leg A", day_order=1, exercises=[
-        PersistedProgramExerciseSchema(exercise_id=str(row[0]), exercise_name=str(row[1]),
-            target_sets=3, target_reps_min=8, target_reps_max=12)])
-    ledger.save_training_program(PersistedProgramSchema(program_name="Plan", split_type="Full Body",
-        weekly_frequency=1, days=[day]).model_dump())
-    proposal = {"expected_version": ledger.get_active_program().version, "days": [], "optional": []}
-    ledger.set_pending_chat_program_edit(proposal, "Confirm this Program edit?")
-    state = {"messages": [AIMessage(content="Unrelated prior reply"), HumanMessage(content="yes")],
-        "player_account_id": "00000000-0000-4000-8000-000000000001", "display_language": "en"}
-
-    result = router_node(state, {"configurable": {"ledger": ledger, "store": db}})
-
-    assert result["intent"] != "program_edit_confirmation"
-    assert ledger.get_pending_chat_program_edit() is None
-
-
-def test_yes_after_its_own_preview_routes_to_confirmation(fresh_store):
-    from agent.assistant_graph import router_node
-
-    db = fresh_store
-    ledger = db.ledger
-    row = db.catalog_conn.execute("SELECT id, name FROM exercises ORDER BY id LIMIT 1").fetchone()
-    day = PersistedProgramDaySchema(day_name="Leg A", day_order=1, exercises=[
-        PersistedProgramExerciseSchema(exercise_id=str(row[0]), exercise_name=str(row[1]),
-            target_sets=3, target_reps_min=8, target_reps_max=12)])
-    ledger.save_training_program(PersistedProgramSchema(program_name="Plan", split_type="Full Body",
-        weekly_frequency=1, days=[day]).model_dump())
-    proposal = {"expected_version": ledger.get_active_program().version, "days": [], "optional": []}
-    offer = "Program edit preview. Confirm or cancel."
-    ledger.set_pending_chat_program_edit(proposal, offer)
-    state = {"messages": [AIMessage(content=offer), HumanMessage(content="yes")],
-        "player_account_id": "00000000-0000-4000-8000-000000000001", "display_language": "en"}
-
-    result = router_node(state, {"configurable": {"ledger": ledger, "store": db}})
-
-    assert result["intent"] == "program_edit_confirmation"
-
-
-def test_include_forearms_confirms_and_selects_optional_exercise(fresh_store):
-    from agent.assistant_graph import router_node
-
-    db = fresh_store
-    ledger = db.ledger
-    row = db.catalog_conn.execute("SELECT id, name FROM exercises ORDER BY id LIMIT 1").fetchone()
-    day = PersistedProgramDaySchema(day_name="Leg A", day_order=1, exercises=[
-        PersistedProgramExerciseSchema(exercise_id=str(row[0]), exercise_name=str(row[1]),
-            target_sets=3, target_reps_min=8, target_reps_max=12)])
-    ledger.save_training_program(PersistedProgramSchema(program_name="Plan", split_type="Full Body",
-        weekly_frequency=1, days=[day]).model_dump())
-    proposal = {"expected_version": ledger.get_active_program().version, "days": [],
-        "optional": [{"muscle": "forearms", "exercise_id": "wrist-1"}]}
-    offer = "Program edit preview"
-    ledger.set_pending_chat_program_edit(proposal, offer)
-    state = {"messages": [AIMessage(content=offer), HumanMessage(content="yes, include forearms")],
-        "player_account_id": "00000000-0000-4000-8000-000000000001", "display_language": "en"}
-
-    result = router_node(state, {"configurable": {"ledger": ledger, "store": db}})
-
-    assert result["intent"] == "program_edit_confirmation"
-    assert result["intent_metadata"]["include_optional"] == ["wrist-1"]
-
-
-@pytest.mark.parametrize("reply", ["Do not include forearms", "Should I include forearms?",
-    "yes, but should I include forearms?"])
-def test_ambiguous_or_negated_optional_reply_does_not_confirm(fresh_store, reply):
-    from agent.assistant_graph import router_node
-
-    db = fresh_store
-    ledger = db.ledger
-    offer = "Program edit preview. Confirm or cancel."
-    ledger.set_pending_chat_program_edit({"expected_version": 1, "days": [], "optional": [
-        {"muscle": "forearms", "exercise_id": "wrist-1"}]}, offer)
-    state = {"messages": [AIMessage(content=offer), HumanMessage(content=reply)],
-        "player_account_id": "00000000-0000-4000-8000-000000000001", "display_language": "en"}
-
-    result = router_node(state, {"configurable": {"ledger": ledger, "store": db}})
-
-    assert result["intent"] != "program_edit_confirmation"
-    assert ledger.get_pending_chat_program_edit() is not None
-
-
 def test_production_chat_requests_preview_then_confirm_one_version(fresh_store):
     from service.chat import build_turn_state
 
@@ -798,20 +711,6 @@ def test_clinical_clause_records_injury_before_rebuild_edit(fresh_store, query):
     assert state.get("program_edit_preview") is None
     assert ledger.get_active_program().version == before
     assert any(record["body_area"] == "knee" for record in ledger.list_injury_records())
-
-
-@pytest.mark.parametrize("reply", ["no", "cancel", "لا", "لأ", "مش عايز"])
-def test_plain_decline_resolves_pending_program_edit(fresh_store, reply):
-    from agent.assistant_graph import router_node
-
-    db, ledger = fresh_store, fresh_store.ledger
-    offer = "Program edit preview. Confirm or cancel."
-    ledger.set_pending_chat_program_edit({"expected_version": 1, "days": [], "optional": []}, offer)
-    state = {"messages": [AIMessage(content=offer), HumanMessage(content=reply)],
-        "player_account_id": "00000000-0000-4000-8000-000000000001", "display_language": "en"}
-    result = router_node(state, {"configurable": {"ledger": ledger, "store": db}})
-    assert result["intent"] == "program_edit_confirmation"
-    assert result["intent_metadata"]["confirm"] is False
 
 
 def test_plain_no_cancels_offer_with_explicit_reply(fresh_store):
