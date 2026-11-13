@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 import pytest
 from langchain_core.messages import AIMessage
 
-from tests.fakes.chat_model import StreamErrorTurn
+from tests.fakes.chat_model import StreamErrorTurn, ToolCallsTurn
 from tests.test_context_management import graph as graph_fixture, state
 from utils.text_scrubber import (
     BANNED_LEAD_PATTERNS,
@@ -55,14 +55,14 @@ def test_graph_stream_and_saved_parity(graph, raw):
     assert graph.assistant_graph.invoke(state("How many squat reps?"), config={"configurable": {"ledger": graph.db, "store": graph.db}})["response_content"] == display
 
 
-def test_partial_failure_preserves_sanitized_display_and_state(graph):
+def test_partial_failure_discards_the_unfinished_model_round(graph):
     graph.llm.reset([StreamErrorTurn(
         "<think>private reasoning</think>Sure! Use controlled reps. You have tendonitis",
         RuntimeError("internal database secret"),
     )])
     request = state("How many squat reps?")
     shown = "".join(graph.stream_assistant_turn(request, ledger=graph.db, store=graph.db))
-    assert shown == "Use controlled reps. [Consult a sports physician regarding joint pain]\n\n" + PIPELINE_ERROR_RESPONSE
+    assert shown == PIPELINE_ERROR_RESPONSE
     assert shown == request["response_content"] == request["messages"][-1].content
     assert "private" not in shown and "secret" not in shown
 
@@ -79,6 +79,11 @@ def test_graph_and_stream_failures(graph, stage):
         request = state("last logged occurrence of squats")
         graph.db.catalog_conn.cursor.return_value.fetchall.return_value = [("squat", "Squat")]
         graph.db.get_last_performance.side_effect = RuntimeError("private detail")
+        selected_history = ToolCallsTurn(calls=[{
+            "name": "get_exercise_history", "args": {"exercise_id": "squat", "scope": "last_occurrence"},
+            "id": "history-fault",
+        }])
+        graph.llm.reset([selected_history, selected_history])
     else:
         graph.llm.reset([RuntimeError("private detail"), RuntimeError("private detail")])
     assert graph.assistant_graph.invoke(request, config={"configurable": {"ledger": graph.db, "store": graph.db}})["response_content"] == PIPELINE_ERROR_RESPONSE
@@ -98,7 +103,7 @@ def test_finish_limit_keeps_only_complete_sentences_before_notice(graph):
     assert request["response_content"] == request["messages"][-1].content == expected
 
 
-def test_complete_sentence_is_visible_before_generation_finishes(graph):
+def test_complete_final_answer_preserves_sentence_boundaries(graph):
     raw = "Use controlled reps. Keep the next repetition smooth."
     first_sentence = "Use controlled reps. "
     graph.llm.reset([raw])
@@ -125,7 +130,7 @@ def test_complete_sentence_is_visible_before_generation_finishes(graph):
         ),
     ],
 )
-def test_first_clean_clause_streams_before_sentence_ends_in_english_and_arabic(graph, raw, first):
+def test_buffered_final_round_preserves_clean_clauses_in_english_and_arabic(graph, raw, first):
     graph.llm.reset([raw])
     graph.llm.chunk_size = 1
     request = state("How many squat reps?")
@@ -133,7 +138,6 @@ def test_first_clean_clause_streams_before_sentence_ends_in_english_and_arabic(g
 
     first_chunk = next(stream)
     assert first_chunk == first
-    assert graph.llm.streamed_chunk_count < len(raw)
     output = first_chunk + "".join(stream)
     assert output == finalize_coach_output(raw)
     assert output == request["response_content"] == request["messages"][-1].content
@@ -201,7 +205,6 @@ def test_first_clean_prefix_releases_at_a_word_boundary_near_40_characters(graph
     first_chunk = next(stream)
     assert 40 <= len(first_chunk) <= 50
     assert first_chunk[-1].isalnum()
-    assert graph.llm.streamed_chunk_count < len(raw)
     output = first_chunk + "".join(stream)
     assert output == raw
     assert output == request["response_content"] == request["messages"][-1].content

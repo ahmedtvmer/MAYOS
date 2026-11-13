@@ -16,7 +16,6 @@ from utils.player_output_budgets import (
 
 MOCK_RESPONSES = {
     "chat_reply": "Try five minutes of easy sets before your working weight.",
-    "intent_routing": '{"intent":"coaching_qa","source_exercise":null,"target_exercise":null,"target_frequency":null,"search_query":null}',
     "substitution_resolution": '{"source_exercise":"barbell bench press","target_exercise":"incline dumbbell press"}',
     "abbreviation_expansion": '{"is_fitness_movement":true,"canonical_name":"Bench Press"}',
     "dynamic_split_plan": (
@@ -103,8 +102,6 @@ def _invoke_player_call(call_site: str) -> None:
             "weight_context": None,
         }
         assert assistant_graph.generation_node(state)["response_content"]
-    elif call_site == "intent_routing":
-        assert assistant_graph._classify_intent_with_llm("Can you explain my squat?").intent == "coaching_qa"
     elif call_site == "substitution_resolution":
         assert assistant_graph.resolve_coreference_with_llm(
             "Replace that with an incline press.",
@@ -155,14 +152,14 @@ def test_structured_output_model_disables_streaming_without_mutating_chat_model(
     assert structured_model.streaming is False
 
 
-def test_intent_routing_uses_non_streaming_transport_for_structured_output(monkeypatch):
-    request_bodies, client = _captured_player_requests(monkeypatch, "intent_routing", streaming=True)
+def test_substitution_resolution_uses_non_streaming_transport_for_structured_output(monkeypatch):
+    request_bodies, client = _captured_player_requests(monkeypatch, "substitution_resolution", streaming=True)
     try:
-        _invoke_player_call("intent_routing")
+        _invoke_player_call("substitution_resolution")
 
         assert len(request_bodies) == 1
         assert request_bodies[0]["stream"] is False
-        assert request_bodies[0]["max_completion_tokens"] == CALL_SITE_BUDGETS["intent_routing"]
+        assert request_bodies[0]["max_completion_tokens"] == CALL_SITE_BUDGETS["substitution_resolution"]
     finally:
         client.close()
 
@@ -173,7 +170,7 @@ def test_intent_routing_uses_non_streaming_transport_for_structured_output(monke
         ("dynamic_split_plan", False, DYNAMIC_SPLIT_PLAN_MAX_OUTPUT_TOKENS),
         ("dynamic_split_plan", True, DYNAMIC_SPLIT_PLAN_REASONING_MAX_OUTPUT_TOKENS),
         ("chat_reply", True, CALL_SITE_BUDGETS["chat_reply"]),
-        ("intent_routing", True, CALL_SITE_BUDGETS["intent_routing"]),
+        ("substitution_resolution", True, CALL_SITE_BUDGETS["substitution_resolution"]),
     ],
 )
 def test_program_reasoning_switch_is_scoped_to_split_generation(

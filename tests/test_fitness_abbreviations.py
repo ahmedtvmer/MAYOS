@@ -10,7 +10,6 @@ from agent.fitness_abbreviations import (
 from agent.assistant_graph import (
     AssistantState,
     exercise_substitution_node,
-    router_node,
 )
 from tests.fakes.chat_model import ScriptedChatModel
 
@@ -243,23 +242,3 @@ def test_substitution_unknown_abbreviation_asks_illustration(db_with_good_mornin
     ] == before_ids
 
 
-def test_end_to_end_router_with_abbreviation():
-    """Verifies that the router parses abbreviation query and routes to substitution correctly."""
-    query = "swap dumbbell romanian deadlift for OHP"
-    state: AssistantState = {
-        "messages": [HumanMessage(content=query)],
-        "trainee_id": "default",
-        "coach_tone": "Direct",
-        "custom_instructions": "",
-        "telemetry_context": None,
-        "intent": None,
-        "intent_metadata": {},
-        "active_intents": None,
-        "program_updated": False,
-        "response_content": None,
-    }
-
-    routed = router_node(state)
-    assert routed.get("intent") == "exercise_substitution"
-    assert routed["intent_metadata"]["source_exercise"].lower() == "dumbbell romanian deadlift"
-    assert routed["intent_metadata"]["target_exercise"].lower() == "ohp"

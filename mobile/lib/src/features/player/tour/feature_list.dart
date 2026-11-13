@@ -126,9 +126,9 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
   FeatureEntry(
     id: 'assistant',
     titleEn: 'Assistant',
-    sentenceEn: 'Ask about your Program days, Exercises and working sets, program changes or recent food; profile answers use only the facts your question needs.',
+    sentenceEn: 'Ask about programs, Exercises or recent food, remember your training preferences, and confirm before deleting a preference or saving a program preview.',
     titleAr: 'المساعد',
-    sentenceAr: 'اسأل عن أيام برنامجك التدريبي وتمارينه ومجموعاته، أو تغييرات برنامجك، أو طعامك مؤخرًا؛ وتستخدم إجابات الملف الشخصي البيانات المطلوبة لسؤالك فقط.',
+    sentenceAr: 'اسأل عن البرامج أو التمارين أو طعامك مؤخرًا، واحفظ تفضيلاتك في التدريب، ثم أكّد قبل حذف تفضيل أو حفظ معاينة برنامج.',
     target: 'assistant',
     location: TourShellTabLocation(tabIndex: 0),
     release: 0,
@@ -272,9 +272,9 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
   FeatureEntry(
     id: 'edit_program_chat',
     titleEn: 'Edit your program from chat',
-    sentenceEn: 'Tell the assistant how you want to change your Training program.',
+    sentenceEn: 'Preview changes or rebuild your current split in chat, then confirm or cancel the displayed preview in a separate reply.',
     titleAr: 'عدّل برنامجك عبر المحادثة',
-    sentenceAr: 'أخبر المساعد بالتغييرات التي تريدها في برنامجك التدريبي.',
+    sentenceAr: 'عاين التغييرات أو أعد بناء تقسيمتك الحالية في المحادثة، ثم أكّد المعاينة المعروضة أو ألغِها في رسالة منفصلة.',
     target: 'whats_new_edit_program_chat',
     location: TourRouteLocation(chatPath),
     release: 1,

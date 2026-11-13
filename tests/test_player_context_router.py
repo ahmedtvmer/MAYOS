@@ -16,7 +16,7 @@ from agent.ProgramState import (
 from tests.fakes.chat_model import ScriptedChatModel, ToolCallsTurn
 from tests.test_player_chat_privacy import api  # noqa: F401  (pytest fixture)
 from tests.test_player_chat_privacy import (
-    _assigned_player, _authed, _done_content, _force_free_form_coaching_intent, _register,
+    _assigned_player, _authed, _done_content, _fill_prompt_history, _register,
 )
 
 
@@ -107,7 +107,6 @@ def test_program_questions_arrive_scoped_before_first_model_answer(
     router_player, monkeypatch, question, scopes, exercise_names,
 ):
     client, _db, headers = router_player
-    _force_free_form_coaching_intent(monkeypatch)
     model = ScriptedChatModel(["Your Program facts are available."])
     monkeypatch.setattr(assistant_graph, "llm", model)
 
@@ -136,7 +135,6 @@ def test_program_questions_arrive_scoped_before_first_model_answer(
 
 def test_router_keeps_system_bytes_fixed_and_fallback_tools_bound(router_player, monkeypatch, caplog):
     client, _db, headers = router_player
-    _force_free_form_coaching_intent(monkeypatch)
     model = ScriptedChatModel([
         "Five working sets.",
         ToolCallsTurn(calls=[{"name": "get_active_program", "args": {"muscle": "triceps"},
@@ -170,7 +168,6 @@ def test_day_named_for_muscles_includes_its_other_exercises(router_player, monke
         program = ledger.get_active_program()
         program.days[0].day_name = "Chest & Back"
         ledger.save_training_program(program.model_dump())
-    _force_free_form_coaching_intent(monkeypatch)
     model = ScriptedChatModel(["The day also includes arms."])
     monkeypatch.setattr(assistant_graph, "llm", model)
     response = client.post("/chat/messages", headers=headers, json={"content": "What's on Chest & Back?"})
@@ -187,7 +184,6 @@ def test_weekday_without_program_label_does_not_invent_schedule_mapping(router_p
     with db.open_ledger("router-player") as ledger:
         ledger.append_training_schedule(ledger.ledger_id, [1, 2, 4, 6], "UTC",
                                         "2026-01-01", "2026-01-01T00:00:00+00:00")
-    _force_free_form_coaching_intent(monkeypatch)
     model = ScriptedChatModel(["Your Program has no day named Monday."])
     monkeypatch.setattr(assistant_graph, "llm", model)
     response = client.post("/chat/messages", headers=headers, json={"content": "What's on Monday?"})
@@ -199,7 +195,6 @@ def test_weekday_without_program_label_does_not_invent_schedule_mapping(router_p
 def test_no_program_is_reported_before_model_answers(api, monkeypatch):
     client, _db = api
     headers = _authed(_register(client, "router-no-program")["access_token"])
-    _force_free_form_coaching_intent(monkeypatch)
     model = ScriptedChatModel(["You have no active Program."])
     monkeypatch.setattr(assistant_graph, "llm", model)
     response = client.post("/chat/messages", headers=headers, json={"content": "How's my program?"})
@@ -213,17 +208,20 @@ def test_no_program_is_reported_before_model_answers(api, monkeypatch):
     assert set(result["how_mayos_counts"]) == {"en", "ar"}
 
 
-def test_coach_program_router_retains_authority(router_player, monkeypatch):
+@pytest.mark.parametrize(("question", "reply"), [
+    ("What's on Push A?", "Your assigned coach controls your program. Ask your coach for changes."),
+    ("إيه تمارين Push A؟", "يتحكم مدربك في برنامجك التدريبي. اطلب منه إجراء التغييرات."),
+])
+def test_coach_program_router_retains_authority(router_player, monkeypatch, question, reply):
     client, db, _headers = router_player
     _coach_headers, headers, _assignment = _assigned_player((client, db), "router-coached")
     coach_id = db.get_active_account_by_username("coach")["account_id"]
     with db.open_ledger("router-coached") as ledger:
         _save_router_program(ledger, coach_id)
-    _force_free_form_coaching_intent(monkeypatch)
-    model = ScriptedChatModel(["Your Coach holds Program authority."])
+    model = ScriptedChatModel([reply])
     monkeypatch.setattr(assistant_graph, "llm", model)
-    response = client.post("/chat/messages", headers=headers, json={"content": "What's on Push A?"})
-    assert _done_content(response.text) == "Your Coach holds Program authority."
+    response = client.post("/chat/messages", headers=headers, json={"content": question})
+    assert _done_content(response.text) == reply
     _calls, results = _simulated_reads(model)
     assert results[0]["program_authority"] == "coach"
     assert results[0]["coach"]
@@ -235,16 +233,18 @@ def test_coach_program_router_retains_authority(router_player, monkeypatch):
     "remember that I prefer 3 sets for biceps",
     "change squat to 3 sets on leg days",
 ])
-def test_safety_and_deterministic_writes_never_enter_context_router(router_player, monkeypatch, caplog, question):
+def test_safety_preempts_model_and_writes_use_selected_tools(router_player, monkeypatch, caplog, question):
     client, db, headers = router_player
     model = ScriptedChatModel(default_turn="UNEXPECTED HOSTED CALL")
+    if question.startswith(("remember", "change")):
+        from tests.fakes.chat_model import ToolCallsTurn
+        name = "manage_assistant_preference" if question.startswith("remember") else "preview_program_edit"
+        model.script(ToolCallsTurn(calls=[{"name": name, "args": {}, "id": "selected-action"}]))
     monkeypatch.setattr(assistant_graph, "llm", model)
     with caplog.at_level(logging.INFO):
         response = client.post("/chat/messages", headers=headers, json={"content": question})
     assert response.status_code == 200
     assert _done_content(response.text) != "UNEXPECTED HOSTED CALL"
-    assert not model.calls
-    assert not any("Context router topics=" in record.getMessage() for record in caplog.records)
     if question.startswith("remember"):
         with db.open_ledger("router-player") as ledger:
             assert ledger.list_assistant_preferences()[0]["text"] == "I prefer 3 sets for biceps"
@@ -253,6 +253,8 @@ def test_safety_and_deterministic_writes_never_enter_context_router(router_playe
         with db.open_ledger("router-player") as ledger:
             assert ledger.get_pending_chat_program_edit() is not None
     else:
+        assert not model.calls
+        assert not any("Context router topics=" in record.getMessage() for record in caplog.records)
         expected = (assistant_graph.CLINICAL_SAFEGUARD_RESPONSE if question.startswith("My")
                     else assistant_graph.ARABIC_CLINICAL_SAFEGUARD_RESPONSE)
         assert _done_content(response.text).startswith(expected)
@@ -260,11 +262,8 @@ def test_safety_and_deterministic_writes_never_enter_context_router(router_playe
 
 def test_router_drops_pieces_that_do_not_fit_prompt_reserve(router_player, monkeypatch, caplog):
     client, db, headers = router_player
-    _force_free_form_coaching_intent(monkeypatch)
     with db.open_ledger("router-player") as ledger:
-        # History trimming (#524) keeps the latest replies whole, so those carry the prompt pressure.
-        for _ in range(9):
-            ledger.add_chat_message("assistant", "Earlier answer. " + "x" * 4_800)
+        _fill_prompt_history(ledger, "What are my sets for bi and tri on leg days?")
     model = ScriptedChatModel(["Please narrow the question."])
     monkeypatch.setattr(assistant_graph, "llm", model)
     with caplog.at_level(logging.INFO):
@@ -329,7 +328,6 @@ def test_multiple_large_unicode_day_pieces_respect_total_budget(router_player, m
         ledger.save_training_program(program.model_dump())
         assert all(len(day.exercises[0].exercise_name.encode("utf-8")) > 2_000
                    for day in ledger.get_active_program().days)
-    _force_free_form_coaching_intent(monkeypatch)
     model = ScriptedChatModel(["The remaining days are available on request."])
     monkeypatch.setattr(assistant_graph, "llm", model)
     response = client.post("/chat/messages", headers=headers, json={

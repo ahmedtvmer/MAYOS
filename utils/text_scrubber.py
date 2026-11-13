@@ -49,6 +49,23 @@ PIPELINE_ERROR_RESPONSE = "I couldn't complete that request. Please try again."
 DEEPSEEK_END_OF_SENTENCE_TOKEN = "<｜end▁of▁sentence｜>"
 
 
+def player_facing_text(text: str, language: str = "en") -> str:
+    """Keep internal program control and tool identifiers out of Player replies."""
+    replacements = (
+        (r"\b(?:with\s+)?player\s+authority\b", "that you manage", "إنت اللي بتديره"),
+        (r"\b(?:with\s+)?coach\s+authority\b", "that your coach manages", "مدربك اللي بيديره"),
+        (r"\b(?:(?:program|player|coach)_)?authority\b", "program control", "إدارة البرنامج"),
+        (r"(?:سلطة|صلاحيات?)\s+(?:اللاعب|المدرب)", "program control", "إدارة البرنامج"),
+        (r"\bsplit_type\b", "split", "تقسيمة"),
+        (r"\bppl_x_ul\b", "PPL × UL", "PPL × UL"),
+        (r"\b(?:(?:get|list|preview|confirm|update|manage|choose|search|substitute)_[a-z_]+|preferred_name)\b",
+         "the requested action", "الطلب"),
+    )
+    for pattern, english, arabic in replacements:
+        text = re.sub(pattern, arabic if language == "ar" else english, text, flags=re.I)
+    return text
+
+
 class CoachOutputScrubber:
     MAX_BUFFER = 512
     CONTROL_TOKENS = (

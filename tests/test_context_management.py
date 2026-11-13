@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
-from tests.fakes.chat_model import ScriptedChatModel
+from tests.fakes.chat_model import ScriptedChatModel, ToolCallsTurn
 
 
 class _StubModule(ModuleType):
@@ -65,11 +65,14 @@ def graph(monkeypatch):
     spec = importlib.util.spec_from_file_location("isolated_assistant_graph", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    import agent
+    monkeypatch.setitem(sys.modules, "agent.assistant_graph", module)
+    monkeypatch.setattr(agent, "assistant_graph", module)
     module.llm = ScriptedChatModel(["Use controlled reps."])
-    module.reconcile_telemetry_query = MagicMock(return_value=None)
     module._record_telemetry_event = MagicMock()
     # The isolated graph receives its ledger/store explicitly on each call's config.
     module.db = MagicMock()
+    module.db.get_pending_assistant_preference_deletion.return_value = None
     # Locked catalog reads yield the (mocked) shared connection, mirroring DatabaseManager.catalog_locked.
     module.db.catalog_locked.return_value.__enter__.return_value = module.db.catalog_conn
     return module
@@ -82,7 +85,7 @@ def state(query, prior=()):
 @pytest.mark.parametrize("query", ["malak", "sarah", "asdasd", "hey", "hello", "I'm frustrated", "fuck you"])
 def test_short_conversation_bypasses_canned_clarification(graph, query):
     request = state(query)
-    assert graph.router_node(request) == {"intent": "coaching_qa", "intent_metadata": {}}
+    assert graph.router_node(request)["intent"] == "coaching_qa"
     result = graph.generation_node(request)
     assert result["response_content"] == "Use controlled reps."
     assert len(graph.llm.calls) == 1
@@ -101,6 +104,10 @@ def test_shorthand_and_followups(graph, query):
 def test_explicit_name_and_recall(graph, query):
     name = query.split()[-1]
     graph.db.get_assistant_memory.return_value = {}
+    graph.llm = ScriptedChatModel([
+        ToolCallsTurn(calls=[{"name": "preferred_name", "args": {}, "id": "save-name"}]),
+        ToolCallsTurn(calls=[{"name": "preferred_name", "args": {}, "id": "recall-name"}]),
+    ])
     request = state(query)
     assert "".join(graph.stream_assistant_turn(request, ledger=graph.db, store=graph.db)) == f"Nice to meet you, {name}."
     graph.db.set_assistant_memory.assert_called_once_with("preferred_name", name)
@@ -108,25 +115,8 @@ def test_explicit_name_and_recall(graph, query):
     recall = state("what's my name?")
     assert "".join(graph.stream_assistant_turn(recall, ledger=graph.db, store=graph.db)) == f"You asked me to call you {name}."
     assert recall["messages"][-1].content == recall["response_content"]
-    assert graph.llm.calls == []
-
-
-@pytest.mark.parametrize("query", ["how did I do in my last session?", "how was my perfomance in my last session?", "review my latest workout"])
-def test_whole_session_summary(graph, query):
-    graph.db.get_latest_session_summary.return_value = {
-        "session_date": "2026-09-17", "split_name": "Upper", "readiness_score": 4,
-        "sets_count": 3, "total_volume_kg": 900,
-        "exercises": [{"name": "Bench Press", "sets": 3, "reps": 30, "volume_kg": 900}],
-    }
-    request = state(query)
-    assert graph.router_node(request)["intent"] == "exercise_history"
-    display = "".join(graph.stream_assistant_turn(request, ledger=graph.db, store=graph.db))
-    assert "3 working sets, 900 kg total volume" in display
-    assert "Bench Press: 3 sets, 30 total reps, 900 kg volume" in display
-    assert "comparison is needed" in display
-    assert display == request["response_content"] == request["messages"][-1].content
-    graph.db.find_exercise_by_name.assert_not_called()
-    assert graph.llm.calls == []
+    assert len(graph.llm.calls) == 2
+    assert all("preferred_name" in call["tools"] for call in graph.llm.calls)
 
 
 def test_unresolved_history_graph_uses_generation_without_injected_comparison(graph, comparison):
@@ -137,7 +127,7 @@ def test_unresolved_history_graph_uses_generation_without_injected_comparison(gr
         request, config={"configurable": {"ledger": graph.db, "store": graph.db}}
     )
 
-    assert result["intent"] == "exercise_history_fallback"
+    assert result["intent"] == "coaching_qa"
     assert result["response_content"] == "MODEL HISTORY ANSWER"
     assert len(graph.llm.calls) == 1
     prompt = "\n".join(
@@ -155,113 +145,20 @@ def test_missing_session_is_not_an_exercise_clarification(graph):
     graph.db.find_exercise_by_name.assert_not_called()
 
 
-@pytest.mark.parametrize("query", ["what about leg curl", "what about the leg curl", "how about squats"])
-def test_history_followup_routes_to_exercise_history(graph, comparison, query):
-    graph.db.catalog_conn.cursor.return_value.fetchall.return_value = [
-        ("leg-curl", "Lying Leg Curl"), ("squat", "Squat")
-    ]
-    request = state(query, [HumanMessage(content="how was my perfomance last session?"), AIMessage(content="Your last logged session: ...")])
-    routed = graph.router_node(request)
-    assert routed["intent"] == "exercise_history"
-    request.update(routed)
-    result = graph.assistant_graph.invoke(request, config={"configurable": {"ledger": graph.db, "store": graph.db}})
-    assert result["response_content"] == result["messages"][-1].content
-    assert "Machine Leg Extension" not in result["response_content"]
-    assert "Which exercise" not in result["response_content"]
-    assert graph.llm.calls == []
-
-
-@pytest.mark.parametrize("query", ["what about leg curl", "what about leg extension"])
-def test_history_followup_matches_catalog_when_absent_from_session(graph, comparison, query):
-    graph.db.catalog_conn.cursor.return_value.fetchall.return_value = [("leg-ext", "Machine Leg Extension"), ("leg-curl", "Lying Leg Curl")]
-    graph.db.get_last_performance.return_value = [{"set_index": 1, "weight_kg": 50, "reps": 10, "rpe": 8}]
-    request = state(query, [HumanMessage(content="how was my perfomance last session?"), AIMessage(content="summary")])
-    result = graph.assistant_graph.invoke(request, config={"configurable": {"ledger": graph.db, "store": graph.db}})["response_content"]
-    assert "No completed working sets for '" in result
-    assert "latest session (2026-09-17)" in result
-    assert "does not mean it was never logged" in result
-    graph.db.get_last_performance.assert_not_called()
-
-
-@pytest.mark.parametrize("mode", ["graph", "stream"])
-def test_reported_two_turn_session_review(graph, comparison, mode):
-    comparison["exercises"][0]["name"] = "Machine Leg Extension"
-    comparison["exercises"][1]["name"] = "Lying Leg Curl"
-    graph.db.get_compact_telemetry.return_value = "Last Session: Lower (2026-09-17) | Top: Machine Leg Extension 80kg x 3 @ RPE 9.5"
-
-    def turn(request):
-        if mode == "graph":
-            return graph.assistant_graph.invoke(request, config={"configurable": {"ledger": graph.db, "store": graph.db}})
-        display = "".join(graph.stream_assistant_turn(request, ledger=graph.db, store=graph.db))
-        assert display == request["response_content"]
-        return request
-
-    first = turn({**state("how was my perfomance last session?"), "telemetry_context": None})
-    assert first["intent"] == "exercise_history"
-    assert "Machine Leg Extension" in first["response_content"]
-    assert "Lying Leg Curl" in first["response_content"]
-    assert "12 working sets" in first["response_content"]
-    second = turn(state("what about leg curl", first["messages"]))
-    assert second["intent"] == "exercise_history"
-    assert "Lying Leg Curl [ex-1]" in second["response_content"]
-    assert "Set 1: 90 kg × 8 reps @ RIR 2" in second["response_content"]
-    assert "Set 2: 85 kg × 10 reps @ RIR 2" in second["response_content"]
-    assert "Baseline: 2026-09-11" in second["response_content"]
-    assert "Machine Leg Extension" not in second["response_content"]
-    graph.db.get_last_performance.assert_not_called()
-    assert graph.llm.calls == []
-
-
-def test_history_followup_inherits_occurrence_scope(graph, comparison):
-    graph.db.catalog_conn.cursor.return_value.fetchall.return_value = [("squat", "Squat"), ("leg-press", "Leg Press")]
-    graph.db.get_last_performance.return_value = [{"set_index": 1, "weight_kg": 80, "reps": 6, "rpe": 7}]
-    request = state("what about leg press", [HumanMessage(content="last logged occurrence of squat"), AIMessage(content="occurrence data")])
-    result = graph.assistant_graph.invoke(request, config={"configurable": {"ledger": graph.db, "store": graph.db}})["response_content"]
-    assert "Last logged occurrence for Leg Press" in result
-    graph.db.get_last_performance.assert_called_once_with("leg-press")
-
-
-def test_history_followup_not_triggered_without_history_context(graph, comparison):
+def test_non_safety_history_followup_passes_the_safety_gate(graph, comparison):
     graph.llm = ScriptedChatModel([{"intent": "coaching_qa"}])
     request = state("what about leg curl")
     assert graph.router_node(request)["intent"] == "coaching_qa"
-
-
-def test_history_followup_chain_resolves_to_earliest_history_question(graph, comparison):
-    request = state("what about rows", [
-        HumanMessage(content="how was my perfomance last session?"),
-        AIMessage(content="summary"),
-        HumanMessage(content="what about bench press"),
-        AIMessage(content="bench data"),
-    ])
-    routed = graph.router_node(request)
-    assert routed["intent"] == "exercise_history"
-    assert "rows" in routed["intent_metadata"]["raw_query"]
 
 
 @pytest.mark.parametrize("query", ["what about upright rows", "should I swap bench press for incline press? and what about leg curl"])
 def test_history_followup_defers_to_intercepts_and_compound(graph, comparison, query):
     request = state(query, [HumanMessage(content="how was my perfomance last session?"), AIMessage(content="summary")])
     intent = graph.router_node(request)["intent"]
-    assert intent != "exercise_history" or query.startswith("what about upright")
-
-
-def test_turn_uses_the_passed_ledger_handle_on_a_foreign_thread(graph, comparison):
-    import threading
-
-    graph.db.switch_user = MagicMock()
-    request = {**state("how did I do in my last session?"), "trainee_id": "alice"}
-    outcome = {}
-
-    def run():
-        outcome["display"] = "".join(graph.stream_assistant_turn(request, ledger=graph.db, store=graph.db))
-
-    thread = threading.Thread(target=run)
-    thread.start()
-    thread.join()
-    assert "Barbell Bench Press" in outcome["display"]
-    graph.db.get_session_comparison_context.assert_called()
-    graph.db.switch_user.assert_not_called()
+    if query.startswith("what about upright"):
+        assert intent == "banned_movement"
+    else:
+        assert intent == "coaching_qa"
 
 
 def test_async_stream_submission_preserves_metering_context():
@@ -390,19 +287,18 @@ def test_hosted_genuinely_oversized_query_still_fails(graph):
         graph.build_prompt_payload(state("squat " * 30000))
 
 
-@pytest.mark.parametrize("query,expected", [
-    ("I trained 3 days this week", "coaching_qa"),
-    ("Can you swap bench press for incline press?", "exercise_substitution"),
-    ("Should I swap bench press for incline press?", "coaching_qa"),
-    ("Can I switch my program to 3 days if work is busy?", "coaching_qa"),
-    ("switch routine to 6 days", "program_mutation"),
-    ("new split 4 days a week", "program_mutation"),
-    ("how did my squats look", "exercise_history"),
+@pytest.mark.parametrize("query", [
+    "I trained 3 days this week",
+    "Can you swap bench press for incline press?",
+    "Should I swap bench press for incline press?",
+    "Can I switch my program to 3 days if work is busy?",
+    "switch routine to 6 days",
+    "new split 4 days a week",
+    "how did my squats look",
 ])
-def test_routes(graph, query, expected):
-    graph.llm = ScriptedChatModel([{"intent": "program_mutation", "target_frequency": 3}] * 5)
-    assert graph.router_node(state(query))["intent"] == expected
-    assert graph._classify_single_clause(query)["intent"] == expected
+def test_non_safety_requests_pass_the_safety_gate(graph, query):
+    # #718: all of these non-safety requests now reach the main model.
+    assert graph.router_node(state(query))["intent"] == "coaching_qa"
 
 
 def test_magicmock_ledger_cannot_hijack_injury_status_chat(graph):
@@ -451,53 +347,6 @@ def comparison(graph):
         })
     graph.db.get_session_comparison_context.return_value = context
     return context
-
-
-@pytest.mark.parametrize("query", [
-    "how did I do in my last session?", "show all exercises in my last session",
-    "compare to previous session", "compare my last session to previous session",
-    "review my last session compared with the previous workout",
-])
-@pytest.mark.parametrize("mode", ["graph", "stream"])
-def test_comparison_all_exercises_deterministic(graph, comparison, query, mode):
-    request = state(query)
-    if mode == "graph":
-        result = graph.assistant_graph.invoke(request, config={"configurable": {"ledger": graph.db, "store": graph.db}})
-        display = result["response_content"]
-        assert result["messages"][-1].content == display
-    else:
-        display = "".join(graph.stream_assistant_turn(request, ledger=graph.db, store=graph.db))
-        assert display == request["response_content"] == request["messages"][-1].content
-    for exercise in comparison["exercises"]:
-        assert exercise["name"] in display
-        if exercise["previous"]:
-            assert exercise["previous"]["session"]["session_date"] in display
-    assert display.count("Set 2:") == 6
-    assert "100 kg × 8 reps @ RIR 2" in display
-    assert "best load +5 kg" in display
-    # One wording for an unrated set on every surface (#111).
-    assert "@ RIR not rated" in display
-    assert "Baseline: missing previous occurrence" in display
-    assert "12 working sets" in display
-    assert "Readiness: 4/5" in display
-    assert graph.llm.calls == []
-    graph.db.get_latest_session_summary.assert_not_called()
-    graph.db.get_last_performance.assert_not_called()
-
-
-@pytest.mark.parametrize("target", ["barbell bench press", "ex-0", "bench press"])
-def test_exercise_latest_scope_uses_current_ids_first(graph, comparison, target):
-    request = state(f"how did I do on {target} last session?")
-    result = graph.assistant_graph.invoke(request, config={"configurable": {"ledger": graph.db, "store": graph.db}})["response_content"]
-    assert "Barbell Bench Press [ex-0]" in result
-    assert "Set 1: 100 kg × 8 reps @ RIR 2" in result
-    assert "Set 2: 95 kg × 10 reps @ RIR 2" in result
-    assert "Baseline: 2026-09-10" in result
-    assert "best load +5 kg" in result
-    assert "Cable Row" not in result
-    graph.db.catalog_conn.cursor.assert_not_called()
-    graph.db.find_exercise_by_name.assert_not_called()
-    graph.db.get_last_performance.assert_not_called()
 
 
 @pytest.mark.parametrize("target", ["incline barbell bench press", "squat", "bench pres"])
@@ -589,14 +438,6 @@ def test_weight_context_is_not_injected_into_player_prompt(graph, query, include
 
     assert request["weight_context"] is None
     assert "[PLAYER WEIGHT CONTEXT]" not in prompt
-
-
-def test_comparison_empty_working_sets(graph, comparison):
-    comparison["exercises"] = []
-    result = graph.assistant_graph.invoke(state("my last session"), config={"configurable": {"ledger": graph.db, "store": graph.db}})["response_content"]
-    assert "0 working sets" in result
-    assert "No completed working sets" in result
-    assert "no progress assessment" in result
 
 
 @pytest.mark.parametrize("missing_side", ["current", "previous"])

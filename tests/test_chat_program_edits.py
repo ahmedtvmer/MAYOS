@@ -10,6 +10,22 @@ from service.program_edit import ProgramEdit, ProgramEditExercise, edit_active_p
 from service.chat_program_edit import plan_chat_program_edit, resolve_chat_program_edit
 from langchain_core.messages import AIMessage, HumanMessage
 from agent.assistant_graph import stream_assistant_turn
+from tests.fakes.chat_model import ScriptedChatModel, ToolCallsTurn
+
+
+@pytest.fixture
+def edit_model(monkeypatch):
+    from agent import assistant_graph
+
+    model = ScriptedChatModel()
+    monkeypatch.setattr(assistant_graph, "llm", model)
+    return model
+
+
+def _select_edit(model):
+    model.script(ToolCallsTurn(calls=[{
+        "name": "preview_program_edit", "args": {}, "id": "requested-edit",
+    }]))
 
 
 def test_pending_chat_program_edit_round_trips_offer_and_expires(fresh_store):
@@ -277,9 +293,8 @@ def test_missing_removal_does_not_create_preview(fresh_store):
     assert ledger.get_active_program().version == before
 
 
-def test_composite_keeps_program_preview_bound_to_combined_reply(fresh_store, monkeypatch):
-    from agent.assistant_graph import composite_intent_node
-    from tests.fakes.chat_model import ScriptedChatModel
+def test_model_selected_edit_keeps_preview_bound_to_displayed_reply(fresh_store, monkeypatch):
+    from tests.fakes.chat_model import ScriptedChatModel, ToolCallsTurn
 
     db = fresh_store
     ledger = db.ledger
@@ -290,24 +305,19 @@ def test_composite_keeps_program_preview_bound_to_combined_reply(fresh_store, mo
     ledger.save_training_program(PersistedProgramSchema(program_name="Plan", split_type="Full Body",
         weekly_frequency=1, days=[day]).model_dump())
     monkeypatch.setattr("agent.assistant_graph.llm", ScriptedChatModel([
-        "Progress by adding a rep when you can."
+        ToolCallsTurn(content="Progress by adding a rep when you can.", calls=[{
+            "name": "preview_program_edit", "args": {}, "id": "day-edit",
+        }]),
     ]))
-    state = {"messages": [HumanMessage(content="Add biceps to leg days and how should I progress?")],
-        "player_account_id": "00000000-0000-4000-8000-000000000001", "display_language": "en",
-        "intent_metadata": {"raw_query": "Add biceps to leg days and how should I progress?",
-            "sub_intents": [
-                {"intent": "program_edit", "query": "Add biceps to leg days"},
-                {"intent": "program_edit", "query": "add triceps to leg days"},
-                {"intent": "coaching_qa", "query": "how should I progress?"},
-            ]}}
+    state = {"messages": [HumanMessage(content="Add biceps and triceps to leg days and how should I progress?")],
+        "player_account_id": "00000000-0000-4000-8000-000000000001", "display_language": "en"}
 
-    result = composite_intent_node(state, {"configurable": {"ledger": ledger, "store": db}})
+    list(stream_assistant_turn(state, ledger=ledger, store=db))
 
-    assert result.get("program_edit_preview")
-    assert len(result["program_edit_preview"]["days"][0]["exercises"]) == 3
+    assert state.get("program_edit_preview")
+    assert len(state["program_edit_preview"]["days"][0]["exercises"]) == 3
     pending = ledger.get_pending_chat_program_edit()
-    assert pending["offer_text"] == result["response_content"]
-
+    assert pending["offer_text"] == state["response_content"]
 
 def test_batch_noop_does_not_publish_a_version(fresh_store):
     db = fresh_store
@@ -542,94 +552,7 @@ def test_coach_controlled_chat_edit_offers_program_request(fresh_store, query, e
     assert result["response_content"] == expected_reply
 
 
-def test_unrelated_yes_cannot_confirm_pending_chat_preview(fresh_store):
-    from agent.assistant_graph import router_node
-
-    db = fresh_store
-    ledger = db.ledger
-    row = db.catalog_conn.execute("SELECT id, name FROM exercises ORDER BY id LIMIT 1").fetchone()
-    day = PersistedProgramDaySchema(day_name="Leg A", day_order=1, exercises=[
-        PersistedProgramExerciseSchema(exercise_id=str(row[0]), exercise_name=str(row[1]),
-            target_sets=3, target_reps_min=8, target_reps_max=12)])
-    ledger.save_training_program(PersistedProgramSchema(program_name="Plan", split_type="Full Body",
-        weekly_frequency=1, days=[day]).model_dump())
-    proposal = {"expected_version": ledger.get_active_program().version, "days": [], "optional": []}
-    ledger.set_pending_chat_program_edit(proposal, "Confirm this Program edit?")
-    state = {"messages": [AIMessage(content="Unrelated prior reply"), HumanMessage(content="yes")],
-        "player_account_id": "00000000-0000-4000-8000-000000000001", "display_language": "en"}
-
-    result = router_node(state, {"configurable": {"ledger": ledger, "store": db}})
-
-    assert result["intent"] != "program_edit_confirmation"
-    assert ledger.get_pending_chat_program_edit() is None
-
-
-def test_yes_after_its_own_preview_routes_to_confirmation(fresh_store):
-    from agent.assistant_graph import router_node
-
-    db = fresh_store
-    ledger = db.ledger
-    row = db.catalog_conn.execute("SELECT id, name FROM exercises ORDER BY id LIMIT 1").fetchone()
-    day = PersistedProgramDaySchema(day_name="Leg A", day_order=1, exercises=[
-        PersistedProgramExerciseSchema(exercise_id=str(row[0]), exercise_name=str(row[1]),
-            target_sets=3, target_reps_min=8, target_reps_max=12)])
-    ledger.save_training_program(PersistedProgramSchema(program_name="Plan", split_type="Full Body",
-        weekly_frequency=1, days=[day]).model_dump())
-    proposal = {"expected_version": ledger.get_active_program().version, "days": [], "optional": []}
-    offer = "Program edit preview. Confirm or cancel."
-    ledger.set_pending_chat_program_edit(proposal, offer)
-    state = {"messages": [AIMessage(content=offer), HumanMessage(content="yes")],
-        "player_account_id": "00000000-0000-4000-8000-000000000001", "display_language": "en"}
-
-    result = router_node(state, {"configurable": {"ledger": ledger, "store": db}})
-
-    assert result["intent"] == "program_edit_confirmation"
-
-
-def test_include_forearms_confirms_and_selects_optional_exercise(fresh_store):
-    from agent.assistant_graph import router_node
-
-    db = fresh_store
-    ledger = db.ledger
-    row = db.catalog_conn.execute("SELECT id, name FROM exercises ORDER BY id LIMIT 1").fetchone()
-    day = PersistedProgramDaySchema(day_name="Leg A", day_order=1, exercises=[
-        PersistedProgramExerciseSchema(exercise_id=str(row[0]), exercise_name=str(row[1]),
-            target_sets=3, target_reps_min=8, target_reps_max=12)])
-    ledger.save_training_program(PersistedProgramSchema(program_name="Plan", split_type="Full Body",
-        weekly_frequency=1, days=[day]).model_dump())
-    proposal = {"expected_version": ledger.get_active_program().version, "days": [],
-        "optional": [{"muscle": "forearms", "exercise_id": "wrist-1"}]}
-    offer = "Program edit preview"
-    ledger.set_pending_chat_program_edit(proposal, offer)
-    state = {"messages": [AIMessage(content=offer), HumanMessage(content="yes, include forearms")],
-        "player_account_id": "00000000-0000-4000-8000-000000000001", "display_language": "en"}
-
-    result = router_node(state, {"configurable": {"ledger": ledger, "store": db}})
-
-    assert result["intent"] == "program_edit_confirmation"
-    assert result["intent_metadata"]["include_optional"] == ["wrist-1"]
-
-
-@pytest.mark.parametrize("reply", ["Do not include forearms", "Should I include forearms?",
-    "yes, but should I include forearms?"])
-def test_ambiguous_or_negated_optional_reply_does_not_confirm(fresh_store, reply):
-    from agent.assistant_graph import router_node
-
-    db = fresh_store
-    ledger = db.ledger
-    offer = "Program edit preview. Confirm or cancel."
-    ledger.set_pending_chat_program_edit({"expected_version": 1, "days": [], "optional": [
-        {"muscle": "forearms", "exercise_id": "wrist-1"}]}, offer)
-    state = {"messages": [AIMessage(content=offer), HumanMessage(content=reply)],
-        "player_account_id": "00000000-0000-4000-8000-000000000001", "display_language": "en"}
-
-    result = router_node(state, {"configurable": {"ledger": ledger, "store": db}})
-
-    assert result["intent"] != "program_edit_confirmation"
-    assert ledger.get_pending_chat_program_edit() is not None
-
-
-def test_production_chat_requests_preview_then_confirm_one_version(fresh_store):
+def test_production_chat_requests_preview_then_confirm_one_version(fresh_store, edit_model):
     from service.chat import build_turn_state
 
     db = fresh_store
@@ -666,7 +589,9 @@ def test_production_chat_requests_preview_then_confirm_one_version(fresh_store):
             weekly_frequency=2, days=fresh_days).model_dump())
         before = ledger.get_active_program().version
         state = build_turn_state("player", [HumanMessage(content=query)], player_account_id=account_id)
+        _select_edit(edit_model)
         list(stream_assistant_turn(state, ledger=ledger, store=db))
+        assert state["selected_tools"] == ["preview_program_edit"]
         preview = state.get("program_edit_preview")
         assert preview and preview["days"], state.get("response_content")
         if "don't rebuild" in query:
@@ -684,7 +609,7 @@ def test_production_chat_requests_preview_then_confirm_one_version(fresh_store):
         assert not set(optional_ids).intersection(all_ids)
 
 
-def test_cancelled_rebuild_preview_keeps_original_program_version(fresh_store):
+def test_cancelled_rebuild_preview_keeps_original_program_version(fresh_store, edit_model):
     from service.chat import build_turn_state
 
     db = fresh_store
@@ -704,6 +629,7 @@ def test_cancelled_rebuild_preview_keeps_original_program_version(fresh_store):
     before = ledger.get_active_program().version
     query = "rebuild my program and add biceps to leg days"
     preview_state = build_turn_state("player", [HumanMessage(content=query)], player_account_id=account_id)
+    _select_edit(edit_model)
     list(stream_assistant_turn(preview_state, ledger=ledger, store=db))
     assert preview_state.get("program_edit_preview")
     assert ledger.get_active_program().version == before
@@ -717,7 +643,7 @@ def test_cancelled_rebuild_preview_keeps_original_program_version(fresh_store):
     assert ledger.get_active_program().version == before
 
 
-def test_egyptian_arabic_program_edit_previews_and_confirms(fresh_store):
+def test_egyptian_arabic_program_edit_previews_and_confirms(fresh_store, edit_model):
     from service.chat import build_turn_state
 
     db = fresh_store
@@ -735,6 +661,7 @@ def test_egyptian_arabic_program_edit_previews_and_confirms(fresh_store):
         player_account_id=account_id)
     state["display_language"] = "ar"
 
+    _select_edit(edit_model)
     list(stream_assistant_turn(state, ledger=ledger, store=db))
 
     assert state["program_edit_preview"]["days"]
@@ -753,7 +680,7 @@ def test_egyptian_arabic_program_edit_previews_and_confirms(fresh_store):
     "add biceps to leg days, then rebuild my program",
     "جدّد برنامجي؛ وحط باي على أيام الرجل",
 ])
-def test_all_rebuild_edit_clause_orders_are_preview_only(fresh_store, query):
+def test_all_rebuild_edit_clause_orders_are_preview_only(fresh_store, query, edit_model):
     from service.chat import build_turn_state
 
     db, ledger = fresh_store, fresh_store.ledger
@@ -769,6 +696,7 @@ def test_all_rebuild_edit_clause_orders_are_preview_only(fresh_store, query):
         "weekly_frequency": 4, "training_age_years": 3, "rep_preference": "balanced"})
     before = ledger.get_active_program().version
     state = build_turn_state("player", [HumanMessage(content=query)], player_account_id=account_id)
+    _select_edit(edit_model)
     list(stream_assistant_turn(state, ledger=ledger, store=db))
     assert state.get("program_edit_preview"), state.get("response_content")
     assert ledger.get_active_program().version == before
@@ -804,20 +732,6 @@ def test_clinical_clause_records_injury_before_rebuild_edit(fresh_store, query):
     assert state.get("program_edit_preview") is None
     assert ledger.get_active_program().version == before
     assert any(record["body_area"] == "knee" for record in ledger.list_injury_records())
-
-
-@pytest.mark.parametrize("reply", ["no", "cancel", "لا", "لأ", "مش عايز"])
-def test_plain_decline_resolves_pending_program_edit(fresh_store, reply):
-    from agent.assistant_graph import router_node
-
-    db, ledger = fresh_store, fresh_store.ledger
-    offer = "Program edit preview. Confirm or cancel."
-    ledger.set_pending_chat_program_edit({"expected_version": 1, "days": [], "optional": []}, offer)
-    state = {"messages": [AIMessage(content=offer), HumanMessage(content=reply)],
-        "player_account_id": "00000000-0000-4000-8000-000000000001", "display_language": "en"}
-    result = router_node(state, {"configurable": {"ledger": ledger, "store": db}})
-    assert result["intent"] == "program_edit_confirmation"
-    assert result["intent_metadata"]["confirm"] is False
 
 
 def test_plain_no_cancels_offer_with_explicit_reply(fresh_store):
@@ -880,7 +794,7 @@ def test_player_writer_transaction_does_not_reserve_catalog_writer(fresh_store):
             future.result()
 
 
-def test_rebuild_preview_with_optional_item_includes_all_days(fresh_store):
+def test_rebuild_preview_with_optional_item_includes_all_days(fresh_store, edit_model):
     from service.chat import build_turn_state
 
     db, ledger = fresh_store, fresh_store.ledger
@@ -895,6 +809,7 @@ def test_rebuild_preview_with_optional_item_includes_all_days(fresh_store):
         "training_age_years": 3, "rep_preference": "balanced"})
     state = build_turn_state("player", [HumanMessage(content="rebuild my program and add biceps to leg days, maybe forearms")],
         player_account_id=account_id)
+    _select_edit(edit_model)
     list(stream_assistant_turn(state, ledger=ledger, store=db))
     preview = state["program_edit_preview"]
     assert len(preview["days"]) >= 4

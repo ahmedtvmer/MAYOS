@@ -22,6 +22,7 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from langchain_core.messages import AIMessage, HumanMessage
 from agent import assistant_graph
 from agent import player_prompt
 from agent import player_tools
@@ -138,6 +139,23 @@ def _authed(token):
     return {"Authorization": f"Bearer {token}"}
 
 
+def _action(name, args=None):
+    return ToolCallsTurn(calls=[{"name": name, "args": args or {}, "id": f"call-{name}"}])
+
+
+def _fill_prompt_history(ledger, question):
+    # Keep pressure stable when the fixed system copy changes, without trimming recent replies.
+    history = [AIMessage(content="x" * 600) for _ in range(4)]
+    history += [AIMessage(content="Earlier answer. ") for _ in range(5)]
+    baseline = player_prompt.build_player_chat_prompt({"messages": [*history, HumanMessage(content=question)]})
+    spare = (player_prompt.HOSTED_PROMPT_MAX_BYTES
+             - player_prompt.HOSTED_PROMPT_TOOL_RESULT_RESERVE_BYTES
+             - sum(len(message.content.encode("utf-8")) for message in baseline) - 64)
+    for index, message in enumerate(history):
+        padding = spare // 5 + (index - 4 < spare % 5) if index >= 4 else 0
+        ledger.add_chat_message("assistant", message.content + "x" * padding)
+
+
 def test_program_edit_preview_decision_endpoint_is_player_scoped(api):
     client, db = api
     first = _register(client, "edit-preview-first")
@@ -174,7 +192,7 @@ def test_program_edit_preview_decision_endpoint_is_player_scoped(api):
         assert ledger.get_active_program().version == active.version + 1
 
 
-def test_chat_sse_done_frame_contains_structured_program_edit_preview(api):
+def test_chat_sse_done_frame_contains_structured_program_edit_preview(api, monkeypatch):
     client, db = api
     registered = _register(client, "program-edit-sse-preview")
     with db.open_ledger("program-edit-sse-preview") as ledger:
@@ -188,6 +206,7 @@ def test_chat_sse_done_frame_contains_structured_program_edit_preview(api):
         ledger.save_training_program(PersistedProgramSchema(program_name="Plan",
             split_type="Full Body", weekly_frequency=1, days=[day]).model_dump())
 
+    monkeypatch.setattr(assistant_graph, "llm", ScriptedChatModel([_action("preview_program_edit")]))
     response = client.post("/chat/messages", headers=_authed(registered["access_token"]),
         json={"content": "change squat to 4 sets on leg days"})
 
@@ -198,7 +217,6 @@ def test_chat_sse_done_frame_contains_structured_program_edit_preview(api):
 
 def test_active_program_tool_context_reports_player_authority_without_coach(api, monkeypatch):
     client, db = api
-    _force_free_form_coaching_intent(monkeypatch)
     registered = _register(client, "player-authority-chat")
     with db.open_ledger("player-authority-chat") as ledger:
         row = db.catalog_conn.execute("SELECT id, name FROM exercises ORDER BY id LIMIT 1").fetchone()
@@ -240,20 +258,8 @@ def test_chat_history_hides_preview_after_coach_takes_program_authority(api):
     assert "program_edit_preview" not in response.json()[-1]
 
 
-def _force_free_form_coaching_intent(monkeypatch):
-    monkeypatch.setattr(
-        assistant_graph,
-        "_classify_intent_with_llm",
-        lambda _query: assistant_graph.IntentClassification(intent="coaching_qa"),
-    )
-    monkeypatch.setattr(
-        assistant_graph,
-        "_classify_arabic_intent",
-        lambda _query, _config: {"intent": "coaching_qa", "intent_metadata": {}},
-    )
-
-
 def test_chat_writes_weak_points_in_english_and_arabic_without_guessing(api, monkeypatch):
+    monkeypatch.setattr(assistant_graph, "llm", ScriptedChatModel(default_turn=_action("update_weak_points")))
     client, db = api
     headers = _authed(_register(client, "chat-weakpoints")["access_token"])
     for request_text, expected in (
@@ -299,6 +305,8 @@ def test_chat_writes_weak_points_in_english_and_arabic_without_guessing(api, mon
 def test_goal_change_chat_offers_and_saves_named_weak_points(
     api, monkeypatch, goal_request, yes, expected, offer_fragment
 ):
+    model = ScriptedChatModel([replace(_action("update_training_goal"), content="Your goal is ready. ")])
+    monkeypatch.setattr(assistant_graph, "llm", model)
     client, db = api
     account = _register(client, f"goal-chat-{expected[0]}")
     headers = _authed(account["access_token"])
@@ -325,9 +333,11 @@ def test_goal_change_chat_offers_and_saves_named_weak_points(
     assert client.get("/programs/active", headers=headers).json()[
         "regeneration_offer_reason"
     ] == "focus_muscles_changed"
+    assert len(model.calls) == 1
 
 
 def test_declining_goal_weak_point_suggestion_does_not_save_it(api, monkeypatch):
+    monkeypatch.setattr(assistant_graph, "llm", ScriptedChatModel([_action("update_training_goal")]))
     client, _db = api
     headers = _authed(_register(client, "goal-chat-decline")["access_token"])
     monkeypatch.setattr(
@@ -342,6 +352,7 @@ def test_declining_goal_weak_point_suggestion_does_not_save_it(api, monkeypatch)
 
 
 def test_goal_suggestion_over_two_asks_which_to_keep_without_saving(api, monkeypatch):
+    monkeypatch.setattr(assistant_graph, "llm", ScriptedChatModel([_action("update_training_goal")]))
     client, _db = api
     headers = _authed(_register(client, "goal-chat-over-two")["access_token"])
     monkeypatch.setattr(
@@ -362,6 +373,7 @@ def test_goal_suggestion_over_two_asks_which_to_keep_without_saving(api, monkeyp
 
 
 def test_goal_weak_point_acceptance_on_coach_program_saves_without_regeneration(api, monkeypatch):
+    monkeypatch.setattr(assistant_graph, "llm", ScriptedChatModel([_action("update_training_goal")]))
     client, db = api
     _, headers, _assignment_id = _assigned_player(api, "goal-chat-coach-controlled")
     coach_id = db.get_active_account_by_username("coach")["account_id"]
@@ -396,6 +408,8 @@ def test_goal_weak_point_acceptance_on_coach_program_saves_without_regeneration(
     "I do not want chest and back as Weak points",
 ])
 def test_goal_offer_is_not_accepted_by_unrelated_two_muscle_text(api, monkeypatch, question):
+    monkeypatch.setattr(assistant_graph, "llm", ScriptedChatModel([
+        _action("update_training_goal"), "I left your Weak points unchanged."]))
     client, _db = api
     headers = _authed(_register(client, "goal-chat-no-silent")['access_token'])
     monkeypatch.setattr("service.profile.generate_program_draft_pipeline", lambda *_a, **_k: (None, None))
@@ -405,6 +419,8 @@ def test_goal_offer_is_not_accepted_by_unrelated_two_muscle_text(api, monkeypatc
 
 
 def test_new_goal_supersedes_pending_goal_offer(api, monkeypatch):
+    monkeypatch.setattr(assistant_graph, "llm", ScriptedChatModel([
+        _action("update_training_goal"), _action("update_training_goal")]))
     client, _db = api
     headers = _authed(_register(client, "goal-chat-supersede")['access_token'])
     monkeypatch.setattr("service.profile.generate_program_draft_pipeline", lambda *_a, **_k: (None, None))
@@ -417,6 +433,8 @@ def test_new_goal_supersedes_pending_goal_offer(api, monkeypatch):
 
 
 def test_unrelated_turn_clears_goal_offer_before_later_yes(api, monkeypatch):
+    monkeypatch.setattr(assistant_graph, "llm", ScriptedChatModel([
+        _action("update_training_goal"), "Use controlled reps.", "What would you like to change?"]))
     client, _db = api
     headers = _authed(_register(client, "goal-chat-expired-turn")['access_token'])
     monkeypatch.setattr("service.profile.generate_program_draft_pipeline", lambda *_a, **_k: (None, None))
@@ -427,6 +445,8 @@ def test_unrelated_turn_clears_goal_offer_before_later_yes(api, monkeypatch):
 
 
 def test_clearing_chat_clears_pending_goal_offer(api, monkeypatch):
+    monkeypatch.setattr(assistant_graph, "llm", ScriptedChatModel([
+        _action("update_training_goal"), "What would you like to change?"]))
     client, _db = api
     headers = _authed(_register(client, "goal-chat-clear")['access_token'])
     monkeypatch.setattr("service.profile.generate_program_draft_pipeline", lambda *_a, **_k: (None, None))
@@ -437,6 +457,8 @@ def test_clearing_chat_clears_pending_goal_offer(api, monkeypatch):
 
 
 def test_expired_goal_offer_cannot_be_accepted(api, monkeypatch):
+    monkeypatch.setattr(assistant_graph, "llm", ScriptedChatModel([
+        _action("update_training_goal"), "What would you like to change?"]))
     client, db = api
     username = "goal-chat-expiry"
     headers = _authed(_register(client, username)["access_token"])
@@ -454,6 +476,9 @@ def test_expired_goal_offer_cannot_be_accepted(api, monkeypatch):
 
 
 def test_other_confirmation_cannot_accept_goal_offer(api, monkeypatch):
+    monkeypatch.setattr(assistant_graph, "llm", ScriptedChatModel([
+        _action("manage_assistant_preference"), _action("update_training_goal"),
+        _action("manage_assistant_preference")]))
     client, _db = api
     headers = _authed(_register(client, "goal-chat-other-confirmation")["access_token"])
     monkeypatch.setattr("service.profile.generate_program_draft_pipeline", lambda *_a, **_k: (None, None))
@@ -468,7 +493,8 @@ def test_other_confirmation_cannot_accept_goal_offer(api, monkeypatch):
     assert client.get("/profile", headers=headers).json().get("weak_points") is None
 
 
-def test_chat_accepts_canonical_weak_point_keys(api):
+def test_chat_accepts_canonical_weak_point_keys(api, monkeypatch):
+    monkeypatch.setattr(assistant_graph, "llm", ScriptedChatModel([_action("update_weak_points")]))
     client, _db = api
     headers = _authed(_register(client, "goal-chat-canonical")['access_token'])
     response = client.post("/chat/messages", headers=headers,
@@ -661,7 +687,6 @@ def test_chat_turn_keeps_recent_six_full_and_trims_only_older_assistant_replies(
 ):
     # Cover short history, the 6/7 boundary, and the 10-message window; old
     # replies below/at/above 600 characters must count characters, not bytes.
-    _force_free_form_coaching_intent(monkeypatch)
     client, db = api
     username = "history-trimming"
     headers = _authed(_register(client, username)["access_token"])
@@ -720,7 +745,6 @@ def test_chat_turn_keeps_recent_six_full_and_trims_only_older_assistant_replies(
 def test_tool_bound_chat_fetches_profile_and_program_only_after_parallel_calls(
     api, monkeypatch, caplog
 ):
-    _force_free_form_coaching_intent(monkeypatch)
     client, db = api
     username = "private-tool-player"
     email = "private-tool-player@example.com"
@@ -789,7 +813,7 @@ def test_tool_bound_chat_fetches_profile_and_program_only_after_parallel_calls(
         assert response.status_code == 200
 
     assert _done_content(body) == "Your goal and training age are recorded. Leg Day trains quads."
-    assert [name for name in model.calls[0]["tools"]] == [
+    assert set(model.calls[0]["tools"]) >= {
         "get_player_profile",
         "get_active_program",
         "get_program_rationale",
@@ -798,7 +822,7 @@ def test_tool_bound_chat_fetches_profile_and_program_only_after_parallel_calls(
         "get_player_food_log",
         "get_assistant_preferences",
         "search_chat_history",
-    ]
+    }
     first_payload = "\n".join(
         str(getattr(message, "content", message)) for message in model.calls[0]["messages"]
     )
@@ -855,7 +879,6 @@ def test_tool_bound_chat_fetches_profile_and_program_only_after_parallel_calls(
 
 
 def test_chat_search_finds_old_english_and_arabic_messages_with_filters(api, monkeypatch):
-    _force_free_form_coaching_intent(monkeypatch)
     client, db = api
     username = "chat-history-search"
     headers = _authed(_register(client, username)["access_token"])
@@ -950,7 +973,6 @@ def test_chat_search_finds_old_english_and_arabic_messages_with_filters(api, mon
 
 
 def test_chat_history_search_backfills_legacy_messages_on_first_mount(api, monkeypatch):
-    _force_free_form_coaching_intent(monkeypatch)
     client, db = api
     username = "chat-history-migration"
     headers = _authed(_register(client, username)["access_token"])
@@ -1001,7 +1023,6 @@ def test_chat_history_search_backfills_legacy_messages_on_first_mount(api, monke
 
 
 def test_delete_chat_history_removes_old_messages_from_search(api, monkeypatch):
-    _force_free_form_coaching_intent(monkeypatch)
     client, db = api
     username = "chat-history-clear-search"
     headers = _authed(_register(client, username)["access_token"])
@@ -1045,7 +1066,6 @@ def test_delete_chat_history_removes_old_messages_from_search(api, monkeypatch):
 
 
 def test_arabic_tool_status_uses_fixed_localized_text(api, monkeypatch):
-    _force_free_form_coaching_intent(monkeypatch)
     client, _db = api
     headers = _authed(_register(client, "arabic-tool-status")["access_token"])
     model = ScriptedChatModel(
@@ -1075,7 +1095,6 @@ def test_arabic_tool_status_uses_fixed_localized_text(api, monkeypatch):
 
 
 def test_turn_without_tool_call_sends_no_profile_telemetry_or_program_data(api, monkeypatch):
-    _force_free_form_coaching_intent(monkeypatch)
     client, db = api
     username = "no-tool-data-player"
     registered = _register(client, username)
@@ -1104,7 +1123,7 @@ def test_turn_without_tool_call_sends_no_profile_telemetry_or_program_data(api, 
     payload = "\n".join(
         str(getattr(message, "content", message)) for message in model.calls[0]["messages"]
     )
-    assert model.calls[0]["tools"] == (
+    assert set(model.calls[0]["tools"]) >= {
         "get_player_profile",
         "get_active_program",
         "get_program_rationale",
@@ -1113,7 +1132,7 @@ def test_turn_without_tool_call_sends_no_profile_telemetry_or_program_data(api, 
         "get_player_food_log",
         "get_assistant_preferences",
         "search_chat_history",
-    )
+    }
     assert "PROFILE_MUST_STAY_PRIVATE" not in payload
     assert "PROGRAM_MUST_STAY_PRIVATE" not in payload
     assert "99" not in payload
@@ -1228,7 +1247,6 @@ def test_large_merged_limitations_are_capped_through_tool_runner(populated_profi
 
 @pytest.mark.parametrize("question", ["How old am I?", "أنا عندي كام سنة؟"])
 def test_age_question_sends_body_without_injury_or_weak_point_data(api, monkeypatch, question):
-    _force_free_form_coaching_intent(monkeypatch)
     client, db = api
     headers = _authed(_register(client, "body-only-player")["access_token"])
     with db.open_ledger("body-only-player") as ledger:
@@ -1253,19 +1271,31 @@ def test_age_question_sends_body_without_injury_or_weak_point_data(api, monkeypa
     tool_messages = [message for call in model.calls for message in call["messages"]
                      if getattr(message, "type", "") == "tool"]
     assert tool_messages
-    assert json.loads(tool_messages[-1].content)["profile"]["age"] == 31
+    profile_result = json.loads(tool_messages[-1].content)
+    profile = profile_result["profile"]
+    assert profile["age"] == 31
+    assert set(profile) <= {"age", "gender", "height_cm", "target_weight_kg", "weight_kg"}
+    assert "injuries" not in profile_result
     for call in model.calls:
-        payload = "\n".join(str(message.content) for message in call["messages"])
-        for forbidden in ("LIMITATION_TEXT_PRIVATE", "INJURY_RECORD_PRIVATE", "CLEARANCE_WORDING_PRIVATE",
-                          "biceps", "Knee flexion", "weak_points", "injuries_or_limitations"):
-            assert forbidden not in payload
+        # System/tool documentation names the available profile fields; only user
+        # and tool-result messages carry Player data for this turn.
+        turn_data = "\n".join(
+            str(message.content)
+            for message in call["messages"]
+            if getattr(message, "type", "") in {"human", "tool"}
+        )
+        for forbidden in (
+            "LIMITATION_TEXT_PRIVATE", "INJURY_RECORD_PRIVATE", "CLEARANCE_WORDING_PRIVATE",
+            "biceps", "Knee flexion", '"weak_points"', '"injuries_or_limitations"',
+            '"injuries"', '"movement_restrictions"',
+        ):
+            assert forbidden not in turn_data
         assert "get_player_injuries" not in call["tools"]
     assert len(tool_messages[-1].content.encode("utf-8")) <= player_tools.MAX_TOOL_RESULT_BYTES
     assert model.calls[0]["messages"][0].content == model.calls[-1]["messages"][0].content
 
 
 def test_unset_profile_fields_return_not_set_without_invented_defaults(api, monkeypatch):
-    _force_free_form_coaching_intent(monkeypatch)
     client, db = api
     username = "unset-profile-tool"
     headers = _authed(_register(client, username)["access_token"])
@@ -1296,7 +1326,6 @@ def test_unset_profile_fields_return_not_set_without_invented_defaults(api, monk
 
 
 def test_legacy_completed_profile_keeps_values_equal_to_storage_defaults(api, monkeypatch):
-    _force_free_form_coaching_intent(monkeypatch)
     client, db = api
     username = "legacy-default-profile"
     headers = _authed(_register(client, username)["access_token"])
@@ -1343,7 +1372,6 @@ def test_legacy_completed_profile_keeps_values_equal_to_storage_defaults(api, mo
 
 
 def test_explicit_none_limitations_answer_is_reported_as_none(api, monkeypatch):
-    _force_free_form_coaching_intent(monkeypatch)
     client, _db = api
     headers = _authed(_register(client, "none-limitations-profile")["access_token"])
     saved = client.put(
@@ -1371,7 +1399,6 @@ def test_explicit_none_limitations_answer_is_reported_as_none(api, monkeypatch):
 
 
 def test_weight_trend_tool_returns_bounded_dated_progress_facts(api, monkeypatch):
-    _force_free_form_coaching_intent(monkeypatch)
     client, db = api
     username = "weight-trend-tool"
     headers = _authed(_register(client, username)["access_token"])
@@ -1406,7 +1433,6 @@ def test_weight_trend_tool_returns_bounded_dated_progress_facts(api, monkeypatch
 
 
 def test_unyielded_text_before_tool_call_is_discarded(api, monkeypatch):
-    _force_free_form_coaching_intent(monkeypatch)
     client, _db = api
     headers = _authed(_register(client, "tool-round-text-buffer")["access_token"])
     model = ScriptedChatModel(
@@ -1437,7 +1463,6 @@ def test_unyielded_text_before_tool_call_is_discarded(api, monkeypatch):
 
 
 def test_yielded_text_before_tool_call_is_not_retracted(api, monkeypatch):
-    _force_free_form_coaching_intent(monkeypatch)
     client, _db = api
     headers = _authed(_register(client, "tool-round-yielded-text")["access_token"])
     model = ScriptedChatModel(
@@ -1473,7 +1498,6 @@ def test_http_stream_emits_before_model_requests_final_chunk(api, monkeypatch):
 
     from langchain_core.messages import AIMessageChunk
 
-    _force_free_form_coaching_intent(monkeypatch)
     client, _db = api
     headers = _authed(_register(client, "http-incremental-stream")["access_token"])
     first_token_sent = Event()
@@ -1534,7 +1558,6 @@ def test_http_stream_emits_before_model_requests_final_chunk(api, monkeypatch):
 
 
 def test_partial_profile_update_does_not_expose_storage_defaults(api, monkeypatch):
-    _force_free_form_coaching_intent(monkeypatch)
     client, _db = api
     headers = _authed(_register(client, "partial-profile-tool")["access_token"])
     assert client.put(
@@ -1563,7 +1586,6 @@ def test_partial_profile_update_does_not_expose_storage_defaults(api, monkeypatc
 
 
 def test_tool_loop_stops_after_three_rounds_and_still_streams_a_reply(api, monkeypatch):
-    _force_free_form_coaching_intent(monkeypatch)
     client, _db = api
     headers = _authed(_register(client, "three-tool-rounds")["access_token"])
     model = ScriptedChatModel(
@@ -1597,7 +1619,6 @@ def test_tool_loop_stops_after_three_rounds_and_still_streams_a_reply(api, monke
 
 
 def test_tool_timeout_returns_unavailable_and_turn_continues(api, monkeypatch):
-    _force_free_form_coaching_intent(monkeypatch)
     client, _db = api
     headers = _authed(_register(client, "slow-profile-tool")["access_token"])
 
@@ -1638,7 +1659,6 @@ def test_tool_timeout_returns_unavailable_and_turn_continues(api, monkeypatch):
 
 
 def test_oversized_tool_result_is_capped_at_four_kilobytes(api, monkeypatch):
-    _force_free_form_coaching_intent(monkeypatch)
     client, db = api
     username = "oversized-profile-tool"
     headers = _authed(_register(client, username)["access_token"])
@@ -1668,17 +1688,11 @@ def test_oversized_tool_result_is_capped_at_four_kilobytes(api, monkeypatch):
 
 
 def test_tool_result_keeps_followup_payload_under_the_prompt_ceiling(api, monkeypatch):
-    _force_free_form_coaching_intent(monkeypatch)
     client, db = api
     username = "prompt-ceiling-tool"
     headers = _authed(_register(client, username)["access_token"])
     with db.open_ledger(username) as ledger:
-        for _ in range(4):
-            ledger.add_chat_message("assistant", "Earlier answer. " + "x" * 2_900)
-        # #524 trims the first four replies to 600 chars. Enlarging the five
-        # recent replies keeps the initial prompt within 4 bytes of its old size.
-        for _ in range(5):
-            ledger.add_chat_message("assistant", "Earlier answer. " + "x" * 4_752)
+        _fill_prompt_history(ledger, "What is in my profile?")
         ledger.upsert_player_profile(
             {"injuries_or_limitations": "PLAYER_LIMITATION " + "knee pain " * 260}
         )
@@ -1755,7 +1769,6 @@ def _assistant_volume_program():
      "تمام، البايسبس عندك بياخد 2 سيت غير مباشر في الأسبوع: 4 سيت سحب بيتحسب كل واحد بنص سيت."),
 ])
 def test_indirect_biceps_question_receives_exact_tool_counts(api, monkeypatch, question, answer):
-    _force_free_form_coaching_intent(monkeypatch)
     client, db = api
     username = "indirect-volume-player"
     headers = _authed(_register(client, username)["access_token"])
@@ -2394,7 +2407,7 @@ def test_franco_refusal_does_not_consume_pending_injury_clarification(api, monke
         ),
         (
             "إزاي أزود قوتي؟",
-            [{"intent": "coaching_qa"}, "رد عربي تجريبي"],
+            ["رد عربي تجريبي"],
             "رد عربي تجريبي",
         ),
         ("3x8 bench", ["SCRIPTED NUMERIC ANSWER"], "SCRIPTED NUMERIC ANSWER"),
@@ -2483,7 +2496,7 @@ def test_chat_preferred_name_forms_sync_to_profile_and_prompt(
     registered = _register(client, f"chat-name-{len(content)}")
     headers = _authed(registered["access_token"])
     assert client.put("/profile", headers=headers, json={"current_goal": "Strength"}).status_code == 200
-    model = ScriptedChatModel(["Let's work on your next session."])
+    model = ScriptedChatModel([_action("preferred_name"), "Let's work on your next session."])
     monkeypatch.setattr(assistant_graph, "llm", model)
     monkeypatch.setattr(assistant_graph, "_prompt_budget", lambda: 100_000)
 
@@ -2917,17 +2930,18 @@ def _seed_chat_program(db, player, *, split_type="Full Body", frequency=3, gende
 
 
 def _install_chat_program_generator(monkeypatch):
-    def generate_program(
-        *, user_split_override=None, rep_preference_override=None,
-        frequency_override=None, ledger, **_kwargs,
-    ):
+    def generate_program(request, *, ledger, profile=None, **_kwargs):
         current_program = ledger.get_active_program()
-        frequency = frequency_override or current_program.weekly_frequency
-        profile = ledger.get_player_profile() or {}
-        split_plan = assistant_graph.get_split_plan(
-            user_split_override, frequency, profile.get("gender", "male")
-        ) if user_split_override else None
-        split_type = split_plan.split_name if split_plan else current_program.split_type
+        frequency = request.frequency_override or current_program.weekly_frequency
+        profile = profile or ledger.get_player_profile() or {}
+        split_plan = (
+            program_rules.get_split_plan(
+                request.split_id_override, frequency, profile.get("gender", "male")
+            )
+            if request.split_id_override
+            else program_rules.get_default_split(frequency, profile.get("gender", "male"))
+        )
+        split_type = split_plan.split_name
         program = GeneratedProgramSchema(
             program_name=f"{split_type} rebuilt",
             split_type=split_type,
@@ -2937,12 +2951,19 @@ def _install_chat_program_generator(monkeypatch):
                 for index in range(1, frequency + 1)
             ],
         )
-        if frequency != (ledger.get_player_profile() or {}).get("weekly_frequency"):
-            ledger.update_player_frequency(frequency)
-        ledger.save_training_program(program.model_dump())
         return program, ""
 
-    monkeypatch.setattr(assistant_graph, "generate_program_pipeline", generate_program)
+    monkeypatch.setattr(program_generator, "generate_program_draft_pipeline", generate_program)
+
+
+def _confirm_rebuild(client, db, headers, player, before, body):
+    assert "program_edit_preview" in body
+    with db.open_ledger(player) as ledger:
+        assert ledger.get_active_program().model_dump() == before.model_dump()
+        assert ledger.get_pending_chat_program_edit() is not None
+    confirmed = client.post("/chat/messages", headers=headers, json={"content": "yes"})
+    assert confirmed.status_code == 200, confirmed.text
+    assert "one new version" in _done_content(confirmed.text)
 
 
 def test_arabic_program_change_runs_through_http_chat_with_validated_split(api, monkeypatch):
@@ -2952,7 +2973,7 @@ def test_arabic_program_change_runs_through_http_chat_with_validated_split(api, 
     before = _seed_chat_program(db, player)
     _install_chat_program_generator(monkeypatch)
     model = ScriptedChatModel(
-        [{"intent": "program_change", "target_split_type": "upper_lower"}]
+        [_action("preview_program_rebuild", {"split_type": "upper_lower"})]
     )
     monkeypatch.setattr(assistant_graph, "llm", model)
 
@@ -2963,35 +2984,33 @@ def test_arabic_program_change_runs_through_http_chat_with_validated_split(api, 
         body = response.read().decode("utf-8")
         assert response.status_code == 200
 
+    _confirm_rebuild(client, db, headers, player, before, body)
     with db.open_ledger(player) as ledger:
         after = ledger.get_active_program()
     assert after.version == before.version + 1
     assert after.split_type == "Upper / Lower / Upper (Arms & Delts Augmented)"
-    assert _done_content(body) == (
-        "تمام، ظبطتلك البرنامج التدريبي على 3 أيام: "
-        "Upper / Lower / Upper (Arms & Delts Augmented) rebuilt."
-    )
+    assert "Upper / Lower / Upper (Arms & Delts Augmented)" in _done_content(body)
 
 
 @pytest.mark.parametrize(
-    ("frequency", "message", "expected_plan", "frequency_label"),
+    ("frequency", "message", "expected_plan"),
     [
-        (4, "ظبّطلي البرنامج على 4 أيام.", "Full Body 4-Day", "4 أيام"),
-        (4, "ممكن تغيّرلي البرنامج لـ 4 أيام.", "Full Body 4-Day", "4 أيام"),
-        (4, "غيّر البرنامج لـ 4 أيام.", "Full Body 4-Day", "4 أيام"),
-        (4, "عايز أغيّر الـ program لـ 4 days per week.", "Full Body 4-Day", "4 أيام"),
-        (1, "ظبطلي البرنامج على يوم واحد.", "Consolidated Full Body", "يوم واحد"),
+        (4, "ظبّطلي البرنامج على 4 أيام.", "Full Body 4-Day"),
+        (4, "ممكن تغيّرلي البرنامج لـ 4 أيام.", "Full Body 4-Day"),
+        (4, "غيّر البرنامج لـ 4 أيام.", "Full Body 4-Day"),
+        (4, "عايز أغيّر الـ program لـ 4 days per week.", "Full Body 4-Day"),
+        (1, "ظبطلي البرنامج على يوم واحد.", "Consolidated Full Body"),
     ],
 )
 def test_arabic_frequency_change_runs_through_http_chat(
-    api, monkeypatch, frequency, message, expected_plan, frequency_label
+    api, monkeypatch, frequency, message, expected_plan
 ):
     client, db = api
     player = f"arabic-frequency-change-{frequency}"
     headers = _authed(_register(client, player)["access_token"])
     before = _seed_chat_program(db, player)
     _install_chat_program_generator(monkeypatch)
-    model = ScriptedChatModel([{"intent": "program_change", "target_frequency": frequency}])
+    model = ScriptedChatModel([_action("preview_program_rebuild", {"days": frequency})])
     monkeypatch.setattr(assistant_graph, "llm", model)
 
     with client.stream(
@@ -3001,15 +3020,13 @@ def test_arabic_frequency_change_runs_through_http_chat(
         body = response.read().decode("utf-8")
         assert response.status_code == 200
 
+    _confirm_rebuild(client, db, headers, player, before, body)
     with db.open_ledger(player) as ledger:
         after = ledger.get_active_program()
     assert after.version == before.version + 1
     assert after.weekly_frequency == frequency
     assert after.split_type == expected_plan
-    assert _done_content(body) == (
-        f"تمام، ظبطتلك البرنامج التدريبي على {frequency_label}: "
-        f"{expected_plan} rebuilt."
-    )
+    assert expected_plan in _done_content(body)
 
 
 @pytest.mark.parametrize(
@@ -3032,7 +3049,6 @@ def test_arabic_program_change_questions_do_not_mutate_through_http_chat(
     _install_chat_program_generator(monkeypatch)
     model = ScriptedChatModel(
         [
-            {"intent": "program_change", "target_frequency": 4},
             "خليني أوضحلك إزاي تقدر تعدل برنامجك.",
         ]
     )
@@ -3061,7 +3077,7 @@ def test_arabic_program_change_without_target_clarifies_without_mutation(
     _install_chat_program_generator(monkeypatch)
     with db.open_ledger(player) as ledger:
         ledger.add_chat_message("user", "previous chat context")
-    model = ScriptedChatModel([{"intent": "program_change"}])
+    model = ScriptedChatModel([assistant_graph.ARABIC_PROGRAM_CHANGE_CLARIFICATION_RESPONSE])
     monkeypatch.setattr(assistant_graph, "llm", model)
 
     with client.stream(
@@ -3122,7 +3138,7 @@ def test_arabic_frequency_change_retires_glute_priority_split(api, monkeypatch, 
     )
     _install_chat_program_generator(monkeypatch)
     model = ScriptedChatModel(
-        [{"intent": "program_change", "target_frequency": target_frequency}]
+        [_action("preview_program_rebuild", {"days": target_frequency})]
     )
     monkeypatch.setattr(assistant_graph, "llm", model)
 
@@ -3133,6 +3149,7 @@ def test_arabic_frequency_change_retires_glute_priority_split(api, monkeypatch, 
         body = response.read().decode("utf-8")
         assert response.status_code == 200
 
+    _confirm_rebuild(client, db, headers, player, before, body)
     with db.open_ledger(player) as ledger:
         after = ledger.get_active_program()
     assert after.version == before.version + 1
@@ -3145,10 +3162,7 @@ def test_arabic_frequency_change_retires_glute_priority_split(api, monkeypatch, 
         5: "Full Body 5-Day",
     }[target_frequency]
     assert after.split_type == full_body_name
-    assert _done_content(body) == (
-        f"تمام، ظبطتلك البرنامج التدريبي على {target_frequency} أيام: "
-        f"{full_body_name} rebuilt."
-    )
+    assert full_body_name in _done_content(body)
 
 
 def test_arabic_history_fallback_does_not_inject_ledger_figures(api, monkeypatch):
@@ -3159,7 +3173,6 @@ def test_arabic_history_fallback_does_not_inject_ledger_figures(api, monkeypatch
     _seed_session(db, player, "2026-09-24T10:00:00+00:00")
     model = ScriptedChatModel(
         [
-            {"intent": "exercise_history", "history_exercise": "Squat"},
             "مش ظاهر في الرسالة دي رقم موثّق لآخر مرة.",
         ]
     )
@@ -3182,22 +3195,20 @@ def test_arabic_history_fallback_does_not_inject_ledger_figures(api, monkeypatch
 
 
 @pytest.mark.parametrize(
-    ("message", "classification", "clarification"),
+    ("message", "arguments", "clarification"),
     [
         (
             "بدّل تمرين Squat ب Bench Press في يوم Push.",
             {
-                "intent": "exercise_substitution",
                 "source_exercise": "Squat",
                 "target_exercise": "Bench Press",
-                "target_day": "Push",
+                "day_name": "Push",
             },
             "مش لاقي اليوم أو التمرين ده في برنامجك. ممكن تحدد يوم أو تمرين موجود؟",
         ),
         (
             "بدّل تمرين Imaginary Press ب Bench Press.",
             {
-                "intent": "exercise_substitution",
                 "source_exercise": "Imaginary Press",
                 "target_exercise": "Bench Press",
             },
@@ -3206,13 +3217,13 @@ def test_arabic_history_fallback_does_not_inject_ledger_figures(api, monkeypatch
     ],
 )
 def test_arabic_missing_program_day_or_exercise_clarifies_without_change(
-    api, monkeypatch, message, classification, clarification
+    api, monkeypatch, message, arguments, clarification
 ):
     client, db = api
     player = "arabic-unresolved"
     headers = _authed(_register(client, player)["access_token"])
     before = _seed_chat_program(db, player)
-    model = ScriptedChatModel([classification])
+    model = ScriptedChatModel([_action("substitute_exercise", arguments)])
     monkeypatch.setattr(assistant_graph, "llm", model)
 
     with client.stream(
@@ -3228,53 +3239,54 @@ def test_arabic_missing_program_day_or_exercise_clarifies_without_change(
 
 
 @pytest.mark.parametrize(
-    ("frequency", "message", "classification"),
+    ("frequency", "message", "arguments"),
     [
         (
             3,
             "ظبطلي البرنامج على 6 أيام.",
-            {"intent": "program_change", "target_frequency": 6},
+            {"days": 6},
         ),
         (
             3,
             "غيرلي البرنامج لتقسيمة Imaginary Split.",
-            {"intent": "program_change", "target_split_type": "imaginary_split"},
+            {"split_type": "imaginary_split"},
         ),
         (
             2,
             "غيرلي البرنامج لتقسيمة PPL.",
-            {"intent": "program_change", "target_split_type": "ppl"},
+            {"split_type": "ppl"},
         ),
         (
             4,
             "غيرلي البرنامج لتقسيمة PPL.",
-            {"intent": "program_change", "target_split_type": "ppl"},
+            {"split_type": "ppl"},
         ),
         (
             2,
             "غيرلي البرنامج لتقسيمة Arnold.",
-            {"intent": "program_change", "target_split_type": "arnold"},
+            {"split_type": "arnold"},
         ),
         (
             3,
             "غيرلي البرنامج لتقسيمة Arnold x Upper/Lower.",
-            {"intent": "program_change", "target_split_type": "arnold_x_ul"},
+            {"split_type": "arnold_x_ul"},
         ),
         (
             4,
             "غيرلي البرنامج لتقسيمة Arnold x Upper/Lower.",
-            {"intent": "program_change", "target_split_type": "arnold_x_ul"},
+            {"split_type": "arnold_x_ul"},
         ),
     ],
 )
 def test_arabic_program_change_rejects_unsupported_frequency_or_split(
-    api, monkeypatch, frequency, message, classification
+    api, monkeypatch, frequency, message, arguments
 ):
     client, db = api
     player = f"arabic-invalid-program-change-{frequency}"
     headers = _authed(_register(client, player)["access_token"])
     before = _seed_chat_program(db, player, frequency=frequency)
-    model = ScriptedChatModel([classification])
+    model = ScriptedChatModel([_action("preview_program_rebuild", arguments),
+        assistant_graph.ARABIC_PROGRAM_CHANGE_CLARIFICATION_RESPONSE])
     monkeypatch.setattr(assistant_graph, "llm", model)
 
     with client.stream(
@@ -3287,17 +3299,20 @@ def test_arabic_program_change_rejects_unsupported_frequency_or_split(
         after = ledger.get_active_program()
     assert after.version == before.version
     assert _done_content(body) == (
-        "مش قادر أحدد تقسيمة البرنامج أو عدد أيامه. تحب البرنامج يبقى كام يوم وبأي تقسيمة؟"
+        assistant_graph.ARABIC_PROGRAM_CHANGE_CLARIFICATION_RESPONSE if arguments.get("days") == 6 else
+        "التقسيمة دي مش متاحة لعدد الأيام المطلوب. اختار تقسيمة متاحة أو غيّر عدد الأيام؛ مفيش حاجة اتغيرت."
     )
+    with db.open_ledger(player) as ledger:
+        assert ledger.get_pending_chat_program_edit() is None
 
 
-def test_english_program_routing_remains_unchanged(api, monkeypatch):
+def test_english_program_tool_previews_before_confirmation(api, monkeypatch):
     client, db = api
     player = "chat-routing-order"
     headers = _authed(_register(client, player)["access_token"])
-    _seed_chat_program(db, player)
+    before = _seed_chat_program(db, player)
     _install_chat_program_generator(monkeypatch)
-    model = ScriptedChatModel()
+    model = ScriptedChatModel([_action("preview_program_rebuild", {"days": 4})])
     monkeypatch.setattr(assistant_graph, "llm", model)
 
     with client.stream(
@@ -3306,7 +3321,7 @@ def test_english_program_routing_remains_unchanged(api, monkeypatch):
     ) as response:
         body = response.read().decode("utf-8")
         assert response.status_code == 200
-    assert "Rebuilt routine:" in _done_content(body)
+    _confirm_rebuild(client, db, headers, player, before, body)
     with db.open_ledger(player) as ledger:
         assert ledger.get_active_program().weekly_frequency == 4
 
@@ -3352,7 +3367,7 @@ def test_owner_reviewed_arabic_knee_sensation_intercepts_through_http_chat(api, 
 def test_clinical_chat_records_injury_and_clarifies_only_area_replies(api, monkeypatch):
     client, _db = api
     headers = _authed(_register(client, "injury-chat")['access_token'])
-    safety_model = ScriptedChatModel(default_turn="CHAT MODEL RAN")
+    safety_model = ScriptedChatModel([_action("update_injury")], default_turn="CHAT MODEL RAN")
     monkeypatch.setattr(assistant_graph, "llm", safety_model)
 
     with client.stream(
@@ -3564,7 +3579,7 @@ def test_injury_area_clarification_uses_arabic_labels(api, monkeypatch):
 def test_injury_status_reply_uses_arabic_label(api, monkeypatch):
     client, _db = api
     headers = _authed(_register(client, "injury-status-arabic")["access_token"])
-    monkeypatch.setattr(assistant_graph, "llm", ScriptedChatModel(default_turn="CHAT MODEL RAN"))
+    monkeypatch.setattr(assistant_graph, "llm", ScriptedChatModel([_action("update_injury")]))
     created = client.post(
         "/profile/injuries",
         headers=headers,
@@ -3708,7 +3723,6 @@ def test_clinical_fixed_reply_survives_any_recording_failure(api, monkeypatch):
 
 
 def test_player_chat_reads_injuries_through_limitations_section(api, monkeypatch):
-    _force_free_form_coaching_intent(monkeypatch)
     client, db = api
     headers = _authed(_register(client, "injury-tool")['access_token'])
     with db.open_ledger("injury-tool") as ledger:
@@ -3750,7 +3764,6 @@ def test_player_chat_reads_injuries_through_limitations_section(api, monkeypatch
 
 
 def test_limitations_clearances_hide_internal_ids_but_keep_player_wording(api, monkeypatch):
-    _force_free_form_coaching_intent(monkeypatch)
     client, db = api
     headers = _authed(_register(client, "injury-clearance-tool")['access_token'])
     db.catalog_conn.execute(
@@ -3845,7 +3858,6 @@ def test_limitations_clearances_hide_internal_ids_but_keep_player_wording(api, m
 
 
 def test_physician_followup_appends_without_swallowing_chat_and_reasks_for_area_advice(api, monkeypatch):
-    _force_free_form_coaching_intent(monkeypatch)
     client, _db = api
     headers = _authed(_register(client, "injury-followup-chat")["access_token"])
     model = ScriptedChatModel(default_turn="CHAT MODEL RAN")
@@ -3903,7 +3915,6 @@ def test_physician_followup_appends_without_swallowing_chat_and_reasks_for_area_
 def test_physician_followup_only_skips_a_reply_ending_with_a_question_mark(
     api, monkeypatch, question_reply
 ):
-    _force_free_form_coaching_intent(monkeypatch)
     client, db = api
     model = ScriptedChatModel(
         [
@@ -3964,7 +3975,6 @@ def test_physician_followup_only_skips_a_reply_ending_with_a_question_mark(
 
 
 def test_physician_followup_stream_tokens_match_done_reply(api, monkeypatch):
-    _force_free_form_coaching_intent(monkeypatch)
     client, db = api
     headers = _authed(_register(client, "injury-followup-stream")["access_token"])
     with db.open_ledger("injury-followup-stream") as ledger:
@@ -3993,7 +4003,6 @@ def test_physician_followup_stream_tokens_match_done_reply(api, monkeypatch):
 
 
 def test_arabic_chat_appends_arabic_physician_followup(api, monkeypatch):
-    _force_free_form_coaching_intent(monkeypatch)
     client, db = api
     headers = _authed(_register(client, "injury-followup-arabic")["access_token"])
     with db.open_ledger("injury-followup-arabic") as ledger:
@@ -4026,7 +4035,8 @@ def test_full_physician_clearance_requires_player_confirmation(api, monkeypatch,
             injury["id"], body_area="knee", description="Pain during squats", status="physician_seen"
         )
         assert injury["status"] == "physician_seen"
-    monkeypatch.setattr(assistant_graph, "llm", ScriptedChatModel(default_turn="CHAT MODEL RAN"))
+    model = ScriptedChatModel([_action("update_injury")])
+    monkeypatch.setattr(assistant_graph, "llm", model)
 
     with client.stream("POST", "/chat/messages", headers=headers, json={"content": message}) as response:
         body = response.read().decode("utf-8")
@@ -4041,10 +4051,10 @@ def test_full_physician_clearance_requires_player_confirmation(api, monkeypatch,
         assert response.status_code == 200
     assert _done_content(body) == "I marked the injury as resolved."
     assert client.get("/profile/injuries", headers=headers).json()[0]["status"] == "resolved"
+    assert len(model.calls) == 1  # The saved resolution question bypasses the model.
 
 
 def test_doctor_cleared_my_knee_is_not_saved_as_an_exercise_clearance(api, monkeypatch):
-    _force_free_form_coaching_intent(monkeypatch)
     client, db = api
     username = "doctor-cleared-knee"
     headers = _authed(_register(client, username)["access_token"])
@@ -4078,11 +4088,14 @@ def test_doctor_cleared_my_knee_is_not_saved_as_an_exercise_clearance(api, monke
         ("افتكر إني بتمرن الصبح", "بتمرن الصبح"),
     ],
 )
-def test_remember_intent_saves_once_without_model(api, monkeypatch, message, expected_text):
+def test_remember_tool_saves_once(api, monkeypatch, message, expected_text):
     client, db = api
     username = "remember-preference"
     headers = _authed(_register(client, username)["access_token"])
-    model = ScriptedChatModel(default_turn="MODEL MUST NOT WRITE PREFERENCES")
+    model = ScriptedChatModel([ToolCallsTurn(calls=[
+        {"name": "manage_assistant_preference", "args": {}, "id": "remember-first"},
+        {"name": "manage_assistant_preference", "args": {}, "id": "remember-repeated"},
+    ])])
     monkeypatch.setattr(assistant_graph, "llm", model)
 
     with client.stream("POST", "/chat/messages", headers=headers, json={"content": message}) as response:
@@ -4090,7 +4103,8 @@ def test_remember_intent_saves_once_without_model(api, monkeypatch, message, exp
         assert response.status_code == 200
 
     assert expected_text in _done_content(body)
-    assert model.calls == []
+    assert len(model.calls) == 1
+    assert "manage_assistant_preference" in model.calls[0]["tools"]
     assert [row["text"] for row in client.get("/chat/preferences", headers=headers).json()] == [expected_text]
 
 
@@ -4098,7 +4112,11 @@ def test_forget_proposes_closest_preference_and_requires_confirmation(api, monke
     client, _db = api
     username = "forget-preference"
     headers = _authed(_register(client, username)["access_token"])
-    model = ScriptedChatModel(default_turn="MODEL MUST NOT DELETE PREFERENCES")
+    model = ScriptedChatModel([
+        _action("manage_assistant_preference"),
+        replace(_action("manage_assistant_preference"), content="Your preferences are ready. "),
+        _action("manage_assistant_preference"),
+    ])
     monkeypatch.setattr(assistant_graph, "llm", model)
     original = client.post(
         "/chat/messages", headers=headers,
@@ -4124,14 +4142,15 @@ def test_forget_proposes_closest_preference_and_requires_confirmation(api, monke
         confirmed = response.read().decode("utf-8")
     assert "forgot" in _done_content(confirmed).lower()
     assert client.get("/chat/preferences", headers=headers).json() == []
-    assert model.calls == []
+    assert len(model.calls) == 3  # Both confirmation turns resolve before inference.
 
 
 def test_stale_forget_confirmation_cannot_answer_physician_question(api, monkeypatch):
     client, db = api
     username = "stale-preference-confirmation"
     headers = _authed(_register(client, username)["access_token"])
-    monkeypatch.setattr(assistant_graph, "llm", ScriptedChatModel(default_turn="unused"))
+    monkeypatch.setattr(assistant_graph, "llm", ScriptedChatModel([
+        _action("manage_assistant_preference"), _action("manage_assistant_preference")]))
 
     for content in (
         "Remember that I train in the mornings",
@@ -4169,7 +4188,8 @@ def test_preference_limits_are_enforced_and_clear_chat_keeps_preferences(api, mo
     client, db = api
     username = "preference-limits"
     headers = _authed(_register(client, username)["access_token"])
-    monkeypatch.setattr(assistant_graph, "llm", ScriptedChatModel(default_turn="unused"))
+    monkeypatch.setattr(assistant_graph, "llm", ScriptedChatModel([
+        _action("manage_assistant_preference") for _ in range(3)]))
     exactly_200 = "x" * 200
     with client.stream("POST", "/chat/messages", headers=headers,
                        json={"content": f"Remember {exactly_200}"}) as response:
@@ -4198,10 +4218,9 @@ def test_preference_limits_are_enforced_and_clear_chat_keeps_preferences(api, mo
 
 
 def test_preferences_api_edit_is_read_by_later_tool_call_and_ordinary_chat_does_not_write(api, monkeypatch):
-    _force_free_form_coaching_intent(monkeypatch)
     client, _db = api
     headers = _authed(_register(client, "preference-tool") ["access_token"])
-    model = ScriptedChatModel(default_turn="Understood.")
+    model = ScriptedChatModel(["Understood.", _action("manage_assistant_preference")])
     monkeypatch.setattr(assistant_graph, "llm", model)
     with client.stream("POST", "/chat/messages", headers=headers,
                        json={"content": "I hate lunges"}) as response:
@@ -4240,7 +4259,6 @@ def test_preferences_api_edit_is_read_by_later_tool_call_and_ordinary_chat_does_
 
 
 def test_player_nutrition_tool_omits_targets_after_positive_rescreen(api, monkeypatch):
-    _force_free_form_coaching_intent(monkeypatch)
     client, db = api
     username = "nutrition-tool-rescreen"
     headers = _authed(_register(client, username)["access_token"])
@@ -4297,7 +4315,6 @@ def test_player_nutrition_tool_omits_targets_after_positive_rescreen(api, monkey
 
 
 def test_player_nutrition_tool_returns_ready_payload_for_player_local_window(api, monkeypatch):
-    _force_free_form_coaching_intent(monkeypatch)
     client, db = api
     username = "nutrition-tool-ready"
     headers = _authed(_register(client, username)["access_token"])
@@ -4353,7 +4370,6 @@ def test_player_nutrition_tool_returns_ready_payload_for_player_local_window(api
 
 
 def test_player_nutrition_tool_reports_under_18_as_unavailable(api, monkeypatch):
-    _force_free_form_coaching_intent(monkeypatch)
     client, db = api
     username = "nutrition-tool-minor"
     headers = _authed(_register(client, username)["access_token"])

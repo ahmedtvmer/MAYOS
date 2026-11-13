@@ -9,7 +9,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from agent import assistant_graph
 from agent.assistant_graph import exercise_substitution_node
 from database.database_manager import DatabaseManager
-from tests.fakes.chat_model import ScriptedChatModel
+from tests.fakes.chat_model import ScriptedChatModel, ToolCallsTurn
 from utils.equipment_access import BODYWEIGHT_ONLY, COMMERCIAL_GYM, HOME_GYM
 from utils.player_output_budgets import SUBSTITUTION_RESOLUTION_MAX_OUTPUT_TOKENS
 
@@ -399,7 +399,9 @@ def test_catalog_lookup_model_context_includes_curated_exercise_facts(
             }
         },
     )
-    model = ScriptedChatModel(["The machine chest press is a chest exercise."])
+    model = ScriptedChatModel([ToolCallsTurn(calls=[{
+        "name": "search_exercises", "args": {"query": "machine chest press"}, "id": "catalog-read",
+    }]), "The machine chest press is a chest exercise."])
     monkeypatch.setattr(assistant_graph, "llm", model)
     query = "machine chest press"
     lookup_state = _state("", "")
@@ -411,13 +413,13 @@ def test_catalog_lookup_model_context_includes_curated_exercise_facts(
             {"intent": "coaching_qa", "query": "What are these movements?"},
         ],
     }
-    result = assistant_graph.composite_intent_node(
+    result = assistant_graph.generation_node(
         lookup_state,
         {"configurable": {"ledger": sub_db.ledger, "store": sub_db}},
     )
     assert "Primary action:" not in result["response_content"]
 
-    model_context = "\n".join(message.content for message in model.calls[0]["messages"])
+    model_context = "\n".join(message.content for message in model.calls[-1]["messages"])
     for field in (
         "Machine Chest Press",
         "Primary action: Shoulder Horizontal Adduction",
@@ -520,7 +522,7 @@ def test_active_program_sent_to_coreference_model_includes_curated_exercise_fact
         {"configurable": {"ledger": sub_db.ledger, "store": sub_db}},
     )
 
-    model_context = model.calls[0]["messages"][0].content
+    model_context = model.calls[-1]["messages"][0].content
     for field in (
         "Primary action: Shoulder Extension",
         "Secondary actions: Elbow Flexion",
@@ -546,7 +548,9 @@ def test_exercise_history_reply_keeps_display_name_and_model_context_has_curated
             }
         },
     )
-    model = ScriptedChatModel(["The last logged movement was a chest press."])
+    model = ScriptedChatModel([ToolCallsTurn(calls=[{
+        "name": "get_exercise_history", "args": {"exercise_id": CHEST_SLOT, "scope": "last_occurrence"}, "id": "history-read",
+    }]), "The last logged movement was a machine chest press."])
     monkeypatch.setattr(assistant_graph, "llm", model)
     query = f"last logged occurrence of {CHEST_SLOT}"
     request = _state("", "")
@@ -562,11 +566,11 @@ def test_exercise_history_reply_keeps_display_name_and_model_context_has_curated
             {"intent": "coaching_qa", "query": "What movement did I ask about?"},
         ],
     }
-    result = assistant_graph.composite_intent_node(
+    result = assistant_graph.generation_node(
         request,
         {"configurable": {"ledger": sub_db.ledger, "store": sub_db}},
     )
-    model_context = "\n".join(message.content for message in model.calls[0]["messages"])
+    model_context = "\n".join(message.content for message in model.calls[-1]["messages"])
 
     assert "machine chest press" in result["response_content"].lower()
     assert "Primary action:" not in result["response_content"]
@@ -597,7 +601,9 @@ def test_substitution_model_context_includes_curated_source_and_candidates(
             },
         },
     )
-    model = ScriptedChatModel(["The first option keeps the same main movement."])
+    model = ScriptedChatModel([ToolCallsTurn(calls=[{
+        "name": "substitute_exercise", "args": {"source_exercise": REVERSE_LAT_DISPLAY_NAME}, "id": "alternatives-read",
+    }]), "The first option keeps the same main movement."])
     monkeypatch.setattr(assistant_graph, "llm", model)
     query = f"show me alternatives for {REVERSE_LAT_DISPLAY_NAME}"
     state = _state("", "")
@@ -617,13 +623,13 @@ def test_substitution_model_context_includes_curated_source_and_candidates(
         ],
     }
 
-    result = assistant_graph.composite_intent_node(
+    result = assistant_graph.generation_node(
         state,
         {"configurable": {"ledger": sub_db.ledger, "store": sub_db}},
     )
 
     model_context = "\n".join(
-        message.content for message in model.calls[0]["messages"]
+        message.content for message in model.calls[-1]["messages"]
     )
     for field in (
         "Primary action: Shoulder Extension",

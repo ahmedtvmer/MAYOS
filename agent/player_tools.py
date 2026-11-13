@@ -73,6 +73,47 @@ class FoodLogArgs(BaseModel):
     offset: int = Field(default=0, ge=0)
 
 
+class ProgramOptionsArgs(BaseModel):
+    days: int | None = Field(default=None, ge=1, le=5, strict=True)
+
+
+_SPLIT_SUITABILITY = {
+    "full_body": "Players who prefer training the whole body each session and spreading practice across the week.",
+    "upper_lower": "Players who prefer separate upper and lower sessions, with extra upper-body practice at five days.",
+    "anterior_posterior": "Players who prefer grouping front-of-body and back-of-body work on separate days.",
+    "arnold": "Players who enjoy pairing chest/back and shoulders/arms, with a separate leg day.",
+    "arnold_x_ul": "Players who enjoy Arnold pairings plus upper/lower sessions across five days.",
+    "ppl": "Players who prefer separate push, pull and leg sessions.",
+    "ppl_x_ul": "Players who prefer push/pull/legs plus upper/lower sessions across five days.",
+}
+
+
+def _read_program_options(ledger: Any, args: ProgramOptionsArgs) -> dict[str, Any]:
+    from agent.program_rules import valid_splits_for
+    from agent.program_blueprints import match_split_keyword, resolve_split_type
+
+    profile = _player_profile(ledger)
+    program = ledger.get_active_program()
+    days = args.days if args.days is not None else (
+        getattr(program, "weekly_frequency", None) or profile.get("weekly_frequency")
+    )
+    if type(days) is not int or days not in range(1, 6):
+        return {"status": "not_set", "message": "Ask how many days per week the Player wants."}
+    current_name = str(getattr(program, "split_type", ""))
+    current = (resolve_split_type(match_split_keyword(current_name) or current_name, days)
+               if getattr(program, "weekly_frequency", None) == days else None)
+    return {
+        "status": "ok", "days": days,
+        "options": [{"split_type": key, "name": name, "suits": _SPLIT_SUITABILITY[key],
+                     "is_current": key == current,
+                     **({"label": "your current program", "label_ar": "برنامجك الحالي"} if key == current else {})}
+                    for key, name in valid_splits_for(days, profile.get("gender", "male"))],
+        "internal_fields": ["split_type"],
+        "message": "Read-only choices; suitability describes preferences, not medical clearance. "
+                   "Changing the program requires a preview and a separate confirmation.",
+    }
+
+
 class ChatHistorySearchArgs(BaseModel):
     """Keyword search and optional UTC date bounds for older chat messages."""
 
@@ -446,7 +487,7 @@ def _weekly_program_volume(direct: dict[str, int], indirect: dict[str, float]) -
 def _program_prescription_page(response: dict[str, Any], offset: int) -> dict[str, Any]:
     # Empty / exact fit / multi-page / oversized single row: never split a prescription.
     rows = [(day, exercise) for day in response["days"] for exercise in day["exercises"]]
-    page = {**response, "days": [], "next_offset": None}
+    page = {**_with_program_management(response), "days": [], "next_offset": None}
     for index in range(offset, len(rows)):
         day, exercise = rows[index]
         if not page["days"] or page["days"][-1]["day"] != day["day"]:
@@ -586,6 +627,17 @@ def _read_program_rationale(ledger: Any, args: ProgramRationaleArgs) -> dict[str
 
 PLAYER_READ_TOOL_REGISTRY: tuple[PlayerReadTool, ...] = (
     PlayerReadTool(
+        name="list_program_options",
+        description="List supported Training program types and who each suits for days per week. "
+                    "Use for other programs, splits or available program types, never exercise search. "
+                    "Omit days to use the active program or saved frequency. Does not change anything.",
+        args_schema=ProgramOptionsArgs,
+        reader=_read_program_options,
+        args_reader=_read_program_options,
+        status_en="Checking program options…",
+        status_ar="ببص على اختيارات البرنامج…",
+    ),
+    PlayerReadTool(
         name="get_player_profile",
         description=(
             "Read only requested Profile sections. No sections: names only. "
@@ -601,7 +653,7 @@ PLAYER_READ_TOOL_REGISTRY: tuple[PlayerReadTool, ...] = (
     PlayerReadTool(
         name="get_active_program",
         description=(
-            "Read active Program overview: ordered days and muscles, weekly sets, authority and "
+            "Read active Program overview: ordered days and muscles, weekly sets, who manages it and "
             "restriction skips; no prescriptions. Defaults to current week; week_order selects another. "
             "Scope day_name, exercise_name/exercise_id or muscle for matching prescriptions only. "
             "Rows include secondary_muscles and movement_pattern (curated primary action or null). "
@@ -700,7 +752,15 @@ PLAYER_READ_TOOL_REGISTRY: tuple[PlayerReadTool, ...] = (
 )
 
 
+def _with_program_management(tool_result: dict[str, Any]) -> dict[str, Any]:
+    return {**tool_result, "internal_fields": ["program_authority"],
+            "program_management": "Your coach manages this program." if tool_result["program_authority"] == "coach"
+            else "You manage your program."}
+
+
 def _encode_tool_result(tool_result: Any) -> str:
+    if isinstance(tool_result, dict) and "program_authority" in tool_result:
+        tool_result = _with_program_management(tool_result)
     rendered = tool_result if isinstance(tool_result, str) else json.dumps(
         tool_result, ensure_ascii=False, separators=(",", ":"), allow_nan=False
     )
@@ -717,6 +777,8 @@ def _encode_tool_result(tool_result: Any) -> str:
         compact = {
             "status": "summary_only",
             "program_authority": tool_result.get("program_authority", "player"),
+            "internal_fields": ["program_authority"],
+            "program_management": tool_result.get("program_management", "You manage your program."),
             **({"coach": tool_result["coach"]} if tool_result.get("coach") else {}),
             "weekly_sets_by_muscle": tool_result["weekly_sets_by_muscle"],
             "other_muscles": tool_result.get("other_muscles", {}),

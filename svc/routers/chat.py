@@ -6,6 +6,7 @@ without changing the persisted contract.
 
 import asyncio
 import json
+import logging
 import queue
 import threading
 from typing import Annotated, Any
@@ -20,6 +21,7 @@ from service import chat as chat_service
 from service.program_analytics import ProgramAnalyticsActor
 from service.messages import chat_error_message
 from service.model_limits import ModelAdmissionContext, admit_model_request
+from service.inference_metrics import log_turn_exception, record_failure
 from svc.dependencies import account_id_of, get_db, get_ledger, get_verified_player
 from svc.llm import (
     InferenceScope,
@@ -38,6 +40,11 @@ from svc.schemas import (
 from utils.text_scrubber import PIPELINE_ERROR_RESPONSE
 
 router = APIRouter(prefix="/chat", tags=["chat"])
+logger = logging.getLogger(__name__)
+
+
+def _stream_error_payload() -> dict[str, Any]:
+    return {"detail": PIPELINE_ERROR_RESPONSE, **chat_error_message(PIPELINE_ERROR_RESPONSE)}
 
 
 @router.post("/program-edit-previews/decision")
@@ -168,6 +175,10 @@ def _run_turn(
                     while not delivered.wait(timeout=0.1):
                         if disconnected.is_set():
                             break
+                if state.get("pipeline_error"):
+                    turn.mark_error()
+                    out.put(("error", _stream_error_payload()))
+                    return
                 chat_service.persist_assistant_message(ledger, state.get("response_content"))
                 if disconnected.is_set():
                     turn.mark_interrupted()
@@ -203,19 +214,17 @@ def _run_turn(
             done_payload["request_suggestion"] = state["request_suggestion"]
         if state.get("program_edit_preview") is not None:
             done_payload["program_edit_preview"] = state["program_edit_preview"]
-        out.put(("done", done_payload))
-    except Exception:
+        # Serialize on the worker so invalid tool payloads use the same logged
+        # error path as generation/persistence failures, before a done is sent.
+        done_frame = json.dumps({"done": True, **done_payload}, allow_nan=False)
+        out.put(("done", done_frame))
+    except Exception as exc:
+        log_turn_exception(logger, "Assistant stream worker failed", exc, request_id=turn.turn_id)
+        record_failure(exc)
+        turn.mark_error()
         if disconnected.is_set():
             turn.mark_interrupted()
-        out.put(
-            (
-                "error",
-                {
-                    "detail": PIPELINE_ERROR_RESPONSE,
-                    **chat_error_message(PIPELINE_ERROR_RESPONSE),
-                },
-            )
-        )
+        out.put(("error", _stream_error_payload()))
     finally:
         worker_done.set()
         out.put(("end", None))
@@ -292,9 +301,14 @@ async def post_message(
                 elif kind == "status":
                     yield f"event: status\ndata: {json.dumps({'status': payload})}\n\n"
                 elif kind == "done":
-                    yield f"data: {json.dumps({'done': True, **payload})}\n\n"
+                    yield f"data: {payload}\n\n"
                 elif kind == "error":
                     yield f"event: error\ndata: {json.dumps(payload)}\n\n"
+        except Exception as exc:
+            log_turn_exception(logger, "Assistant SSE delivery failed", exc, request_id=turn.turn_id)
+            turn.mark_error()
+            disconnected.set()
+            yield f"event: error\ndata: {json.dumps(_stream_error_payload())}\n\n"
         finally:
             if not worker_done.is_set():
                 disconnected.set()
