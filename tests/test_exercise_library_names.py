@@ -189,6 +189,7 @@ def test_current_exercise_names_batches_visibility_and_matches_per_id_behavior(f
 #: Owner-supplied demo media for authored exercises (uploaded to the media store).
 AUTHORED_MEDIA = {
     "mayos:2": ("images/mayos-2-bayesian-curl.jpg", "videos/mayos-2-bayesian-curl.gif"),
+    "mayos:3": ("images/mayos-3-cable-y-raise.jpg", "videos/mayos-3-cable-y-raise.gif"),
 }
 
 

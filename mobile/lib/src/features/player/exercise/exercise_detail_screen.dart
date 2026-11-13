@@ -20,13 +20,14 @@ import '../../../core/ui/mayos_scaffold.dart';
 import '../../../core/ui/mayos_segmented_control.dart';
 import '../../../core/workout_equipment.dart';
 import '../../../providers.dart';
+import '../tour/tour_targets.dart';
 
 /// Read-only exercise detail (#53): a typographic/muscle-group hero, the
 /// prescription stat trio when opened from a program day, and Overview /
 /// Technique / History tabs backed by real catalog and dashboard data.
 ///
 /// The hero stays fully useful without media; exercise media is gated behind
-/// [mayosExerciseMediaEnabled] and a loadable URL, neither of which exist yet.
+/// [mayosExerciseMediaEnabled] and a loadable URL.
 class ExerciseDetailScreen extends ConsumerStatefulWidget {
   const ExerciseDetailScreen({
     super.key,
@@ -267,9 +268,12 @@ class _Hero extends StatelessWidget {
         children: <Widget>[
           // A fixed 180×180 box — Gym visual's native size, never upscaled
           // past it — so loading and failure states never shift the layout.
-          Align(
-            alignment: Alignment.center,
-            child: _CatalogMedia(detail: detail),
+          TourTarget(
+            id: 'exercise_demo_media',
+            child: Align(
+              alignment: Alignment.center,
+              child: _CatalogMedia(detail: detail),
+            ),
           ),
           const SizedBox(height: MayosSpacing.xxs),
           Text(

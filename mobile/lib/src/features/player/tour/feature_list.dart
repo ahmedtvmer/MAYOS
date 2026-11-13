@@ -6,7 +6,7 @@ import 'tour_targets.dart';
 
 /// The shared Feature list used by the Tour and later discovery surfaces.
 const int tourCurrentVersion = 1;
-const int currentFeatureRelease = 6;
+const int currentFeatureRelease = 7;
 const int kReleaseShareCard = 3;
 const int kReleasePrCelebration = 3;
 const int kReleaseDurationCheck = 4;
@@ -63,6 +63,17 @@ List<String> validateFeatureEntries(
 }
 
 const List<FeatureEntry> featureList = <FeatureEntry>[
+  FeatureEntry(
+    id: 'cable_y_raise_demo',
+    titleEn: 'Cable Y-Raise demo',
+    sentenceEn: 'See a still image and animated demo of the Cable Y-Raise.',
+    titleAr: 'عرض Cable Y-Raise',
+    sentenceAr: 'شاهد صورة ثابتة وصورة متحركة توضّحان تمرين Cable Y-Raise.',
+    target: 'exercise_demo_media',
+    location: TourRouteLocation('$exerciseDetailPath/mayos:3'),
+    release: 7,
+    audience: 'lifter',
+  ),
   FeatureEntry(
     id: 'offline_start',
     titleEn: 'Open your saved training offline',
