@@ -42,7 +42,7 @@ def plan_chat_program_rebuild(
     active = ledger.get_active_program()
     if active is None:
         return {"error": "no_program"}
-    payload = program.model_dump()
+    payload = program.model_dump(mode="json")
     payload["version"] = active.version
     proposal = {
         "expected_version": active.version, "rebuild_base_program": payload,
@@ -524,7 +524,7 @@ def _preview_days(program, selected_days, optional_ids=None, requested_ids=None)
                     "reps_min": group.get("reps_min"), "reps_max": group.get("reps_max"),
                     "rir": group.get("target_rir"), "load": group.get("load"),
                     "amrap_last_set": group.get("amrap_last_set", False)}
-                    for group in item.get("set_groups", [])],
+                      for group in item.get("set_groups", [])],
                 "optional": str(item.get("exercise_id")) in optional_ids,
                 "requested_edit": (week_order, int(original["day_order"]),
                     str(item.get("exercise_id"))) in requested_ids} for item in day.get("exercises", [])]})

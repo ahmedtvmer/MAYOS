@@ -93,7 +93,7 @@ from agent.telemetry_reconciler import (
 )
 from database.exercise_library.schema import exercise_library_visible_sql
 from service.exercise_context import describe_exercise, describe_exercises
-from service.inference_metrics import record_failure, record_first_token
+from service.inference_metrics import log_turn_exception, record_failure, record_first_token
 from database.exercise_library.names import near_miss_exercise_ids
 from service import programs as programs_service
 from service.program_requests import MAX_REASON_CHARS
@@ -3511,7 +3511,7 @@ def _program_edit_confirmation_kind(query: str, pending: dict[str, Any]) -> str 
         r"\b(?:but|not|don't|do not|no|never|should|would|could|without|exclude|omit|skip)\b|مش|ما\s*تضيفش|ماتضيفش|لا", normalized
     ):
         return None
-    affirmative = r"(?:yes|yeah|yep|confirm|confirmed|أيوه|ايوه|تمام|ماشي|نعم)"
+    affirmative = r"(?:yes|yeah|yep|confirm|confirmed|أيوه|ايوه|تمام|ماشي|نعم|أكد|أكّد|اكد)"
     match = re.fullmatch(rf"{affirmative}[.!،,\s]*(.*?)[.!،,\s]*", normalized)
     if match:
         selection = match.group(1).strip()
@@ -3553,9 +3553,13 @@ def program_edit_reprompt_node(state: AssistantState, config: dict[str, Any] | N
     preview = _program_edit_preview_payload(pending)
     offered = [item["muscle"].replace("_", " ") for item in pending["proposal"].get("optional", [])]
     optional_names = ", ".join(offered)
-    reply = f"Please answer the preview with a clear yes or no. You can also say yes, include {optional_names}." \
-        if resolve_reply_language(_get_message_text(state["messages"][-1]), state.get("display_language", "en")) == "en" \
-        else f"رد على المعاينة بنعم أو لا بوضوح. وممكن تقول: أيوه، ضيف {optional_names}."
+    language = _tool_reply_language(state)
+    prompt = ("Please confirm or cancel this preview." if language == "en"
+              else "تمام، أكد المعاينة دي أو ألغِ.")
+    if offered:
+        prompt += (f" You can also say yes, include {optional_names}." if language == "en"
+                   else f" وممكن تقول: أيوه، ضيف {optional_names}.")
+    reply = finalize_coach_output(f"{_chat_edit_summary(pending['proposal'], language)}\n\n{prompt}")
     ledger.update_pending_chat_program_edit_offer(pending["offer_id"], reply)
     return {**_response(reply), "program_edit_preview": preview}
 
@@ -4419,8 +4423,8 @@ def generation_node(state: AssistantState, config: dict[str, Any] | None = None)
         return {**result, "selected_tools": state.get("selected_tools", [])}
     except PromptBudgetError as exc:
         return _response(str(exc))
-    except Exception:
-        logger.exception("Assistant generation failed")
+    except Exception as exc:
+        log_turn_exception(logger, "Assistant generation failed", exc)
         return _response(PIPELINE_ERROR_RESPONSE)
 
 
@@ -4438,8 +4442,8 @@ def _safe_node(handler):
                     ),
                 }
             return result
-        except Exception:
-            logger.exception("Assistant node failed: %s", handler.__name__)
+        except Exception as exc:
+            log_turn_exception(logger, f"Assistant node failed: {handler.__name__}", exc)
             if handler is hydrate_context_node:
                 return {"pipeline_error": PIPELINE_ERROR_RESPONSE}
             if handler is router_node:
@@ -4704,6 +4708,8 @@ def stream_assistant_turn(
     except PromptBudgetError as exc:
         result = _response(str(exc))
     except Exception as exc:
+        log_turn_exception(logger, "Assistant turn failed", exc)
+        state["pipeline_error"] = PIPELINE_ERROR_RESPONSE
         if tool_metrics and not telemetry_recorded:
             _record_telemetry_event(
                 intent,
@@ -4712,7 +4718,6 @@ def stream_assistant_turn(
                 tool_metrics=tool_metrics,
             )
         record_failure(exc)
-        logger.exception("Assistant turn failed")
         if stream_output.scrubber is not None:
             cleaned = stream_output.scrubber.finish()
             if cleaned:

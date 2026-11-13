@@ -8,6 +8,7 @@ from typing import Any, Literal
 from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field, ValidationError
+from service.inference_metrics import log_turn_exception
 
 from agent.player_tools import (
     EmptyToolArgs, PlayerReadTool, _encode_tool_result,
@@ -164,8 +165,8 @@ def _preview_rebuild(turn: PlayerToolTurn, **kwargs: Any) -> dict[str, Any]:
         if "error" in planned:
             return _rebuild_failure(turn, planned["error"])
         return _save_preview(turn, planned["proposal"])
-    except (ValueError, sqlite3.Error):
-        graph.logger.exception("Program rebuild preview could not be generated")
+    except (ValueError, sqlite3.Error) as exc:
+        log_turn_exception(graph.logger, "Program rebuild preview could not be generated", exc)
         return _rebuild_failure(turn, "generation_failed")
 
 
@@ -204,6 +205,8 @@ def _save_preview(turn: PlayerToolTurn, proposal: dict[str, Any]) -> dict[str, A
 def _confirm_program_edit(turn: PlayerToolTurn) -> dict[str, Any]:
     from agent import assistant_graph as graph
     ledger, _store = turn.handles
+    if (turn.state.get("tool_action_result") or {}).get("program_edit_preview"):
+        return {"status": "awaiting_separate_confirmation"}
     pending = ledger.get_pending_chat_program_edit()
     previous = next((graph._get_message_text(message) for message in reversed(turn.state["messages"][:-1])
                      if isinstance(message, graph.AIMessage)), "")
@@ -255,11 +258,11 @@ def build_player_chat_tools(state: dict[str, Any], config: dict[str, Any] | None
          EmptyToolArgs, lambda: {"telemetry": ledger.get_compact_telemetry()}),
         ("substitute_exercise", "Replace a named program exercise only on an explicit swap directive. Copy source/day from program; translate target to English. Omit target to request alternatives without saving.",
          SubstitutionArgs, lambda **args: _substitute_exercise(turn, **args)),
-        ("preview_program_rebuild", "Prepare a rebuild preview when requested, including rebuilding the CURRENT split with fresh exercise choices. Use split_type from list_program_options; supported display names are also accepted. Never saves the program; a later user turn must confirm.",
+        ("preview_program_rebuild", "Generate the actual exercises and sets NOW when the Player requests a rebuild, including the CURRENT split with fresh exercise choices. Omit days/split_type to keep the current program. Also use when yes/generate answers an offer to generate a preview and no real preview exists. Never substitute a muscle-group overview or ask permission to generate again. Use split_type from list_program_options; supported display names are also accepted. Never saves the program; a later user turn must confirm the generated preview.",
          RebuildArgs, lambda **args: _preview_rebuild(turn, **args)),
         ("preview_program_edit", "Prepare requested day additions/removals/set changes from the original message; does not save. Ask a separate confirmation.",
          EmptyToolArgs, lambda: turn.finish(graph.program_edit_chat_node(state, config))),
-        ("confirm_program_edit", "Confirm/cancel the latest program preview only when the Player answers it. Code validates the original reply and pending offer; no confirmation argument is accepted.",
+        ("confirm_program_edit", "Answer the latest REAL program preview. Confirm/cancel only on a clear affirmative/negative; generate or an unclear answer redisplays its exercises and sets and asks for confirmation without saving. If no real preview exists, use preview_program_rebuild to answer a request to generate one. Code validates the original reply and pending offer; no confirmation argument is accepted.",
          EmptyToolArgs, lambda: _confirm_program_edit(turn)),
         ("choose_deload", "Apply or undo a one-workout Deload only on the Player's explicit directive; code validates the original message.",
          EmptyToolArgs, lambda: turn.finish(graph.deload_choice_node(

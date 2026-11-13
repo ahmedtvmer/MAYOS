@@ -126,9 +126,9 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
   FeatureEntry(
     id: 'assistant',
     titleEn: 'Assistant',
-    sentenceEn: 'Ask about program types for your weekly days and who each suits, Exercises, working sets or recent food; rebuilds and day edits show a preview for you to confirm.',
+    sentenceEn: 'Ask about program types, Exercises, working sets or recent food; rebuilding your current program shows its exercises and sets straight away, then waits for your confirmation.',
     titleAr: 'المساعد',
-    sentenceAr: 'اسأل عن أنواع البرامج التدريبية المناسبة لعدد أيامك ولمن يناسب كل نوع، أو التمارين والمجموعات وطعامك مؤخرًا؛ وتظهر معاينة لتأكيد إعادة البناء وتعديلات الأيام.',
+    sentenceAr: 'اسأل عن أنواع البرامج التدريبية أو التمارين والمجموعات وطعامك مؤخرًا؛ إعادة بناء برنامجك الحالي تعرض تمارينه ومجموعاته فورًا، ثم تنتظر تأكيدك.',
     target: 'assistant',
     location: TourShellTabLocation(tabIndex: 0),
     release: 0,
