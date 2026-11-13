@@ -582,6 +582,9 @@ class FakeMayosApi {
   /// When true, `GET /auth/me` fails with a transient 500 (token still valid).
   bool meFails = false;
 
+  /// When true, `GET /auth/me` times out before receiving a response.
+  bool meTimesOut = false;
+
   /// When set, `GET /auth/me` answers this non-401 refusal status instead.
   int? meRefusalStatus;
   // When true, intake confirmation returns null program fields (coach-controlled edge).
@@ -1371,6 +1374,7 @@ class FakeMayosApi {
       return FakeResponse(
           refusal, <String, dynamic>{'detail': 'The request was refused.'});
     }
+    if (meTimesOut) return const FakeResponse.timeoutFailure();
     if (meFails) {
       return const FakeResponse(
           500, <String, dynamic>{'detail': 'The service is unavailable.'});

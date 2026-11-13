@@ -246,7 +246,7 @@ class AuthController extends StateNotifier<AuthState> {
     final AccountSession? session = state.session;
     if (session == null) return;
     _needsSessionConfirmation = true;
-    if (state.savedSessionIssue != SavedSessionIssue.offline) {
+    if (state.savedSessionIssue == null) {
       state = AuthState.authenticated(
         session,
         notice: state.notice,
@@ -419,7 +419,7 @@ class AuthController extends StateNotifier<AuthState> {
       session,
       notice: notice,
       savedSessionIssue: _needsSessionConfirmation
-          ? SavedSessionIssue.offline
+          ? state.savedSessionIssue ?? SavedSessionIssue.offline
           : null,
     );
     if (!_needsSessionConfirmation) unawaited(_repository.saveSession(session));

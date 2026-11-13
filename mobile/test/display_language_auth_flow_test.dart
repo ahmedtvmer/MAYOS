@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mayos_mobile/src/app.dart';
 import 'package:mayos_mobile/src/core/app_failure.dart';
+import 'package:mayos_mobile/src/core/connectivity.dart';
 import 'package:mayos_mobile/src/core/display_language/catalog.dart';
 import 'package:mayos_mobile/src/core/display_language/coach_copy.dart';
 import 'package:mayos_mobile/src/core/display_language/controller.dart';
@@ -19,6 +20,7 @@ import 'package:mayos_mobile/src/router.dart';
 
 import 'support/auth_harness.dart';
 import 'support/fake_google_auth.dart';
+import 'support/in_memory_browser_key_value_store.dart';
 import 'support/fake_mayos_api.dart';
 
 void main() {
@@ -88,6 +90,86 @@ void main() {
       expect(find.text(copy.serviceUnavailable), findsOneWidget);
       expect(find.text(copy.offlineSavedData), findsNothing);
       expect(find.text(copy.offlineBanner), findsNothing);
+    });
+  }
+
+  for (final String language in <String>['en', 'ar']) {
+    testWidgets(
+        'issue #721 banner tracks saved-session failures in $language',
+        (WidgetTester tester) async {
+      final FakeMayosApi fake = FakeMayosApi()
+        ..issuedToken = 'token-alice'
+        ..currentUsername = 'alice'
+        ..profileExists = true
+        ..recoveryEmail = 'alice@example.com'
+        ..displayLanguage = language;
+      final InMemoryTokenStore tokens = InMemoryTokenStore();
+      await tokens.save('token-alice');
+      final InMemoryBrowserKeyValueStore savedPlayerDataBrowser =
+          InMemoryBrowserKeyValueStore();
+      final InMemoryDisplayLanguageStore languageStore =
+          InMemoryDisplayLanguageStore()..value = language;
+      final List<Override> overrides = <Override>[
+        displayLanguageStoreProvider.overrideWithValue(languageStore),
+        offlineBannerEnabledProvider.overrideWithValue(true),
+        systemDisplayLanguageProvider.overrideWithValue(language),
+      ];
+      await tester.pumpWidget(authApp(
+        fake,
+        tokens,
+        savedPlayerDataBrowser: savedPlayerDataBrowser,
+        extraOverrides: overrides,
+      ));
+      await tester.pumpAndSettle();
+      expect(find.text(MayosCopy(language).serviceUnavailable), findsNothing);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      fake.meFails = true;
+      await tester.pumpWidget(authApp(
+        fake,
+        tokens,
+        savedPlayerDataBrowser: savedPlayerDataBrowser,
+        extraOverrides: overrides,
+      ));
+
+      final ProviderContainer container = ProviderScope.containerOf(
+        tester.element(find.byType(MayosApp)),
+        listen: false,
+      );
+      for (var attempt = 0;
+          attempt < 20 &&
+              container.read(authControllerProvider).savedSessionIssue == null;
+          attempt++) {
+        await tester.pump();
+      }
+      final controller = container.read(authControllerProvider.notifier);
+      final MayosCopy copy = MayosCopy(language);
+
+      // #721 regression: cache activation must not overwrite the startup 5xx.
+      expect(find.text(copy.serviceUnavailable), findsOneWidget);
+      expect(find.text(copy.offlineSavedData), findsNothing);
+
+      // A session snapshot update must retain the 5xx classification.
+      expect(controller.confirmWhatsNewSeenRelease('account-alice', 2), isTrue);
+      await tester.pump();
+      expect(find.text(copy.serviceUnavailable), findsOneWidget);
+      expect(find.text(copy.offlineSavedData), findsNothing);
+
+      // A transport timeout reclassifies the current issue as offline.
+      fake.meFails = false;
+      fake.meTimesOut = true;
+      await controller.retrySavedSession();
+      await tester.pump();
+      expect(find.text(copy.offlineSavedData), findsOneWidget);
+      expect(find.text(copy.serviceUnavailable), findsNothing);
+
+      // A later 5xx reclassifies it back to a server problem.
+      fake.meTimesOut = false;
+      fake.meFails = true;
+      await controller.retrySavedSession();
+      await tester.pump();
+      expect(find.text(copy.serviceUnavailable), findsOneWidget);
+      expect(find.text(copy.offlineSavedData), findsNothing);
     });
   }
 
