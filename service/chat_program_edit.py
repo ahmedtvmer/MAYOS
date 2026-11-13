@@ -441,20 +441,31 @@ def _named_exercise_candidates(db, ledger, name, context):
 
 
 def _exercise_ids_for_muscles(db, muscles):
-    from agent.focus_muscles import FOCUS_REVIEW_MUSCLES
+    from core.muscle_volume import main_group_for_focus, normalize_main_muscle
 
-    aliases = {muscle: {value.casefold() for value in FOCUS_REVIEW_MUSCLES.get(muscle, set())}
-               for muscle in muscles}
+    selected = {
+        normalize_main_muscle(muscle) or main_group_for_focus(muscle) or str(muscle).casefold()
+        for muscle in muscles
+    }
+    credits_by_exercise: dict[str, set[str]] = {}
+    for exercise_id, muscle in db.catalog_conn.execute(
+        "SELECT exercise_id, muscle FROM exercise_muscle_credits WHERE credit > 0"
+    ):
+        credits_by_exercise.setdefault(str(exercise_id), set()).add(str(muscle))
     rows = db.catalog_conn.execute("SELECT id FROM exercises").fetchall()
     found = set()
     for row in rows:
-        entry = db.get_exercise_library_entry(str(row[0])) or {}
-        values = {str(entry.get(key) or "").casefold() for key in
-                  ("primary_muscle", "secondary_muscle", "target_muscle")}
-        name = str(entry.get("display_name") or entry.get("name") or "").casefold()
-        if any(values.intersection(known) or any(alias in name for alias in known)
-               for known in aliases.values()):
-            found.add(str(row[0]))
+        exercise_id = str(row[0])
+        entry = db.get_exercise_library_entry(exercise_id) or {}
+        labels = [entry.get(key) for key in ("primary_muscle", "target_muscle", "secondary_muscle")]
+        labels.extend(entry.get("secondary_muscles") or ())
+        values = {
+            normalize_main_muscle(value) or str(value or "").casefold()
+            for value in labels if value
+        }
+        values.update(credits_by_exercise.get(exercise_id, ()))
+        if selected.intersection(values):
+            found.add(exercise_id)
     return found
 
 
@@ -524,7 +535,7 @@ def _is_lower_day(db, day):
 
 
 def _is_upper_day(db, day):
-    return re.search(r"\b(?:upper|push|pull|chest|back|arms?)\b", str(day.get("day_name", "")), re.IGNORECASE) is not None
+    return re.search(r"\b(?:upper|push|pull|chest|lats|traps|arms?)\b", str(day.get("day_name", "")), re.IGNORECASE) is not None
 
 
 def resolve_chat_program_edit(

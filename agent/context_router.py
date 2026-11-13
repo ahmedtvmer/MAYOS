@@ -11,12 +11,12 @@ from typing import Any
 
 from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
 
-from agent.focus_muscles import FOCUS_REGION_POLICY, FOCUS_REVIEW_MUSCLES
 from agent.player_prompt import (
     HOSTED_PROMPT_MAX_BYTES, HOSTED_PROMPT_TOOL_RESULT_RESERVE_BYTES,
     get_message_text, message_role,
 )
 from agent.player_tools import run_player_tool_calls
+from core.muscle_volume import default_muscle_credits
 from core.weak_point_suggestions import WEAK_POINT_ALIASES
 
 MAX_CONTEXT_PIECE_BYTES = 8 * 1024
@@ -155,7 +155,15 @@ def _catalog_exercise_mentions(text, vocabulary, active, short_names) -> list[_M
                         for short in short_names)]
 
 
-def _day_has_region(day: Any, region: str, targets: dict[str, str]) -> bool:
+_MAIN_GROUP_REGION = {
+    "chest": "upper", "lats": "upper", "traps": "upper", "shoulders": "upper",
+    "rear delts": "upper", "biceps": "upper",
+    "triceps": "upper", "quads": "lower", "hamstrings": "lower",
+    "glutes": "lower", "calves": "lower", "core": "neutral",
+}
+
+
+def _day_has_region(day: Any, region: str, credits: dict[str, dict[str, dict[str, Any]]]) -> bool:
     name = _normalize(day.day_name)
     named_regions = {match.key for match in _mentions(name, [
         (key, word) for key, words in _DAY_REGIONS.items() for word in words
@@ -163,10 +171,13 @@ def _day_has_region(day: Any, region: str, targets: dict[str, str]) -> bool:
     if named_regions:
         return region in named_regions
     # Full-body days load both regions; a lower day may also have arm isolations.
-    muscles = {group for exercise in day.exercises
-               for group, names in FOCUS_REVIEW_MUSCLES.items()
-               if targets.get(str(exercise.exercise_id), "").casefold() in names}
-    regions = {FOCUS_REGION_POLICY[muscle]["home_region"] for muscle in muscles}
+    muscles = {
+        group
+        for exercise in day.exercises
+        for group, attribution in credits.get(str(exercise.exercise_id), {}).items()
+        if float(attribution["credit"]) > 0
+    }
+    regions = {_MAIN_GROUP_REGION[muscle] for muscle in muscles if muscle in _MAIN_GROUP_REGION}
     return region in regions
 
 
@@ -187,11 +198,30 @@ def _region_day_names(text: str, days: Sequence[Any], ledger: Any) -> set[str]:
         text, [(region, alias) for region, aliases in _REGIONS.items() for alias in aliases]
     )}
     if regions:
-        targets = ledger.volume_review_exercise_targets(
-            [str(exercise.exercise_id) for day in days for exercise in day.exercises]
-        )
+        exercise_ids = list(dict.fromkeys(
+            str(exercise.exercise_id) for day in days for exercise in day.exercises
+        ))
+        credit_reader = getattr(ledger, "volume_review_exercise_credits", None)
+        if callable(credit_reader):
+            credits = credit_reader(exercise_ids)
+        else:
+            targets = ledger.volume_review_exercise_targets(exercise_ids)
+            exercise_names = {
+                str(exercise.exercise_id): str(exercise.exercise_name)
+                for day in days for exercise in day.exercises
+            }
+            credits = {
+                exercise_id: {
+                    group: {"credit": credit}
+                    for group, credit in default_muscle_credits(
+                        targets.get(exercise_id),
+                        exercise_name=exercise_names.get(exercise_id),
+                    ).items()
+                }
+                for exercise_id in exercise_ids
+            }
         for region in regions:
-            matching_days = [day.day_name for day in days if _day_has_region(day, region, targets)]
+            matching_days = [day.day_name for day in days if _day_has_region(day, region, credits)]
             selected.update(matching_days or [_REGIONS[region][0]])
     return selected
 
@@ -221,7 +251,7 @@ def _day_words(days: Sequence[Any]) -> list[tuple[str, str]]:
 
 
 def _without_day_names(text: str, days: Sequence[Any]) -> str:
-    # Day labels such as Chest & Back scope the whole day, not only those muscles.
+    # Named muscle days scope the whole day, not only matching exercises.
     characters = list(text)
     for match in _mentions(text, _day_words(days)):
         characters[match.start:match.end] = " " * (match.end - match.start)

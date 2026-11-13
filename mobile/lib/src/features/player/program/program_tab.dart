@@ -1563,7 +1563,7 @@ class _DesignOfferWeakPointsDialog extends StatefulWidget {
 class _DesignOfferWeakPointsDialogState
     extends State<_DesignOfferWeakPointsDialog> {
   static const List<String> _muscles = <String>[
-    'chest', 'upper_chest', 'back', 'shoulders', 'side_delts', 'biceps',
+    'chest', 'upper_chest', 'lats', 'shoulders', 'side_delts', 'traps', 'biceps',
     'triceps', 'forearms', 'quads', 'hamstrings', 'glutes', 'adductors',
     'calves', 'abs',
   ];
