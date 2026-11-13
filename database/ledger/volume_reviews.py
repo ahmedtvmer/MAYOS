@@ -2,6 +2,8 @@
 
 from typing import Any
 
+from core.muscle_volume import default_muscle_credits
+
 
 class LedgerVolumeReviewsMixin:
     def program_exercise_metadata(self, exercise_ids: list[str]) -> dict[str, dict[str, Any]]:
@@ -45,6 +47,59 @@ class LedgerVolumeReviewsMixin:
         curated = self._curated_primary_muscles(placeholders, ids)
         fallback = self._catalog_target_muscles(placeholders, ids)
         return {exercise_id: curated.get(exercise_id) or fallback.get(exercise_id) for exercise_id in ids}
+
+    def volume_review_exercise_credits(
+        self, exercise_ids: list[str]
+    ) -> dict[str, dict[str, dict[str, Any]]]:
+        """Return each exercise's persisted main-group credit and direct flag."""
+        ids = sorted({str(value) for value in exercise_ids if value})
+        if not ids:
+            return {}
+        credits = self._stored_exercise_muscle_credits(ids)
+        missing = [exercise_id for exercise_id in ids if not credits[exercise_id]]
+        if missing:
+            self._fill_default_exercise_credits(missing, credits)
+        return credits
+
+    def _stored_exercise_muscle_credits(self, exercise_ids: list[str]):
+        placeholders = ",".join("?" for _ in exercise_ids)
+        credits = {exercise_id: {} for exercise_id in exercise_ids}
+        for exercise_id, muscle, credit, is_primary, source in self.conn.execute(
+            f"SELECT exercise_id, muscle, credit, is_primary, source "
+            f"FROM catalog.exercise_muscle_credits WHERE exercise_id IN ({placeholders})",
+            exercise_ids,
+        ):
+            credits[str(exercise_id)][str(muscle)] = {
+                "credit": float(credit), "is_primary": bool(is_primary), "source": str(source),
+            }
+        return credits
+
+    def _fill_default_exercise_credits(self, exercise_ids, credits) -> None:
+        placeholders = ",".join("?" for _ in exercise_ids)
+        targets = self.volume_review_exercise_targets(exercise_ids)
+        names = {
+            str(exercise_id): str(name)
+            for exercise_id, name in self.conn.execute(
+                "SELECT id, name FROM catalog.exercises "
+                f"WHERE id IN ({placeholders})",
+                exercise_ids,
+            )
+        }
+        helpers = {exercise_id: [] for exercise_id in exercise_ids}
+        for exercise_id, muscle in self.conn.execute(
+            "SELECT exercise_id, muscle FROM catalog.exercise_secondary_muscles "
+            f"WHERE exercise_id IN ({placeholders}) ORDER BY exercise_id, muscle",
+            exercise_ids,
+        ):
+            helpers[str(exercise_id)].append(str(muscle))
+        for exercise_id in exercise_ids:
+            credits[exercise_id].update({
+                group: {"credit": credit, "is_primary": credit == 1.0, "source": "default"}
+                for group, credit in default_muscle_credits(
+                    targets.get(exercise_id), helpers[exercise_id],
+                    exercise_name=names.get(exercise_id),
+                ).items()
+            })
 
     def volume_review_workout_rows(self, version: int, start: str, end: str) -> list[dict[str, Any]]:
         rows = self.conn.execute(

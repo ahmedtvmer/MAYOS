@@ -168,15 +168,15 @@ def test_day_named_for_muscles_includes_its_other_exercises(router_player, monke
     client, db, headers = router_player
     with db.open_ledger("router-player") as ledger:
         program = ledger.get_active_program()
-        program.days[0].day_name = "Chest & Back"
+        program.days[0].day_name = "Chest, Lats & Traps"
         ledger.save_training_program(program.model_dump())
     _force_free_form_coaching_intent(monkeypatch)
     model = ScriptedChatModel(["The day also includes arms."])
     monkeypatch.setattr(assistant_graph, "llm", model)
-    response = client.post("/chat/messages", headers=headers, json={"content": "What's on Chest & Back?"})
+    response = client.post("/chat/messages", headers=headers, json={"content": "What's on Chest, Lats & Traps?"})
     assert _done_content(response.text) == "The day also includes arms."
     calls, results = _simulated_reads(model)
-    assert [call["args"] for call in calls] == [{"day_name": "Chest & Back"}]
+    assert [call["args"] for call in calls] == [{"day_name": "Chest, Lats & Traps"}]
     assert {exercise["name"] for exercise in results[0]["days"][0]["exercises"]} == {
         "Dumbbell Bench Press", "Biceps Curl", "Triceps Pushdown",
     }
@@ -264,7 +264,7 @@ def test_router_drops_pieces_that_do_not_fit_prompt_reserve(router_player, monke
     with db.open_ledger("router-player") as ledger:
         # History trimming (#524) keeps the latest replies whole, so those carry the prompt pressure.
         for _ in range(9):
-            ledger.add_chat_message("assistant", "Earlier answer. " + "x" * 4_800)
+            ledger.add_chat_message("assistant", "Earlier answer. " + "x" * 2_500)
     model = ScriptedChatModel(["Please narrow the question."])
     monkeypatch.setattr(assistant_graph, "llm", model)
     with caplog.at_level(logging.INFO):

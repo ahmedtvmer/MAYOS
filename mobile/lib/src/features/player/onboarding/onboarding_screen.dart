@@ -727,7 +727,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen>
           ? value.map((dynamic item) => Map<String, String>.from(item as Map)).toList()
           : <Map<String, String>>[];
       const List<String> muscles = <String>[
-        'chest', 'upper_chest', 'back', 'shoulders', 'side_delts', 'biceps', 'triceps',
+        'chest', 'upper_chest', 'lats', 'shoulders', 'side_delts', 'traps', 'biceps', 'triceps',
         'forearms', 'quads', 'hamstrings', 'glutes', 'adductors', 'calves', 'abs',
       ];
       final MayosCopy copy = MayosCopy(displayLanguage);

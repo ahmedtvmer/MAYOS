@@ -5,6 +5,7 @@ from typing import Any
 
 EXERCISE_DISPLAY_JOIN = """
 LEFT JOIN exercises e ON e.id = {exercise_id}
+LEFT JOIN catalog.exercise_display_names edn ON edn.exercise_id = {exercise_id}
 LEFT JOIN catalog.coach_exercises ce ON ce.id = {exercise_id}
 """
 EXERCISE_DISPLAY_EQUIPMENT_SQL = "COALESCE(e.equipment, ce.equipment)"
@@ -21,7 +22,12 @@ def exercise_display_name_sql(
     exercise_id_expression: str, fallback_expression: str | None = None
 ) -> str:
     """SQL expression for the resolved exercise name, falling back to its id."""
-    values = ["e.name", "ce.name", fallback_expression or exercise_id_expression]
+    values = [
+        "edn.display_name",
+        "e.name",
+        "ce.name",
+        fallback_expression or exercise_id_expression,
+    ]
     return f"COALESCE({', '.join(values)})"
 
 

@@ -71,7 +71,8 @@ class MayosCopy {
   String weakPointMuscle(String key) => switch (key) {
         'chest' => isArabic ? 'الصدر' : 'Chest',
         'upper_chest' => isArabic ? 'أعلى الصدر' : 'Upper chest',
-        'back' => isArabic ? 'الظهر' : 'Back',
+        'back' || 'lats' => isArabic ? 'اللاتس (الظهر العريض)' : 'Lats',
+        'traps' => isArabic ? 'الترابيس' : 'Traps',
         'shoulders' => isArabic ? 'الأكتاف' : 'Shoulders',
         'side_delts' => isArabic ? 'الأكتاف الجانبية' : 'Side delts',
         'biceps' => isArabic ? 'العضلة ذات الرأسين' : 'Biceps',
@@ -107,15 +108,35 @@ class MayosCopy {
   String programVolumeWarning(String muscle, int sets, int ceiling) {
     const Map<String, String> arabicMuscles = <String, String>{
       'chest': 'الصدر', 'pectorals': 'الصدر', 'quads': 'العضلات الرباعية',
-      'back': 'الظهر', 'shoulders': 'الكتفين', 'glutes': 'الأرداف',
+      'back': 'اللاتس (الظهر العريض)', 'lats': 'اللاتس (الظهر العريض)',
+      'traps': 'الترابيس', 'upper back': 'الترابيس', 'mid back': 'الترابيس',
+      'middle back': 'الترابيس', 'upper-back': 'الترابيس', 'mid-back': 'الترابيس',
+      'middle-back': 'الترابيس', 'upper traps': 'الترابيس', 'mid traps': 'الترابيس',
+      'middle traps': 'الترابيس', 'lower traps': 'الترابيس',
+      'upper trapezius': 'الترابيس', 'mid trapezius': 'الترابيس',
+      'middle trapezius': 'الترابيس', 'lower trapezius': 'الترابيس',
+      'rhomboids': 'الترابيس', 'trapezius': 'الترابيس',
+      'shoulders': 'الكتفين', 'glutes': 'الأرداف',
       'hamstrings': 'أوتار الركبة', 'calves': 'السمانة', 'abs': 'البطن',
       'biceps': 'العضلة ذات الرأسين', 'triceps': 'العضلة ثلاثية الرؤوس',
       'forearms': 'الساعدان', 'adductors': 'العضلات المقربة',
-      'upper chest': 'أعلى الصدر', 'lats': 'العضلة الظهرية العريضة',
+      'upper chest': 'أعلى الصدر',
       'front delts': 'الأكتاف الأمامية', 'side delts': 'الأكتاف الجانبية',
       'rear delts': 'الأكتاف الخلفية',
     };
-    final String label = isArabic ? (arabicMuscles[muscle.toLowerCase()] ?? muscle) : muscle;
+    const Map<String, String> englishMuscles = <String, String>{
+      'back': 'Lats', 'lats': 'Lats', 'traps': 'Traps',
+      'upper back': 'Traps', 'mid back': 'Traps', 'middle back': 'Traps',
+      'upper-back': 'Traps', 'mid-back': 'Traps', 'middle-back': 'Traps',
+      'upper traps': 'Traps', 'mid traps': 'Traps', 'middle traps': 'Traps',
+      'lower traps': 'Traps', 'upper trapezius': 'Traps', 'mid trapezius': 'Traps',
+      'middle trapezius': 'Traps', 'lower trapezius': 'Traps',
+      'rhomboids': 'Traps', 'trapezius': 'Traps',
+    };
+    final String normalized = muscle.toLowerCase();
+    final String label = isArabic
+        ? (arabicMuscles[normalized] ?? muscle)
+        : (englishMuscles[normalized] ?? muscle);
     return isArabic
         ? 'سيصل تدريب $label إلى ${_ltr('$sets')} مجموعات أسبوعية، متجاوزًا الحد ${_ltr('$ceiling')}.'
         : '$label will reach $sets weekly working sets, above the $ceiling-set review ceiling.';

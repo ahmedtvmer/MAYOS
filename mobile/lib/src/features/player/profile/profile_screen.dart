@@ -34,7 +34,7 @@ import '../onboarding/onboarding_widgets.dart'
 /// check is only a courtesy, the service stays authoritative.
 const int maxPauseDays = 14;
 const List<String> _weakPointKeys = <String>[
-  'chest', 'upper_chest', 'back', 'shoulders', 'side_delts', 'biceps', 'triceps',
+  'chest', 'upper_chest', 'lats', 'shoulders', 'side_delts', 'traps', 'biceps', 'triceps',
   'forearms', 'quads', 'hamstrings', 'glutes', 'adductors', 'calves', 'abs',
 ];
 const String _profileContractError =

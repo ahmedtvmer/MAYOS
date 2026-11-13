@@ -10,7 +10,11 @@ from agent.program_rationale import CHANGE_VOLUME_REVIEW
 from agent.progression_engine import set_e1rm
 from agent.ProgramState import program_exercise_working_sets
 from agent.program_blueprints import SLOT_STAPLES, experience_level_for_training_age
-from agent.focus_muscles import FOCUS_MULTIPLIER, FOCUS_REVIEW_MUSCLES
+from agent.focus_muscles import (
+    FOCUS_MULTIPLIER,
+    FOCUS_REVIEW_MUSCLES,
+    FOCUS_REVIEW_PRIMARY_TARGETS,
+)
 from agent.program_weeks import flatten_program_days, normalize_program_weeks
 from utils.equipment_access import equipment_access_allows
 
@@ -18,15 +22,26 @@ BASE_CEILINGS = {"beginner": 8, "intermediate": 10, "advanced": 13}
 REMOVAL_FLOOR = 4
 
 
-def _review_focus_muscles(program: Any) -> set[str]:
-    """Map version-pinned Weak point keys to Volume review muscle groups."""
+def _review_focus_muscles(
+    program: Any, primary_muscles: dict[str, str | None]
+) -> set[str]:
+    """Map version-pinned Weak points to matching credited muscle groups."""
     rationale = getattr(program, "program_rationale", None) or {}
-    return {
-        review_muscle
-        for item in rationale.get("focus_muscles", [])
-        if isinstance(item, dict) and item.get("muscle")
-        for review_muscle in FOCUS_REVIEW_MUSCLES.get(str(item["muscle"]).strip().lower(), set())
+    primary_labels = {
+        str(primary).strip().casefold().replace("_", " ").replace("-", " ")
+        for primary in primary_muscles.values()
+        if primary
     }
+    focused_groups = set()
+    for item in rationale.get("focus_muscles", []):
+        if not isinstance(item, dict) or not item.get("muscle"):
+            continue
+        focus_key = str(item["muscle"]).strip().lower()
+        exact_primary = FOCUS_REVIEW_PRIMARY_TARGETS.get(focus_key)
+        if exact_primary and exact_primary not in primary_labels:
+            continue
+        focused_groups.update(FOCUS_REVIEW_MUSCLES.get(focus_key, set()))
+    return focused_groups
 
 
 def review_facts(ledger: Any, program: Any, profile: dict[str, Any], as_of: date) -> dict[str, Any]:
@@ -41,22 +56,37 @@ def review_facts(ledger: Any, program: Any, profile: dict[str, Any], as_of: date
     current_week = ledger.get_program_position(program).current_week
     program_weeks = normalize_program_weeks(program)
     current_days = _current_week_days(program_weeks, current_week)
-    targets = _exercise_targets(ledger, current_days)
-    sets_by_muscle: dict[str, int] = {}
-    exercises_by_muscle: dict[str, list[tuple[Any, Any, str]]] = {}
+    history_rows = ledger.volume_review_workout_rows(
+        active_version, changed.isoformat(), as_of.isoformat()
+    )
+    current_exercise_ids = sorted(
+        {
+            str(exercise["exercise_id"])
+            for day in current_days
+            for exercise in day["exercises"]
+        }
+    )
+    credits = _exercise_credits(
+        ledger, current_days, [str(row["exercise_id"]) for row in history_rows]
+    )
+    primary_muscles = ledger.volume_review_exercise_targets(current_exercise_ids)
+    sets_by_muscle: dict[str, float] = {}
+    exercises_by_muscle: dict[str, list[tuple[Any, Any, str, float]]] = {}
     for day in current_days:
         for ex in day["exercises"]:
             exercise_id = str(ex["exercise_id"])
-            muscle = targets.get(exercise_id)
-            if muscle:
-                working_sets = program_exercise_working_sets(ex)
-                sets_by_muscle[muscle] = sets_by_muscle.get(muscle, 0) + working_sets
-                exercises_by_muscle.setdefault(muscle, []).append((day, ex, exercise_id))
-    by_muscle, sessions = _history_by_muscle(ledger, active_version, changed, as_of, targets)
+            working_sets = program_exercise_working_sets(ex)
+            for muscle, attribution in credits.get(exercise_id, {}).items():
+                credit = float(attribution["credit"])
+                if credit <= 0:
+                    continue
+                sets_by_muscle[muscle] = sets_by_muscle.get(muscle, 0.0) + working_sets * credit
+                exercises_by_muscle.setdefault(muscle, []).append((day, ex, exercise_id, credit))
+    by_muscle, sessions = _history_by_muscle(history_rows, credits)
     adherence = _adherence(ledger, active_version, changed, as_of, elapsed_weeks, program.weekly_frequency)
     experience = float(profile.get("training_age_years") or 0)
     level = experience_level_for_training_age(experience)
-    focus_muscles = _review_focus_muscles(program)
+    focus_muscles = _review_focus_muscles(program, primary_muscles)
     results = []
     for muscle in sorted(sets_by_muscle):
         muscle_rows = by_muscle.get(muscle, [])
@@ -81,23 +111,25 @@ def review_facts(ledger: Any, program: Any, profile: dict[str, Any], as_of: date
         )
         placements = exercises_by_muscle[muscle]
         edits = _place_delta(placements, delta)
-        placed = _placed_delta(placements, edits)
-        if delta > placed:
+        placed_sets = _placed_delta(placements, edits)
+        placed_credit = _credited_placed_delta(placements, edits)
+        if delta > placed_credit:
             extra = _second_staple(
                 ledger,
                 program,
                 placements,
-                targets,
+                credits,
                 muscle,
-                delta - placed,
+                delta - placed_credit,
                 profile.get("equipment_access"), current_week,
             )
             if extra:
                 edits.append(extra)
-                placed += int(extra["add_exercise"]["target_sets"])
-        if delta and not placed:
+                added_sets = int(extra["add_exercise"]["target_sets"])
+                placed_sets += added_sets
+        if delta and not placed_sets:
             continue
-        actual_delta = placed if delta > 0 else -placed if delta < 0 else 0
+        actual_delta = placed_sets if delta > 0 else -placed_sets if delta < 0 else 0
         results.append({"muscle": muscle, "verdict": verdict, "reason": reason, "set_delta": actual_delta, "edits": edits, "weekly_sets": sets_by_muscle[muscle]})
     eligible = bool(results)
     return {"eligible": eligible, "next_eligible_date": next_date.isoformat(), "muscles": results}
@@ -110,27 +142,30 @@ def _current_week_days(program_weeks: list[dict[str, Any]], current_week: int) -
     )
 
 
-def _exercise_targets(ledger: Any, days: list[dict[str, Any]]) -> dict[str, str | None]:
+def _exercise_credits(
+    ledger: Any, days: list[dict[str, Any]], extra_ids: list[str] | None = None
+) -> dict[str, dict[str, dict[str, Any]]]:
     exercise_ids = {str(ex["exercise_id"]) for day in days for ex in day["exercises"]}
     exercise_ids.update(str(item) for values in SLOT_STAPLES.values() for item in values)
+    exercise_ids.update(str(item) for item in (extra_ids or ()) if item)
     if not exercise_ids:
         return {}
-    return ledger.volume_review_exercise_targets(sorted(exercise_ids))
+    return ledger.volume_review_exercise_credits(sorted(exercise_ids))
 
 
 def _history_by_muscle(
-    ledger: Any, version: int, start: date, end: date, targets: dict[str, str | None]
+    rows: list[dict[str, Any]],
+    credits: dict[str, dict[str, dict[str, Any]]],
 ) -> tuple[dict[str, list[dict[str, Any]]], dict[str, dict[str, Any]]]:
-    rows = ledger.volume_review_workout_rows(version, start.isoformat(), end.isoformat())
     by_muscle: dict[str, list[dict[str, Any]]] = {}
     sessions: dict[str, dict[str, Any]] = {}
     for row in rows:
-        muscle = targets.get(str(row["exercise_id"]))
-        if not muscle:
-            continue
+        exercise_credits = credits.get(str(row["exercise_id"]), {})
         session_id = str(row["session_id"])
         sessions[session_id] = row
-        by_muscle.setdefault(muscle, []).append(row)
+        for muscle, attribution in exercise_credits.items():
+            if float(attribution["credit"]) > 0:
+                by_muscle.setdefault(muscle, []).append(row)
     return by_muscle, sessions
 
 
@@ -146,7 +181,7 @@ def _verdict(
     adherence: float,
     low_readiness: bool,
     overshoot_sessions: int,
-    weekly_sets: int,
+    weekly_sets: float,
     level: str,
     focus: bool = False,
 ) -> tuple[str, int, str]:
@@ -189,10 +224,10 @@ def _trend_for_muscle(rows: list[dict[str, Any]], midpoint: date) -> str | None:
     return "progressing" if change > .015 else "regressing" if change < -.015 else "flat"
 
 
-def _placed_delta(placements: list[tuple[Any, Any, str]], edits: list[dict[str, Any]]) -> int:
+def _placed_delta(placements: list[tuple[Any, Any, str, float]], edits: list[dict[str, Any]]) -> int:
     original = {
         (int(day["week_order"]), int(day["day_order"]), exercise_id): program_exercise_working_sets(exercise)
-        for day, exercise, exercise_id in placements
+        for day, exercise, exercise_id, _credit in placements
     }
     return sum(
         abs(int(edit["target_sets"]) - original[(edit["week_order"], edit["day_order"], edit["exercise_id"])])
@@ -200,18 +235,34 @@ def _placed_delta(placements: list[tuple[Any, Any, str]], edits: list[dict[str, 
     )
 
 
-def _place_delta(exercises: list[tuple[Any, Any, str]], delta: int) -> list[dict[str, Any]]:
+def _credited_placed_delta(
+    placements: list[tuple[Any, Any, str, float]], edits: list[dict[str, Any]]
+) -> float:
+    original = {
+        (int(day["week_order"]), int(day["day_order"]), exercise_id): (
+            program_exercise_working_sets(exercise), credit
+        )
+        for day, exercise, exercise_id, credit in placements
+    }
+    return sum(
+        abs(int(edit["target_sets"]) - original[(edit["week_order"], edit["day_order"], edit["exercise_id"])][0])
+        * original[(edit["week_order"], edit["day_order"], edit["exercise_id"])][1]
+        for edit in edits if "exercise_id" in edit
+    )
+
+
+def _place_delta(exercises: list[tuple[Any, Any, str, float]], delta: int) -> list[dict[str, Any]]:
     edits = []
     ordered = list(exercises if delta >= 0 else reversed(exercises))
     remaining = abs(delta)
-    for day, exercise, exercise_id in ordered:
+    for day, exercise, exercise_id, credit in ordered:
         current = program_exercise_working_sets(exercise)
         minimum = _minimum_exercise_working_sets(exercise)
         capacity = max(0, 3 - current) if delta > 0 else max(0, current - minimum)
-        change = min(remaining, capacity)
+        change = min(int(remaining / credit + 1e-9), capacity) if credit > 0 else 0
         if change:
             edits.append({"week_order": int(day["week_order"]), "day_order": int(day["day_order"]), "day_name": day["day_name"], "exercise_id": exercise_id, "target_sets": current + change if delta > 0 else current - change})
-            remaining -= change
+            remaining -= change * credit
         if not remaining:
             break
     return edits
@@ -225,16 +276,16 @@ def _minimum_exercise_working_sets(exercise: dict[str, Any]) -> int:
 def _second_staple(
     ledger: Any,
     program: Any,
-    placements: list[tuple[Any, Any, str]],
-    targets: dict[str, str | None],
+    placements: list[tuple[Any, Any, str, float]],
+    credits: dict[str, dict[str, dict[str, Any]]],
     muscle: str,
-    remaining: int,
+    remaining: float,
     equipment_access: str | None,
     current_week: int,
 ) -> dict[str, Any] | None:
     """Put remaining added work on the next curated Staple on another day."""
-    present = {eid for _, _, eid in placements}
-    for source_day, source, source_id in placements:
+    present = {eid for _, _, eid, _credit in placements}
+    for source_day, source, source_id, _source_credit in placements:
         source_slot = str(source.get("slot_key") or "")
         staple_lists = [SLOT_STAPLES[source_slot]] if source_slot in SLOT_STAPLES else list(SLOT_STAPLES.values())
         next_ids = []
@@ -244,7 +295,8 @@ def _second_staple(
             except ValueError:
                 next_ids.extend(staples)
         for staple_id in next_ids:
-            if staple_id in present or targets.get(staple_id) != muscle:
+            staple_credit = float(credits.get(staple_id, {}).get(muscle, {}).get("credit", 0))
+            if staple_id in present or staple_credit <= 0:
                 continue
             row = ledger.volume_review_staple(staple_id)
             if row is None or not equipment_access_allows(equipment_access, row["equipment"]):
@@ -267,7 +319,7 @@ def _second_staple(
                 "add_exercise": {
                     "exercise_id": staple_id,
                     "exercise_name": str(row["name"]),
-                    "target_sets": min(remaining, 3),
+                    "target_sets": min(math.ceil(remaining / staple_credit), 3),
                     "target_reps_min": int(source["target_reps_min"]),
                     "target_reps_max": int(source["target_reps_max"]),
                     "target_rpe": float(source["target_rpe"]),

@@ -1,23 +1,23 @@
-id,source_name,display_name,aliases,primary_action,secondary_actions,primary_muscle,load_type,hidden,duplicate_of
+id,source_name,display_name,aliases,primary_action,secondary_actions,primary_muscle,load_type,hidden,duplicate_of,muscle_credits
 2330,cable lat pulldown full range of motion,Standing Cable Pulldown (Cable),standing cable pulldown,Shoulder Adduction,Elbow Flexion,Lats,,,
 150,cable bar lateral pulldown,Lat Pulldown (Cable),frontal lat pulldown|lat pull-down|lat pulldown|wide grip pulldown,Shoulder Adduction,Elbow Flexion,Lats,,,
-596,machine seated fly,Pec Deck (Machine),pec deck|pec deck machine|machine chest fly,Shoulder Horizontal Adduction,,Chest,selectorized,,
-602,machine seated reverse fly,Reverse Pec Deck (Machine),reverse pec deck|reverse fly machine|rear delt machine fly,Shoulder Horizontal Abduction,Scapular Retraction,Rear Delts,selectorized,,
-3562,barbell glute bridge two legs on bench (male),Hip Thrust (Barbell),barbell hip thrust|hip thrust barbell|hip thrust,Hip Extension,,Glutes,,,
+596,machine seated fly,Pec Deck (Machine),pec deck|pec deck machine|machine chest fly,Shoulder Horizontal Adduction,,Chest,selectorized,,,chest=1
+602,machine seated reverse fly,Reverse Pec Deck (Machine),reverse pec deck|reverse fly machine|rear delt machine fly,Shoulder Horizontal Abduction,Scapular Retraction,Rear Delts,selectorized,,,rear delts=1|traps=0.5
+3562,barbell glute bridge two legs on bench (male),Hip Thrust (Barbell),barbell hip thrust|hip thrust barbell|hip thrust,Hip Extension,,Glutes,,,,glutes=1|hamstrings=0.25
 757,smith incline bench press,Incline Bench Press (Smith Machine),smith incline press|smith machine incline press,Shoulder Horizontal Adduction,Elbow Extension,Upper Chest,plate_loaded,,
 175,cable kneeling crunch,Kneeling Crunch (Cable),cable crunch|kneeling cable crunch,Spinal Flexion,,Abs,,,
-3541,dumbbell incline y-raise,Incline Y-Raise (Dumbbell),incline db y raise|incline dumbbell y raise,Shoulder Flexion,Scapular Elevation,Traps,,,
+3541,dumbbell incline y-raise,Incline Y-Raise (Dumbbell),incline db y raise|incline dumbbell y raise,Shoulder Flexion,Scapular Elevation,Traps,,,,shoulders=1|traps=0.75
 318,dumbbell incline curl,Incline Curl (Dumbbell),incline db curl|incline dumbbell curl,Elbow Flexion,,Biceps,,,
 598,machine seated hip adduction,Hip Adduction (Machine),hip adduction|seated hip adduction|adductor machine,Hip Adduction,,Adductors,selectorized,,
 mayos:1,Kelso shrug,Kelso Shrug,,Scapular Retraction,,Traps,,true,305
 mayos:2,Bayesian curl,Bayesian Curl,bayesian curl|behind-the-body cable curl,Elbow Flexion,,Biceps,,,
-mayos:3,Cable Y-raise,Cable Y-Raise,cable y raise|standing cable y raise,Shoulder Flexion,Scapular Elevation,Traps,,,
-mayos:4,machine hip thrust,Machine Hip Thrust,machine hip thrust|hip thrust machine,Hip Extension,,Glutes,plate_loaded,,
+mayos:3,Cable Y-raise,Cable Y-Raise,cable y raise|standing cable y raise,Shoulder Flexion,Scapular Elevation,Traps,,,,shoulders=1|traps=0.75
+mayos:4,machine hip thrust,Machine Hip Thrust,machine hip thrust|hip thrust machine,Hip Extension,,Glutes,plate_loaded,,,glutes=1|hamstrings=0.25
 9,assisted chest dip (kneeling),Assisted Chest Dip (Machine),assisted dip machine,Shoulder Flexion,Elbow Extension,Chest,selectorized,,
 15,assisted parallel close grip pull-up,Assisted Close Neutral-Grip Pull-Up (Machine),,Shoulder Extension,Elbow Flexion,Lats,selectorized,,
 17,assisted pull-up,Assisted Pull-Up (Machine),assisted pull up machine|gravitron,Shoulder Adduction,Elbow Flexion,Lats,selectorized,,
 19,assisted triceps dip (kneeling),Assisted Triceps Dip (Machine),,Elbow Extension,Shoulder Flexion,Triceps,selectorized,,
-571,machine alternating narrow grip seated row,Alternating Close-Grip Seated Row (Plate-Loaded),,Shoulder Extension,Scapular Retraction|Elbow Flexion,Upper Back,plate_loaded,,
+571,machine alternating narrow grip seated row,Alternating Close-Grip Seated Row (Plate-Loaded),,Shoulder Extension,Scapular Retraction|Elbow Flexion,Upper Back,plate_loaded,,,traps=1|lats=0.5|rear delts=0.5|biceps=0.5
 572,machine assisted chin-up,Assisted Chin-Up (Machine),assisted chin up machine,Shoulder Extension,Elbow Flexion,Lats,selectorized,,
 573,machine back extension,Seated Back Extension (Machine),back extension machine,Spinal Extension,Hip Extension,Lower Back,selectorized,,
 575,machine bicep curl,Biceps Curl (Machine),machine curl|arm curl machine|machine biceps curl,Elbow Flexion,,Biceps,selectorized,,
@@ -29,7 +29,7 @@ mayos:4,machine hip thrust,Machine Hip Thrust,machine hip thrust|hip thrust mach
 581,machine high row,High Row (Plate-Loaded),hammer strength high row,Shoulder Extension,Elbow Flexion,Lats,plate_loaded,,
 582,machine kneeling leg curl,Kneeling Leg Curl (Plate-Loaded),kneeling leg curl,Knee Flexion,,Hamstrings,plate_loaded,,
 583,machine kneeling twist,Kneeling Torso Rotation (Machine),torso rotation machine|rotary torso,Spinal Rotation,,Obliques,selectorized,,
-584,machine lateral raise,Lateral Raise (Machine),machine lateral raise|lateral raise machine,Shoulder Abduction,,Side Delts,selectorized,,
+584,machine lateral raise,Lateral Raise (Machine),machine lateral raise|lateral raise machine,Shoulder Abduction,,Side Delts,selectorized,,,shoulders=1|traps=0.25
 585,machine leg extension,Leg Extension (Machine),leg extension|quad extension machine,Knee Extension,,Quads,selectorized,,
 586,machine lying leg curl,Lying Leg Curl (Machine),lying leg curl|prone leg curl|leg curl machine,Knee Flexion,,Hamstrings,selectorized,,
 587,machine military press,Shoulder Press (Plate-Loaded),plate loaded shoulder press|machine military press,Shoulder Flexion,Elbow Extension,Front Delts,plate_loaded,,
@@ -47,10 +47,10 @@ mayos:4,machine hip thrust,Machine Hip Thrust,machine hip thrust|hip thrust mach
 603,machine shoulder press,Landmine Squat to Press,landmine thruster,Shoulder Flexion,Elbow Extension|Hip Extension|Knee Extension,Front Delts,plate_loaded,,
 604,machine shrug,Shrug (Plate-Loaded),machine shrug|plate loaded shrug,Scapular Elevation,,Traps,plate_loaded,,
 605,machine standing calf raise,Standing Calf Raise (Machine),standing calf raise machine|calf raise machine,Ankle Plantar Flexion,,Calves,selectorized,,
-606,machine t bar row,T-Bar Row (Plate-Loaded),t bar row|landmine row,Shoulder Extension,Scapular Retraction|Elbow Flexion,Upper Back,plate_loaded,,
+606,machine t bar row,T-Bar Row (Plate-Loaded),t bar row|landmine row,Shoulder Extension,Scapular Retraction|Elbow Flexion,Upper Back,plate_loaded,,,traps=1|lats=0.5|rear delts=0.5|biceps=0.5
 607,machine triceps extension,Triceps Extension (Machine),machine triceps extension,Elbow Extension,,Triceps,selectorized,,
 673,reverse grip machine lat pulldown,Reverse-Grip Pulldown (Machine),underhand machine pulldown,Shoulder Extension,Elbow Flexion,Lats,selectorized,,
-739,sled 45в° leg press,45° Leg Press (Plate-Loaded),leg press|45 degree leg press|incline leg press,Knee Extension,Hip Extension,Quads,plate_loaded,,
+739,sled 45в° leg press,45° Leg Press (Plate-Loaded),leg press|45 degree leg press|incline leg press,Knee Extension,Hip Extension,Quads,plate_loaded,,,quads=1|glutes=0.5
 740,sled 45в° leg wide press,Wide-Stance 45° Leg Press (Plate-Loaded),wide leg press,Knee Extension,Hip Extension|Hip Adduction,Quads,plate_loaded,,
 741,sled closer hack squat,Close-Stance Hack Squat (Plate-Loaded),narrow hack squat,Knee Extension,Hip Extension,Quads,plate_loaded,,
 743,sled hack squat,Hack Squat (Plate-Loaded),hack squat|hack squat machine,Knee Extension,Hip Extension,Quads,plate_loaded,,
@@ -115,7 +115,7 @@ mayos:4,machine hip thrust,Machine Hip Thrust,machine hip thrust|hip thrust mach
 1626,smith machine reverse decline close grip bench press,Decline Reverse-Grip Close-Grip Bench Press (Smith Machine),,Elbow Extension,Shoulder Horizontal Adduction,Triceps,plate_loaded,,
 1683,smith machine bicep curl,Biceps Curl (Smith Machine),smith machine curl,Elbow Flexion,,Biceps,plate_loaded,,
 1752,smith machine incline tricep extension,Incline Triceps Extension (Smith Machine),,Elbow Extension,,Triceps,plate_loaded,,
-2285,machine pullover,Pullover (Machine),pullover machine|machine pullover,Shoulder Extension,,Lats,unknown,,
+2285,machine pullover,Pullover (Machine),pullover machine|machine pullover,Shoulder Extension,,Lats,unknown,,,
 2286,machine hip extension,Glute Kickback (Plate-Loaded),glute kickback machine|kneeling hip extension machine,Hip Extension,,Glutes,plate_loaded,,
 2287,machine alternate leg press,Alternating Leg Press (Plate-Loaded),,Knee Extension,Hip Extension,Quads,plate_loaded,,
 2288,machine gripper hands,Grip Machine (Plate-Loaded),hand gripper machine,Wrist Flexion,,Forearms,plate_loaded,,
@@ -138,7 +138,7 @@ mayos:4,machine hip thrust,Machine Hip Thrust,machine hip thrust|hip thrust mach
 148,cable alternate shoulder press,Alternating Shoulder Press (Cable),,Shoulder Flexion,Elbow Extension,Front Delts,,,
 149,cable alternate triceps extension,Single-Arm Overhead Triceps Extension (Cable),,Elbow Extension,,Triceps,,,
 151,cable bench press,Bench Press (Cable),,Shoulder Horizontal Adduction,Elbow Extension,Chest,,,
-154,cable cross-over revers fly,Bent-Over Reverse Fly (Cable),cable rear delt fly,Shoulder Horizontal Abduction,Scapular Retraction,Rear Delts,,,
+154,cable cross-over revers fly,Bent-Over Reverse Fly (Cable),cable rear delt fly,Shoulder Horizontal Abduction,Scapular Retraction,Rear Delts,,,,rear delts=1|traps=0.5
 157,cable deadlift,Deadlift (Cable),,Hip Extension,Knee Extension,Glutes,,,
 158,cable decline fly,Decline Fly (Cable),,Shoulder Horizontal Adduction,,Chest,,,
 159,cable decline seated wide-grip row,Chest-Supported Wide-Grip Row (Cable),,Shoulder Horizontal Abduction,Scapular Retraction|Elbow Flexion,Upper Back,,,
@@ -154,11 +154,11 @@ mayos:4,machine hip thrust,Machine Hip Thrust,machine hip thrust|hip thrust mach
 173,cable incline triceps extension,Incline Triceps Extension (Cable),,Elbow Extension,,Triceps,,,
 176,cable kneeling triceps extension,Kneeling Triceps Extension (Cable),,Elbow Extension,,Triceps,,,
 177,cable lateral pulldown (with rope attachment),Rope Pulldown (Cable),rope lat pulldown,Shoulder Extension,Elbow Flexion,Lats,,,
-178,cable lateral raise,Lateral Raise (Cable),cable lateral raise,Shoulder Abduction,,Side Delts,,,
+178,cable lateral raise,Lateral Raise (Cable),cable lateral raise,Shoulder Abduction,,Side Delts,,,,shoulders=1|traps=0.25
 179,cable low fly,Low-to-High Fly (Cable),low cable fly|low to high cable fly,Shoulder Horizontal Adduction,Shoulder Flexion,Upper Chest,,,
-180,cable low seated row,Seated Row (Cable),seated cable row|low row|cable row,Shoulder Extension,Scapular Retraction|Elbow Flexion,Upper Back,,,
+180,cable low seated row,Seated Row (Cable),seated cable row|low row|cable row,Shoulder Extension,Scapular Retraction|Elbow Flexion,Upper Back,,,,traps=1|lats=0.5|rear delts=0.5|biceps=0.5
 182,cable lying close-grip curl,Lying High-Pulley Curl (Cable),,Elbow Flexion,,Biceps,,,
-184,cable lying extension pullover (with rope attachment),Lying Rope Pullover (Cable),cable pullover,Shoulder Extension,,Lats,,,
+184,cable lying extension pullover (with rope attachment),Lying Rope Pullover (Cable),cable pullover,Shoulder Extension,,Lats,,,,lats=1|triceps=0.25
 186,cable lying triceps extension,Lying Triceps Extension (Cable),cable skull crusher,Elbow Extension,,Triceps,,,
 189,cable one arm bent over row,Single-Arm Standing Row (Cable),,Shoulder Extension,Elbow Flexion,Upper Back,,,
 190,cable one arm curl,Single-Arm Curl (Cable),one arm cable curl,Elbow Flexion,,Biceps,,,
@@ -227,31 +227,31 @@ mayos:4,machine hip thrust,Machine Hip Thrust,machine hip thrust|hip thrust mach
 2616,cable lateral pulldown with v-bar,V-Bar Pulldown (Cable),close grip lat pulldown|v bar pulldown,Shoulder Extension,Elbow Flexion,Lats,,,
 3235,cable assisted inverse leg curl,Assisted Nordic Curl (Cable),assisted nordic curl,Knee Flexion,,Hamstrings,,,
 3563,cable one arm pulldown,Standing Single-Arm Pulldown (Cable),,Shoulder Adduction,Elbow Flexion,Lats,,,
-3697,cable kneeling rear delt row (with rope) (male),Kneeling Face Pull (Cable),kneeling face pull,Shoulder Horizontal Abduction,Shoulder External Rotation|Scapular Retraction,Rear Delts,,,
+3697,cable kneeling rear delt row (with rope) (male),Kneeling Face Pull (Cable),kneeling face pull,Shoulder Horizontal Abduction,Shoulder External Rotation|Scapular Retraction,Rear Delts,,,,rear delts=1|traps=0.5
 24,barbell bench front squat,Box Front Squat (Barbell),,Knee Extension,Hip Extension,Quads,,,
 25,barbell bench press,Bench Press (Barbell),bench press|barbell bench press|bb bench|flat bench press,Shoulder Horizontal Adduction,Elbow Extension,Chest,,,
 26,barbell bench squat,Box Squat (Barbell),box squat,Knee Extension,Hip Extension,Quads,,,
 28,barbell clean and press,Clean and Press (Barbell),clean and press,Hip Extension,Shoulder Flexion|Elbow Extension|Knee Extension,Glutes,,,
-29,barbell clean-grip front squat,Front Squat (Barbell),barbell front squat|front squat,Knee Extension,Hip Extension,Quads,,,
+29,barbell clean-grip front squat,Front Squat (Barbell),barbell front squat|front squat,Knee Extension,Hip Extension,Quads,,,,quads=1|glutes=0.75
 30,barbell close-grip bench press,Close-Grip Bench Press (Barbell),close grip bench press|cgbp,Elbow Extension,Shoulder Horizontal Adduction,Triceps,,,
 31,barbell curl,Curl (Barbell),barbell curl|bb curl|standing barbell curl,Elbow Flexion,,Biceps,,,
-32,barbell deadlift,Deadlift (Barbell),deadlift|conventional deadlift|barbell deadlift,Hip Extension,Knee Extension,Glutes,,,
+32,barbell deadlift,Deadlift (Barbell),deadlift|conventional deadlift|barbell deadlift,Hip Extension,Knee Extension,Glutes,,,,glutes=1|hamstrings=0.5|quads=0.5|traps=0.5
 33,barbell decline bench press,Decline Bench Press (Barbell),decline bench press,Shoulder Horizontal Adduction,Elbow Extension,Chest,,,
 34,barbell decline bent arm pullover,Decline Bent-Arm Pullover (Barbell),,Shoulder Extension,,Lats,,,
 35,barbell decline close grip to skull press,Decline Close-Grip Skull Press (Barbell),,Elbow Extension,,Triceps,,,
 38,barbell drag curl,Drag Curl (Barbell),barbell drag curl,Elbow Flexion,,Biceps,,,
 39,barbell front chest squat,Cross-Arm Front Squat (Barbell),,Knee Extension,Hip Extension,Quads,,,
 41,barbell front raise,Front Raise (Barbell),barbell front raise,Shoulder Flexion,,Front Delts,,,
-43,barbell full squat,Back Squat (Barbell),barbell squat|back squat|full squat,Knee Extension,Hip Extension,Quads,,,
+43,barbell full squat,Back Squat (Barbell),barbell squat|back squat|full squat,Knee Extension,Hip Extension,Quads,,,,quads=1|glutes=0.75
 44,barbell good morning,Good Morning (Barbell),good morning|barbell good morning,Hip Extension,Spinal Extension,Hamstrings,,,
 46,barbell hack squat,Behind-the-Back Hack Squat (Barbell),barbell hack squat,Knee Extension,Hip Extension,Quads,,,
 47,barbell incline bench press,Incline Bench Press (Barbell),incline bench press|barbell incline press,Shoulder Horizontal Adduction,Elbow Extension,Upper Chest,,,
 48,barbell incline reverse-grip press,Incline Reverse-Grip Press (Barbell),,Elbow Extension,Shoulder Flexion,Triceps,,,
-49,barbell incline row,Chest-Supported Row (Barbell),incline barbell row,Shoulder Extension,Scapular Retraction|Elbow Flexion,Upper Back,,,
+49,barbell incline row,Chest-Supported Row (Barbell),incline barbell row,Shoulder Extension,Scapular Retraction|Elbow Flexion,Upper Back,,,,traps=1|lats=0.5|rear delts=0.5|biceps=0.5
 51,barbell jefferson squat,Jefferson Squat (Barbell),,Knee Extension,Hip Extension|Hip Adduction,Quads,,,
 52,barbell jm bench press,JM Press (Barbell),jm press,Elbow Extension,,Triceps,,,
 53,barbell jump squat,Jump Squat (Barbell),,Knee Extension,Hip Extension|Ankle Plantar Flexion,Quads,,,
-54,barbell lunge,Lunge (Barbell),barbell lunge,Knee Extension,Hip Extension,Quads,,,
+54,barbell lunge,Lunge (Barbell),barbell lunge,Knee Extension,Hip Extension,Quads,,,,quads=1|glutes=0.75
 57,barbell lying extension,Lying Extension (Barbell),,Elbow Extension,,Triceps,,,
 58,barbell lying lifting (on hip),Hip Thrust from Bench (Barbell),,Hip Extension,,Glutes,,,
 59,barbell lying preacher curl,Lying Preacher Curl (Barbell),,Elbow Flexion,,Biceps,,,
@@ -313,7 +313,7 @@ mayos:4,machine hip thrust,Machine Hip Thrust,machine hip thrust|hip thrust mach
 1316,barbell bent arm pullover,Bent-Arm Pullover (Barbell),barbell pullover,Shoulder Extension,,Lats,,,
 1371,barbell seated calf raise,Seated Calf Raise on Plate (Barbell),barbell seated calf raise,Ankle Plantar Flexion,,Calves,,,
 1372,barbell standing calf raise,Standing Calf Raise on Plate (Barbell),,Ankle Plantar Flexion,,Calves,,,
-1409,barbell glute bridge,Glute Bridge (Barbell),barbell glute bridge,Hip Extension,,Glutes,,,
+1409,barbell glute bridge,Glute Bridge (Barbell),barbell glute bridge,Hip Extension,,Glutes,,,,glutes=1|hamstrings=0.25
 1410,barbell lateral lunge,Lateral Lunge (Barbell),,Knee Extension,Hip Extension|Hip Adduction,Quads,,,
 1411,barbell palms down wrist curl over a bench,Reverse Wrist Curl over Bench (Barbell),barbell reverse wrist curl,Wrist Extension,,Forearms,,,
 1412,barbell palms up wrist curl over a bench,Wrist Curl over Bench (Barbell),barbell wrist curl,Wrist Flexion,,Forearms,,,
@@ -340,7 +340,7 @@ mayos:4,machine hip thrust,Machine Hip Thrust,machine hip thrust|hip thrust mach
 289,dumbbell bench press,Bench Press (Dumbbell),dumbbell bench press|db bench|db bench press,Shoulder Horizontal Adduction,Elbow Extension,Chest,,,
 291,dumbbell bench squat,Box Squat (Dumbbell),,Knee Extension,Hip Extension,Quads,,,
 292,dumbbell one arm bent-over row,Single-Arm Row (Dumbbell),one arm dumbbell row|single arm db row|bench supported row,Shoulder Extension,Scapular Retraction|Elbow Flexion,Upper Back,,,
-293,dumbbell bent over row,Bent-Over Row (Dumbbell),dumbbell row|db row|dumbbell bent over row,Shoulder Extension,Scapular Retraction|Elbow Flexion,Upper Back,,,
+293,dumbbell bent over row,Bent-Over Row (Dumbbell),dumbbell row|db row|dumbbell bent over row,Shoulder Extension,Scapular Retraction|Elbow Flexion,Upper Back,,,,traps=1|lats=0.5|rear delts=0.5|biceps=0.5
 294,dumbbell biceps curl,Biceps Curl (Dumbbell),dumbbell curl|db curl|dumbbell bicep curl,Elbow Flexion,,Biceps,,,
 295,dumbbell clean,Clean (Dumbbell),dumbbell clean,Hip Extension,Scapular Elevation|Knee Extension,Glutes,,,
 296,dumbbell close-grip press,Crush Press (Dumbbell),crush press|squeeze press,Elbow Extension,Shoulder Horizontal Adduction,Triceps,,,
@@ -364,10 +364,10 @@ mayos:4,machine hip thrust,Machine Hip Thrust,machine hip thrust|hip thrust mach
 324,dumbbell incline palm-in press,Incline Palms-In Press (Dumbbell),incline neutral grip dumbbell press,Shoulder Horizontal Adduction,Elbow Extension,Upper Chest,,,
 325,dumbbell incline raise,Incline Front Raise (Dumbbell),,Shoulder Flexion,,Front Delts,,,
 326,dumbbell incline rear lateral raise,Chest-Supported Rear Lateral Raise (Dumbbell),incline rear delt raise,Shoulder Horizontal Abduction,Scapular Retraction,Rear Delts,,,
-327,dumbbell incline row,Chest-Supported Row (Dumbbell),incline dumbbell row|chest supported dumbbell row,Shoulder Extension,Scapular Retraction|Elbow Flexion,Upper Back,,,
+327,dumbbell incline row,Chest-Supported Row (Dumbbell),incline dumbbell row|chest supported dumbbell row,Shoulder Extension,Scapular Retraction|Elbow Flexion,Upper Back,,,,traps=1|lats=0.5|rear delts=0.5|biceps=0.5
 330,dumbbell incline triceps extension,Incline Triceps Extension (Dumbbell),,Elbow Extension,,Triceps,,,
-334,dumbbell lateral raise,Lateral Raise (Dumbbell),dumbbell lateral raise|db lateral raise|side raise,Shoulder Abduction,,Side Delts,,,
-336,dumbbell lunge,Lunge (Dumbbell),dumbbell lunge|db lunge,Knee Extension,Hip Extension,Quads,,,
+334,dumbbell lateral raise,Lateral Raise (Dumbbell),dumbbell lateral raise|db lateral raise|side raise,Shoulder Abduction,,Side Delts,,,,shoulders=1|traps=0.25
+336,dumbbell lunge,Lunge (Dumbbell),dumbbell lunge|db lunge,Knee Extension,Hip Extension,Quads,,,,quads=1|glutes=0.75
 340,dumbbell lying hammer press,Neutral-Grip Bench Press (Dumbbell),hammer press|dumbbell hammer press,Shoulder Horizontal Adduction,Elbow Extension,Chest,,,
 350,dumbbell lying supine curl,Lying Supine Curl (Dumbbell),,Elbow Flexion,,Biceps,,,
 356,dumbbell one arm lateral raise with support,Supported Single-Arm Lateral Raise (Dumbbell),leaning lateral raise,Shoulder Abduction,,Side Delts,,,
@@ -385,7 +385,7 @@ mayos:4,machine hip thrust,Machine Hip Thrust,machine hip thrust|hip thrust mach
 372,dumbbell preacher curl,Preacher Curl (Dumbbell),dumbbell preacher curl,Elbow Flexion,,Biceps,,,
 373,dumbbell pronate-grip triceps extension,Lying Pronated Triceps Extension (Dumbbell),,Elbow Extension,,Triceps,,,
 374,dumbbell prone incline curl,Spider Curl (Dumbbell),dumbbell spider curl|prone incline curl,Elbow Flexion,,Biceps,,,
-375,dumbbell pullover,Pullover (Dumbbell),dumbbell pullover|db pullover,Shoulder Extension,,Lats,,,
+375,dumbbell pullover,Pullover (Dumbbell),dumbbell pullover|db pullover,Shoulder Extension,,Lats,,,,lats=1|triceps=0.25
 378,dumbbell rear fly,Seated Bent-Over Rear Fly (Dumbbell),seated rear delt fly,Shoulder Horizontal Abduction,Scapular Retraction,Rear Delts,,,
 379,dumbbell rear lateral raise (support head),Head-Supported Rear Lateral Raise (Dumbbell),,Shoulder Horizontal Abduction,Scapular Retraction,Rear Delts,,,
 380,dumbbell rear lateral raise,Bent-Over Rear Lateral Raise (Dumbbell),bent over reverse fly|rear delt fly,Shoulder Horizontal Abduction,Scapular Retraction,Rear Delts,,,
@@ -652,7 +652,7 @@ mayos:4,machine hip thrust,Machine Hip Thrust,machine hip thrust|hip thrust mach
 697,self assisted inverse leg curl,Self-Assisted Nordic Curl (Dip Station),,Knee Flexion,,Hamstrings,,,
 498,inverted row with straps,Ring Inverted Row,ring row,Shoulder Extension,Scapular Retraction|Elbow Flexion,Upper Back,,,
 1273,clap push up,Clap Push-Up,clap push up,Shoulder Horizontal Adduction,Elbow Extension,Chest,,,
-2368,split squats,Split Squat,split squat|bodyweight split squat,Knee Extension,Hip Extension,Quads,,,
+2368,split squats,Split Squat,split squat|bodyweight split squat,Knee Extension,Hip Extension,Quads,,,,quads=1|glutes=0.75
 3211,kneeling push-up (male),Kneeling Push-Up,knee push up|kneeling push up,Shoulder Horizontal Adduction,Elbow Extension,Chest,,,
 659,push-up (wall),Wall Push-Up,wall push up,Shoulder Horizontal Adduction,Elbow Extension,Chest,,,
 1327,close grip chin-up,Close-Grip Chin-Up,close grip chin up,Shoulder Extension,Elbow Flexion,Lats,,,

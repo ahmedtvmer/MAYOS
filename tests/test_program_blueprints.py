@@ -30,6 +30,7 @@ from agent.program_blueprints import (
     UL_DAYS,
     WARMUP_FAMILIES,
     WARMUP_SPECS,
+    body_parts_to_slots,
     classify_goal,
     experience_level_for_training_age,
     is_fat_loss_goal,
@@ -47,6 +48,15 @@ from agent.program_rules import (
     resolve_split,
     valid_splits_for,
 )
+
+
+def test_legacy_muscle_targets_route_to_lats_and_traps_slots():
+    assert body_parts_to_slots(["lats"]) == [
+        "vertical_pull", "pullover", "horizontal_row",
+    ]
+    assert body_parts_to_slots(["traps", "upper back"]) == [
+        "horizontal_row", "upper_back_pull", "shrug",
+    ]
 
 
 def test_each_supported_split_frequency_has_authored_day_order_reason():
@@ -642,7 +652,7 @@ def test_arnold_split_preset_matches_sample_shape():
     assert plan is not None
     counts = [len(day.target_slots) for day in plan.days]
     assert counts == [7, 7, 7]
-    assert [day.day_name for day in plan.days] == ["Chest & Back", "Shoulders & Arms", "Legs"]
+    assert [day.day_name for day in plan.days] == ["Chest, Lats & Traps", "Shoulders & Arms", "Legs"]
 
 
 def test_arnold_x_ul_matches_belghamdi_day_sizes():
@@ -654,7 +664,7 @@ def test_arnold_x_ul_matches_belghamdi_day_sizes():
 def test_arnold_hybrid_is_only_available_at_five_days():
     plan_5 = get_split_plan("arnold", 5, "male")
     assert plan_5.split_name == "Arnold × Upper/Lower"
-    assert [day.day_name for day in plan_5.days] == ["Chest & Back", "Shoulders & Arms", "Lower A", "Upper", "Lower B"]
+    assert [day.day_name for day in plan_5.days] == ["Chest, Lats & Traps", "Shoulders & Arms", "Lower A", "Upper", "Lower B"]
     assert [len(day.target_slots) for day in plan_5.days] == [7, 7, 6, 7, 6]
 
     assert get_split_plan("arnold", 4, "male") is None
@@ -663,7 +673,7 @@ def test_arnold_hybrid_is_only_available_at_five_days():
 
     plan_3 = get_split_plan("arnold", 3, "male")
     assert plan_3 is not None
-    assert [day.day_name for day in plan_3.days] == ["Chest & Back", "Shoulders & Arms", "Legs"]
+    assert [day.day_name for day in plan_3.days] == ["Chest, Lats & Traps", "Shoulders & Arms", "Legs"]
 
 
 def test_five_day_ppl_upper_lower_has_balanced_volume():

@@ -238,10 +238,10 @@ SLOT_SPECS: dict[str, SlotSpec] = {
         primary_actions=("Shoulder Horizontal Adduction",),
         primary_muscles=("Chest",),
     ),
-    # --- Back --------------------------------------------------------------
+    # --- Lats and traps ----------------------------------------------------
     "horizontal_row": _slot(
         "horizontal_row",
-        "LOWER(name) LIKE '%row%' AND LOWER(target_muscle) IN ('upper back', 'lats', 'traps')",
+        "LOWER(name) LIKE '%row%' AND LOWER(target_muscle) IN ('upper back', 'upper-back', 'mid back', 'mid-back', 'middle back', 'middle-back', 'rhomboid', 'rhomboids', 'traps', 'upper traps', 'mid traps', 'middle traps', 'lower traps', 'trapezius', 'upper trapezius', 'mid trapezius', 'middle trapezius', 'lower trapezius', 'lats', 'latissimus dorsi')",
         "heavy_compound",
         ("leverage machine", "smith machine", "dumbbell", "cable", "barbell"),
         reps=(5, 7),
@@ -261,7 +261,7 @@ SLOT_SPECS: dict[str, SlotSpec] = {
         "OR LOWER(name) LIKE '%single arm row%' OR LOWER(name) LIKE '%t bar row%' "
         "OR LOWER(name) LIKE '%t-bar%' OR LOWER(name) LIKE '%high row%' "
         "OR LOWER(name) LIKE '%bent over row%' OR LOWER(name) LIKE '%barbell row%') "
-        "AND LOWER(target_muscle) IN ('upper back', 'lats')",
+        "AND LOWER(target_muscle) IN ('upper back', 'upper-back', 'mid back', 'mid-back', 'middle back', 'middle-back', 'rhomboid', 'rhomboids', 'traps', 'upper traps', 'mid traps', 'middle traps', 'lower traps', 'trapezius', 'upper trapezius', 'mid trapezius', 'middle trapezius', 'lower trapezius', 'lats', 'latissimus dorsi')",
         "medium_compound",
         ("leverage machine", "cable", "dumbbell", "smith machine", "barbell"),
         reps=(6, 10),
@@ -274,7 +274,7 @@ SLOT_SPECS: dict[str, SlotSpec] = {
         "vertical_pull",
         "(LOWER(name) LIKE '%pulldown%' OR LOWER(name) LIKE '%pull-up%' OR LOWER(name) LIKE '%pull up%' "
         "OR LOWER(name) LIKE '%chin-up%' OR LOWER(name) LIKE '%chin up%' OR LOWER(name) LIKE '%chinup%') "
-        "AND LOWER(target_muscle) IN ('lats', 'upper back')",
+        "AND LOWER(target_muscle) IN ('lats', 'latissimus dorsi')",
         "medium_compound",
         ("leverage machine", "cable", "body weight"),
         reps=(5, 7),
@@ -288,7 +288,8 @@ SLOT_SPECS: dict[str, SlotSpec] = {
     ),
     "pullover": _slot(
         "pullover",
-        "(LOWER(name) LIKE '%pullover%' OR LOWER(name) LIKE '%straight arm pulldown%')",
+        "(LOWER(name) LIKE '%pullover%' OR LOWER(name) LIKE '%straight arm pulldown%') "
+        "AND LOWER(target_muscle) IN ('lats', 'latissimus dorsi')",
         "isolation",
         ("cable", "dumbbell", "barbell"),
         reps=(8, 10),
@@ -1023,7 +1024,7 @@ UL_DAYS: tuple[DayBlueprint, ...] = (
 
 ARNOLD_DAYS: tuple[DayBlueprint, ...] = (
     DayBlueprint(
-        "Chest & Back",
+        "Chest, Lats & Traps",
         (
             "incline_press",
             "horizontal_row",
@@ -1321,7 +1322,9 @@ FEMALE_UL_DAYS: tuple[DayBlueprint, ...] = (
 # starters open the day before the remaining work is ordered by movement class.
 _COACH_PATTERN_EVENTS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("chest", ("incline_press", "flat_press", "chest_fly")),
-    ("back", ("vertical_pull", "horizontal_row", "shrug")),
+    # Keep both lats exposures resolvable when the catalog has no pullover slot.
+    ("lats", ("vertical_pull", "vertical_pull")),
+    ("traps", ("horizontal_row", "upper_back_pull", "shrug")),
     ("shoulders", ("shoulder_press", "side_delts", "rear_delts")),
     ("biceps", ("biceps_preacher", "biceps_alt")),
     ("triceps", ("triceps_pushdown", "triceps_overhead")),
@@ -1344,8 +1347,8 @@ _COACH_PATTERN_THREE_DAY_SLOTS: tuple[tuple[str, ...], ...] = (
         "triceps_overhead", "forearm_wrist", "glute_thrust", "calf", "abs",
     ),
     (
-        "chest_fly", "shrug", "rear_delts", "forearm_reverse", "quad_iso",
-        "ham_hinge", "glute_iso", "adductors", "abs",
+        "chest_fly", "vertical_pull", "horizontal_row", "shrug", "rear_delts",
+        "forearm_reverse", "quad_iso", "ham_hinge", "glute_iso", "adductors", "abs",
     ),
 )
 
@@ -1437,8 +1440,8 @@ def coach_upper_lower_days(frequency: int) -> list[DayBlueprint]:
         DayBlueprint(
             "Upper 1",
             (
-                "side_delts", "incline_press", "vertical_pull", "biceps_preacher",
-                "triceps_pushdown", "forearm_wrist",
+                "side_delts", "incline_press", "vertical_pull", "horizontal_row",
+                "biceps_preacher", "triceps_pushdown", "forearm_wrist",
             ),
             family="upper",
             sets_family="coach",
@@ -1454,8 +1457,8 @@ def coach_upper_lower_days(frequency: int) -> list[DayBlueprint]:
         DayBlueprint(
             "Upper 2",
             (
-                "rear_delts", "flat_press", "horizontal_row", "shoulder_press",
-                "biceps_alt", "triceps_overhead", "forearm_reverse", "shrug",
+                "rear_delts", "flat_press", "horizontal_row", "vertical_pull",
+                "shoulder_press", "biceps_alt", "triceps_overhead", "forearm_reverse", "shrug",
             ),
             family="upper",
             sets_family="coach",
@@ -1479,8 +1482,8 @@ def coach_ppl_upper_lower_days(frequency: int) -> list[DayBlueprint]:
         DayBlueprint(
             "Upper",
             (
-                "forearm_wrist", "flat_press", "vertical_pull", "biceps_preacher",
-                "triceps_pushdown",
+                "forearm_wrist", "flat_press", "vertical_pull", "horizontal_row",
+                "biceps_preacher", "triceps_pushdown",
             ),
             family="upper",
             sets_family="coach",
@@ -1502,7 +1505,10 @@ def coach_ppl_upper_lower_days(frequency: int) -> list[DayBlueprint]:
         ),
         DayBlueprint(
             "Pull",
-            ("rear_delts", "horizontal_row", "shrug", "biceps_alt", "forearm_reverse"),
+            (
+                "rear_delts", "vertical_pull", "horizontal_row", "shrug",
+                "biceps_alt", "forearm_reverse",
+            ),
             family="upper",
             sets_family="coach",
         ),
@@ -1569,7 +1575,7 @@ SPLIT_DISPLAY_NAMES: dict[str, str] = {
     "female_full_body": "Full Body (Glute Priority)",
     "upper_lower": "Upper / Lower (Arms & Delts Augmented)",
     "female_upper_lower": "Lower (Glute Bias) / Upper & Core",
-    "arnold": "Arnold Split (Chest & Back / Shoulders & Arms / Legs)",
+    "arnold": "Arnold Split (Chest, Lats & Traps / Shoulders & Arms / Legs)",
     "arnold_x_ul": "Arnold × Upper/Lower",
     "anterior_posterior": "Anterior / Posterior Split",
     "ppl": "PPL",
@@ -1815,9 +1821,17 @@ def is_poor_recovery(stress_and_sleep: str | None) -> bool:
 # Fallback used when the LLM returns legacy muscle targets instead of slot keys.
 BODY_PART_TO_SLOTS: dict[str, tuple[str, ...]] = {
     "chest": ("incline_press", "flat_press"),
-    "lats": ("vertical_pull", "upper_back_pull"),
+    # Legacy generic targets remain input aliases; generated output uses lats/traps.
+    "back": ("vertical_pull", "pullover", "horizontal_row"),
+    "lats": ("vertical_pull", "pullover", "horizontal_row"),
     "upper back": ("horizontal_row", "upper_back_pull"),
-    "traps": ("shrug",),
+    "upper-back": ("horizontal_row", "upper_back_pull"),
+    "mid back": ("horizontal_row", "upper_back_pull"),
+    "mid-back": ("horizontal_row", "upper_back_pull"),
+    "middle back": ("horizontal_row", "upper_back_pull"),
+    "middle-back": ("horizontal_row", "upper_back_pull"),
+    "rhomboids": ("horizontal_row", "upper_back_pull"),
+    "traps": ("horizontal_row", "upper_back_pull", "shrug"),
     "side delts": ("side_delts",),
     "rear delts": ("rear_delts",),
     "front delts": ("shoulder_press",),

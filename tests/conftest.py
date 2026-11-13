@@ -346,6 +346,7 @@ def seed_exercise_curation(tmp_path, monkeypatch):
             "load_type",
             "hidden",
             "duplicate_of",
+            "muscle_credits",
         ]
         with curation_path.open("w", newline="", encoding="utf-8") as curation_file:
             writer = csv.writer(curation_file)

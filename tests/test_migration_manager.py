@@ -1964,6 +1964,92 @@ def test_v49_to_v50_lazy_migration_adds_cardio_calorie_snapshot_columns(temp_db_
     assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION
 
 
+def test_v57_to_v58_migrates_persisted_group_and_focus_values_to_lats():
+    conn = sqlite3.connect(":memory:")
+    conn.executescript(
+        "CREATE TABLE user_profile (id INTEGER PRIMARY KEY, weak_points_json TEXT);"
+        "CREATE TABLE volume_reviews (id INTEGER PRIMARY KEY, payload_json TEXT);"
+        "CREATE TABLE training_programs (id INTEGER PRIMARY KEY, program_rationale_json TEXT);"
+        "CREATE TABLE program_drafts (id INTEGER PRIMARY KEY, draft_json TEXT);"
+        "CREATE TABLE assistant_goal_weak_point_pending ("
+        "id INTEGER PRIMARY KEY, muscles_json TEXT, kind TEXT);"
+        "CREATE TABLE intake_answers (field TEXT PRIMARY KEY, value TEXT);"
+        "CREATE TABLE program_days (id TEXT PRIMARY KEY, day_name TEXT NOT NULL);"
+    )
+    conn.execute(
+        "INSERT INTO user_profile VALUES (1, ?)",
+        (json.dumps([{"muscle": "back", "source": "named"}]),),
+    )
+    conn.execute(
+        "INSERT INTO volume_reviews VALUES (1, ?)",
+        (json.dumps([{"muscle": "back", "weekly_sets": 12}]),),
+    )
+    conn.execute(
+        "INSERT INTO training_programs VALUES (1, ?)",
+        (json.dumps({
+            "focus_muscles": [{"muscle": "back"}, {"muscle": "traps"}],
+            "focus_muscle": "back",
+            "days": [{"day_name": "Chest & Back"}],
+        }),),
+    )
+    conn.execute(
+        "INSERT INTO program_drafts VALUES (1, ?)",
+        (json.dumps({
+            "days": [{"day_name": "Chest and Back"}],
+            "program_rationale": {"focus_muscles": [{"muscle": "back"}]},
+            "exercise": {"primary_muscle": "back", "secondary_muscles": ["back"]},
+        }),),
+    )
+    conn.execute(
+        "INSERT INTO assistant_goal_weak_point_pending VALUES (1, ?, 'offer')",
+        (json.dumps(["back"]),),
+    )
+    conn.execute(
+        "INSERT INTO intake_answers VALUES ('weak_points', ?)",
+        (json.dumps([{"muscle": "back", "source": "named"}]),),
+    )
+    conn.execute("INSERT INTO program_days VALUES ('day-1', 'Chest & Back')")
+
+    MIGRATION_REGISTRY[57](conn)
+
+    assert json.loads(conn.execute(
+        "SELECT weak_points_json FROM user_profile WHERE id=1"
+    ).fetchone()[0]) == [{"muscle": "lats", "source": "named"}]
+    assert json.loads(conn.execute(
+        "SELECT payload_json FROM volume_reviews WHERE id=1"
+    ).fetchone()[0]) == [{"muscle": "lats", "weekly_sets": 12}]
+    assert json.loads(conn.execute(
+        "SELECT program_rationale_json FROM training_programs WHERE id=1"
+    ).fetchone()[0]) == {
+        "focus_muscles": [{"muscle": "lats"}, {"muscle": "traps"}],
+        "focus_muscle": "lats",
+        "days": [{"day_name": "Chest, Lats & Traps"}],
+    }
+    migrated_draft = json.loads(conn.execute(
+        "SELECT draft_json FROM program_drafts WHERE id=1"
+    ).fetchone()[0])
+    assert migrated_draft["program_rationale"]["focus_muscles"] == [{"muscle": "lats"}]
+    assert migrated_draft["days"] == [{"day_name": "Chest, Lats & Traps"}]
+    assert migrated_draft["exercise"] == {
+        "primary_muscle": "back", "secondary_muscles": ["back"],
+    }
+    assert json.loads(conn.execute(
+        "SELECT muscles_json FROM assistant_goal_weak_point_pending WHERE id=1"
+    ).fetchone()[0]) == ["lats"]
+    conn.execute(
+        "UPDATE assistant_goal_weak_point_pending SET muscles_json=?, kind='movement_restriction' WHERE id=1",
+        (json.dumps(["back"]),),
+    )
+    MIGRATION_REGISTRY[57](conn)
+    assert json.loads(conn.execute(
+        "SELECT muscles_json FROM assistant_goal_weak_point_pending WHERE id=1"
+    ).fetchone()[0]) == ["back"]
+    assert json.loads(conn.execute(
+        "SELECT value FROM intake_answers WHERE field='weak_points'"
+    ).fetchone()[0]) == [{"muscle": "lats", "source": "named"}]
+    assert conn.execute("SELECT day_name FROM program_days WHERE id='day-1'").fetchone()[0] == "Chest, Lats & Traps"
+
+
 def test_v51_upgrade_adds_deleted_injury_source_event_storage(temp_db_env):
     db, ledgers_dir, backups_dir = temp_db_env
     conn = db.conn

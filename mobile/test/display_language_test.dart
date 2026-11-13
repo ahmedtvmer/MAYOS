@@ -28,7 +28,7 @@ class _FailingStore extends InMemoryDisplayLanguageStore {
 void main() {
   test('Weak point muscle labels are present in English and Arabic', () {
     const List<String> muscles = <String>[
-      'chest', 'upper_chest', 'back', 'shoulders', 'side_delts', 'biceps',
+      'chest', 'upper_chest', 'lats', 'shoulders', 'side_delts', 'traps', 'biceps',
       'triceps', 'forearms', 'quads', 'hamstrings', 'glutes', 'adductors',
       'calves', 'abs',
     ];
@@ -41,12 +41,28 @@ void main() {
   test('volume warning translates every common muscle group in Arabic', () {
     const List<String> muscles = <String>[
       'Biceps', 'Triceps', 'Forearms', 'Adductors', 'Upper Chest', 'Lats',
-      'Front Delts', 'Side Delts', 'Rear Delts',
+      'Front Delts', 'Side Delts', 'Rear Delts', 'Traps',
     ];
     for (final String muscle in muscles) {
       expect(const MayosCopy('ar').programVolumeWarning(muscle, 12, 10),
           isNot(contains(muscle)));
     }
+  });
+
+  test('legacy generic volume warning never displays as a back muscle', () {
+    expect(const MayosCopy('en').programVolumeWarning('back', 12, 10),
+        contains('Lats will reach'));
+    expect(const MayosCopy('ar').programVolumeWarning('back', 12, 10),
+        contains('اللاتس (الظهر العريض)'));
+    expect(const MayosCopy('en').programVolumeWarning('upper-back', 12, 10),
+        contains('Traps will reach'));
+    expect(const MayosCopy('ar').programVolumeWarning('mid-back', 12, 10),
+        contains('الترابيس'));
+    expect(const MayosCopy('ar').weakPointMuscle('lats'),
+        'اللاتس (الظهر العريض)');
+    expect(const MayosCopy('ar').weakPointMuscle('traps'), 'الترابيس');
+    expect(const MayosCopy('en').weakPointMuscle('lats'), 'Lats');
+    expect(const MayosCopy('en').weakPointMuscle('traps'), 'Traps');
   });
 
   test('Arabic Cardio prescription display translates units', () {

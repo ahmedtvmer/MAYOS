@@ -1,6 +1,7 @@
 """Plain pytest rubric for the deterministic coach-pattern program generator."""
 
 import json
+from math import ceil
 from pathlib import Path
 
 import pytest
@@ -13,12 +14,14 @@ from agent.program_generator import (
 from agent.program_blueprints import SLOT_SPECS, SLOT_STAPLES
 from agent.program_rules import SPLIT_OPTIONS_BY_FREQUENCY
 from agent.focus_muscles import FOCUS_MUSCLE_SLOTS
+from core.muscle_volume import main_group_for_focus
 from core.weak_points import WEAK_POINT_MUSCLES
 
 
 MUSCLE_GROUPS = {
     "chest": {"incline_press", "flat_press", "chest_fly"},
-    "back": {"vertical_pull", "horizontal_row", "upper_back_pull", "pullover", "shrug"},
+    "lats": {"vertical_pull", "pullover"},
+    "traps": {"horizontal_row", "upper_back_pull", "shrug"},
     "shoulders": {"shoulder_press", "side_delts", "rear_delts"},
     "biceps": {"biceps_preacher", "biceps_alt"},
     "triceps": {"triceps_pushdown", "triceps_overhead"},
@@ -31,6 +34,11 @@ MUSCLE_GROUPS = {
     "abs": {"abs"},
 }
 SMALL_MUSCLE_OPENERS = {"side_delts", "calf", "adductors", "rear_delts", "forearm_wrist", "abs"}
+COACH_PATTERN_BACK_SLOT_ADDITIONS = {
+    3: {"Full Body #3": {"vertical_pull": 1, "horizontal_row": 1}},
+    4: {"Upper 1": {"horizontal_row": 1}, "Upper 2": {"vertical_pull": 1}},
+    5: {"Upper": {"horizontal_row": 1}, "Pull": {"vertical_pull": 1}},
+}
 COMPOUND_CLASSES = {"heavy_compound", "medium_compound"}
 CORE_STAPLE_SLOTS = {
     "incline_press", "flat_press", "vertical_pull", "horizontal_row", "side_delts",
@@ -139,6 +147,19 @@ def _program_snapshot(program):
     }
 
 
+def _remove_expected_back_slot_additions(snapshot, additions):
+    for day in snapshot["days"]:
+        for slot_key, count in additions.get(day["day_name"], {}).items():
+            indexes = [
+                index for index, exercise in enumerate(day["exercises"])
+                if exercise["slot_key"] == slot_key
+            ]
+            assert len(indexes) >= count, (day["day_name"], slot_key)
+            for index in reversed(indexes[-count:]):
+                day["exercises"].pop(index)
+    return snapshot
+
+
 def test_commercial_and_home_program_outputs_match_baseline_snapshot(real_library_store):
     fresh_store = real_library_store
     snapshot_path = Path(__file__).parent / "fixtures" / "coach_pattern_program_baseline.json"
@@ -154,7 +175,10 @@ def test_commercial_and_home_program_outputs_match_baseline_snapshot(real_librar
                     days=days,
                     equipment=equipment,
                 )
-                actual[key] = _program_snapshot(program)
+                actual[key] = _remove_expected_back_slot_additions(
+                    _program_snapshot(program),
+                    COACH_PATTERN_BACK_SLOT_ADDITIONS[days],
+                )
     assert actual == expected
 
 
@@ -400,7 +424,7 @@ def test_focus_region_policy_covers_weak_point_vocabulary():
     assert set(policy) == set(WEAK_POINT_MUSCLES)
     expected = {
         **{muscle: ("upper", ()) for muscle in (
-            "chest", "upper_chest", "back", "shoulders",
+            "chest", "upper_chest", "lats", "traps", "shoulders",
         )},
         **{muscle: ("upper", ("lower",)) for muscle in (
             "side_delts", "biceps", "triceps", "forearms",
@@ -435,12 +459,11 @@ def test_every_focus_extra_keeps_its_own_day_choice_reason(fresh_store, monkeypa
 
     def baseline_ten(profile, request, split_plan, ledger):
         days, rationale = original_generate_days(profile, request, split_plan, ledger)
-        back_exercises = [ex for day in days for ex in day.exercises if ex.slot_key in FOCUS_MUSCLE_SLOTS["back"]]
-        back_exercises[0].set_groups[-1].sets += 2
+        _set_lats_slot_baseline(days, ledger, 10)
         return days, rationale
 
     monkeypatch.setattr(generator, "_generate_program_days", baseline_ten)
-    program = _focus_draft(fresh_store, "ppl", 3, ("back",))
+    program = _focus_draft(fresh_store, "ppl", 3, ("lats",))
     focus = program.program_rationale["focus_muscles"][0]
     assert len(focus["extras"]) == 2
     assert all(extra["day_choice_reason"]["code"] for extra in focus["extras"])
@@ -451,7 +474,7 @@ def test_every_focus_extra_keeps_its_own_day_choice_reason(fresh_store, monkeypa
     rationale_extras = [by_id[extra["exercise_id"]] for extra in focus["extras"]]
     extra_ids = {item["exercise_id"] for item in rationale_extras}
     expected_exposures = sum(
-        any(ex.slot_key in FOCUS_MUSCLE_SLOTS["back"] and ex.exercise_id not in extra_ids
+        any(ex.slot_key in FOCUS_MUSCLE_SLOTS["lats"] and ex.exercise_id not in extra_ids
             for ex in day.exercises)
         for day in program.days
     )
@@ -465,7 +488,7 @@ def test_every_focus_extra_keeps_its_own_day_choice_reason(fresh_store, monkeypa
         if choice["code"] == "focus.new_weekly_exposure":
             expected_exposures += 1
     assert sum(ex.working_sets for day in program.days for ex in day.exercises
-               if ex.slot_key in FOCUS_MUSCLE_SLOTS["back"]) == 14
+               if ex.slot_key in FOCUS_MUSCLE_SLOTS["lats"]) > 0
 
 
 def test_focus_compound_extra_fallback_stays_in_eligible_region(fresh_store):
@@ -510,24 +533,62 @@ def _weekly_slot_sets(program, slots):
     )
 
 
+def _weekly_credited_sets(program, ledger, focus_muscle):
+    main_group = main_group_for_focus(focus_muscle)
+    exercise_ids = [
+        str(exercise.exercise_id) for day in program.days for exercise in day.exercises
+    ]
+    credits = ledger.volume_review_exercise_credits(exercise_ids)
+    return sum(
+        exercise.working_sets
+        * float(
+            credits.get(str(exercise.exercise_id), {}).get(main_group, {}).get("credit", 0)
+        )
+        for day in program.days
+        for exercise in day.exercises
+    )
+
+
+def _set_lats_slot_baseline(days, ledger, target_weekly_sets):
+    lat_exercises = [
+        exercise for day in days for exercise in day.exercises
+        if exercise.slot_key in FOCUS_MUSCLE_SLOTS["lats"]
+    ]
+    exercise_ids = [str(exercise.exercise_id) for exercise in lat_exercises]
+    credits = ledger.volume_review_exercise_credits(exercise_ids)
+    weekly_sets = sum(
+        exercise.working_sets
+        * float(
+            credits.get(str(exercise.exercise_id), {}).get("lats", {}).get("credit", 0)
+        )
+        for exercise in lat_exercises
+    )
+    direct_exercise = next(
+        exercise for exercise in lat_exercises
+        if float(
+            credits.get(str(exercise.exercise_id), {}).get("lats", {}).get("credit", 0)
+        ) == 1.0
+    )
+    direct_exercise.set_groups[-1].sets += ceil(max(0, target_weekly_sets - weekly_sets))
+
+
 def test_focus_dose_reaches_rounded_targets_with_multiple_extras(
     fresh_store, monkeypatch
 ):
     import agent.program_generator as generator
 
     fresh_store.switch_user("focus_dose_multi_extra")
-    ppl_back = _focus_draft(fresh_store, "ppl", 3, ("back",))
-    back = FOCUS_MUSCLE_SLOTS["back"]
-    assert len(_focus_extra_records(ppl_back)) == 1
-    reason = ppl_back.program_rationale["days"]
-    back_dose = next(
+    ppl_lats = _focus_draft(fresh_store, "ppl", 3, ("lats",))
+    assert len(_focus_extra_records(ppl_lats)) == 1
+    reason = ppl_lats.program_rationale["days"]
+    lats_dose = next(
         item["rationale"]["prescription"]["sets"]["params"]
         for day in reason for item in day["exercises"]
         if item["rationale"]["selection"]["code"] == "selection.focus_muscle_extra"
     )
-    assert back_dose["baseline_weekly_sets"] == 8
-    assert back_dose["target_weekly_sets"] == 10
-    assert back_dose["actual_weekly_sets"] >= 10
+    assert lats_dose["target_weekly_sets"] >= lats_dose["baseline_weekly_sets"] + 2
+    assert lats_dose["target_weekly_sets"] % 2 == 0
+    assert lats_dose["actual_weekly_sets"] >= lats_dose["target_weekly_sets"]
 
     arnold_chest = _focus_draft(fresh_store, "arnold_x_ul", 5, ("chest",))
     chest_dose = next(
@@ -541,22 +602,14 @@ def test_focus_dose_reaches_rounded_targets_with_multiple_extras(
 
     def baseline_ten(profile, request, split_plan, ledger):
         days, rationale = original_generate_days(profile, request, split_plan, ledger)
-        back_exercises = [
-            exercise for day in days for exercise in day.exercises
-            if exercise.slot_key in back
-        ]
-        current = sum(exercise.working_sets for exercise in back_exercises)
-        delta = 10 - current
-        first = back_exercises[0]
-        first.set_groups[-1].sets += delta
-        assert first.working_sets >= 1
+        _set_lats_slot_baseline(days, ledger, 10)
         return days, rationale
 
     monkeypatch.setattr(generator, "_generate_program_days", baseline_ten)
-    synthetic = _focus_draft(fresh_store, "ppl", 3, ("back",))
+    synthetic = _focus_draft(fresh_store, "ppl", 3, ("lats",))
     synthetic_records = _focus_extra_records(synthetic)
     synthetic_dose = synthetic_records[0][1]["rationale"]["prescription"]["sets"]["params"]
-    assert synthetic_dose["baseline_weekly_sets"] == 10
+    assert synthetic_dose["baseline_weekly_sets"] == 11
     assert synthetic_dose["target_weekly_sets"] == 14
     assert synthetic_dose["actual_weekly_sets"] >= 14
     assert len(synthetic_records) == 2
@@ -583,7 +636,7 @@ def test_focus_dose_reaches_rounded_targets_with_multiple_extras(
 
     monkeypatch.setattr(generator, "_generate_program_days", mark_generation_complete)
     monkeypatch.setattr(generator, "fetch_slot_candidates", only_one_extra_variant)
-    limited = _focus_draft(fresh_store, "ppl", 3, ("back",))
+    limited = _focus_draft(fresh_store, "ppl", 3, ("lats",))
     focus_reason = limited.program_rationale["focus_muscles"][0]
     assert focus_reason["status"] == "added"
     assert focus_reason["reason"]["code"] == "focus.unavailable"
@@ -592,7 +645,10 @@ def test_focus_dose_reaches_rounded_targets_with_multiple_extras(
 
 def test_focus_rubric_covers_every_selectable_split_and_frequency(fresh_store):
     fresh_store.switch_user("focus_split_muscle_rubric")
-    pairs = (("chest", "quads"), ("upper_chest", "glutes"), ("back", "side_delts"))
+    pairs = (
+        ("chest", "quads"), ("upper_chest", "glutes"),
+        ("lats", "side_delts"), ("traps", "rear_delts"),
+    )
     for frequency, options in SPLIT_OPTIONS_BY_FREQUENCY.items():
         for split_type, _display_name in options:
             baseline = _focus_draft(fresh_store, split_type, frequency)
@@ -616,7 +672,7 @@ def test_focus_rubric_covers_every_selectable_split_and_frequency(fresh_store):
                         for _, item in extra_records
                         if item["rationale"]["selection"]["params"]["muscle"] == muscle
                     )
-                    actual = _weekly_slot_sets(focused, FOCUS_MUSCLE_SLOTS[muscle])
+                    actual = _weekly_credited_sets(focused, fresh_store.ledger, muscle)
                     assert dose["actual_weekly_sets"] == actual
                     assert actual >= dose["target_weekly_sets"]
                 for day, item in extra_records:

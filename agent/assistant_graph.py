@@ -1765,7 +1765,29 @@ def _preference_write_intent(
 _WEAK_POINT_NAMES = {
     "chest": "chest",
     "upper chest": "upper_chest",
-    "back": "back",
+    "lats": "lats",
+    "lat": "lats",
+    "latissimus dorsi": "lats",
+    "back": "lats",
+    "traps": "traps",
+    "trap": "traps",
+    "trapezius": "traps",
+    "upper trapezius": "traps",
+    "mid trapezius": "traps",
+    "middle trapezius": "traps",
+    "lower trapezius": "traps",
+    "upper traps": "traps",
+    "mid traps": "traps",
+    "middle traps": "traps",
+    "lower traps": "traps",
+    "rhomboids": "traps",
+    "rhomboid": "traps",
+    "upper back": "traps",
+    "upper-back": "traps",
+    "mid back": "traps",
+    "mid-back": "traps",
+    "middle back": "traps",
+    "middle-back": "traps",
     "shoulders": "shoulders",
     "side delts": "side_delts",
     "biceps": "biceps",
@@ -1779,7 +1801,12 @@ _WEAK_POINT_NAMES = {
     "abs": "abs",
     "الصدر": "chest",
     "أعلى الصدر": "upper_chest",
-    "الظهر": "back",
+    "الظهر": "lats",
+    "الظهر العريض": "lats",
+    "لاتس": "lats",
+    "اللاتس": "lats",
+    "الترابيس": "traps",
+    "ترابيس": "traps",
     "الأكتاف": "shoulders",
     "الأكتاف الجانبية": "side_delts",
     "البايسبس": "biceps",
@@ -1796,7 +1823,8 @@ _WEAK_POINT_NAMES = {
 _WEAK_POINT_CHAT_LABELS = {
     "chest": ("chest", "الصدر"),
     "upper_chest": ("upper chest", "أعلى الصدر"),
-    "back": ("back", "الظهر"),
+    "lats": ("lats", "اللاتس (الظهر العريض)"),
+    "traps": ("traps", "الترابيس"),
     "shoulders": ("shoulders", "الأكتاف"),
     "side_delts": ("side delts", "الأكتاف الجانبية"),
     "biceps": ("biceps", "البايسبس"),
@@ -1930,7 +1958,7 @@ def _resolve_goal_weak_point_selection(
     else:
         selected = [muscle for muscle in suggest_weak_points(query) if muscle in candidates]
         explicit_pick = bool(re.search(
-            r"\b(?:just|only|keep)\b|\b(?:chest|back|shoulders|upper chest|side delts)\s+only\b|"
+            r"\b(?:just|only|keep)\b|\b(?:chest|back|lats|traps|rhomboids|shoulders|upper chest|side delts)\s+only\b|"
             r"بس|فقط|خلي|خليلي|احتفظ",
             unicodedata.normalize("NFKC", query).casefold(),
         ))
@@ -2106,11 +2134,11 @@ def _validated_chat_weak_points(
     muscles = [_WEAK_POINT_NAMES.get(name) or (name if name in WEAK_POINT_MUSCLES else None) for name in names]
     if not muscles or any(muscle is None for muscle in muscles):
         reply = (
-            "Name Weak points from the list: chest, upper chest, back, shoulders, "
+            "Name Weak points from the list: chest, upper chest, lats, traps, shoulders, "
             "side delts, biceps, triceps, forearms, quads, hamstrings, glutes, "
             "adductors, calves or abs."
             if language == "en"
-            else "اختار نقاط ضعفك من القائمة المعروفة، مثل الصدر أو الظهر أو البطن."
+            else "اختار نقاط ضعفك من القائمة المعروفة، مثل الصدر أو اللاتس (الظهر العريض) أو الترابيس أو البطن."
         )
         return None, reply
     try:
@@ -2169,7 +2197,11 @@ def _weak_point_write_intent(
     result = update_profile(
         store, ledger.ledger_id, {"weak_points": weak_points}, account_id, ledger
     )
-    return _response(_weak_point_write_confirmation(raw_names, result, language))
+    labels = [
+        _WEAK_POINT_CHAT_LABELS[item["muscle"]][0 if language == "en" else 1]
+        for item in weak_points
+    ]
+    return _response(_weak_point_write_confirmation(labels, result, language))
 
 
 def assistant_preference_delete_node(state: AssistantState, config: dict[str, Any] | None = None) -> dict[str, Any]:

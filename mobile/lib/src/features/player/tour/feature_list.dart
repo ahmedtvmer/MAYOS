@@ -81,9 +81,15 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
   FeatureEntry(
     id: 'assistant_volume',
     titleEn: 'Ask about training volume',
-    sentenceEn: 'Ask about direct and indirect weekly sets, logged volume, and clearly labelled estimates with their basis.',
+    sentenceEn:
+        'Ask about weekly sets for lats, traps and other main muscle groups '
+        'using each exercise’s credits, logged volume, and clearly labelled '
+        'estimates with their basis.',
     titleAr: 'اسأل عن مجموعات التدريب',
-    sentenceAr: 'اسأل عن المجموعات الأسبوعية المباشرة وغير المباشرة والحجم المسجل والتقديرات المعلّمة بوضوح مع أساس حسابها.',
+    sentenceAr:
+        'اسأل عن مجموعات اللاتس (الظهر العريض) والترابيس والمجموعات العضلية '
+        'الرئيسية الأخرى، مع رصيد كل تمرين والحجم المسجل والتقديرات المعلّمة '
+        'مع أساس حسابها.',
     target: 'whats_new_assistant_why',
     location: TourRouteLocation(chatPath),
     release: 6,
@@ -159,12 +165,16 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
   FeatureEntry(
     id: 'progress',
     titleEn: 'Progress',
-    sentenceEn: 'Explore your charts and review Checkpoint feedback.',
+    sentenceEn:
+        'Explore your charts, including logged volume by main muscle group '
+        'using each exercise’s credits, and review Checkpoint feedback.',
     titleAr: 'التقدم',
-    sentenceAr: 'تابع مخططاتك وراجع ملاحظات محطات التقدم.',
+    sentenceAr:
+        'تابع مخططاتك، ومنها الحجم المسجل حسب المجموعة العضلية الرئيسية ورصيد '
+        'كل تمرين، وراجع ملاحظات محطات التقدم.',
     target: 'progress',
     location: TourShellTabLocation(tabIndex: 3),
-    release: 0,
+    release: 6,
     audience: 'lifter',
   ),
   FeatureEntry(
