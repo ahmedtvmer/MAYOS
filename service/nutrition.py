@@ -13,7 +13,7 @@ from core.nutrition_targets import (ACTIVITY_FACTORS, NutritionCalculationInput,
 from core.cardio_calories import estimate_cardio_calories
 from core.cardio_prescriptions import parse_legacy_cardio_prescription
 from database.ledger.nutrition import NutritionPlanVersion, NutritionSetup
-from database.ledger.nutrition_meals import meals_still_allowed
+from database.ledger.nutrition_meals import meals_still_allowed, resolve_variant
 from service import nutrition_pace_check
 from service.nutrition_assistant_meals import meal_context
 
@@ -422,6 +422,10 @@ def read(
     else:
         training_day = _is_training_day(ledger, today)
         nutrition_state = _read_active_plan(active_plan, answers, training_day)
+        if nutrition_state["meals_enabled"]:
+            payload = json.loads(active_plan["meals_json"])
+            variant = resolve_variant(ledger, active_plan, payload, nutrition_state["target_day_type"])
+            nutrition_state["meals"] = variant.get("meals", [])
         profile = ledger.get_nutrition_profile()
         if profile and _profile_is_complete(profile):
             _fill_fiber_water_defaults(nutrition_state, float(profile["weight_kg"]))

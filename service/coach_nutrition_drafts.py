@@ -4,7 +4,7 @@ import json
 
 from database.ledger import nutrition_drafts as storage
 from database.ledger.nutrition import NutritionPlanVersion
-from database.ledger.nutrition_meals import generate_variants, reviewed_staples
+from database.ledger.nutrition_meals import generate_variants, resolve_variant, reviewed_staples
 from core.meal_setup import MEAL_LAYOUTS
 from service import nutrition
 from service.assignments import authorized_player_ledger
@@ -65,8 +65,14 @@ def _source_payload(ledger, active, source):
     if active is None:
         raise ValueError("The Player has no current Nutrition plan.")
     if source == "generated":
-        return generate_variants(ledger, _active_targets(ledger), {})
-    return json.loads(active["meals_json"]) if active["meals_json"] else None
+        payload = generate_variants(ledger, _active_targets(ledger), {})
+    else:
+        payload = json.loads(active["meals_json"]) if active["meals_json"] else None
+    if payload and payload.get("enabled"):
+        # The Coach editor displays both day types, so both are demanded here.
+        payload["variants"] = {day: resolve_variant(ledger, active, payload, day)
+                               for day in ("training_day", "rest_day")}
+    return payload
 
 
 def _starting_draft(ledger, source):

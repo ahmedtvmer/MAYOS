@@ -3,10 +3,10 @@
 import json
 from dataclasses import dataclass
 
-from core.food_swap import swap_meal
-from core.meal_generator import day_gap_note, role_matches
+from core.food_swap import swap_day, swap_meal
+from core.meal_generator import role_matches
 from core.meal_setup import restriction_reasons
-from database.ledger.nutrition_meals import _swaps, meals_still_allowed, reviewed_staples
+from database.ledger.nutrition_meals import _swaps, meals_still_allowed, resolve_variant, reviewed_staples
 from database.ledger.nutrition_swap_foods import library_food, swap_allowed
 from service.meals import _save_player_meals
 
@@ -32,9 +32,10 @@ def _context(ledger, target):
     if active["id"] != target.plan_version_id:
         raise ValueError("The Nutrition plan changed. Refresh meals and try again.")
     payload = json.loads(active["meals_json"]) if active["meals_json"] else {}
-    variant = payload.get("variants", {}).get(target.day_type, {})
+    variant = resolve_variant(ledger, active, payload, target.day_type)
     if not payload.get("enabled") or variant.get("status") != "ready":
         raise ValueError("Meals aren't available yet.")
+    payload.setdefault("variants", {})[target.day_type] = variant
     meal = _target_meal(variant, target)
     if not meals_still_allowed(ledger, variant["meals"]):
         raise ValueError("Food restrictions or the Food library changed. Refresh meals and try again.")
@@ -85,18 +86,18 @@ def candidates(db, ledger, target, query):
 
 
 def _replace_variants(payload, command, replacement):
+    for day_type in payload.get("generation_requests", {}):
+        payload.setdefault("deferred_swaps", {}).setdefault(day_type, []).append(
+            {"slot": command.target.slot, "role": command.target.role, "food": replacement})
+        payload.setdefault("swaps", {}).setdefault(day_type, {}).setdefault(command.target.slot, {})[
+            command.target.role] = replacement["id"]
     for day_type, variant in payload["variants"].items():
         if variant["status"] != "ready":
             raise ValueError("Meals must be available for training and rest days before swapping.")
-        meal = _target_meal(variant, command.target)
-        updated = swap_meal(meal, command.target.role, replacement)
-        variant["meals"] = [updated if other["slot"] == meal["slot"] else other for other in variant["meals"]]
-        variant["totals"] = {key: sum(meal["totals"][key] for meal in variant["meals"])
-                             for key in updated["totals"]}
-        targets = {key: sum(meal["targets"][key] for meal in variant["meals"])
-                   for key in updated["totals"]}
-        variant["gap_note"] = day_gap_note(variant["totals"], targets)
-        payload.setdefault("swaps", {})[day_type] = _swaps(variant)
+        _target_meal(variant, command.target)
+        updated = swap_day(variant, [{"slot": command.target.slot, "role": command.target.role, "food": replacement}])
+        payload["variants"][day_type] = updated
+        payload.setdefault("swaps", {})[day_type] = _swaps(updated)
 
 
 def make_swap(ledger, command):

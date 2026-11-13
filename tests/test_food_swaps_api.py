@@ -40,7 +40,7 @@ def _add_search_food(db):
 
 
 def test_swap_versions_both_day_types_preserves_other_slots_and_never_logs(meals_api, recording_analytics):
-    client, db, headers, _today = meals_api
+    client, db, headers, today = meals_api
     before = _enable(client, headers)
     assert before["can_swap"]
     candidates = _candidates(client, headers, before)
@@ -68,6 +68,15 @@ def test_swap_versions_both_day_types_preserves_other_slots_and_never_logs(meals
     assert _swap(client, headers, before).status_code == 409
     assert _swap(client, headers, after).status_code == 409
     assert len([event for event in recording_analytics.events if event["event"] == "nutrition_food_swapped"]) == 1
+    with db.open_ledger(_ledger_id(db)) as ledger:
+        weekday = today.isoweekday() % 7 + 1 if before["day_type"] == "training_day" else today.isoweekday()
+        ledger.append_training_schedule(ledger.ledger_id, [weekday], "UTC", today.isoformat(),
+                                        "2026-01-01T00:00:00Z")
+    other = client.get("/nutrition/meals", headers=headers).json()
+    assert other["day_type"] != before["day_type"]
+    assert other["plan_version_id"] == after["plan_version_id"]
+    assert other["meals"][0]["foods"][0]["id"] == "alternative"
+    assert other["meals"][0]["foods"][0]["swapped"]
 
 
 @pytest.mark.parametrize("restriction,allowed", [("allergy", False), ("vegetarian", False), ("dislike", True)])

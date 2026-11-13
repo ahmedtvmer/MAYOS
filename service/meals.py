@@ -7,7 +7,7 @@ from uuid import uuid4
 
 from core.meal_setup import SLOT_MINUTES
 from database.ledger.nutrition import NutritionPlanVersion
-from database.ledger.nutrition_meals import cached_variants_for_plan, generate_variants
+from database.ledger.nutrition_meals import cached_variants_for_plan, generate_variants, resolve_variant
 from service import nutrition
 from service.food_log_adherence import recompute_day
 
@@ -24,10 +24,10 @@ def read(ledger, today):
     if not payload or not payload.get("enabled"):
         if active["author"] == "Coach":
             return {**context, "status": "unavailable", "reason": "coach", "meals": []}
-        available = cached_variants_for_plan(ledger, active, today)
+        available = cached_variants_for_plan(ledger, active, today, state["target_day_type"])
         variant = available["variants"][state["target_day_type"]]
         return {**variant, **context, "status": "disabled" if variant["status"] == "ready" else "unavailable", "meals": []}
-    variant = payload["variants"][state["target_day_type"]]
+    variant = resolve_variant(ledger, active, payload, state["target_day_type"])
     if variant["status"] == "ready" and not state.get("meals"):
         variant = {"status": "unavailable", "reason": "staples", "meals": []}
     return {**variant, **context, "targets_changed": payload.get("targets_changed", False)}
@@ -51,9 +51,12 @@ def enable(ledger, today):
         if state["status"] != "disabled":
             raise ValueError("Meals aren't available yet. Reviewed Staple foods and practical portions are needed.")
         active = ledger.get_active_nutrition_plan()
-        payload = cached_variants_for_plan(ledger, active, today)
-        if any(variant["status"] != "ready" for variant in payload["variants"].values()):
-            raise ValueError("Meals aren't available yet for both training and rest days.")
+        day_type = state["day_type"]
+        available = cached_variants_for_plan(ledger, active, today, day_type)
+        if available["variants"][day_type]["status"] != "ready":
+            raise ValueError("Meals aren't available yet. Reviewed Staple foods and practical portions are needed.")
+        payload = generate_variants(ledger, json.loads(active["targets_json"]), {})
+        payload["variants"] = available["variants"]
         _save_player_meals(ledger, active, payload)
     return read(ledger, today)
 

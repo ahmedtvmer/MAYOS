@@ -62,14 +62,34 @@ def portion_step(food):
     return {"oils": 5, "nuts_tahini": 10}.get(limit_category(food), 25)
 
 
-def portion_amounts(food):
+def _portion_units(food):
     lower, upper = portion_limits(food)
     step = portion_step(food)
     if (not all(isfinite(value) for value in (lower, upper, step))
             or lower <= 0 or upper < lower or step <= 0):
+        return None
+    first, last = ceil(lower / step - 1e-9), floor(upper / step + 1e-9)
+    if first > last:
+        return None
+    return first, last, step
+
+
+def portion_grid(food):
+    """Return first/last practical grams and step without expanding the interval."""
+    units = _portion_units(food)
+    if units is None:
+        return None
+    first, last, step = units
+    return round(first * step, 6), round(last * step, 6), step
+
+
+def portion_amounts(food):
+    units = _portion_units(food)
+    if units is None:
         return ()
+    first, last, step = units
     return tuple(round(unit * step, 6)
-                 for unit in range(ceil(lower / step - 1e-9), floor(upper / step + 1e-9) + 1))
+                 for unit in range(first, last + 1))
 
 
 def portion_normality(food, grams):
