@@ -1297,6 +1297,8 @@ def _recompute_focus_day_positions(day, rationale_day, focus_muscles_by_exercise
             "position.beginner_compound_first",
             "position.stabilizer_safety",
             "position.pre_exhaust",
+            "position.follows_pre_exhaust",
+            "position.after_pre_exhaust_block",
         }:
             continue
         displaced_focus = _displaced_focus_muscle(

@@ -5,7 +5,8 @@ split.unsupported_frequency; day_order.template; selection.staple,
 selection.equipment_access_staple, selection.already_used_today, selection.hidden,
 selection.signature_match, selection.limitation_substitute, selection.fallback; position.small_muscle_opener,
 position.heavy_compound, position.medium_compound, position.isolation,
-position.pre_exhaust, position.main_progressed_lift,
+position.pre_exhaust, position.follows_pre_exhaust,
+position.after_pre_exhaust_block, position.main_progressed_lift,
 position.beginner_compound_first, position.stabilizer_safety;
 sets.coach_dose, sets.recovery_cut; reps.movement_class,
 reps.rep_preference; rir.experience_level, rir.test_set_rule; rest.movement_class; warmup.template;
@@ -55,6 +56,8 @@ POSITION_HEAVY_COMPOUND = "position.heavy_compound"
 POSITION_MEDIUM_COMPOUND = "position.medium_compound"
 POSITION_ISOLATION = "position.isolation"
 POSITION_PRE_EXHAUST = "position.pre_exhaust"
+POSITION_FOLLOWS_PRE_EXHAUST = "position.follows_pre_exhaust"
+POSITION_AFTER_PRE_EXHAUST_BLOCK = "position.after_pre_exhaust_block"
 POSITION_MAIN_PROGRESSED_LIFT = "position.main_progressed_lift"
 POSITION_BEGINNER_COMPOUND_FIRST = "position.beginner_compound_first"
 POSITION_STABILIZER_SAFETY = "position.stabilizer_safety"
@@ -141,6 +144,18 @@ _POSITION_REASON_COPY = {
         "يأتي تمرين العزل أولًا لتنشيط العضلة نفسها قبل تمرين مركب لاحق. "
         "قد يقل حمل التمرين المركب بنسبة ٥–١٥٪، وهذا لا يعني تراجعًا.",
     ),
+    POSITION_FOLLOWS_PRE_EXHAUST: (
+        "A short same-muscle isolation block comes first in this program version; "
+        "a lighter load here can be expected while you adjust.",
+        "يسبق هذا التمرين المركب جزء عزل قصير للعضلة نفسها في هذا الإصدار من البرنامج؛ "
+        "ومن المتوقع استخدام حمل أخف هنا أثناء التكيف.",
+    ),
+    POSITION_AFTER_PRE_EXHAUST_BLOCK: (
+        "This isolation follows the compound so the earlier pre-exhaust block stays "
+        "within two working sets; its sets remain in your weekly volume.",
+        "يأتي تمرين العزل هذا بعد التمرين المركب ليظل جزء العزل السابق في حدود مجموعتين؛ "
+        "وتظل مجموعاته ضمن حجمك الأسبوعي.",
+    ),
     POSITION_MAIN_PROGRESSED_LIFT: (
         "This is the day's main progressed lift, so it stays ahead of other exercises for the same muscle.",
         "هذا هو تمرين القوة الأساسي المتدرج في اليوم، لذلك يسبق التمارين الأخرى للعضلة نفسها.",
@@ -164,6 +179,8 @@ def position_rationale(
 ) -> dict[str, Any]:
     codes = {
         "pre_exhaust": POSITION_PRE_EXHAUST,
+        "follows_pre_exhaust": POSITION_FOLLOWS_PRE_EXHAUST,
+        "after_pre_exhaust_block": POSITION_AFTER_PRE_EXHAUST_BLOCK,
         "main_progressed_lift": POSITION_MAIN_PROGRESSED_LIFT,
         "beginner_compound_first": POSITION_BEGINNER_COMPOUND_FIRST,
         "stabilizer_safety": POSITION_STABILIZER_SAFETY,

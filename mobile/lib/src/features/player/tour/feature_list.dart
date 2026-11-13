@@ -67,10 +67,10 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
     id: 'isolation_first_order',
     titleEn: 'A clearer exercise order',
     sentenceEn:
-        'When a day allows, a small isolation exercise may come before a later compound for the same muscle; the main lift stays first for that muscle.',
+        'When a day allows, up to two isolation sets may come before a later compound for the same muscle; the main lift stays first for its muscles.',
     titleAr: 'ترتيب أوضح للتمارين',
     sentenceAr:
-        'عندما يسمح اليوم، قد يسبق تمرين العزل تمرينًا مركبًا لاحقًا للعضلة نفسها، مع بقاء تمرين القوة الأساسي قبل تمارين العضلة.',
+        'عندما يسمح اليوم، قد تسبق مجموعتا عزل على الأكثر تمرينًا مركبًا لاحقًا للعضلة نفسها؛ ويظل تمرين القوة الأساسي أولًا لعضلاته.',
     target: 'program',
     location: TourShellTabLocation(tabIndex: 1),
     release: 7,

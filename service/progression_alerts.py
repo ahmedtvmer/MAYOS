@@ -9,8 +9,10 @@ session commit, without inventing new progression maths:
 * ``performance_regression`` — an exercise's existing summary carried
   ``action == 'deload'`` (the OVERSHOOT rule), a projection status of
   ``RPE_OVERSHOOT_DELOAD`` (a top set at RPE 10 even when the load rose), or an
-  e1RM fall of at least ``REGRESSION_E1RM_DROP`` of the previous e1RM. Subject is
-  the exercise id. Baseline exercises (no previous performance) never fire.
+  e1RM fall of at least ``REGRESSION_E1RM_DROP`` of the previous e1RM. That
+  e1RM-only rule is suspended when the comparison crosses a recorded pre-exhaust
+  position change. Subject is the exercise id. Baseline exercises (no previous
+  performance) never fire.
 
 A signal is an *episode*: it opens on the first committing session where it
 fires and stays open while later commits keep firing it; it closes on the first
@@ -92,6 +94,11 @@ def _regression_details(summary: dict[str, Any], session_id: str, session_date: 
         "top_load": summary.get("top_load"),
         "top_reps": summary.get("top_reps"),
         "top_rpe": summary.get("top_rpe"),
+        **(
+            {"position_transition": summary["position_transition"]}
+            if summary.get("position_transition")
+            else {}
+        ),
         "session_id": session_id,
         "session_date": session_date,
     }
@@ -109,6 +116,8 @@ def _is_regression(summary: dict[str, Any]) -> bool:
         return True
     if summary.get("projection_status") == "RPE_OVERSHOOT_DELOAD":
         return True
+    if summary.get("position_transition"):
+        return False
     delta = summary.get("e1rm_delta")
     if delta is None or delta >= 0:
         return False

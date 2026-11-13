@@ -288,7 +288,7 @@ def _order_test_program_day(
     return program.days[0], program.program_rationale["days"][0]["exercises"]
 
 
-def test_generator_pre_exhausts_back_and_chest_before_later_compounds(monkeypatch):
+def test_generator_pre_exhausts_lats_and_chest_before_later_compounds(monkeypatch):
     day, rationale = _order_test_program_day(
         monkeypatch,
         ["horizontal_row", "pullover", "vertical_pull", "chest_fly", "flat_press", "incline_press"],
