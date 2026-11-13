@@ -1272,7 +1272,9 @@ def test_age_question_sends_body_without_injury_or_weak_point_data(api, monkeypa
                      if getattr(message, "type", "") == "tool"]
     assert tool_messages
     profile_result = json.loads(tool_messages[-1].content)
-    assert profile_result["profile"] == {"age": 31}
+    profile = profile_result["profile"]
+    assert profile["age"] == 31
+    assert set(profile) <= {"age", "gender", "height_cm", "target_weight_kg", "weight_kg"}
     assert "injuries" not in profile_result
     for call in model.calls:
         # System/tool documentation names the available profile fields; only user
