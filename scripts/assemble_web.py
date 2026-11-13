@@ -264,7 +264,7 @@ def assemble(flutter_build: Path, landing: Path, output: Path) -> None:
     config = {
         "apiBaseUrl": os.environ.get("MAYOS_API_BASE_URL", "https://api.mayos.online"),
         "posthogKey": os.environ.get("POSTHOG_CLIENT_KEY", ""),
-        "businessEmail": "ahmedtamerhejazi@gmail.com",
+        "businessEmail": "founders@mayos.online",
         "instagramHandle": "mayosapp",
         "tiktokHandle": "mayosapp",
     }
