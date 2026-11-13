@@ -1271,12 +1271,23 @@ def test_age_question_sends_body_without_injury_or_weak_point_data(api, monkeypa
     tool_messages = [message for call in model.calls for message in call["messages"]
                      if getattr(message, "type", "") == "tool"]
     assert tool_messages
-    assert json.loads(tool_messages[-1].content)["profile"]["age"] == 31
+    profile_result = json.loads(tool_messages[-1].content)
+    assert profile_result["profile"] == {"age": 31}
+    assert "injuries" not in profile_result
     for call in model.calls:
-        payload = "\n".join(str(message.content) for message in call["messages"])
-        for forbidden in ("LIMITATION_TEXT_PRIVATE", "INJURY_RECORD_PRIVATE", "CLEARANCE_WORDING_PRIVATE",
-                          "biceps", "Knee flexion", "weak_points", "injuries_or_limitations"):
-            assert forbidden not in payload
+        # System/tool documentation names the available profile fields; only user
+        # and tool-result messages carry Player data for this turn.
+        turn_data = "\n".join(
+            str(message.content)
+            for message in call["messages"]
+            if getattr(message, "type", "") in {"human", "tool"}
+        )
+        for forbidden in (
+            "LIMITATION_TEXT_PRIVATE", "INJURY_RECORD_PRIVATE", "CLEARANCE_WORDING_PRIVATE",
+            "biceps", "Knee flexion", '"weak_points"', '"injuries_or_limitations"',
+            '"injuries"', '"movement_restrictions"',
+        ):
+            assert forbidden not in turn_data
         assert "get_player_injuries" not in call["tools"]
     assert len(tool_messages[-1].content.encode("utf-8")) <= player_tools.MAX_TOOL_RESULT_BYTES
     assert model.calls[0]["messages"][0].content == model.calls[-1]["messages"][0].content
@@ -2921,10 +2932,14 @@ def _install_chat_program_generator(monkeypatch):
         current_program = ledger.get_active_program()
         frequency = request.frequency_override or current_program.weekly_frequency
         profile = profile or ledger.get_player_profile() or {}
-        split_plan = program_rules.get_split_plan(
-            request.split_id_override, frequency, profile.get("gender", "male")
-        ) if request.split_id_override else None
-        split_type = split_plan.split_name if split_plan else current_program.split_type
+        split_plan = (
+            program_rules.get_split_plan(
+                request.split_id_override, frequency, profile.get("gender", "male")
+            )
+            if request.split_id_override
+            else program_rules.get_default_split(frequency, profile.get("gender", "male"))
+        )
+        split_type = split_plan.split_name
         program = GeneratedProgramSchema(
             program_name=f"{split_type} rebuilt",
             split_type=split_type,
