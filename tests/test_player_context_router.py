@@ -16,7 +16,7 @@ from agent.ProgramState import (
 from tests.fakes.chat_model import ScriptedChatModel, ToolCallsTurn
 from tests.test_player_chat_privacy import api  # noqa: F401  (pytest fixture)
 from tests.test_player_chat_privacy import (
-    _assigned_player, _authed, _done_content, _force_free_form_coaching_intent, _register,
+    _assigned_player, _authed, _done_content, _register,
 )
 
 
@@ -107,7 +107,6 @@ def test_program_questions_arrive_scoped_before_first_model_answer(
     router_player, monkeypatch, question, scopes, exercise_names,
 ):
     client, _db, headers = router_player
-    _force_free_form_coaching_intent(monkeypatch)
     model = ScriptedChatModel(["Your Program facts are available."])
     monkeypatch.setattr(assistant_graph, "llm", model)
 
@@ -136,7 +135,6 @@ def test_program_questions_arrive_scoped_before_first_model_answer(
 
 def test_router_keeps_system_bytes_fixed_and_fallback_tools_bound(router_player, monkeypatch, caplog):
     client, _db, headers = router_player
-    _force_free_form_coaching_intent(monkeypatch)
     model = ScriptedChatModel([
         "Five working sets.",
         ToolCallsTurn(calls=[{"name": "get_active_program", "args": {"muscle": "triceps"},
@@ -170,7 +168,6 @@ def test_day_named_for_muscles_includes_its_other_exercises(router_player, monke
         program = ledger.get_active_program()
         program.days[0].day_name = "Chest & Back"
         ledger.save_training_program(program.model_dump())
-    _force_free_form_coaching_intent(monkeypatch)
     model = ScriptedChatModel(["The day also includes arms."])
     monkeypatch.setattr(assistant_graph, "llm", model)
     response = client.post("/chat/messages", headers=headers, json={"content": "What's on Chest & Back?"})
@@ -187,7 +184,6 @@ def test_weekday_without_program_label_does_not_invent_schedule_mapping(router_p
     with db.open_ledger("router-player") as ledger:
         ledger.append_training_schedule(ledger.ledger_id, [1, 2, 4, 6], "UTC",
                                         "2026-01-01", "2026-01-01T00:00:00+00:00")
-    _force_free_form_coaching_intent(monkeypatch)
     model = ScriptedChatModel(["Your Program has no day named Monday."])
     monkeypatch.setattr(assistant_graph, "llm", model)
     response = client.post("/chat/messages", headers=headers, json={"content": "What's on Monday?"})
@@ -199,7 +195,6 @@ def test_weekday_without_program_label_does_not_invent_schedule_mapping(router_p
 def test_no_program_is_reported_before_model_answers(api, monkeypatch):
     client, _db = api
     headers = _authed(_register(client, "router-no-program")["access_token"])
-    _force_free_form_coaching_intent(monkeypatch)
     model = ScriptedChatModel(["You have no active Program."])
     monkeypatch.setattr(assistant_graph, "llm", model)
     response = client.post("/chat/messages", headers=headers, json={"content": "How's my program?"})
@@ -219,7 +214,6 @@ def test_coach_program_router_retains_authority(router_player, monkeypatch):
     coach_id = db.get_active_account_by_username("coach")["account_id"]
     with db.open_ledger("router-coached") as ledger:
         _save_router_program(ledger, coach_id)
-    _force_free_form_coaching_intent(monkeypatch)
     model = ScriptedChatModel(["Your Coach holds Program authority."])
     monkeypatch.setattr(assistant_graph, "llm", model)
     response = client.post("/chat/messages", headers=headers, json={"content": "What's on Push A?"})
@@ -264,7 +258,6 @@ def test_safety_preempts_model_and_writes_use_selected_tools(router_player, monk
 
 def test_router_drops_pieces_that_do_not_fit_prompt_reserve(router_player, monkeypatch, caplog):
     client, db, headers = router_player
-    _force_free_form_coaching_intent(monkeypatch)
     with db.open_ledger("router-player") as ledger:
         # History trimming (#524) keeps the latest replies whole, so those carry the prompt pressure.
         for _ in range(9):
@@ -333,7 +326,6 @@ def test_multiple_large_unicode_day_pieces_respect_total_budget(router_player, m
         ledger.save_training_program(program.model_dump())
         assert all(len(day.exercises[0].exercise_name.encode("utf-8")) > 2_000
                    for day in ledger.get_active_program().days)
-    _force_free_form_coaching_intent(monkeypatch)
     model = ScriptedChatModel(["The remaining days are available on request."])
     monkeypatch.setattr(assistant_graph, "llm", model)
     response = client.post("/chat/messages", headers=headers, json={

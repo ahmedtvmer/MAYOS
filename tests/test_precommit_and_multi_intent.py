@@ -150,7 +150,7 @@ def test_fuzzy_threshold_elevation(db_fixture):
     assert "active movements:" in res["response_content"].lower()
 
 
-def test_composite_intent_history_and_swap(db_fixture):
+def test_multiple_selected_tools_read_history_and_apply_a_swap(db_fixture):
     """Verifies compound query combining exercise history and exercise substitution."""
     active_prog = db_fixture.ledger.get_active_program()
     press_slots = [ex for day in active_prog.days for ex in day.exercises if "press" in ex.exercise_name.lower()]
@@ -209,8 +209,8 @@ def test_composite_intent_history_and_swap(db_fixture):
     assert json.loads(messages[1].content)["program_updated"] is True
     assert state["tool_action_result"]["program_updated"] is True
 
-def test_composite_intent_multiple_swaps(db_fixture):
-    """Verifies two exercise substitutions processed together in one prompt."""
+def test_multiple_swap_text_passes_through_the_safety_gate(db_fixture):
+    """Non-safety requests stay intact for the model to handle with selected tools."""
     active_prog = db_fixture.ledger.get_active_program()
     ex1 = active_prog.days[0].exercises[0]
     ex2 = active_prog.days[0].exercises[1]
@@ -233,7 +233,7 @@ def test_composite_intent_multiple_swaps(db_fixture):
     assert route["intent"] == "coaching_qa"
     assert state["messages"][-1].content == query
 
-def test_composite_intent_banned_and_history(db_fixture):
+def test_banned_movement_preempts_history_question(db_fixture):
     """Verifies a query with banned movement and exercise history."""
     query = "Can I do behind-the-neck press and how did I do on squats?"
     state: AssistantState = {
@@ -255,8 +255,8 @@ def test_composite_intent_banned_and_history(db_fixture):
     assert "VETO: Behind-the-neck" in "".join(chunks)
     assert state["program_updated"] is False
 
-def test_composite_streaming_turn(db_fixture):
-    """Verifies stream_assistant_turn successfully streams composite_intent output."""
+def test_streaming_banned_movement_preempts_history_question(db_fixture):
+    """The safety gate vetoes a banned movement before the model sees the turn."""
     query = "Can I do behind-the-neck press and how did I do on bench press?"
     state: dict = {
         "messages": [HumanMessage(content=query)],

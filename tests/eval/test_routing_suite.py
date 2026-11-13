@@ -12,7 +12,7 @@ from tests.eval.suites.routing import (
     RoutingSuite,
     _action_matches,
     _case_outcome,
-    _hermetic_arabic_swap_classification,
+    _hermetic_arabic_tool_selection,
     _load_routing_cases,
     _observe_case,
     _observe_ledger_writes,
@@ -64,7 +64,7 @@ def test_hermetic_routing_never_loads_embedding_models(tmp_path, monkeypatch):
     assert record["score"] == 40, record["failure_reasons"]
 
 
-def test_routing_dataset_has_required_language_mix_and_composite_action():
+def test_routing_dataset_has_required_language_mix_and_compound_action():
     cases = _load_routing_cases()
     arabic = [case for case in cases if case["language"] == "arabic"]
 
@@ -75,7 +75,7 @@ def test_routing_dataset_has_required_language_mix_and_composite_action():
         "mixed": 3,
     }
     assert any(
-        case["expected_intent"] == "composite_intent" and case["expected_action"]
+        case["expected_intent"] == "multi_tool_request" and case["expected_action"]
         for case in arabic
     )
     assert all(case["review_status"] == "owner_reviewed" for case in arabic)
@@ -174,11 +174,11 @@ def test_hermetic_routing_counts_every_owner_reviewed_case():
         "ar-mixed-01",
         "ar-mixed-03",
     }
-    composite = next(case for case in record["cases"] if case["case_id"] == "ar-egyptian-07")
-    assert composite["observed_intent"] == "exercise_substitution"
-    assert composite["task_match"] is True
-    assert len(composite["executed_actions"]) == 1
-    assert composite["action_match"] is True
+    compound_request = next(case for case in record["cases"] if case["case_id"] == "ar-egyptian-07")
+    assert compound_request["observed_intent"] == "exercise_substitution"
+    assert compound_request["task_match"] is True
+    assert len(compound_request["executed_actions"]) == 1
+    assert compound_request["action_match"] is True
     leg_press = next(case for case in record["cases"] if case["case_id"] == "ar-egyptian-03")
     assert leg_press["expected_action"]["target_exercise"] == "45° Leg Press (Plate-Loaded)"
     assert leg_press["executed_actions"][0]["target_exercise"] == "45° Leg Press (Plate-Loaded)"
@@ -194,28 +194,28 @@ def test_hermetic_routing_counts_every_owner_reviewed_case():
         and (case.get("expected_action") or {}).get("kind") == "exercise_substitution"
     ]
     for case in swap_cases:
-        scripted = _hermetic_arabic_swap_classification(case)
+        selection = _hermetic_arabic_tool_selection(case)
+        assert selection["name"] == "substitute_exercise"
+        args = selection["args"]
         if case["id"] == "ar-egyptian-07":
-            assert scripted == {
-                "intent": "composite_intent",
-                "source_exercise": "Bench Press (Barbell)",
-                "target_exercise": "Dumbbell Bench Press",
-                "has_swap": True,
-                "has_additional_request": True,
+            assert selection == {
+                "name": "substitute_exercise",
+                "args": {
+                    "source_exercise": "Barbell Bench Press",
+                    "target_exercise": "Dumbbell Bench Press",
+                },
             }
         else:
-            assert scripted["source_exercise"] != case["expected_action"]["source_exercise"]
-        assert scripted["target_exercise"] in {
+            assert args["source_exercise"] != case["expected_action"]["source_exercise"]
+        assert args["target_exercise"] in {
             "Dumbbell Bench Press",
             "Incline Bench Press (Barbell)",
             "Leg Press",
         }
     mixed_suggestion = next(case for case in _load_routing_cases() if case["id"] == "ar-mixed-03")
-    assert _hermetic_arabic_swap_classification(mixed_suggestion) == {
-        "intent": "exercise_substitution",
-        "source_exercise": "Back Squat (Barbell)",
-        "target_exercise": "Goblet Squat",
-        "has_swap": True,
+    assert _hermetic_arabic_tool_selection(mixed_suggestion) == {
+        "name": "get_active_program",
+        "args": {},
     }
 
 
@@ -439,13 +439,13 @@ def test_frequency_profile_write_is_allowed_only_as_part_of_requested_program_ch
     assert len(result_with_extra_write["unauthorized_actions"]) == 1
 
 
-def test_second_action_in_arabic_composite_fails_even_above_routing_bar(tmp_path, monkeypatch):
+def test_second_action_in_arabic_compound_request_fails_even_above_routing_bar(tmp_path, monkeypatch):
     _dataset_with_arabic_status(tmp_path, monkeypatch, "owner_reviewed")
 
     suite = RoutingSuite()
     record = suite.run_hermetic(None)
-    composite = next(case for case in record["cases"] if case["case_id"] == "ar-egyptian-07")
-    composite["executed_actions"].append(dict(composite["executed_actions"][0]))
+    compound_request = next(case for case in record["cases"] if case["case_id"] == "ar-egyptian-07")
+    compound_request["executed_actions"].append(dict(compound_request["executed_actions"][0]))
 
     summary, reasons = suite.validate(record, {"mode": "live"})
 

@@ -275,7 +275,7 @@
       "arabic_group": "egyptian",
       "review_status": "owner_reviewed",
       "text": "بدّل لي البنش بالدامبل. وقولّي أزوّد الوزن إمتى؟",
-      "expected_intent": "composite_intent",
+      "expected_intent": "multi_tool_request",
       "expected_action": {
         "kind": "exercise_substitution",
         "source_exercise": "Bench Press (Barbell)",

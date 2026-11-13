@@ -120,7 +120,7 @@ class ScriptedChatModel(BaseChatModel):
             yield from self._text_chunks(turn.content)
             raise turn.error
         response = self._with_metadata(_as_response(turn))
-        if response.tool_calls:
+        if response.tool_calls or response.invalid_tool_calls:
             content = response.content if isinstance(response.content, str) else ""
             yield from self._text_chunks(content)
             chunks = [
@@ -133,6 +133,11 @@ class ScriptedChatModel(BaseChatModel):
                 }
                 for index, call in enumerate(response.tool_calls)
             ]
+            chunks.extend(
+                {"name": call["name"], "args": call["args"], "id": call["id"],
+                 "index": len(response.tool_calls) + index, "type": "tool_call_chunk"}
+                for index, call in enumerate(response.invalid_tool_calls)
+            )
             self._streamed_chunk_count += 1
             yield ChatGenerationChunk(message=AIMessageChunk(content="", tool_call_chunks=chunks))
             if self.emit_usage and response.usage_metadata is not None:

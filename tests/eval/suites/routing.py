@@ -69,7 +69,7 @@ def validate_cases(cases: list[dict[str, Any]]) -> None:
             raise ValueError(f"Routing case {case['id']} has an invalid language/review status.")
     if not any(
         case["language"] == "arabic"
-        and case["expected_intent"] == "composite_intent"
+        and case["expected_intent"] == "multi_tool_request"
         and isinstance(case.get("expected_action"), dict)
         for case in cases
     ):
@@ -195,7 +195,6 @@ def _case_outcome(case: dict[str, Any], observation: dict[str, Any]) -> dict[str
         "passed": behavior_pass,
         "counted": case["language"] != "arabic" or case["review_status"] == ARABIC_REVIEWED,
         "runner_error": observation.get("runner_error"),
-        "scripted_classifier_used": observation.get("scripted_classifier_used") is True,
         "scripted_tools_used": observation.get("scripted_tools_used") is True,
     }
 
@@ -559,23 +558,23 @@ def _hermetic_embedding(_model: Any, text: str) -> list[float]:
 def _observe_case(
     case: dict[str, Any],
     root: Path,
-    scripted_classification: dict[str, Any] | None = None,
+    scripted_tool_selection: dict[str, Any] | None = None,
     *,
     hermetic: bool = False,
 ) -> dict[str, Any]:
     if not hermetic:
-        return _observe_case_with_catalog(case, root, scripted_classification, hermetic=False)
+        return _observe_case_with_catalog(case, root, scripted_tool_selection, hermetic=False)
 
     from core.embeddings import OnnxEmbeddings
 
     with patch.object(OnnxEmbeddings, "embed_query", _hermetic_embedding):
-        return _observe_case_with_catalog(case, root, scripted_classification, hermetic=True)
+        return _observe_case_with_catalog(case, root, scripted_tool_selection, hermetic=True)
 
 
 def _observe_case_with_catalog(
     case: dict[str, Any],
     root: Path,
-    scripted_classification: dict[str, Any] | None,
+    scripted_tool_selection: dict[str, Any] | None,
     *,
     hermetic: bool,
 ) -> dict[str, Any]:
@@ -619,17 +618,13 @@ def _observe_case_with_catalog(
                 "custom_instructions": "",
             }
             model_turns = [ToolCallsTurn(calls=[{
-                "name": "substitute_exercise", "id": "eval-swap", "args": {
-                    "source_exercise": scripted_classification["source_exercise"],
-                    "target_exercise": scripted_classification["target_exercise"],
-                },
-            }])] if scripted_classification is not None else []
-            if scripted_classification is not None and case["id"] == "ar-mixed-03":
-                model_turns = [ToolCallsTurn(calls=[{"name": "get_active_program", "args": {}, "id": "program-read"}])]
+                **scripted_tool_selection,
+                "id": "eval-tool-selection",
+            }])] if scripted_tool_selection is not None else []
             model_patch = (
                 patch.object(graph, "llm", ScriptedChatModel(model_turns,
                     default_turn="A safer option depends on what feels uncomfortable."))
-                if scripted_classification is not None
+                if scripted_tool_selection is not None
                 else nullcontext()
             )
             with model_patch:
@@ -653,8 +648,7 @@ def _observe_case_with_catalog(
             "executed_actions": executed_actions,
             "selected_tools": selected_tools,
             "preconfirmation_writes": preconfirmation_writes,
-            "scripted_classifier_used": False,
-            "scripted_tools_used": scripted_classification is not None,
+            "scripted_tools_used": scripted_tool_selection is not None,
             "runner_error": "assistant pipeline failed" if state.get("response_content") == graph.PIPELINE_ERROR_RESPONSE else None,
         }
     finally:
@@ -675,7 +669,7 @@ def _selected_task(safety_intent: str | None, selected_tools: list[str]) -> str:
     actions = {"substitute_exercise", "preview_program_rebuild", "preview_program_edit", "choose_deload"}
     names = [name for name in selected_tools if name in actions] or selected_tools
     selected = list(dict.fromkeys(tasks[name] for name in names if name in tasks))
-    return "composite_intent" if len(selected) > 1 else selected[0] if selected else "coaching_qa"
+    return "multi_tool_request" if len(selected) > 1 else selected[0] if selected else "coaching_qa"
 
 
 def _seed_hermetic_catalog(catalog_path: Path, root: Path) -> None:
@@ -780,13 +774,11 @@ def _hermetic_actions(case: dict[str, Any]) -> list[dict[str, Any]]:
     return actions
 
 
-def _hermetic_arabic_swap_classification(case: dict[str, Any]) -> dict[str, Any]:
+def _hermetic_arabic_tool_selection(case: dict[str, Any]) -> dict[str, Any]:
     if case["id"] == "ar-mixed-03":
         return {
-            "intent": "exercise_substitution",
-            "source_exercise": "Back Squat (Barbell)",
-            "target_exercise": "Goblet Squat",
-            "has_swap": True,
+            "name": "get_active_program",
+            "args": {},
         }
     action = case["expected_action"]
     source_names = {
@@ -798,25 +790,17 @@ def _hermetic_arabic_swap_classification(case: dict[str, Any]) -> dict[str, Any]
         "Incline Bench Press (Barbell)": "Incline Bench Press (Barbell)",
         "45° Leg Press (Plate-Loaded)": "Leg Press",
     }
-    if case["id"] == "ar-egyptian-07":
-        return {
-            "intent": "composite_intent",
-            "source_exercise": "Bench Press (Barbell)",
-            "target_exercise": "Dumbbell Bench Press",
-            "has_swap": True,
-            "has_additional_request": True,
-        }
     return {
-        "intent": case["expected_intent"],
-        "source_exercise": source_names[action["source_exercise"]],
-        "target_exercise": target_names[action["target_exercise"]],
-        "has_swap": case["expected_intent"] == "composite_intent",
-        "has_additional_request": case["expected_intent"] == "composite_intent",
+        "name": "substitute_exercise",
+        "args": {
+            "source_exercise": source_names[action["source_exercise"]],
+            "target_exercise": target_names[action["target_exercise"]],
+        },
     }
 
 
 class RoutingSuite:
-    """Measures intent routing and validated player actions; Arabic needs owner review."""
+    """Measures safety routing, model-selected tasks, and validated player actions."""
 
     name = "routing"
 
@@ -840,7 +824,7 @@ class RoutingSuite:
                             _observe_case(
                                 case,
                                 root,
-                                _hermetic_arabic_swap_classification(case),
+                                _hermetic_arabic_tool_selection(case),
                                 hermetic=True,
                             )
                         )

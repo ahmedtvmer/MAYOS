@@ -1,6 +1,7 @@
 """Model tool selection and the #718 program-options regression."""
 
 import json
+import sqlite3
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
@@ -208,3 +209,212 @@ def test_rebuild_tool_keeps_coach_program_authority_in_code(player_program, monk
     assert result["request_suggestion"]["desired_weekly_frequency"] == 4
     assert ledger.get_pending_chat_program_edit() is None
     assert ledger.get_active_program().version == active.version
+
+
+@pytest.fixture
+def ppl_ul_player(player_program):
+    from agent.program_generator import ProgramGenerationRequest, generate_program_draft_pipeline
+
+    ledger = player_program.ledger
+    ledger.upsert_player_profile({**ledger.get_player_profile(), "age": 21,
+        "training_age_years": 4, "weekly_frequency": 5})
+    program, _markdown = generate_program_draft_pipeline(
+        ProgramGenerationRequest(frequency_override=5, split_id_override="ppl_x_ul"), ledger=ledger)
+    ledger.save_training_program(program.model_dump())
+    return player_program
+
+
+def _narrated_call(name, args=None):
+    return ToolCallsTurn(content="Let me first check your current profile and program details to make sure I have the full picture.",
+                         calls=[_call(name, args)])
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+@pytest.mark.parametrize("arabic_rebuild", [False, True])
+def test_718_staging_four_turn_replay_shows_current_split_and_same_split_preview(
+    ppl_ul_player, monkeypatch, streaming, arabic_rebuild,
+):
+    """Real staging regression: options → rebuild → 'ppl ul' → rebuild again."""
+    store = ppl_ul_player
+    active = store.ledger.get_active_program()
+    history = []
+    names = [name for _key, name in valid_splits_for(5)]
+    options_reply = "; ".join(
+        name + (" (your current program)" if name == "PPL × UL" else "") for name in names) + "."
+    final_query = "عايز أعيد بناء برنامجي بنفس تقسيمة PPL UL" if arabic_rebuild else "i want to rebuild my program"
+    cases = [
+        ("what are availible program types for me?", [
+            _narrated_call("list_program_options"), options_reply]),
+        ("okay lets rebuild the program", [
+            _narrated_call("get_player_profile", {"sections": ["Body", "Training setup"]}),
+            _narrated_call("get_active_program"),
+            "You're 21, with 4 years of training, on a 5-day PPL × UL with player authority. Which split would you like?"]),
+        ("ppl ul", [
+            _narrated_call("get_player_profile", {"sections": ["Training setup"]}),
+            _narrated_call("get_active_program"),
+            _narrated_call("preview_program_rebuild", {"split_type": "ppl ul"}),
+            ""]),
+        (final_query, [
+            _narrated_call("get_active_program"),
+            _narrated_call("preview_program_rebuild"), ""]),
+    ]
+    for index, (query, script) in enumerate(cases):
+        model = ScriptedChatModel(script, chunk_size=1)
+        monkeypatch.setattr(graph, "llm", model)
+        request = {**_turn(query), "messages": [*history, HumanMessage(content=query)]}
+        result = _run(request, store, streaming)
+        reply = result["response_content"]
+        assert graph.EMPTY_RESPONSE_FALLBACK not in reply
+        assert graph.PIPELINE_ERROR_RESPONSE not in reply
+        assert "Let me first check" not in reply
+        assert "picture." not in reply
+        assert "authority" not in reply.casefold()
+        assert not result["program_updated"]
+        assert store.ledger.get_active_program().model_dump() == active.model_dump()
+        if index == 0:
+            assert all(name in reply for name in names)
+            assert "PPL × UL (your current program)" in reply
+            payloads = [json.loads(message.content) for message in model.calls[-1]["messages"]
+                        if isinstance(message, ToolMessage) and message.name == "list_program_options"]
+            assert [row["name"] for row in payloads[-1]["options"] if row["is_current"]] == ["PPL × UL"]
+        if index >= 2:
+            pending = store.ledger.get_pending_chat_program_edit()
+            assert result["program_edit_preview"]["id"] == pending["offer_id"]
+            assert pending["offer_text"] == reply
+            assert pending["proposal"]["rebuild_base_program"]["split_type"] == active.split_type
+            assert len(result["program_edit_preview"]["days"]) == 5
+            assert ("أكد أو ألغِ" if arabic_rebuild and index == 3 else "Confirm or cancel") in reply
+            old_ids = {row.exercise_id for day in active.days for row in day.exercises}
+            new_ids = {row["exercise_id"] for day in pending["proposal"]["rebuild_base_program"]["days"]
+                       for row in day["exercises"]}
+            assert new_ids - old_ids, "Same-split rebuild should prefer eligible fresh exercises"
+        history.extend([HumanMessage(content=query), AIMessage(content=reply)])
+
+    confirmation = "أيوه" if arabic_rebuild else "yes"
+    monkeypatch.setattr(graph, "llm", ScriptedChatModel([_narrated_call("confirm_program_edit")]))
+    result = _run({**_turn(confirmation), "messages": [*history, HumanMessage(content=confirmation)]}, store, streaming)
+    assert result["program_updated"]
+    assert store.ledger.get_active_program().version == active.version + 1
+    assert store.ledger.get_pending_chat_program_edit() is None
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+@pytest.mark.parametrize(("query", "marker"), [
+    ("Rebuild my program", "not available"),
+    ("عايز أعيد بناء برنامجي", "مش متاحة"),
+])
+def test_718_failed_preview_has_specific_localized_reply_even_if_model_would_stop_empty(
+    ppl_ul_player, monkeypatch, streaming, query, marker,
+):
+    store = ppl_ul_player
+    before = store.ledger.get_active_program().model_dump()
+    model = ScriptedChatModel([
+        _narrated_call("preview_program_rebuild", {"split_type": "unsupported imaginary split"}), ""])
+    monkeypatch.setattr(graph, "llm", model)
+
+    result = _run(_turn(query), store, streaming)
+
+    assert marker in result["response_content"]
+    assert "Let me first check" not in result["response_content"]
+    assert graph.EMPTY_RESPONSE_FALLBACK not in result["response_content"]
+    assert not result.get("program_edit_preview")
+    assert not result["program_updated"]
+    assert store.ledger.get_active_program().model_dump() == before
+    assert store.ledger.get_pending_chat_program_edit() is None
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+@pytest.mark.parametrize(("query", "marker", "unchanged"), [
+    ("i want to rebuild my program", "couldn't prepare the program rebuild preview", "Nothing changed"),
+    ("عايز أعيد بناء برنامجي", "مقدرتش أجهز معاينة إعادة بناء البرنامج", "مفيش حاجة اتغيرت"),
+])
+def test_718_empty_final_after_last_read_round_reports_unprepared_rebuild(player_program, monkeypatch, streaming, query, marker, unchanged):
+    model = ScriptedChatModel([
+        *[_narrated_call("get_player_profile", {"sections": ["Training setup"]})
+          for _ in range(graph.MAX_PLAYER_TOOL_ROUNDS)], ""])
+    monkeypatch.setattr(graph, "llm", model)
+
+    result = _run(_turn(query), player_program, streaming)
+
+    reply = result["response_content"]
+    assert marker in reply
+    assert unchanged in reply
+    assert "Let me first check" not in reply
+    assert graph.EMPTY_RESPONSE_FALLBACK not in reply
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+@pytest.mark.parametrize(("query", "answer", "management"), [
+    ("Tell me about my current program",
+     "You are on Full Body with player authority. The split_type is full_body; get_active_program checked it.",
+     "that you manage"),
+    ("قولي عن برنامجي الحالي",
+     "تمام، برنامجك Full Body مع player authority. قيمة split_type اتراجعت عن طريق get_active_program.",
+     "إنت اللي بتديره"),
+])
+def test_718_last_tool_round_still_gets_a_final_answer(player_program, monkeypatch, streaming, query, answer, management):
+    model = ScriptedChatModel([
+        *[_narrated_call("get_active_program") for _ in range(graph.MAX_PLAYER_TOOL_ROUNDS)],
+        answer])
+    monkeypatch.setattr(graph, "llm", model)
+
+    result = _run(_turn(query), player_program, streaming)
+
+    reply = result["response_content"]
+    assert "Full Body" in reply
+    assert management in reply
+    assert all(term not in reply for term in ("authority", "split_type", "get_active_program", "Let me first check"))
+    assert graph.EMPTY_RESPONSE_FALLBACK not in reply
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+@pytest.mark.parametrize(("query", "marker"), [
+    ("Rebuild my program", "couldn't read the requested action details"),
+    ("عايز أعيد بناء برنامجي", "مقدرتش أقرأ تفاصيل الطلب"),
+])
+def test_718_malformed_rebuild_call_discards_narration_and_reports_failure(player_program, monkeypatch, streaming, query, marker):
+    model = ScriptedChatModel([AIMessage(
+        content="Let me first check your program. I will prepare a fresh preview.",
+        invalid_tool_calls=[{"name": "preview_program_rebuild", "args": "not-json", "id": "invalid-call",
+                             "error": "Invalid JSON"}],
+    )], chunk_size=1)
+    monkeypatch.setattr(graph, "llm", model)
+    before = player_program.ledger.get_active_program().model_dump()
+
+    result = _run(_turn(query), player_program, streaming)
+
+    reply = result["response_content"]
+    assert marker in reply
+    assert "Let me first check" not in reply
+    assert "I will prepare" not in reply
+    assert graph.EMPTY_RESPONSE_FALLBACK not in reply
+    assert not result.get("program_edit_preview")
+    assert not result["program_updated"]
+    assert player_program.ledger.get_active_program().model_dump() == before
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+@pytest.mark.parametrize(("query", "marker"), [
+    ("Rebuild my program", "couldn't generate the program rebuild preview"),
+    ("عايز أعيد بناء برنامجي", "مقدرتش أجهز معاينة إعادة بناء البرنامج"),
+])
+def test_718_preview_storage_failure_returns_honest_localized_reply(ppl_ul_player, monkeypatch, streaming, query, marker):
+    store = ppl_ul_player
+    before = store.ledger.get_active_program().model_dump()
+
+    def fail_preview_storage(*_args, **_kwargs):
+        raise sqlite3.OperationalError("private storage failure")
+
+    monkeypatch.setattr(store.ledger, "set_pending_chat_program_edit", fail_preview_storage)
+    monkeypatch.setattr(graph, "llm", ScriptedChatModel([_narrated_call("preview_program_rebuild"), ""]))
+
+    result = _run(_turn(query), store, streaming)
+
+    reply = result["response_content"]
+    assert marker in reply
+    assert "private storage" not in reply
+    assert "Let me first check" not in reply
+    assert graph.EMPTY_RESPONSE_FALLBACK not in reply
+    assert not result.get("program_edit_preview")
+    assert not result["program_updated"]
+    assert store.ledger.get_active_program().model_dump() == before
