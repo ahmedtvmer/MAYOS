@@ -1351,10 +1351,7 @@ class FakeMayosApi {
       return const FakeResponse.networkFailure();
     }
     if (loginServerError) {
-      return const FakeResponse(
-        503,
-        <String, dynamic>{'detail': 'The service is unavailable.'},
-      );
+      return const FakeResponse(503);
     }
     final String? username = request.body['trainee_id'] as String?;
     final String? password = request.body['password'] as String?;

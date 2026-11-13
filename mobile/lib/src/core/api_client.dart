@@ -577,11 +577,11 @@ class ApiClient {
     final int? status = error.response?.statusCode;
     final dynamic data = error.response?.data;
     if (isTransportFailure(error)) return _networkFailure();
-    if (status != null && status >= 500) {
-      return _serviceProblem(status);
-    }
     if (data is Map) {
       return _apiExceptionFromBody(status, Map<String, dynamic>.from(data));
+    }
+    if (status != null && status >= 500) {
+      return _serviceProblem(status);
     }
     return ApiException(
       'Request failed ($status).',
@@ -612,6 +612,12 @@ class ApiClient {
     final String fallback = rawDetail is String ? rawDetail : genericDetail;
     final ServerFailureMessage? serverFailure =
         _serverMessageMetadata(body, fallback);
+    if (status != null &&
+        status >= 500 &&
+        serverFailure == null &&
+        !_hasFailureDetail(body)) {
+      return _serviceProblem(status);
+    }
     if (rawDetail is String) {
       return _detailFailure(status, body, rawDetail, serverFailure);
     }
@@ -625,6 +631,13 @@ class ApiClient {
       return _machineErrorFailure(status, body, serverFailure);
     }
     return ApiException(genericDetail, statusCode: status, failureMessage: serverFailure);
+  }
+
+  static bool _hasFailureDetail(Map<String, dynamic> body) {
+    final Object? detail = body['detail'];
+    final Object? errorCode = body['error'];
+    return (detail is String && detail.trim().isNotEmpty) ||
+        (errorCode is String && errorCode.trim().isNotEmpty);
   }
 
   static ApiException _detailFailure(
@@ -3762,7 +3775,6 @@ class ApiClient {
   /// Builds an [ApiException] from a non-2xx streamed body, surfacing the
   /// server's `detail` (e.g. the rate-limit message) when present.
   ApiException _errorFromResponse(int status, String raw) {
-    if (status >= 500) return _serviceProblem(status);
     final String trimmed = raw.trim();
     if (trimmed.isNotEmpty) {
       try {
@@ -3777,6 +3789,7 @@ class ApiClient {
         // Fall through to the status-based message below.
       }
     }
+    if (status >= 500) return _serviceProblem(status);
     return ApiException(
       'Request failed ($status).',
       statusCode: status,

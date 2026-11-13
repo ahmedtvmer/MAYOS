@@ -69,12 +69,14 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
     sentenceEn:
         'After opening the installed app online once, reopen it without a '
         'connection to view saved Home, Program, workout targets and Nutrition '
-        'data, with a separate retry message if MAYOS has a problem.',
+        'data, with a separate retry message during startup if MAYOS has a '
+        'problem and specific messages for failed actions.',
     titleAr: 'افتح بيانات تدريبك المحفوظة دون اتصال',
     sentenceAr:
         'بعد فتح التطبيق المثبّت عبر الإنترنت مرة واحدة، أعد فتحه دون اتصال '
         'للاطّلاع على بيانات الرئيسية والبرنامج التدريبي وأهداف التمرين والتغذية '
-        'المحفوظة، وستظهر رسالة منفصلة لإعادة المحاولة إذا واجهت MAYOS مشكلة.',
+        'المحفوظة، وستظهر رسالة منفصلة لإعادة المحاولة أثناء الفتح إذا واجهت MAYOS '
+        'مشكلة، ورسالة خاصة بكل إجراء يفشل.',
     target: 'home',
     location: TourShellTabLocation(tabIndex: 0),
     release: 6,

@@ -577,7 +577,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
         if (!mounted) return;
         setState(() {
           _loading = false;
-          _loadError = _copy.trainingDayUnavailableOffline;
+          _loadError = _copy.trainingDayNotSaved;
           _fromCache = fromCache;
         });
         return;
@@ -1890,7 +1890,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
           ),
           if (_fromCache) ...<Widget>[
             const SizedBox(height: MayosSpacing.sm),
-            const _OfflineLoggerNotice(),
+            const _SavedProgramNotice(),
           ],
           if (workout.deload != null) ...<Widget>[
             const SizedBox(height: MayosSpacing.md),
@@ -3024,9 +3024,8 @@ class _MessageLine extends StatelessWidget {
   }
 }
 
-/// The offline banner for the logger, matching the Program tab's treatment.
-class _OfflineLoggerNotice extends StatelessWidget {
-  const _OfflineLoggerNotice();
+class _SavedProgramNotice extends StatelessWidget {
+  const _SavedProgramNotice();
 
   @override
   Widget build(BuildContext context) {
@@ -3043,11 +3042,11 @@ class _OfflineLoggerNotice extends StatelessWidget {
       ),
       child: Row(
         children: <Widget>[
-          Icon(Icons.cloud_off, size: 18, color: c.textSecondary),
+          Icon(Icons.history, size: 18, color: c.textSecondary),
           const SizedBox(width: MayosSpacing.xs),
           Expanded(
             child: Text(
-              workoutCopyOf(context).offlineCachedProgram,
+              workoutCopyOf(context).savedProgramNote,
               style: MayosTypography.of(context).bodySecondary.copyWith(
                 color: c.textSecondary,
               ),

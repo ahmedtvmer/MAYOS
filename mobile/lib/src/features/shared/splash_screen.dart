@@ -18,7 +18,9 @@ import '../../core/ui/mayos_wallpaper.dart';
 /// inside safe margins on small phones and never dominates a tall one.
 /// Intentionally no fabricated imagery or metrics.
 class SplashScreen extends StatelessWidget {
-  const SplashScreen({super.key});
+  const SplashScreen({super.key, this.statusBanner});
+
+  final Widget? statusBanner;
 
   @override
   Widget build(BuildContext context) {
@@ -55,6 +57,14 @@ class SplashScreen extends StatelessWidget {
                       child: Stack(
                         fit: StackFit.expand,
                         children: <Widget>[
+                          if (statusBanner != null &&
+                              (ModalRoute.of(context)?.isCurrent ?? true))
+                            PositionedDirectional(
+                              top: 0,
+                              start: 0,
+                              end: 0,
+                              child: statusBanner!,
+                            ),
                           Center(
                             child: MayosBrandLockup(
                               height: logoHeight,

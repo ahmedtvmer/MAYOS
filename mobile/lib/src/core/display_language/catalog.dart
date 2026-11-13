@@ -656,9 +656,9 @@ class MayosCopy {
       : '$count reps';
   String get loadHomeFailed =>
       isArabic ? 'تعذر تحميل الصفحة الرئيسية.' : 'Could not load your home.';
-  String get offlineSavedProgram => isArabic
-      ? 'غير متصل — يعرض البرنامج التدريبي المحفوظ.'
-      : 'Offline — showing your saved program.';
+  String get savedProgramNote => isArabic
+      ? 'يعرض البرنامج التدريبي المحفوظ.'
+      : 'Showing your saved program.';
   String get noSetsRecordedForExercise => isArabic
       ? 'لا توجد مجموعات مسجلة لهذا التمرين بعد. سجّل حصة تدريبية لبدء متابعة التقدم.'
       : 'No sets recorded for this exercise yet. Log a workout to start a trend.';
@@ -695,9 +695,9 @@ class MayosCopy {
   String get everyExerciseMatchInWorkout => isArabic
       ? 'كل النتائج موجودة بالفعل في هذه الحصة.'
       : 'Every match is already in this workout.';
-  String get offlineProgramBanner => isArabic
-      ? 'غير متصل — يعرض البرنامج المحفوظ'
-      : 'Offline — showing saved program';
+  String get savedProgramBanner => isArabic
+      ? 'يعرض البرنامج التدريبي المحفوظ'
+      : 'Showing saved program';
   String get warmup => isArabic ? 'الإحماء' : 'Warm-up';
   String get workingSets => isArabic ? 'مجموعات التدريب' : 'Working sets';
   String get cardio => isArabic ? 'تمارين اللياقة' : 'Cardio';

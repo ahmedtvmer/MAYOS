@@ -496,7 +496,7 @@ class _HomeBody extends StatelessWidget {
             ),
           if (programFromCache) ...<Widget>[
             const SizedBox(height: MayosSpacing.sm),
-            _InlineNotice(message: displayCopyOf(context).offlineSavedProgram),
+            _InlineNotice(message: displayCopyOf(context).savedProgramNote),
           ] else if (data.partialError != null) ...<Widget>[
             const SizedBox(height: MayosSpacing.sm),
             _InlineNotice(message: copy.failureMessage(data.partialError!)),

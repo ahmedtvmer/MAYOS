@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mayos_mobile/src/app.dart';
 import 'package:mayos_mobile/src/core/app_failure.dart';
+import 'package:mayos_mobile/src/core/app_mode.dart';
 import 'package:mayos_mobile/src/core/connectivity.dart';
 import 'package:mayos_mobile/src/core/display_language/catalog.dart';
 import 'package:mayos_mobile/src/core/display_language/coach_copy.dart';
@@ -15,6 +16,7 @@ import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/core/workout_storage.dart';
 import 'package:mayos_mobile/src/features/player/tour/feature_list.dart';
 import 'package:mayos_mobile/src/features/settings/settings_screen.dart';
+import 'package:mayos_mobile/src/features/shared/splash_screen.dart';
 import 'package:mayos_mobile/src/providers.dart';
 import 'package:mayos_mobile/src/router.dart';
 
@@ -125,9 +127,16 @@ void main() {
 
       await tester.pumpWidget(const SizedBox.shrink());
       fake.meFails = true;
+      final _LateAppModeRead modeStore = _LateAppModeRead();
+      addTearDown(() {
+        if (!modeStore.delayedMode.isCompleted) {
+          modeStore.delayedMode.complete(AppMode.player);
+        }
+      });
       await tester.pumpWidget(authApp(
         fake,
         tokens,
+        modeStore: modeStore,
         savedPlayerDataBrowser: savedPlayerDataBrowser,
         extraOverrides: overrides,
       ));
@@ -144,13 +153,20 @@ void main() {
                       null ||
                   serviceProblemBanner.evaluate().isEmpty);
           attempt++) {
-        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 50));
       }
       final controller = container.read(authControllerProvider.notifier);
 
       // #721 regression: cache activation must not overwrite the startup 5xx.
       expect(serviceProblemBanner, findsOneWidget);
       expect(find.text(copy.offlineSavedData), findsNothing);
+      expect(find.byType(SplashScreen), findsOneWidget);
+
+      modeStore.delayedMode.complete(AppMode.player);
+      await tester.pumpAndSettle();
+      expect(container.read(routerProvider).routeInformationProvider.value.uri.path,
+          homePath);
+      expect(serviceProblemBanner, findsOneWidget);
 
       // A session snapshot update must retain the 5xx classification.
       expect(controller.confirmWhatsNewSeenRelease('account-alice', 2), isTrue);
@@ -161,7 +177,10 @@ void main() {
       // A transport timeout reclassifies the current issue as offline.
       fake.meFails = false;
       fake.meTimesOut = true;
-      await controller.retrySavedSession();
+      final Future<void> timeoutRetry = controller.retrySavedSession();
+      // Dio queues requests on timers; drain that queue before awaiting.
+      await tester.pump(Duration.zero);
+      await timeoutRetry;
       await tester.pump();
       expect(find.text(copy.offlineSavedData), findsOneWidget);
       expect(find.text(copy.serviceUnavailable), findsNothing);
@@ -169,10 +188,15 @@ void main() {
       // A later 5xx reclassifies it back to a server problem.
       fake.meTimesOut = false;
       fake.meFails = true;
-      await controller.retrySavedSession();
+      final Future<void> serverRetry = controller.retrySavedSession();
+      await tester.pump(Duration.zero);
+      await serverRetry;
       await tester.pump();
       expect(find.text(copy.serviceUnavailable), findsOneWidget);
       expect(find.text(copy.offlineSavedData), findsNothing);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(Duration.zero);
     });
   }
 
@@ -1009,6 +1033,13 @@ Future<void> _logout(WidgetTester tester) async {
   await tester.pumpAndSettle();
   await tester.tap(logOut);
   await tester.pumpAndSettle();
+}
+
+class _LateAppModeRead extends InMemoryAppModeStore {
+  final Completer<AppMode?> delayedMode = Completer<AppMode?>();
+
+  @override
+  Future<AppMode?> read(String accountId) => delayedMode.future;
 }
 
 class _LateTokenReadFailure extends InMemoryTokenStore {
