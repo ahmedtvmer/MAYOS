@@ -10,6 +10,22 @@ from service.program_edit import ProgramEdit, ProgramEditExercise, edit_active_p
 from service.chat_program_edit import plan_chat_program_edit, resolve_chat_program_edit
 from langchain_core.messages import AIMessage, HumanMessage
 from agent.assistant_graph import stream_assistant_turn
+from tests.fakes.chat_model import ScriptedChatModel, ToolCallsTurn
+
+
+@pytest.fixture
+def edit_model(monkeypatch):
+    from agent import assistant_graph
+
+    model = ScriptedChatModel()
+    monkeypatch.setattr(assistant_graph, "llm", model)
+    return model
+
+
+def _select_edit(model):
+    model.script(ToolCallsTurn(calls=[{
+        "name": "preview_program_edit", "args": {}, "id": "requested-edit",
+    }]))
 
 
 def test_pending_chat_program_edit_round_trips_offer_and_expires(fresh_store):
@@ -536,7 +552,7 @@ def test_coach_controlled_chat_edit_offers_program_request(fresh_store, query, e
     assert result["response_content"] == expected_reply
 
 
-def test_production_chat_requests_preview_then_confirm_one_version(fresh_store):
+def test_production_chat_requests_preview_then_confirm_one_version(fresh_store, edit_model):
     from service.chat import build_turn_state
 
     db = fresh_store
@@ -573,7 +589,9 @@ def test_production_chat_requests_preview_then_confirm_one_version(fresh_store):
             weekly_frequency=2, days=fresh_days).model_dump())
         before = ledger.get_active_program().version
         state = build_turn_state("player", [HumanMessage(content=query)], player_account_id=account_id)
+        _select_edit(edit_model)
         list(stream_assistant_turn(state, ledger=ledger, store=db))
+        assert state["selected_tools"] == ["preview_program_edit"]
         preview = state.get("program_edit_preview")
         assert preview and preview["days"], state.get("response_content")
         if "don't rebuild" in query:
@@ -591,7 +609,7 @@ def test_production_chat_requests_preview_then_confirm_one_version(fresh_store):
         assert not set(optional_ids).intersection(all_ids)
 
 
-def test_cancelled_rebuild_preview_keeps_original_program_version(fresh_store):
+def test_cancelled_rebuild_preview_keeps_original_program_version(fresh_store, edit_model):
     from service.chat import build_turn_state
 
     db = fresh_store
@@ -611,6 +629,7 @@ def test_cancelled_rebuild_preview_keeps_original_program_version(fresh_store):
     before = ledger.get_active_program().version
     query = "rebuild my program and add biceps to leg days"
     preview_state = build_turn_state("player", [HumanMessage(content=query)], player_account_id=account_id)
+    _select_edit(edit_model)
     list(stream_assistant_turn(preview_state, ledger=ledger, store=db))
     assert preview_state.get("program_edit_preview")
     assert ledger.get_active_program().version == before
@@ -624,7 +643,7 @@ def test_cancelled_rebuild_preview_keeps_original_program_version(fresh_store):
     assert ledger.get_active_program().version == before
 
 
-def test_egyptian_arabic_program_edit_previews_and_confirms(fresh_store):
+def test_egyptian_arabic_program_edit_previews_and_confirms(fresh_store, edit_model):
     from service.chat import build_turn_state
 
     db = fresh_store
@@ -642,6 +661,7 @@ def test_egyptian_arabic_program_edit_previews_and_confirms(fresh_store):
         player_account_id=account_id)
     state["display_language"] = "ar"
 
+    _select_edit(edit_model)
     list(stream_assistant_turn(state, ledger=ledger, store=db))
 
     assert state["program_edit_preview"]["days"]
@@ -660,7 +680,7 @@ def test_egyptian_arabic_program_edit_previews_and_confirms(fresh_store):
     "add biceps to leg days, then rebuild my program",
     "جدّد برنامجي؛ وحط باي على أيام الرجل",
 ])
-def test_all_rebuild_edit_clause_orders_are_preview_only(fresh_store, query):
+def test_all_rebuild_edit_clause_orders_are_preview_only(fresh_store, query, edit_model):
     from service.chat import build_turn_state
 
     db, ledger = fresh_store, fresh_store.ledger
@@ -676,6 +696,7 @@ def test_all_rebuild_edit_clause_orders_are_preview_only(fresh_store, query):
         "weekly_frequency": 4, "training_age_years": 3, "rep_preference": "balanced"})
     before = ledger.get_active_program().version
     state = build_turn_state("player", [HumanMessage(content=query)], player_account_id=account_id)
+    _select_edit(edit_model)
     list(stream_assistant_turn(state, ledger=ledger, store=db))
     assert state.get("program_edit_preview"), state.get("response_content")
     assert ledger.get_active_program().version == before
@@ -773,7 +794,7 @@ def test_player_writer_transaction_does_not_reserve_catalog_writer(fresh_store):
             future.result()
 
 
-def test_rebuild_preview_with_optional_item_includes_all_days(fresh_store):
+def test_rebuild_preview_with_optional_item_includes_all_days(fresh_store, edit_model):
     from service.chat import build_turn_state
 
     db, ledger = fresh_store, fresh_store.ledger
@@ -788,6 +809,7 @@ def test_rebuild_preview_with_optional_item_includes_all_days(fresh_store):
         "training_age_years": 3, "rep_preference": "balanced"})
     state = build_turn_state("player", [HumanMessage(content="rebuild my program and add biceps to leg days, maybe forearms")],
         player_account_id=account_id)
+    _select_edit(edit_model)
     list(stream_assistant_turn(state, ledger=ledger, store=db))
     preview = state["program_edit_preview"]
     assert len(preview["days"]) >= 4

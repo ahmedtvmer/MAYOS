@@ -272,9 +272,9 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
   FeatureEntry(
     id: 'edit_program_chat',
     titleEn: 'Edit your program from chat',
-    sentenceEn: 'Preview changes or rebuild your current split in chat, then confirm separately to save.',
+    sentenceEn: 'Preview changes or rebuild your current split in chat, then confirm or cancel the displayed preview in a separate reply.',
     titleAr: 'عدّل برنامجك عبر المحادثة',
-    sentenceAr: 'عاين التغييرات أو أعد بناء تقسيمتك الحالية في المحادثة، ثم أكّد في رسالة منفصلة للحفظ.',
+    sentenceAr: 'عاين التغييرات أو أعد بناء تقسيمتك الحالية في المحادثة، ثم أكّد المعاينة المعروضة أو ألغِها في رسالة منفصلة.',
     target: 'whats_new_edit_program_chat',
     location: TourRouteLocation(chatPath),
     release: 1,

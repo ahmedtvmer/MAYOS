@@ -157,6 +157,7 @@ IntentType = Literal[
     "clinical_intercept",
     "banned_movement",
     "telemetry_intercept",
+    "pending_confirmation",
     "exercise_history",
     "exercise_history_fallback",
     "exercise_substitution",
@@ -1583,7 +1584,7 @@ def assistant_preference_delete_node(state: AssistantState, config: dict[str, An
 
 
 def router_node(state: AssistantState, config: dict[str, Any] | None = None) -> dict[str, Any]:
-    """The only pre-model branch is the fail-closed safety gate."""
+    """Check safety and existing offers; the model selects every new operation."""
     if state.get("pipeline_error"):
         return {"intent": "telemetry_intercept", "intent_metadata": {"response_content": state["pipeline_error"]}}
     messages = state.get("messages", [])
@@ -1597,11 +1598,85 @@ def router_node(state: AssistantState, config: dict[str, Any] | None = None) -> 
         return {"intent": "clinical_intercept", "intent_metadata": clinical, "active_intents": []}
     if RE_BANNED_MOVEMENT.search(query):
         return {"intent": "banned_movement", "intent_metadata": {"raw_query": query}, "active_intents": []}
+    confirmation = _pending_offer_response(state, config)
+    if confirmation is not None:
+        return {"intent": "pending_confirmation", "intent_metadata": {"result": confirmation}, "active_intents": []}
     return {"intent": "coaching_qa", "intent_metadata": {}, "active_intents": []}
 
 
-def _injury_update_route(state: AssistantState, config: dict[str, Any] | None) -> dict[str, Any]:
-    """Validate an injury update only after the model requests that tool."""
+def _pending_offer_response(state: AssistantState, config: dict[str, Any] | None) -> dict[str, Any] | None:
+    ledger, store = _graph_context(config)
+    if ledger is None:
+        return None
+    messages = state.get("messages", [])
+    query = _get_message_text(messages[-1]) if messages else ""
+    pending = ledger.get_pending_chat_program_edit()
+    if isinstance(pending, dict):
+        previous = next((_get_message_text(message) for message in reversed(messages[:-1])
+                         if isinstance(message, AIMessage)), "")
+        if previous.strip() == pending["offer_text"].strip():
+            answer = _program_edit_confirmation_kind(query, pending)
+            metadata = {"preview_id": pending["offer_id"], "confirm": answer == "yes",
+                        "include_optional": _chat_edit_optional_selection(query, pending)}
+            if answer in {"yes", "no"}:
+                return program_edit_confirmation_node({**state, "intent_metadata": metadata}, config)
+            if _is_program_edit_clarification(query, pending) or _preview_generation_reply(query):
+                return program_edit_reprompt_node({**state, "intent_metadata": metadata}, config)
+        # An unrelated turn cannot leave an old offer available for a later yes.
+        ledger.clear_pending_chat_program_edit()
+    if isinstance(ledger.get_pending_movement_restriction_offer(), dict):
+        result = _movement_restriction_chat_intent(query, ledger, store, state)
+        if result is not None:
+            return result
+    preference = _pending_preference_confirmation(query, ledger, messages)
+    if preference is not None:
+        if preference["intent"] == "assistant_preference_delete_confirmed":
+            return assistant_preference_delete_node({**state, **preference}, config)
+        return _response(preference["intent_metadata"]["response_content"])
+    if isinstance(ledger.get_pending_goal_weak_point_suggestion(), dict):
+        result = _goal_weak_point_confirmation(query, ledger, store, state)
+        if result is not None:
+            return result
+        ledger.clear_pending_goal_weak_point_suggestion()
+    return _pending_injury_response(state, config)
+
+
+def _preview_generation_reply(query: str) -> bool:
+    normalized = unicodedata.normalize("NFKC", query).casefold().strip(" .!؟")
+    return normalized in {"generate", "generate preview", "generate the preview", "اعمل المعاينة", "جهز المعاينة"}
+
+
+def _pending_injury_response(state: AssistantState, config: dict[str, Any] | None) -> dict[str, Any] | None:
+    from service import injuries as injuries_service
+
+    ledger, _store = _graph_context(config)
+    # These are responses to saved questions, not classification of new injury intents.
+    pending = (
+        injuries_service.pending_clarification(ledger),
+        injuries_service.pending_clearance_question(ledger),
+        injuries_service.pending_resolution(ledger),
+        injuries_service.pending_physician_followup_answer(ledger),
+        injuries_service.pending_exercise_followup(ledger),
+    )
+    if not any(isinstance(item, (dict, tuple)) and item for item in pending):
+        return None
+    route = _injury_update_route(state, config, pending_only=True)
+    handler = {
+        "injury_area_clarification": injury_area_clarification_node,
+        "injury_status_update": injury_status_update_node,
+        "injury_physician_followup": injury_physician_followup_node,
+        "exercise_clearance_update": injury_clearance_update_node,
+        "exercise_clearance_disambiguation": exercise_clearance_disambiguation_node,
+    }.get(route.get("intent"))
+    return handler({**state, **route}, config) if handler else None
+
+
+def pending_confirmation_node(state: AssistantState, config: dict[str, Any] | None = None) -> dict[str, Any]:
+    return state["intent_metadata"]["result"]
+
+
+def _injury_update_route(state: AssistantState, config: dict[str, Any] | None, *, pending_only: bool = False) -> dict[str, Any]:
+    """Resolve saved injury questions or validate a model-selected injury update."""
     from service import injuries as injuries_service
 
     ledger, _store = _graph_context(config)
@@ -1668,7 +1743,7 @@ def _injury_update_route(state: AssistantState, config: dict[str, Any] | None) -
         pending_exercise_name = (
             pending_exercise.get("pending_exercise_name") if pending_exercise else None
         )
-        if injuries_service.full_physician_clearance(query):
+        if not pending_only and injuries_service.full_physician_clearance(query):
             injury = ledger.get_latest_active_injury(body_area_in_text(query))
             if injury is not None:
                 ledger.clear_pending_assistant_preference_deletion()
@@ -1678,7 +1753,7 @@ def _injury_update_route(state: AssistantState, config: dict[str, Any] | None) -
                     "active_intents": [],
                 }
         clearance = injuries_service.parse_clearance_statement(query, pending_exercise_name)
-        if clearance and (clearance.get("exercise_name") or pending_exercise_name):
+        if clearance and (not pending_only or pending_exercise is not None) and (clearance.get("exercise_name") or pending_exercise_name):
             ledger.clear_pending_assistant_preference_deletion()
             area = body_area_in_text(query)
             injury = (
@@ -1694,7 +1769,7 @@ def _injury_update_route(state: AssistantState, config: dict[str, Any] | None) -
                 },
                 "active_intents": [],
             }
-        if injuries_service.has_matching_status_update(ledger, query):
+        if not pending_only and injuries_service.has_matching_status_update(ledger, query):
             ledger.clear_pending_assistant_preference_deletion()
             return {"intent": "injury_status_update", "intent_metadata": {}, "active_intents": []}
         if (
@@ -3554,7 +3629,7 @@ def program_edit_reprompt_node(state: AssistantState, config: dict[str, Any] | N
     offered = [item["muscle"].replace("_", " ") for item in pending["proposal"].get("optional", [])]
     optional_names = ", ".join(offered)
     language = _tool_reply_language(state)
-    prompt = ("Please confirm or cancel this preview." if language == "en"
+    prompt = ("Confirm or cancel this preview." if language == "en"
               else "تمام، أكد المعاينة دي أو ألغِ.")
     if offered:
         prompt += (f" You can also say yes, include {optional_names}." if language == "en"
@@ -4439,6 +4514,8 @@ def _safe_node(handler):
                         result.get("response_content") or "",
                         result.get("program_updated", False),
                         result.get("request_suggestion"),
+                        result.get("program_change"),
+                        result.get("movement_restrictions_updated", False),
                     ),
                 }
             return result
@@ -4452,21 +4529,23 @@ def _safe_node(handler):
     return run
 
 
-# StateGraph Assembly: safety is the only branch before model tool selection.
+# Safety and saved-offer replies precede selection of new operations.
 builder = StateGraph(AssistantState)
 builder.add_node("hydrate_context", _safe_node(hydrate_context_node))
 builder.add_node("router", _safe_node(router_node))
 builder.add_node("clinical_intercept", _safe_node(clinical_intercept_node))
 builder.add_node("banned_movement", _safe_node(banned_movement_node))
 builder.add_node("telemetry_intercept", _safe_node(telemetry_intercept_node))
+builder.add_node("pending_confirmation", _safe_node(pending_confirmation_node))
 builder.add_node("generation", _safe_node(generation_node))
 builder.set_entry_point("hydrate_context")
 builder.add_edge("hydrate_context", "router")
 builder.add_conditional_edges("router", lambda state: state.get("intent", "coaching_qa"), {
     "clinical_intercept": "clinical_intercept", "banned_movement": "banned_movement",
     "telemetry_intercept": "telemetry_intercept", "coaching_qa": "generation",
+    "pending_confirmation": "pending_confirmation",
 })
-for node in ("clinical_intercept", "banned_movement", "telemetry_intercept", "generation"):
+for node in ("clinical_intercept", "banned_movement", "telemetry_intercept", "pending_confirmation", "generation"):
     builder.add_edge(node, END)
 
 assistant_graph = builder.compile()
@@ -4624,6 +4703,7 @@ def stream_assistant_turn(
             "telemetry_intercept": telemetry_intercept_node,
             "clinical_intercept": clinical_intercept_node,
             "banned_movement": banned_movement_node,
+            "pending_confirmation": pending_confirmation_node,
         }
         if intent in handlers:
             result = handlers[intent](state, config)

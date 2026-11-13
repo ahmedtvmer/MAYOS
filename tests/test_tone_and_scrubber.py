@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 import pytest
 from langchain_core.messages import AIMessage
 
-from tests.fakes.chat_model import StreamErrorTurn
+from tests.fakes.chat_model import StreamErrorTurn, ToolCallsTurn
 from tests.test_context_management import graph as graph_fixture, state
 from utils.text_scrubber import (
     BANNED_LEAD_PATTERNS,
@@ -79,6 +79,11 @@ def test_graph_and_stream_failures(graph, stage):
         request = state("last logged occurrence of squats")
         graph.db.catalog_conn.cursor.return_value.fetchall.return_value = [("squat", "Squat")]
         graph.db.get_last_performance.side_effect = RuntimeError("private detail")
+        selected_history = ToolCallsTurn(calls=[{
+            "name": "get_exercise_history", "args": {"exercise_id": "squat", "scope": "last_occurrence"},
+            "id": "history-fault",
+        }])
+        graph.llm.reset([selected_history, selected_history])
     else:
         graph.llm.reset([RuntimeError("private detail"), RuntimeError("private detail")])
     assert graph.assistant_graph.invoke(request, config={"configurable": {"ledger": graph.db, "store": graph.db}})["response_content"] == PIPELINE_ERROR_RESPONSE

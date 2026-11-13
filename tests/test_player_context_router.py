@@ -208,16 +208,20 @@ def test_no_program_is_reported_before_model_answers(api, monkeypatch):
     assert set(result["how_mayos_counts"]) == {"en", "ar"}
 
 
-def test_coach_program_router_retains_authority(router_player, monkeypatch):
+@pytest.mark.parametrize(("question", "reply"), [
+    ("What's on Push A?", "Your assigned coach controls your program. Ask your coach for changes."),
+    ("إيه تمارين Push A؟", "يتحكم مدربك في برنامجك التدريبي. اطلب منه إجراء التغييرات."),
+])
+def test_coach_program_router_retains_authority(router_player, monkeypatch, question, reply):
     client, db, _headers = router_player
     _coach_headers, headers, _assignment = _assigned_player((client, db), "router-coached")
     coach_id = db.get_active_account_by_username("coach")["account_id"]
     with db.open_ledger("router-coached") as ledger:
         _save_router_program(ledger, coach_id)
-    model = ScriptedChatModel(["Your Coach holds Program authority."])
+    model = ScriptedChatModel([reply])
     monkeypatch.setattr(assistant_graph, "llm", model)
-    response = client.post("/chat/messages", headers=headers, json={"content": "What's on Push A?"})
-    assert _done_content(response.text) == "Your Coach holds Program authority."
+    response = client.post("/chat/messages", headers=headers, json={"content": question})
+    assert _done_content(response.text) == reply
     _calls, results = _simulated_reads(model)
     assert results[0]["program_authority"] == "coach"
     assert results[0]["coach"]

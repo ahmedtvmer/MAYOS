@@ -133,7 +133,9 @@ def test_confirmation_tool_cannot_save_without_a_current_offer(player_program, q
     assert store.ledger.get_active_program().version == version
 
 
-def test_rebuild_uses_separate_confirmation_and_saves_one_version(player_program, monkeypatch):
+@pytest.mark.parametrize("streaming", [False, True])
+@pytest.mark.parametrize("answer", ["yes", "أيوه"])
+def test_rebuild_uses_separate_confirmation_and_saves_one_version(player_program, monkeypatch, streaming, answer):
     store = player_program
     active = store.ledger.get_active_program()
     rebuilt = active.model_copy(update={"program_name": "Reviewed rebuild", "weekly_frequency": 1})
@@ -141,12 +143,14 @@ def test_rebuild_uses_separate_confirmation_and_saves_one_version(player_program
     offer = "Program rebuild preview. Confirm or cancel."
     store.ledger.set_pending_chat_program_edit(planned["proposal"], offer)
     assert store.ledger.get_active_program().version == active.version
-    state = {**_turn("yes"), "messages": [AIMessage(content=offer), HumanMessage(content="yes")]}
-    monkeypatch.setattr(graph, "llm", ScriptedChatModel([ToolCallsTurn(calls=[_call("confirm_program_edit")])]))
+    state = {**_turn(answer), "messages": [AIMessage(content=offer), HumanMessage(content=answer)]}
+    model = ScriptedChatModel([AssertionError("An existing offer must resolve without the model")])
+    monkeypatch.setattr(graph, "llm", model)
 
-    result = _run(state, store, True)
+    result = _run(state, store, streaming)
 
     assert result["program_updated"] is True
+    assert model.calls == []
     saved = store.ledger.get_active_program()
     assert saved.version == active.version + 1
     assert saved.program_name == "Reviewed rebuild"
@@ -291,9 +295,11 @@ def test_718_staging_four_turn_replay_shows_current_split_and_same_split_preview
         history.extend([HumanMessage(content=query), AIMessage(content=reply)])
 
     confirmation = "أيوه" if arabic_rebuild else "yes"
-    monkeypatch.setattr(graph, "llm", ScriptedChatModel([_narrated_call("confirm_program_edit")]))
+    confirmation_model = ScriptedChatModel([AssertionError("Pending confirmation must bypass the model")])
+    monkeypatch.setattr(graph, "llm", confirmation_model)
     result = _run({**_turn(confirmation), "messages": [*history, HumanMessage(content=confirmation)]}, store, streaming)
     assert result["program_updated"]
+    assert confirmation_model.calls == []
     assert store.ledger.get_active_program().version == active.version + 1
     assert store.ledger.get_pending_chat_program_edit() is None
 

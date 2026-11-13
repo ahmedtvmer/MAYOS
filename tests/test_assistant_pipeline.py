@@ -23,7 +23,7 @@ from agent.assistant_graph import (
     stream_assistant_turn,
 )
 from utils.logger import MayosLogger
-from tests.fakes.chat_model import ScriptedChatModel
+from tests.fakes.chat_model import ScriptedChatModel, ToolCallsTurn
 from utils.model_downloader import CLOUD_MODEL_REGISTRY
 
 logger = MayosLogger().get_logger(__name__)
@@ -208,7 +208,7 @@ def test_safety_gate_preempts_clinical_deload_messages():
         assert routed["intent_metadata"] == {}
 
 
-def test_deload_pipeline_says_nothing_to_change_in_both_wrong_directions(fresh_store):
+def test_deload_pipeline_says_nothing_to_change_in_both_wrong_directions(fresh_store, monkeypatch):
     from agent.assistant_graph import stream_assistant_turn
 
     ledger = fresh_store.ledger
@@ -251,10 +251,15 @@ def test_deload_pipeline_says_nothing_to_change_in_both_wrong_directions(fresh_s
             "response_content": None,
         }
         prescription = {"deload": {"state": current_state}}
+        model = ScriptedChatModel([ToolCallsTurn(calls=[{
+            "name": "choose_deload", "args": {}, "id": "deload-choice",
+        }])])
+        monkeypatch.setattr("agent.assistant_graph.llm", model)
         with patch("service.workouts.build_prescription", return_value=prescription):
             rendered = "".join(stream_assistant_turn(state, ledger=ledger, store=fresh_store))
         assert "There is nothing to change." in rendered
         assert state["program_updated"] is False
+        assert state["selected_tools"] == ["choose_deload"]
 
 
 def test_unknown_arabic_deload_reason_uses_generic_localized_copy(fresh_store, monkeypatch):
@@ -362,9 +367,24 @@ def test_phase2_streaming_generator_qa(fresh_store, monkeypatch):
 
 
 def test_phase2_streaming_generator_programmatic_bypass(fresh_store, monkeypatch, scripted_chat_model):
-    """Validates that programmatic nodes stream confirmation without invoking llm.stream()."""
+    """A saved rebuild offer is confirmed without invoking the model (#718)."""
+    from langchain_core.messages import AIMessage
+    from service.chat_program_edit import plan_chat_program_rebuild
+
+    ledger = fresh_store.ledger
+    row = fresh_store.catalog_conn.execute("SELECT id, name FROM exercises ORDER BY id LIMIT 1").fetchone()
+    original = PersistedProgramSchema(program_name="Original", split_type="Full Body", weekly_frequency=1,
+        days=[PersistedProgramDaySchema(day_name="Day 1", day_order=1, exercises=[
+            PersistedProgramExerciseSchema(exercise_id=str(row[0]), exercise_name=str(row[1]),
+                target_reps_min=8, target_reps_max=12)])])
+    ledger.save_training_program(original.model_dump())
+    active = ledger.get_active_program()
+    rebuilt = active.model_copy(update={"program_name": "Confirmed rebuild"})
+    planned = plan_chat_program_rebuild(fresh_store, ledger, None, rebuilt)
+    offer = "Program rebuild preview. Confirm or cancel."
+    ledger.set_pending_chat_program_edit(planned["proposal"], offer)
     state = {
-        "messages": [HumanMessage(content="switch split to 3 days")],
+        "messages": [AIMessage(content=offer), HumanMessage(content="yes")],
         "trainee_id": "test_user",
         "coach_tone": "Direct and pragmatic",
         "custom_instructions": "",
@@ -375,20 +395,16 @@ def test_phase2_streaming_generator_programmatic_bypass(fresh_store, monkeypatch
         "response_content": None,
     }
 
+    scripted_chat_model.reset([AssertionError("Pending confirmation must bypass the model")])
     monkeypatch.setattr("agent.assistant_graph.llm", scripted_chat_model)
-    with patch("agent.assistant_graph.program_mutation_node") as mock_mutation:
-        mock_mutation.return_value = {"program_updated": True, "response_content": "Rebuilt routine for 3 days/week."}
+    output = list(stream_assistant_turn(state, ledger=ledger, store=fresh_store))
 
-        generator = stream_assistant_turn(state, ledger=fresh_store.ledger, store=fresh_store)
-        output = list(generator)
-
-        assert scripted_chat_model.calls == []
-        mock_mutation.assert_called_once()
-        assert len(output) > 0
-        assert "".join(output) == "Rebuilt routine for 3 days/week."
-        assert state["program_updated"] is True
-
-    logger.info("✅ Phase 2: Programmatic zero-LLM streaming bypass verified.")
+    assert scripted_chat_model.calls == []
+    assert "".join(output) == "I saved the Program edit as one new version."
+    assert state["program_updated"] is True
+    assert ledger.get_active_program().program_name == "Confirmed rebuild"
+    assert ledger.get_active_program().version == active.version + 1
+    assert ledger.get_pending_chat_program_edit() is None
 
 
 def test_phase3_substitution_lookup_candidates(fresh_store):

@@ -95,12 +95,12 @@ def test_718_rebuild_streams_real_preview_immediately_and_confirmation_writes_on
     with store.open_ledger("rebuild-player") as ledger:
         original = ledger.get_active_program()
     options_reply = "; ".join(name for _key, name in valid_splits_for(5)) + "."
-    monkeypatch.setattr(graph, "llm", ScriptedChatModel([
+    model = ScriptedChatModel([
         _tool("list_program_options"), options_reply,
         _tool("get_active_program"), _tool("preview_program_rebuild"),
-        _tool("confirm_program_edit"), _tool("confirm_program_edit"),
         _tool("confirm_program_edit"), "There is no current preview to confirm.",
-    ]))
+    ])
+    monkeypatch.setattr(graph, "llm", model)
     _done(rebuild_chat, options)
     preview = _assert_real_preview(_done(rebuild_chat, rebuild), language)
     assert len(json.dumps(preview).encode("utf-8")) > 4096
@@ -112,6 +112,7 @@ def test_718_rebuild_streams_real_preview_immediately_and_confirmation_writes_on
         new_ids = {row["exercise_id"] for day in pending["proposal"]["rebuild_base_program"]["days"]
                    for row in day["exercises"]}
         assert new_ids - old_ids
+    calls_before_confirmation = len(model.calls)
     repeated = _done(rebuild_chat, generate)
     assert _assert_real_preview(repeated, language)["id"] == preview["id"]
     history = client.get("/chat/history", headers=headers).json()
@@ -121,6 +122,7 @@ def test_718_rebuild_streams_real_preview_immediately_and_confirmation_writes_on
         assert ledger.get_pending_chat_program_edit()["offer_text"] == repeated["response_content"]
         assert ledger.get_active_program().version == original.version
     assert _done(rebuild_chat, confirm)["program_updated"]
+    assert len(model.calls) == calls_before_confirmation
     assert not _done(rebuild_chat, confirm)["program_updated"]
     with store.open_ledger("rebuild-player") as ledger:
         assert ledger.get_active_program().version == original.version + 1

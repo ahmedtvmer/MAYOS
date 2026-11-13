@@ -158,6 +158,11 @@ class ScriptedChatModel(BaseChatModel):
                 )
             return
         content = response.content if isinstance(response.content, str) else ""
+        if not content:
+            # A provider's empty completion still has a message envelope. Without
+            # it BaseChatModel.stream raises before the caller can handle emptiness.
+            self._streamed_chunk_count += 1
+            yield ChatGenerationChunk(message=AIMessageChunk(content=""))
         yield from self._text_chunks(content)
         if self.emit_usage and response.usage_metadata is not None:
             yield ChatGenerationChunk(
