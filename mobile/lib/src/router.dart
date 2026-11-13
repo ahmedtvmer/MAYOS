@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'core/app_mode.dart';
 import 'core/error_reporting.dart';
 import 'core/api_client.dart';
+import 'core/connectivity.dart';
 import 'core/display_language/assignment_copy.dart';
 import 'core/display_language/catalog.dart';
 import 'core/display_language/controller.dart';
@@ -388,7 +389,7 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: splashPath,
         builder: (BuildContext context, GoRouterState state) =>
-            const SplashScreen(),
+            const SplashScreen(statusBanner: OfflineBannerSlot()),
       ),
       GoRoute(
         path: appUpdateRequiredPath,

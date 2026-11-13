@@ -37,6 +37,9 @@ class MayosCopy {
   String get offlineSavedData => isArabic
       ? 'أنت غير متصل، نعرض البيانات المحفوظة'
       : 'Offline, showing saved data';
+  String get serviceUnavailable => isArabic
+      ? 'واجهت MAYOS مشكلة. حاول مرة أخرى.'
+      : 'MAYOS had a problem; try again.';
   String get program => isArabic ? 'البرنامج التدريبي' : 'Program';
   String get progress => isArabic ? 'التقدم' : 'Progress';
   String get nutritionTab => nutrition.tab;
@@ -492,7 +495,7 @@ class MayosCopy {
                   AppFailureId.cannotReachService =>
                     'أنت غير متصل بالإنترنت. سنعيد المحاولة عند عودة الاتصال.',
                   AppFailureId.serviceUnavailable =>
-                    'الخدمة غير متاحة. حاول مجددًا.',
+                    serviceUnavailable,
                   AppFailureId.requestFailed =>
                     'فشل الطلب (\u2066$value\u2069).',
                   AppFailureId.serviceRejected => 'رفضت الخدمة هذا الطلب.',
@@ -653,9 +656,9 @@ class MayosCopy {
       : '$count reps';
   String get loadHomeFailed =>
       isArabic ? 'تعذر تحميل الصفحة الرئيسية.' : 'Could not load your home.';
-  String get offlineSavedProgram => isArabic
-      ? 'غير متصل — يعرض البرنامج التدريبي المحفوظ.'
-      : 'Offline — showing your saved program.';
+  String get savedProgramNote => isArabic
+      ? 'يعرض البرنامج التدريبي المحفوظ.'
+      : 'Showing your saved program.';
   String get noSetsRecordedForExercise => isArabic
       ? 'لا توجد مجموعات مسجلة لهذا التمرين بعد. سجّل حصة تدريبية لبدء متابعة التقدم.'
       : 'No sets recorded for this exercise yet. Log a workout to start a trend.';
@@ -692,9 +695,9 @@ class MayosCopy {
   String get everyExerciseMatchInWorkout => isArabic
       ? 'كل النتائج موجودة بالفعل في هذه الحصة.'
       : 'Every match is already in this workout.';
-  String get offlineProgramBanner => isArabic
-      ? 'غير متصل — يعرض البرنامج المحفوظ'
-      : 'Offline — showing saved program';
+  String get savedProgramBanner => isArabic
+      ? 'يعرض البرنامج التدريبي المحفوظ'
+      : 'Showing saved program';
   String get warmup => isArabic ? 'الإحماء' : 'Warm-up';
   String get workingSets => isArabic ? 'مجموعات التدريب' : 'Working sets';
   String get cardio => isArabic ? 'تمارين اللياقة' : 'Cardio';

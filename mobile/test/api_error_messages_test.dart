@@ -125,7 +125,7 @@ void main() {
     );
   });
 
-  test('network and bodyless service failures use localized generic copy',
+  test('network and 5xx failures without detail use localized generic copy',
       () async {
     final ApiException network = await _expectApiException(
       _client(FakeApiAdapter((_) => const FakeResponse.networkFailure()),
@@ -141,19 +141,52 @@ void main() {
       "You're offline. We'll retry when you're back online.",
     );
 
-    final ApiException noBody = await _expectApiException(
-      _client(FakeApiAdapter((_) => const FakeResponse(503)), language: 'ar')
-          .clearChatHistory,
-    );
-    expect(
-      MayosCopy('ar').failureMessage(apiFailureMessage(noBody)),
-      'الخدمة غير متاحة. حاول مجددًا.',
-    );
-    expect(
-      MayosCopy('en').failureMessage(apiFailureMessage(noBody)),
-      'The service is unavailable. Please retry.',
-    );
+    for (final Object? body in <Object?>[
+      null,
+      '<html>Bad gateway</html>',
+      <String, String>{'detail': ' '},
+    ]) {
+      final ApiException noDetail = await _expectApiException(
+        _client(FakeApiAdapter((_) => FakeResponse(503, body)), language: 'ar')
+            .clearChatHistory,
+      );
+      expect(
+        MayosCopy('ar').failureMessage(apiFailureMessage(noDetail)),
+        'واجهت MAYOS مشكلة. حاول مرة أخرى.',
+      );
+      expect(
+        MayosCopy('en').failureMessage(apiFailureMessage(noDetail)),
+        'MAYOS had a problem; try again.',
+      );
+    }
   });
+
+  for (final bool streamed in <bool>[false, true]) {
+    test('#721 ${streamed ? 'streamed' : 'JSON'} 5xx keeps the action detail',
+        () async {
+      final ApiClient client = _client(FakeApiAdapter(
+        (_) => const FakeResponse(503, <String, dynamic>{
+          'detail': 'Could not save food.',
+        }),
+      ));
+      final ApiException error = await _expectApiException(() async {
+        if (streamed) {
+          await client.streamChatMessage('Hello').drain<void>();
+        } else {
+          await client.clearChatHistory();
+        }
+      });
+
+      expect(error.statusCode, 503);
+      expect(error.message, 'Could not save food.');
+      for (final String language in <String>['en', 'ar']) {
+        expect(
+          MayosCopy(language).failureMessage(mutationFailureMessage(error)),
+          'Could not save food.',
+        );
+      }
+    });
+  }
 
   test('Google conflict keeps the machine distinction and translates',
       () async {

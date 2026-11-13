@@ -79,6 +79,7 @@ class FakeMayosApi {
   String? currentUsername;
   bool tokenValid = true;
   bool loginNetworkFails = false;
+  bool loginServerError = false;
   bool displayLanguageUpdateFails = false;
   bool analyticsAllowed = true;
   int tourSeenVersion = 1;
@@ -580,6 +581,9 @@ class FakeMayosApi {
 
   /// When true, `GET /auth/me` fails with a transient 500 (token still valid).
   bool meFails = false;
+
+  /// When true, `GET /auth/me` times out before receiving a response.
+  bool meTimesOut = false;
 
   /// When set, `GET /auth/me` answers this non-401 refusal status instead.
   int? meRefusalStatus;
@@ -1346,6 +1350,9 @@ class FakeMayosApi {
     if (loginNetworkFails) {
       return const FakeResponse.networkFailure();
     }
+    if (loginServerError) {
+      return const FakeResponse(503);
+    }
     final String? username = request.body['trainee_id'] as String?;
     final String? password = request.body['password'] as String?;
     if (username == null || passwords[username] != password) {
@@ -1364,6 +1371,7 @@ class FakeMayosApi {
       return FakeResponse(
           refusal, <String, dynamic>{'detail': 'The request was refused.'});
     }
+    if (meTimesOut) return const FakeResponse.timeoutFailure();
     if (meFails) {
       return const FakeResponse(
           500, <String, dynamic>{'detail': 'The service is unavailable.'});
