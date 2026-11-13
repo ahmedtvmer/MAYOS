@@ -21,6 +21,7 @@ from database.migration_manager import VOLUME_REVIEWS_DDL
 from database.migration_manager import EQUIPMENT_ACCESS_DDL
 from database.migration_manager import CHECKPOINT_REVIEWS_DDL
 from database.ledger.nutrition_drafts import NUTRITION_DRAFTS_DDL
+from database.ledger.nutrition import NUTRITION_MEAL_GENERATION_CACHE_DDL
 from database.migration_manager import DELOAD_CHOICES_DDL
 from database.migration_manager import INTAKE_DDL
 from database.migration_manager import INJURY_RECORDS_DDL
@@ -436,6 +437,7 @@ class SchemaMixin:
                 *CHAT_HISTORY_FTS_DDL,
                 *MEAL_SETUP_DDL,
                 NUTRITION_DRAFTS_DDL,
+                NUTRITION_MEAL_GENERATION_CACHE_DDL,
                 *EQUIPMENT_ACCESS_DDL,
                 *ASSISTANT_PREFERENCES_DDL,
                 *ASSISTANT_GOAL_WEAK_POINT_PENDING_DDL,

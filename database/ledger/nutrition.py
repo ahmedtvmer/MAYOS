@@ -1,8 +1,28 @@
 """Nutrition plan and private screening operations for a Training ledger."""
 
 import json
-from datetime import UTC, datetime
 from dataclasses import dataclass
+from datetime import UTC, date, datetime, timedelta
+
+
+@dataclass(frozen=True)
+class NutritionMealGenerationCacheKey:
+    entry_date: str
+    plan_version_id: int
+    fingerprint: str
+    variant: str
+
+NUTRITION_MEAL_GENERATION_CACHE_DDL = """
+CREATE TABLE IF NOT EXISTS nutrition_meal_generation_cache (
+    entry_date TEXT NOT NULL,
+    plan_version_id INTEGER NOT NULL REFERENCES nutrition_plan_versions(id) ON DELETE CASCADE,
+    fingerprint TEXT NOT NULL,
+    variant TEXT NOT NULL CHECK (variant IN ('training_day', 'rest_day')),
+    payload_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (entry_date, plan_version_id, fingerprint, variant)
+)
+"""
 
 
 @dataclass(frozen=True)
@@ -29,6 +49,35 @@ class NutritionSetup:
 
 
 class LedgerNutritionMixin:
+    def get_nutrition_meal_generation_cache(self, key: NutritionMealGenerationCacheKey):
+        row = self.conn.execute(
+            "SELECT payload_json FROM nutrition_meal_generation_cache "
+            "WHERE entry_date=? AND plan_version_id=? AND fingerprint=? AND variant=?",
+            (key.entry_date, key.plan_version_id, key.fingerprint, key.variant),
+        ).fetchone()
+        return json.loads(row[0]) if row else None
+
+    def save_nutrition_meal_generation_cache(self, key: NutritionMealGenerationCacheKey, payload):
+        day = date.fromisoformat(key.entry_date)
+        self.conn.execute(
+            "DELETE FROM nutrition_meal_generation_cache "
+            "WHERE entry_date=? AND plan_version_id=? AND variant=? AND fingerprint<>?",
+            (day.isoformat(), key.plan_version_id, key.variant, key.fingerprint),
+        )
+        self.conn.execute(
+            "DELETE FROM nutrition_meal_generation_cache WHERE entry_date<?",
+            ((day - timedelta(days=30)).isoformat(),),
+        )
+        self.conn.execute(
+            "INSERT INTO nutrition_meal_generation_cache "
+            "(entry_date,plan_version_id,fingerprint,variant,payload_json,created_at) "
+            "VALUES(?,?,?,?,?,?) ON CONFLICT(entry_date,plan_version_id,fingerprint,variant) "
+            "DO UPDATE SET payload_json=excluded.payload_json, created_at=excluded.created_at",
+            (day.isoformat(), key.plan_version_id, key.fingerprint, key.variant, json.dumps(payload),
+             datetime.now(UTC).isoformat(timespec="microseconds")),
+        )
+        self._commit_ledger()
+
     def change_water_glasses(self, entry_date, change):
         now = datetime.now(UTC).isoformat(timespec="microseconds")
         if change > 0:
