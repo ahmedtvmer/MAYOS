@@ -3,6 +3,7 @@
 from copy import deepcopy
 from dataclasses import replace
 from random import Random
+from time import perf_counter
 
 import pytest
 
@@ -231,6 +232,25 @@ def test_all_food_combinations_are_scored_instead_of_stopping_at_first_fit():
     generated = generate_meals(request)
     assert generated["gap_note"] is None
     assert {meal["foods"][0]["id"] for meal in generated["meals"]} == {"exact"}
+
+
+def test_realistic_food_grid_generates_a_full_day_within_three_seconds():
+    staples = []
+    for index in range(12):
+        staples.append(_food(f"protein-{index}", "protein", protein=12 + index,
+                             fat=2 + index / 4))
+        staples.append(_food(f"carb-{index}", "carb", carbs=35 + index * 2))
+        staples.append(_food(f"vegetable-fat-{index}", "vegetable_fat",
+                             protein=index / 10, fat=5 + index * 1.5))
+    request = replace(_request(training=True), staples=staples)
+
+    started = perf_counter()
+    generated = generate_meals(request)
+    elapsed = perf_counter() - started
+
+    assert elapsed < 3
+    assert generated["status"] == "ready"
+    assert len(generated["meals"]) == 3
 
 
 def test_normal_amounts_win_before_curation_order_for_equal_nutrient_fit():

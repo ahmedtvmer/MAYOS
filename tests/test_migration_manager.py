@@ -150,7 +150,10 @@ def test_v55_meal_stack_upgrades_to_the_fresh_schema_without_changing_plan_versi
     conn = db.conn
     fresh_tables = {name: conn.execute(
         "SELECT sql FROM sqlite_master WHERE type='table' AND name=?", (name,)
-    ).fetchone()[0] for name in ("meal_setup", "nutrition_plan_drafts")}
+    ).fetchone()[0] for name in (
+        "meal_setup", "nutrition_plan_drafts", "nutrition_meal_generation_cache",
+    )}
+    conn.execute("DROP TABLE nutrition_meal_generation_cache")
     conn.execute("DROP TABLE nutrition_plan_drafts")
     conn.execute("DROP TABLE meal_setup")
     conn.execute("ALTER TABLE nutrition_plan_versions DROP COLUMN meals_json")

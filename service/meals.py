@@ -7,7 +7,7 @@ from uuid import uuid4
 
 from core.meal_setup import SLOT_MINUTES
 from database.ledger.nutrition import NutritionPlanVersion
-from database.ledger.nutrition_meals import generate_variants
+from database.ledger.nutrition_meals import cached_variants_for_plan, generate_variants
 from service import nutrition
 from service.food_log_adherence import recompute_day
 
@@ -24,7 +24,7 @@ def read(ledger, today):
     if not payload or not payload.get("enabled"):
         if active["author"] == "Coach":
             return {**context, "status": "unavailable", "reason": "coach", "meals": []}
-        available = generate_variants(ledger, json.loads(active["targets_json"]), {})
+        available = cached_variants_for_plan(ledger, active, today)
         variant = available["variants"][state["target_day_type"]]
         return {**variant, **context, "status": "disabled" if variant["status"] == "ready" else "unavailable", "meals": []}
     variant = payload["variants"][state["target_day_type"]]
@@ -51,7 +51,7 @@ def enable(ledger, today):
         if state["status"] != "disabled":
             raise ValueError("Meals aren't available yet. Reviewed Staple foods and practical portions are needed.")
         active = ledger.get_active_nutrition_plan()
-        payload = generate_variants(ledger, json.loads(active["targets_json"]), {})
+        payload = cached_variants_for_plan(ledger, active, today)
         if any(variant["status"] != "ready" for variant in payload["variants"].values()):
             raise ValueError("Meals aren't available yet for both training and rest days.")
         _save_player_meals(ledger, active, payload)

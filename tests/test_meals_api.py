@@ -66,6 +66,64 @@ def _disable(client, headers):
     return response.json()
 
 
+def _meal_cache_rows(db, ledger_id, today, plan_version_id):
+    with db.open_ledger(ledger_id) as ledger:
+        return ledger.conn.execute(
+            "SELECT variant, fingerprint, created_at FROM nutrition_meal_generation_cache "
+            "WHERE entry_date=? AND plan_version_id=? ORDER BY variant",
+            (today.isoformat(), plan_version_id),
+        ).fetchall()
+
+
+def test_repeated_disabled_meal_reads_reuse_persisted_day_variants(meals_api):
+    client, db, headers, today = meals_api
+    first = client.get("/nutrition/meals", headers=headers).json()
+    rows_before = _meal_cache_rows(db, _ledger_id(db), today, first["plan_version_id"])
+    assert {row["variant"] for row in rows_before} == {"training_day", "rest_day"}
+
+    second = client.get("/nutrition/meals", headers=headers).json()
+
+    rows_after = _meal_cache_rows(db, _ledger_id(db), today, second["plan_version_id"])
+    assert second == first
+    assert [row["created_at"] for row in rows_after] == [row["created_at"] for row in rows_before]
+
+
+def test_meal_cache_fingerprint_changes_with_setup_foods_and_targets(meals_api):
+    client, db, headers, today = meals_api
+    initial = client.get("/nutrition/meals", headers=headers).json()
+    ledger_id = _ledger_id(db)
+    initial_fingerprints = {row["variant"]: row["fingerprint"] for row in
+                            _meal_cache_rows(db, ledger_id, today, initial["plan_version_id"])}
+
+    changed_setup = client.put("/nutrition/meal-setup", headers=headers, json={
+        "meal_count": 4, "training_time": "evening",
+        "restrictions": {"allergies": [], "dislikes": [], "vegetarian": False}})
+    assert changed_setup.status_code == 200, changed_setup.text
+    setup_state = client.get("/nutrition/meals", headers=headers).json()
+    setup_fingerprints = {row["variant"]: row["fingerprint"] for row in
+                          _meal_cache_rows(db, ledger_id, today, setup_state["plan_version_id"])}
+    assert setup_fingerprints.keys() == initial_fingerprints.keys()
+    assert setup_fingerprints != initial_fingerprints
+
+    with db.catalog_locked() as connection:
+        connection.execute(
+            "UPDATE foods SET allergens_json='[\"milk\"]', allergens_reviewed=1 WHERE id='alternative'",
+        )
+        connection.commit()
+    food_state = client.get("/nutrition/meals", headers=headers).json()
+    food_fingerprints = {row["variant"]: row["fingerprint"] for row in
+                         _meal_cache_rows(db, ledger_id, today, food_state["plan_version_id"])}
+    assert food_fingerprints != setup_fingerprints
+
+    target_change = client.put("/nutrition/activity", headers=headers, json={"daily_activity": "on_feet"})
+    assert target_change.status_code == 200, target_change.text
+    target_state = client.get("/nutrition/meals", headers=headers).json()
+    target_fingerprints = {row["variant"]: row["fingerprint"] for row in
+                           _meal_cache_rows(db, ledger_id, today, target_state["plan_version_id"])}
+    assert target_state["plan_version_id"] > food_state["plan_version_id"]
+    assert target_fingerprints != food_fingerprints
+
+
 def test_disable_versions_the_plan_keeps_logged_food_and_regenerates_when_enabled(meals_api, recording_analytics):
     client, db, headers, today = meals_api
     enabled = _enable(client, headers)
