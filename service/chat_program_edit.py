@@ -33,6 +33,38 @@ MUSCLE_TERMS = {
 LOWER_TERMS = r"\b(?:leg|legs|lower|lower body)\b|أيام الرجل|يوم الرجل|الجزء السفلي"
 
 
+def plan_chat_program_rebuild(
+    db: Any, ledger: Any, player_account_id: str, program: Any,
+) -> dict[str, Any]:
+    """Prepare a whole-program proposal for the same versioned confirm flow as day edits."""
+    if not player_controls_program(db, ledger, player_account_id):
+        return {"error": "coach_controls"}
+    active = ledger.get_active_program()
+    if active is None:
+        return {"error": "no_program"}
+    payload = program.model_dump(mode="json")
+    payload["version"] = active.version
+    proposal = {
+        "expected_version": active.version, "rebuild_base_program": payload,
+        "rebuild_label": True, "rebuild_frequency": program.weekly_frequency,
+        "profile_fingerprint": _profile_fingerprint(ledger.get_player_profile() or {}),
+        "days": [_rebuild_day_request(day) for day in payload["days"]],
+        "preview_days": _preview_days(payload, payload["days"]),
+        "optional": [], "warnings": [],
+    }
+    return {"proposal": proposal}
+
+
+def _rebuild_day_request(day: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "day_name": day["day_name"], "day_order": day["day_order"],
+        "week_order": day.get("week_order", 1),
+        "exercises": [{"source_index": index, "exercise_id": row["exercise_id"],
+                       "target_sets": program_exercise_working_sets(row)}
+                      for index, row in enumerate(day["exercises"])],
+    }
+
+
 def plan_chat_program_edit(
     db: Any, ledger: Any, player_account_id: str, query: str,
     *, base_program: Any | None = None,
@@ -492,7 +524,7 @@ def _preview_days(program, selected_days, optional_ids=None, requested_ids=None)
                     "reps_min": group.get("reps_min"), "reps_max": group.get("reps_max"),
                     "rir": group.get("target_rir"), "load": group.get("load"),
                     "amrap_last_set": group.get("amrap_last_set", False)}
-                    for group in item.get("set_groups", [])],
+                      for group in item.get("set_groups", [])],
                 "optional": str(item.get("exercise_id")) in optional_ids,
                 "requested_edit": (week_order, int(original["day_order"]),
                     str(item.get("exercise_id"))) in requested_ids} for item in day.get("exercises", [])]})

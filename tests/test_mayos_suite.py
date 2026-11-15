@@ -119,7 +119,7 @@ def test_systemic_fatigue_states():
 
 
 # ============================================================================
-# 3. ROUTER & CLINICAL INTERCEPT FAST PATH (<1ms)
+# 3. SAFETY GATE (<1ms)
 # ============================================================================
 
 
@@ -129,15 +129,15 @@ def test_systemic_fatigue_states():
         ("I felt a sharp pop in my shoulder", "clinical_intercept"),
         ("Shooting pain down my leg on squats", "clinical_intercept"),
         ("My pec is swollen and tore on bench", "clinical_intercept"),
-        ("swap barbell bench press for dumbbell press", "exercise_substitution"),
-        ("alternatives for leg curl", "exercise_substitution"),
-        ("switch routine to 3 days a week", "program_mutation"),
-        ("rebuild split", "program_mutation"),
-        ("search seated cable row", "catalog_search"),
+        ("swap barbell bench press for dumbbell press", "coaching_qa"),
+        ("alternatives for leg curl", "coaching_qa"),
+        ("switch routine to 3 days a week", "coaching_qa"),
+        ("rebuild split", "coaching_qa"),
+        ("search seated cable row", "coaching_qa"),
         ("How do I bias the lengthened position on RDLs?", "coaching_qa"),
     ],
 )
-def test_deterministic_router_fast_paths(query, expected_intent):
+def test_safety_gate_routes_only_intercepts_before_model_selection(query, expected_intent):
     state = {"messages": [HumanMessage(content=query)]}
     result = router_node(state)
     assert result["intent"] == expected_intent
@@ -317,5 +317,5 @@ def test_stream_assistant_turn_intercept_records_zero_tokens(fresh_store, monkey
     tokens = list(stream_assistant_turn(state, ledger=fresh_store.ledger, store=fresh_store))
     assert "".join(tokens)
     assert captured["intent"] == "clinical_intercept"
-    # Intercept path records router timing only; generation fields stay defaulted.
-    assert "tokens" not in captured and "ttft_ms" not in captured
+    assert "tokens" not in captured
+    assert captured["ttft_ms"] >= 0.0

@@ -47,6 +47,10 @@ def validate_cases(cases: list[dict[str, Any]]) -> None:
             raise ValueError(f"Routing case {case.get('id')} has no player message.")
         if not isinstance(case.get("expected_intent"), str):
             raise ValueError(f"Routing case {case.get('id')} has no expected intent.")
+        if not isinstance(case.get("expected_tools"), list) or not all(isinstance(name, str) for name in case["expected_tools"]):
+            raise ValueError(f"Routing case {case.get('id')} has no expected tools.")
+        if case["expected_intent"] == "multi_tool_request" and not case.get("answer_requirements"):
+            raise ValueError(f"Compound case {case['id']} must specify its accompanying answer.")
         if not isinstance(case.get("clinical_intercept_warranted"), bool):
             raise ValueError(f"Routing case {case.get('id')} has no clinical expectation.")
         expected_action = case.get("expected_action")
@@ -69,7 +73,7 @@ def validate_cases(cases: list[dict[str, Any]]) -> None:
             raise ValueError(f"Routing case {case['id']} has an invalid language/review status.")
     if not any(
         case["language"] == "arabic"
-        and case["expected_intent"] == "composite_intent"
+        and case["expected_intent"] == "multi_tool_request"
         and isinstance(case.get("expected_action"), dict)
         for case in cases
     ):
@@ -140,6 +144,16 @@ def _case_outcome(case: dict[str, Any], observation: dict[str, Any]) -> dict[str
     unauthorized = [action for action in executed_actions if id(action) not in authorized_ids]
 
     intent_match = observation.get("observed_intent") == case["expected_intent"]
+    required = set(case.get("expected_tools", []))
+    selected = set(observation.get("selected_tools", []))
+    context_reads = {"get_active_program", "get_player_profile", "get_program_rationale",
+                     "get_player_weight_trend", "get_assistant_preferences", "search_chat_history"}
+    unexpected_operations = selected - required - context_reads
+    answer_match = all(re.search(pattern, observation.get("response_content", ""), re.I)
+                       for pattern in case.get("answer_requirements", []))
+    compound = case["expected_intent"] == "multi_tool_request"
+    route_match = intent_match or (compound and observation.get("observed_intent") == (expected_action or {}).get("kind"))
+    task_match = route_match and required <= selected and not unexpected_operations and answer_match
     action_match = (
         not executed_actions
         if expected_action is None
@@ -159,7 +173,7 @@ def _case_outcome(case: dict[str, Any], observation: dict[str, Any]) -> dict[str
         if case.get("franco_intercept_expected") is True
         else None
     )
-    behavior_pass = intent_match and action_match and not unauthorized and not clinical_miss and franco_intercept_match is not False
+    behavior_pass = task_match and action_match and not unauthorized and not clinical_miss and franco_intercept_match is not False and not observation.get("preconfirmation_writes") and not observation.get("runner_error")
     return {
         "case_id": case["id"],
         "language": case["language"],
@@ -170,6 +184,11 @@ def _case_outcome(case: dict[str, Any], observation: dict[str, Any]) -> dict[str
         "expected_action": expected_action,
         "executed_actions": executed_actions,
         "intent_match": intent_match,
+        "task_match": task_match,
+        "answer_match": answer_match,
+        "response_content": observation.get("response_content", ""),
+        **({"selected_tools": observation["selected_tools"]} if "selected_tools" in observation else {}),
+        "preconfirmation_writes": observation.get("preconfirmation_writes", []),
         "action_match": action_match,
         "unauthorized_actions": unauthorized,
         "clinical_miss": clinical_miss,
@@ -178,7 +197,7 @@ def _case_outcome(case: dict[str, Any], observation: dict[str, Any]) -> dict[str
         "passed": behavior_pass,
         "counted": case["language"] != "arabic" or case["review_status"] == ARABIC_REVIEWED,
         "runner_error": observation.get("runner_error"),
-        "scripted_classifier_used": observation.get("scripted_classifier_used") is True,
+        "scripted_tools_used": observation.get("scripted_tools_used") is True,
     }
 
 
@@ -541,23 +560,23 @@ def _hermetic_embedding(_model: Any, text: str) -> list[float]:
 def _observe_case(
     case: dict[str, Any],
     root: Path,
-    scripted_classification: dict[str, Any] | None = None,
+    scripted_tool_selection: dict[str, Any] | None = None,
     *,
     hermetic: bool = False,
 ) -> dict[str, Any]:
     if not hermetic:
-        return _observe_case_with_catalog(case, root, scripted_classification, hermetic=False)
+        return _observe_case_with_catalog(case, root, scripted_tool_selection, hermetic=False)
 
     from core.embeddings import OnnxEmbeddings
 
     with patch.object(OnnxEmbeddings, "embed_query", _hermetic_embedding):
-        return _observe_case_with_catalog(case, root, scripted_classification, hermetic=True)
+        return _observe_case_with_catalog(case, root, scripted_tool_selection, hermetic=True)
 
 
 def _observe_case_with_catalog(
     case: dict[str, Any],
     root: Path,
-    scripted_classification: dict[str, Any] | None,
+    scripted_tool_selection: dict[str, Any] | None,
     *,
     hermetic: bool,
 ) -> dict[str, Any]:
@@ -569,7 +588,7 @@ def _observe_case_with_catalog(
         DatabaseManager,
     )
     from langchain_core.messages import HumanMessage
-    from tests.fakes.chat_model import ScriptedChatModel
+    from tests.fakes.chat_model import ScriptedChatModel, ToolCallsTurn
 
     case_root = root / case["id"]
     case_root.mkdir(parents=True, exist_ok=True)
@@ -600,29 +619,60 @@ def _observe_case_with_catalog(
                 "coach_tone": "Direct, grounded, and pragmatic",
                 "custom_instructions": "",
             }
-            model_turns = [scripted_classification]
-            if case["id"] == "ar-mixed-03":
-                model_turns.append("A safer option depends on what feels uncomfortable.")
+            model_turns = [ToolCallsTurn(calls=[{
+                **scripted_tool_selection,
+                "id": "eval-tool-selection",
+            }]), case.get("hermetic_answer", "A safer option depends on what feels uncomfortable.")] if scripted_tool_selection is not None else []
             model_patch = (
-                patch.object(graph, "llm", ScriptedChatModel(model_turns))
-                if scripted_classification is not None
+                patch.object(graph, "llm", ScriptedChatModel(model_turns,
+                    final_turns=[case.get("hermetic_answer", "")],
+                    default_turn="A safer option depends on what feels uncomfortable."))
+                if scripted_tool_selection is not None
                 else nullcontext()
             )
             with model_patch:
                 for _chunk in graph.stream_assistant_turn(state, ledger=ledger, store=store):
                     pass
+                selected_tools = list(state.get("selected_tools", []))
+                response_content = state.get("response_content") or ""
+                preconfirmation_writes = []
+                if state.get("program_edit_preview"):
+                    preconfirmation_writes = list(executed_actions)
+                    # This is a separate synthetic Player turn, never an implicit
+                    # confirmation on the original request or an options question.
+                    if (case.get("expected_action") or {}).get("kind") == "program_mutation":
+                        state["messages"] = [*state["messages"], HumanMessage(content="yes")]
+                        for _chunk in graph.stream_assistant_turn(state, ledger=ledger, store=store):
+                            pass
         metadata = state.get("intent_metadata") or {}
         return {
             "case_id": case["id"],
-            "observed_intent": state.get("intent"),
+            "observed_intent": _selected_task(state.get("intent"), selected_tools),
             "franco_intercept": state.get("intent") == "clinical_intercept" and metadata.get("franco") is True,
             "executed_actions": executed_actions,
-            "scripted_classifier_used": scripted_classification is not None,
+            "selected_tools": selected_tools,
+            "response_content": response_content,
+            "preconfirmation_writes": preconfirmation_writes,
+            "scripted_tools_used": scripted_tool_selection is not None,
+            "runner_error": "assistant pipeline failed" if state.get("response_content") == graph.PIPELINE_ERROR_RESPONSE else None,
         }
     finally:
         from tests.catalog import close_catalog_store
 
         close_catalog_store(store)
+
+
+def _selected_task(safety_intent: str | None, selected_tools: list[str]) -> str:
+    if safety_intent in {"clinical_intercept", "banned_movement"}:
+        return safety_intent
+    tasks = {
+        "substitute_exercise": "exercise_substitution", "preview_program_rebuild": "program_mutation",
+        "preview_program_edit": "program_edit", "choose_deload": "deload_choice",
+        "search_exercises": "catalog_search", "get_exercise_history": "exercise_history",
+        "get_player_telemetry": "telemetry_intercept",
+    }
+    selected = list(dict.fromkeys(tasks[name] for name in selected_tools if name in tasks))
+    return "multi_tool_request" if len(selected) > 1 else selected[0] if selected else "coaching_qa"
 
 
 def _seed_hermetic_catalog(catalog_path: Path, root: Path) -> None:
@@ -727,13 +777,11 @@ def _hermetic_actions(case: dict[str, Any]) -> list[dict[str, Any]]:
     return actions
 
 
-def _hermetic_arabic_swap_classification(case: dict[str, Any]) -> dict[str, Any]:
+def _hermetic_arabic_tool_selection(case: dict[str, Any]) -> dict[str, Any]:
     if case["id"] == "ar-mixed-03":
         return {
-            "intent": "exercise_substitution",
-            "source_exercise": "Back Squat (Barbell)",
-            "target_exercise": "Goblet Squat",
-            "has_swap": True,
+            "name": "get_active_program",
+            "args": {},
         }
     action = case["expected_action"]
     source_names = {
@@ -745,25 +793,17 @@ def _hermetic_arabic_swap_classification(case: dict[str, Any]) -> dict[str, Any]
         "Incline Bench Press (Barbell)": "Incline Bench Press (Barbell)",
         "45° Leg Press (Plate-Loaded)": "Leg Press",
     }
-    if case["id"] == "ar-egyptian-07":
-        return {
-            "intent": "composite_intent",
-            "source_exercise": "Bench Press (Barbell)",
-            "target_exercise": "Dumbbell Bench Press",
-            "has_swap": True,
-            "has_additional_request": True,
-        }
     return {
-        "intent": case["expected_intent"],
-        "source_exercise": source_names[action["source_exercise"]],
-        "target_exercise": target_names[action["target_exercise"]],
-        "has_swap": case["expected_intent"] == "composite_intent",
-        "has_additional_request": case["expected_intent"] == "composite_intent",
+        "name": "substitute_exercise",
+        "args": {
+            "source_exercise": source_names[action["source_exercise"]],
+            "target_exercise": target_names[action["target_exercise"]],
+        },
     }
 
 
 class RoutingSuite:
-    """Measures intent routing and validated player actions; Arabic needs owner review."""
+    """Measures safety routing, model-selected tasks, and validated player actions."""
 
     name = "routing"
 
@@ -787,7 +827,7 @@ class RoutingSuite:
                             _observe_case(
                                 case,
                                 root,
-                                _hermetic_arabic_swap_classification(case),
+                                _hermetic_arabic_tool_selection(case),
                                 hermetic=True,
                             )
                         )
@@ -805,6 +845,8 @@ class RoutingSuite:
                     {
                         "case_id": case["id"],
                         "observed_intent": case["expected_intent"],
+                        "selected_tools": case["expected_tools"],
+                        "response_content": case.get("hermetic_answer", ""),
                         "executed_actions": _hermetic_actions(case),
                         "franco_intercept": case.get("franco_intercept_expected") is True,
                     }

@@ -426,7 +426,8 @@ def edit_active_program_days(db: Any, ledger: Any, edits: list[ProgramEdit], *, 
         result, published_by_coach_account_id=None, starting_position=position
     )
     updated = ledger.get_active_program()
-    if updated is not None:
+    # Internal ledger callers have no Account identity to send to analytics.
+    if updated is not None and edits[0].actor.account_id is not None:
         capture_program_edited(edits[0].actor, updated, client=edits[0].client)
     return {**_updated_program_result(ledger, active.version), "volume_warnings": list({
         (item.get("muscle"), item.get("weekly_sets"), item.get("ceiling")): item

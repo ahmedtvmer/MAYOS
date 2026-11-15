@@ -17,6 +17,22 @@ INFERENCE_OUTCOMES = frozenset({"ok", "error", "timeout", "interrupted", "trunca
 _recorder: Callable[[str, str, float, float | None], None] | None = None
 
 
+def log_turn_exception(
+    target: logging.Logger, message: str, error: BaseException, *, request_id: str | None = None,
+) -> None:
+    """Retain the traceback and correlation id without exception values or chains.
+
+    SDK, validation and storage exceptions can embed private request data in
+    their messages. A new exception keeps those values out of every formatter.
+    """
+    target.exception(
+        "%s request_id=%s exception_type=%s", message,
+        request_id or current_usage_context().turn_id or "unattributed",
+        type(error).__name__,
+        exc_info=(RuntimeError, RuntimeError("Exception details redacted"), error.__traceback__),
+    )
+
+
 def set_recorder(recorder: Callable[[str, str, float, float | None], None] | None) -> None:
     """Register the monitoring sink without importing the API layer."""
     global _recorder

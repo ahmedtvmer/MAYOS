@@ -73,6 +73,47 @@ class FoodLogArgs(BaseModel):
     offset: int = Field(default=0, ge=0)
 
 
+class ProgramOptionsArgs(BaseModel):
+    days: int | None = Field(default=None, ge=1, le=5, strict=True)
+
+
+_SPLIT_SUITABILITY = {
+    "full_body": "Players who prefer training the whole body each session and spreading practice across the week.",
+    "upper_lower": "Players who prefer separate upper and lower sessions, with extra upper-body practice at five days.",
+    "anterior_posterior": "Players who prefer grouping front-of-body and back-of-body work on separate days.",
+    "arnold": "Players who enjoy pairing chest/back and shoulders/arms, with a separate leg day.",
+    "arnold_x_ul": "Players who enjoy Arnold pairings plus upper/lower sessions across five days.",
+    "ppl": "Players who prefer separate push, pull and leg sessions.",
+    "ppl_x_ul": "Players who prefer push/pull/legs plus upper/lower sessions across five days.",
+}
+
+
+def _read_program_options(ledger: Any, args: ProgramOptionsArgs) -> dict[str, Any]:
+    from agent.program_rules import valid_splits_for
+    from agent.program_blueprints import match_split_keyword, resolve_split_type
+
+    profile = _player_profile(ledger)
+    program = ledger.get_active_program()
+    days = args.days if args.days is not None else (
+        getattr(program, "weekly_frequency", None) or profile.get("weekly_frequency")
+    )
+    if type(days) is not int or days not in range(1, 6):
+        return {"status": "not_set", "message": "Ask how many days per week the Player wants."}
+    current_name = str(getattr(program, "split_type", ""))
+    current = (resolve_split_type(match_split_keyword(current_name) or current_name, days)
+               if getattr(program, "weekly_frequency", None) == days else None)
+    return {
+        "status": "ok", "days": days,
+        "options": [{"split_type": key, "name": name, "suits": _SPLIT_SUITABILITY[key],
+                     "is_current": key == current,
+                     **({"label": "your current program", "label_ar": "برنامجك الحالي"} if key == current else {})}
+                    for key, name in valid_splits_for(days, profile.get("gender", "male"))],
+        "internal_fields": ["split_type"],
+        "message": "Read-only choices; suitability describes preferences, not medical clearance. "
+                   "Changing the program requires a preview and a separate confirmation.",
+    }
+
+
 class ChatHistorySearchArgs(BaseModel):
     """Keyword search and optional UTC date bounds for older chat messages."""
 
@@ -446,7 +487,7 @@ def _weekly_program_volume(direct: dict[str, int], indirect: dict[str, float]) -
 def _program_prescription_page(response: dict[str, Any], offset: int) -> dict[str, Any]:
     # Empty / exact fit / multi-page / oversized single row: never split a prescription.
     rows = [(day, exercise) for day in response["days"] for exercise in day["exercises"]]
-    page = {**response, "days": [], "next_offset": None}
+    page = {**_with_program_management(response), "days": [], "next_offset": None}
     for index in range(offset, len(rows)):
         day, exercise = rows[index]
         if not page["days"] or page["days"][-1]["day"] != day["day"]:
@@ -586,6 +627,18 @@ def _read_program_rationale(ledger: Any, args: ProgramRationaleArgs) -> dict[str
 
 PLAYER_READ_TOOL_REGISTRY: tuple[PlayerReadTool, ...] = (
     PlayerReadTool(
+        name="list_program_options",
+        description=(
+            "List supported Training program types and who each suits by days per week. Omit days to "
+            "use the active program or saved frequency. Read-only; never exercise search."
+        ),
+        args_schema=ProgramOptionsArgs,
+        reader=_read_program_options,
+        args_reader=_read_program_options,
+        status_en="Checking program options…",
+        status_ar="ببص على اختيارات البرنامج…",
+    ),
+    PlayerReadTool(
         name="get_player_profile",
         description=(
             "Read only requested Profile sections. No sections: names only. "
@@ -601,14 +654,14 @@ PLAYER_READ_TOOL_REGISTRY: tuple[PlayerReadTool, ...] = (
     PlayerReadTool(
         name="get_active_program",
         description=(
-            "Read active Program overview: ordered days and muscles, weekly sets, authority and "
-            "restriction skips; no prescriptions. Defaults to current week; week_order selects another. "
-            "Scope day_name, exercise_name/exercise_id or muscle for matching prescriptions only. "
-            "Rows include secondary_muscles and movement_pattern (curated primary action or null). "
-            "weekly_volume_by_muscle gives planned direct/indirect/total sets; logged_volume_7d "
-            "gives Home weighted sets, even without a program. how_mayos_counts explains attribution. "
-            "Muscle matches primary or secondary muscles and Weak point groups. Groups can overlap. "
-            "For next_offset, repeat the same scope with offset to read remaining complete prescriptions."
+            "Read the active Program overview (days, muscles, sets, manager and restriction skips); "
+            "prescriptions require day_name, exercise_name/exercise_id or muscle scope. Defaults to "
+            "the current week; week_order selects another. Rows include secondary_muscles and the "
+            "movement_pattern (curated Primary action or null). Volume fields give planned "
+            "direct/indirect/total sets and Home's logged weighted sets for the last 7 days; "
+            "how_mayos_counts explains attribution. "
+            "Muscle scope matches primary/secondary muscles and Weak point groups. Use offset/next_offset "
+            "for remaining complete prescriptions."
         ),
         args_schema=ActiveProgramArgs,
         reader=_read_active_program,
@@ -619,10 +672,11 @@ PLAYER_READ_TOOL_REGISTRY: tuple[PlayerReadTool, ...] = (
     PlayerReadTool(
         name="get_program_rationale",
         description=(
-            "Read recorded reasons for the active Training program. Use this for every why-question "
-            "about the Split, day order, exercises, skipped restricted slots or prescriptions. Scope by day_name/day_order or "
-            "exercise_name/exercise_id and week_order; use page/next_page to read large results. "
-            "If reason_available is false, no recorded generator reason exists."
+            "Read recorded reasons for the active Training program. Use for why questions about its "
+            "Split, day order, exercises, skipped restrictions and prescriptions. Scope by "
+            "day_name/day_order, exercise_name/exercise_id or week_order; use page/next_page for "
+            "large results. "
+            "reason_available=false means no generator reason was recorded."
         ),
         args_schema=ProgramRationaleArgs,
         reader=lambda ledger, args=None: _read_program_rationale(ledger, args or ProgramRationaleArgs()),
@@ -633,8 +687,8 @@ PLAYER_READ_TOOL_REGISTRY: tuple[PlayerReadTool, ...] = (
     PlayerReadTool(
         name="get_player_weight_trend",
         description=(
-            "Read the current player's dated body-weight trend and computed changes. Use this "
-            "before answering questions about weight changes or progress toward a target weight."
+            "Read the player's dated body-weight trend and computed changes. Use for weight changes "
+            "or target progress."
         ),
         args_schema=EmptyToolArgs,
         reader=_read_weight_trend,
@@ -644,10 +698,8 @@ PLAYER_READ_TOOL_REGISTRY: tuple[PlayerReadTool, ...] = (
     PlayerReadTool(
         name="get_player_nutrition",
         description=(
-            "Read the current player's active Nutrition targets, author, Nutrition goal, pace, "
-            "last-14-day adherence counts, and today's Cardio calories and calorie adjustment. "
-            "This is read-only; direct target changes "
-            "to the Nutrition tab."
+            "Read active Nutrition targets, author, goal, pace, 14-day adherence, and today's Cardio "
+            "calories and adjustment. Read-only; change targets in Nutrition."
         ),
         args_schema=EmptyToolArgs,
         reader=_read_player_nutrition,
@@ -657,13 +709,11 @@ PLAYER_READ_TOOL_REGISTRY: tuple[PlayerReadTool, ...] = (
     PlayerReadTool(
         name="get_player_food_log",
         description=(
-            "Read what the current player ate on one Player-local day and its whole-day "
-            "calorie and Macro totals. day defaults to today; accepts today, yesterday, "
-            "or YYYY-MM-DD within the last 14 days including today. Personal food names "
-            "are the player's own data. Null nutrients are unknown and count as zero in "
-            "totals. Names longer than 200 characters are marked truncated. "
-            "If next_offset is set, call again with that offset and the returned "
-            "date to read remaining entries; totals always cover the whole day. Read-only."
+            "Read one Player-local day and whole-day calorie/Macro totals. day defaults to today; "
+            "accepts yesterday or YYYY-MM-DD within the last 14 days including today. Food names belong "
+            "to this Player; unknown nutrients count as zero. Long names are marked truncated. "
+            "If next_offset appears, repeat with the returned date and offset; totals still cover the "
+            "full day. Read-only."
         ),
         args_schema=FoodLogArgs,
         reader=lambda ledger: _read_player_food_log(ledger, FoodLogArgs()),
@@ -674,8 +724,8 @@ PLAYER_READ_TOOL_REGISTRY: tuple[PlayerReadTool, ...] = (
     PlayerReadTool(
         name="get_assistant_preferences",
         description=(
-            "Read preferences the current player explicitly asked the assistant to remember. "
-            "Use when answering how the player likes to train. Do not infer or write preferences."
+            "Read preferences the player asked the assistant to remember. Use for training preferences; "
+            "do not infer or change them."
         ),
         args_schema=EmptyToolArgs,
         reader=_read_assistant_preferences,
@@ -685,11 +735,9 @@ PLAYER_READ_TOOL_REGISTRY: tuple[PlayerReadTool, ...] = (
     PlayerReadTool(
         name="search_chat_history",
         description=(
-            "Search the current player's own older chat messages by English or Arabic keywords. "
-            "Use when the player refers to something from an older conversation that is outside "
-            "the recent chat window. start_date and end_date are inclusive UTC dates in YYYY-MM-DD "
-            "format. limit is 1 to 10. Recent-window messages and session-pointer debriefs are "
-            "excluded. A no_matches status means nothing older matched."
+            "Search the player's older chats by English or Arabic keywords when a reference is outside "
+            "recent history. start_date/end_date are inclusive UTC dates; limit is 1-10. Recent-window "
+            "messages and session-pointer debriefs are excluded. no_matches means no older message matched."
         ),
         args_schema=ChatHistorySearchArgs,
         reader=_read_chat_history_search,
@@ -700,7 +748,15 @@ PLAYER_READ_TOOL_REGISTRY: tuple[PlayerReadTool, ...] = (
 )
 
 
+def _with_program_management(tool_result: dict[str, Any]) -> dict[str, Any]:
+    return {**tool_result, "internal_fields": ["program_authority"],
+            "program_management": "Your coach manages this program." if tool_result["program_authority"] == "coach"
+            else "You manage your program."}
+
+
 def _encode_tool_result(tool_result: Any) -> str:
+    if isinstance(tool_result, dict) and "program_authority" in tool_result:
+        tool_result = _with_program_management(tool_result)
     rendered = tool_result if isinstance(tool_result, str) else json.dumps(
         tool_result, ensure_ascii=False, separators=(",", ":"), allow_nan=False
     )
@@ -717,6 +773,8 @@ def _encode_tool_result(tool_result: Any) -> str:
         compact = {
             "status": "summary_only",
             "program_authority": tool_result.get("program_authority", "player"),
+            "internal_fields": ["program_authority"],
+            "program_management": tool_result.get("program_management", "You manage your program."),
             **({"coach": tool_result["coach"]} if tool_result.get("coach") else {}),
             "weekly_sets_by_muscle": tool_result["weekly_sets_by_muscle"],
             "other_muscles": tool_result.get("other_muscles", {}),

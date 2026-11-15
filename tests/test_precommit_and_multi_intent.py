@@ -23,7 +23,6 @@ def _real_handler(name):
 
 
 router_node = _real_handler("router_node")
-composite_intent_node = _real_handler("composite_intent_node")
 exercise_substitution_node = _real_handler("exercise_substitution_node")
 program_mutation_node = _real_handler("program_mutation_node")
 stream_assistant_turn = _real_handler("stream_assistant_turn")
@@ -151,12 +150,21 @@ def test_fuzzy_threshold_elevation(db_fixture):
     assert "active movements:" in res["response_content"].lower()
 
 
-def test_composite_intent_history_and_swap(db_fixture):
+@pytest.mark.parametrize("streaming", [False, True])
+def test_multiple_selected_tools_read_history_and_apply_a_swap(fresh_store, monkeypatch, streaming):
     """Verifies compound query combining exercise history and exercise substitution."""
+    from agent.ProgramState import PersistedProgramSchema, PersistedProgramDaySchema, PersistedProgramExerciseSchema
+
+    db_fixture = fresh_store
+    entry = fresh_store.find_exercises_by_name("barbell bench press", limit=1)[0]
+    program = PersistedProgramSchema(program_name="Compound request", split_type="Full Body", weekly_frequency=1,
+        days=[PersistedProgramDaySchema(day_name="Full A", day_order=1, exercises=[PersistedProgramExerciseSchema(
+            exercise_id=str(entry["id"]), exercise_name=entry["name"], target_reps_min=6, target_reps_max=10,
+        )])])
+    fresh_store.ledger.upsert_player_profile({"weekly_frequency": 1, "equipment_access": "Commercial gym"})
+    fresh_store.ledger.save_training_program(program.model_dump())
     active_prog = db_fixture.ledger.get_active_program()
-    press_slots = [ex for day in active_prog.days for ex in day.exercises if "press" in ex.exercise_name.lower()]
-    assert press_slots, "seeded program composition must contain a press slot for this composite swap"
-    first_ex = press_slots[0]
+    first_ex = active_prog.days[0].exercises[0]
 
     import uuid
     from datetime import datetime, UTC
@@ -180,7 +188,7 @@ def test_composite_intent_history_and_swap(db_fixture):
         rpe=8.5,
     )
 
-    query = f"How did I do on {first_ex.exercise_name} and swap {first_ex.exercise_name} for dumbbell press"
+    query = f"How did I do on {first_ex.exercise_name} and swap {first_ex.exercise_name} for dumbbell bench press"
     state: AssistantState = {
         "messages": [HumanMessage(content=query)],
         "trainee_id": "default",
@@ -194,24 +202,32 @@ def test_composite_intent_history_and_swap(db_fixture):
         "response_content": None,
     }
 
-    route_res = router_node(state, {"configurable": {"ledger": db_fixture.ledger, "store": db_fixture}})
-    assert route_res["intent"] == "composite_intent"
-    sub_intents = route_res["intent_metadata"]["sub_intents"]
-    assert len(sub_intents) == 2
-    assert sub_intents[0]["intent"] == "exercise_history"
-    assert sub_intents[1]["intent"] == "exercise_substitution"
+    from agent import assistant_graph as graph
+    from tests.fakes.chat_model import ScriptedChatModel, ToolCallsTurn
 
-    state.update(route_res)
-    comp_res = composite_intent_node(state, {"configurable": {"ledger": db_fixture.ledger, "store": db_fixture}})
+    answer = f"Last time on {first_ex.exercise_name}, you logged 100 kg for 8 reps."
+    model = ScriptedChatModel([ToolCallsTurn(calls=[
+        {"name": "get_exercise_history", "args": {"exercise_name": first_ex.exercise_name}, "id": "history"},
+        {"name": "substitute_exercise", "args": {"source_exercise": first_ex.exercise_name,
+            "target_exercise": "dumbbell bench press"}, "id": "swap"},
+    ])], final_turns=[answer])
+    monkeypatch.setattr(graph, "llm", model)
+    if streaming:
+        shown = "".join(graph.stream_assistant_turn(state, ledger=db_fixture.ledger, store=db_fixture))
+        result = state
+    else:
+        result = graph.assistant_graph.invoke(state, config={"configurable": {"ledger": db_fixture.ledger, "store": db_fixture}})
+        shown = result["response_content"]
 
-    assert comp_res["program_updated"] is True
-    assert "---" in comp_res["response_content"]
-    assert "last logged session" in comp_res["response_content"].lower()
-    assert "routine slot updated" in comp_res["response_content"].lower()
+    assert answer in shown
+    assert result["program_updated"] is True
+    assert db_fixture.ledger.get_active_program().version == active_prog.version + 1
+    assert "Installed" in shown
+    assert any(getattr(message, "name", None) == "get_exercise_history" and "100" in message.content
+               for message in model.calls[-1]["messages"])
 
-
-def test_composite_intent_multiple_swaps(db_fixture):
-    """Verifies two exercise substitutions processed together in one prompt."""
+def test_multiple_swap_text_passes_through_the_safety_gate(db_fixture):
+    """Non-safety requests stay intact for the model to handle with selected tools."""
     active_prog = db_fixture.ledger.get_active_program()
     ex1 = active_prog.days[0].exercises[0]
     ex2 = active_prog.days[0].exercises[1]
@@ -230,14 +246,11 @@ def test_composite_intent_multiple_swaps(db_fixture):
         "response_content": None,
     }
 
-    route_res = router_node(state, {"configurable": {"ledger": db_fixture.ledger, "store": db_fixture}})
-    assert route_res["intent"] == "composite_intent"
-    sub_intents = route_res["intent_metadata"]["sub_intents"]
-    assert len(sub_intents) == 2
-    assert all(s["intent"] == "exercise_substitution" for s in sub_intents)
+    route = router_node(state, {"configurable": {"ledger": db_fixture.ledger, "store": db_fixture}})
+    assert route["intent"] == "coaching_qa"
+    assert state["messages"][-1].content == query
 
-
-def test_composite_intent_banned_and_history(db_fixture):
+def test_banned_movement_preempts_history_question(db_fixture):
     """Verifies a query with banned movement and exercise history."""
     query = "Can I do behind-the-neck press and how did I do on squats?"
     state: AssistantState = {
@@ -253,17 +266,14 @@ def test_composite_intent_banned_and_history(db_fixture):
         "response_content": None,
     }
 
-    route_res = router_node(state, {"configurable": {"ledger": db_fixture.ledger, "store": db_fixture}})
-    assert route_res["intent"] == "composite_intent"
-    state.update(route_res)
-    comp_res = composite_intent_node(state, {"configurable": {"ledger": db_fixture.ledger, "store": db_fixture}})
+    route = router_node(state, {"configurable": {"ledger": db_fixture.ledger, "store": db_fixture}})
+    assert route["intent"] == "banned_movement"
+    chunks = list(stream_assistant_turn(state, ledger=db_fixture.ledger, store=db_fixture))
+    assert "VETO: Behind-the-neck" in "".join(chunks)
+    assert state["program_updated"] is False
 
-    assert "VETO: Behind-the-neck" in comp_res["response_content"]
-    assert "---" in comp_res["response_content"]
-
-
-def test_composite_streaming_turn(db_fixture):
-    """Verifies stream_assistant_turn successfully streams composite_intent output."""
+def test_streaming_banned_movement_preempts_history_question(db_fixture):
+    """The safety gate vetoes a banned movement before the model sees the turn."""
     query = "Can I do behind-the-neck press and how did I do on bench press?"
     state: dict = {
         "messages": [HumanMessage(content=query)],
@@ -276,8 +286,7 @@ def test_composite_streaming_turn(db_fixture):
     chunks = list(stream_assistant_turn(state, ledger=db_fixture.ledger, store=db_fixture))
     full_output = "".join(chunks)
     assert "VETO: Behind-the-neck" in full_output
-    assert "---" in full_output
-    assert state.get("intent") == "composite_intent"
+    assert state.get("intent") == "banned_movement"
 
 
 def _isolated_turn(graph, query, mode):
@@ -320,64 +329,27 @@ def test_isolated_clinical_subintent_dominates_entire_turn(graph, mode, clinical
     graph.db.set_assistant_memory.assert_not_called()
 
 
-@pytest.mark.parametrize("explicit_clinical_intent", [True, False])
-def test_isolated_direct_composite_preflights_before_mutations(graph, explicit_clinical_intent):
+def test_safety_gate_preflights_the_whole_request_before_model_actions(graph):
     clinical = "my arm feels strange"
     graph.evaluate_clinical_semantic_guard.side_effect = lambda text, **kwargs: (text == clinical, 0.92)
-    request = {"messages": [HumanMessage(content="process these requests")], "intent_metadata": {"sub_intents": [
-        {"intent": "program_mutation", "query": "switch routine to 3 days"},
-        {"intent": "exercise_substitution", "query": "swap bench press for incline press"},
-        {"intent": "clinical_intercept" if explicit_clinical_intent else "coaching_qa", "query": clinical},
-    ]}}
-    result = graph.composite_intent_node(request, {"configurable": {"ledger": graph.db, "store": graph.db}})
-    assert result["response_content"] == graph.CLINICAL_SAFEGUARD_RESPONSE
+    query = f"switch routine to 3 days; swap bench press for incline press; {clinical}"
+    display, result = _isolated_turn(graph, query, "stream")
+    assert display == graph.CLINICAL_SAFEGUARD_RESPONSE
     assert result["program_updated"] is False
     assert graph.llm.calls == []
-    graph.generate_program_pipeline.assert_not_called()
     graph.db.save_training_program.assert_not_called()
-    graph.db.clear_chat_history.assert_not_called()
-
 
 @pytest.mark.parametrize("mode", ["graph", "stream"])
-def test_isolated_veto_preserves_unrelated_question_and_context(graph, mode):
+def test_isolated_veto_preempts_the_entire_turn(graph, mode):
     query = "Should I do upright rows? How many reps should I use for squats?"
     display, result = _isolated_turn(graph, query, mode)
-    assert "VETO:" in display and "Use controlled reps." in display
-    assert "---" in display
-    payload = graph.llm.calls[-1]["messages"]
-    text = "\n".join(message.content for message in payload)
-    assert query in text
-    assert "VETO:" in text
-    # The Context router (#527) adds its Program read after the question.
-    human = [message for message in payload if isinstance(message, HumanMessage)]
-    assert human[-1].content == "How many reps should I use for squats"
+    assert "VETO:" in display
     assert result["program_updated"] is False
+    assert graph.llm.calls == []
 
-
-def test_isolated_dependent_clause_keeps_original_and_preceding_response(graph):
-    request = {"messages": [HumanMessage(content="show me exercises for chest; should I use the second one?")], "intent_metadata": {"sub_intents": [
-        {"intent": "catalog_search", "query": "show me exercises for chest"},
-        {"intent": "coaching_qa", "query": "should I use the second one?"},
-    ]}}
-    graph.catalog_search_node = MagicMock(return_value=graph._response("1. Bench press\n2. Cable fly"))
-    graph.composite_intent_node(request, {"configurable": {"ledger": graph.db, "store": graph.db}})
-    text = "\n".join(message.content for message in graph.llm.calls[-1]["messages"])
-    assert request["messages"][0].content in text
-    assert "2. Cable fly" in text
-    assert "should I use the second one?" in text
-    assert len(request["messages"]) == 1
-
-
-def test_isolated_two_independent_mutations_still_execute(graph):
-    query = "switch routine to 3 days; swap bench press for incline press"
+def test_non_safety_compound_requests_are_handed_to_the_model_intact(graph):
+    query = "show me exercises for chest; should I use the second one?"
     request = {"messages": [HumanMessage(content=query)], "intent_metadata": {}}
-    request.update(graph.router_node(request, {"configurable": {"ledger": graph.db, "store": graph.db}}))
-    assert request["intent"] == "composite_intent"
-    graph.program_mutation_node = MagicMock(return_value=graph._response("Routine rebuilt.", True))
-    graph.exercise_substitution_node = MagicMock(return_value=graph._response("Movement replaced.", True))
-    result = graph.composite_intent_node(request, {"configurable": {"ledger": graph.db, "store": graph.db}})
-    assert result["program_updated"] is True
-    assert "Routine rebuilt." in result["response_content"]
-    assert "Movement replaced." in result["response_content"]
-    graph.program_mutation_node.assert_called_once()
-    graph.exercise_substitution_node.assert_called_once()
+    route = graph.router_node(request, {"configurable": {"ledger": graph.db, "store": graph.db}})
+    assert route["intent"] == "coaching_qa"
+    assert request["messages"][-1].content == query

@@ -16,7 +16,6 @@ from agent.ProgramState import (
     PersistedProgramWeekSchema,
 )
 from agent.assistant_graph import (
-    RE_ACTION_HINT,
     hydrate_context_node,
     deload_choice_node,
     exercise_substitution_node,
@@ -24,7 +23,7 @@ from agent.assistant_graph import (
     stream_assistant_turn,
 )
 from utils.logger import MayosLogger
-from tests.fakes.chat_model import ScriptedChatModel
+from tests.fakes.chat_model import ScriptedChatModel, ToolCallsTurn
 from utils.model_downloader import CLOUD_MODEL_REGISTRY
 
 logger = MayosLogger().get_logger(__name__)
@@ -88,8 +87,8 @@ def test_phase1_engine_configuration():
 
     logger.info("✅ Phase 1 hosted model configuration verified.")
 
-def test_phase1_tier1_explicit_swaps():
-    """Validates two-way deterministic exercise swaps."""
+def test_safety_gate_passes_swap_requests_to_generation():
+    """The safety gate passes non-safety swap requests through to generation."""
     queries = [
         ("swap hack squat for leg press", "hack squat", "leg press"),
         ("replace barbell bench press with dumbbell press", "barbell bench press", "dumbbell press"),
@@ -97,25 +96,17 @@ def test_phase1_tier1_explicit_swaps():
         ("switch out seated cable row instead of chest supported row", "seated cable row", "chest supported row"),
     ]
 
-    for q, expected_src, expected_tgt in queries:
+    for q, _expected_src, _expected_tgt in queries:
         state = {"messages": [HumanMessage(content=q)]}
         res = router_node(state)  # type: ignore
 
-        assert res["intent"] == "exercise_substitution", f"Failed intent for: {q}"
-        meta = res["intent_metadata"]
-        assert meta["mode"] == "direct_swap"
-        assert meta["source_exercise"].lower() == expected_src.lower(), (
-            f"Source mismatch on '{q}': got {meta['source_exercise']}"
-        )
-        assert meta["target_exercise"].lower() == expected_tgt.lower(), (
-            f"Target mismatch on '{q}': got {meta['target_exercise']}"
-        )
+        assert res["intent"] == "coaching_qa", f"Safety gate intercepted: {q}"
 
     logger.info("✅ Phase 1 Tier 1: Two-way explicit swaps verified.")
 
 
-def test_phase1_tier1_single_swaps():
-    """Validates one-way candidate lookup swaps."""
+def test_safety_gate_passes_alternative_requests_to_generation():
+    """The safety gate passes non-safety alternative requests through to generation."""
     queries = [
         ("swap hack squat", "hack squat"),
         ("alternative for leg extension", "leg extension"),
@@ -123,21 +114,17 @@ def test_phase1_tier1_single_swaps():
         ("replace standing calf raise", "standing calf raise"),
     ]
 
-    for q, expected_src in queries:
+    for q, _expected_src in queries:
         state = {"messages": [HumanMessage(content=q)]}
         res = router_node(state)  # type: ignore
 
-        assert res["intent"] == "exercise_substitution", f"Failed intent for: {q}"
-        meta = res["intent_metadata"]
-        assert meta["mode"] == "lookup_candidates"
-        assert meta["source_exercise"].lower() == expected_src.lower()
-        assert meta["target_exercise"] is None
+        assert res["intent"] == "coaching_qa", f"Safety gate intercepted: {q}"
 
     logger.info("✅ Phase 1 Tier 1: One-way swap candidate lookups verified.")
 
 
-def test_phase1_tier1_program_mutations():
-    """Validates split rebuilds and frequency capture."""
+def test_safety_gate_passes_program_change_requests_to_generation():
+    """The safety gate passes non-safety Program requests through to generation."""
     queries = [
         ("rebuild program", None),
         ("switch split to 3 days", 3),
@@ -145,17 +132,16 @@ def test_phase1_tier1_program_mutations():
         ("new split 4 days a week", 4),
     ]
 
-    for q, expected_freq in queries:
+    for q, _expected_freq in queries:
         state = {"messages": [HumanMessage(content=q)]}
         res = router_node(state)  # type: ignore
 
-        assert res["intent"] == "program_mutation", f"Failed intent for: {q}"
-        assert res["intent_metadata"]["target_frequency"] == expected_freq
+        assert res["intent"] == "coaching_qa", f"Safety gate intercepted: {q}"
 
     logger.info("✅ Phase 1 Tier 1: Program mutations & frequencies verified.")
 
 
-def test_compound_program_edits_route_to_program_edit():
+def test_safety_gate_passes_compound_program_edit_requests_to_generation():
     from agent.assistant_graph import router_node
     for query in (
         "rebuild my program and augment leg days with bi, tri and side delt, maybe forearms",
@@ -166,10 +152,10 @@ def test_compound_program_edits_route_to_program_edit():
         "زوّد برنامجي وحط باي وتراي على أيام الرجل",
     ):
         routed = router_node({"messages": [HumanMessage(content=query)]})
-        assert routed["intent"] == "program_edit"
+        assert routed["intent"] == "coaching_qa"
 
 
-def test_deload_choice_routing_is_deterministic_in_english_and_arabic(monkeypatch, scripted_chat_model):
+def test_safety_gate_passes_deload_requests_to_generation(monkeypatch, scripted_chat_model):
     cases = [
         ("undo the deload", "undo"),
         ("apply the deload", "apply"),
@@ -192,15 +178,15 @@ def test_deload_choice_routing_is_deterministic_in_english_and_arabic(monkeypatc
         ("طبّق التخفيف لهذا التمرين", "apply"),
     ]
     monkeypatch.setattr("agent.assistant_graph.llm", scripted_chat_model)
-    for query, choice in cases:
+    for query, _choice in cases:
         routed = router_node({"messages": [HumanMessage(content=query)]})
-        assert routed["intent"] == "deload_choice"
-        assert routed["intent_metadata"]["choice"] == choice
+        assert routed["intent"] == "coaching_qa"
+        assert routed["intent_metadata"] == {}
     assert scripted_chat_model.calls == []
 
 
-def test_deload_routing_does_not_override_clinical_or_negated_requests():
-    # The clinical guard keeps its own rules; a pain message must never become a Deload command.
+def test_safety_gate_preempts_clinical_deload_messages():
+    # A pain message stays on the clinical path instead of reaching tool selection.
     routed = router_node({"messages": [HumanMessage(content="عندي ألم حاد في الركبة، كيف أطبق التخفيف؟")]})
     assert routed["intent"] == "clinical_intercept"
     for query in ("my knee hurts, can I undo the deload?", "my shoulder is injured, apply the deload"):
@@ -218,11 +204,11 @@ def test_deload_routing_does_not_override_clinical_or_negated_requests():
 
     for query in ("مش عايز ألغي الديلود", "متشيلش الديلود"):
         routed = router_node({"messages": [HumanMessage(content=query)]})
-        assert routed["intent"] == "deload_choice"
-        assert routed["intent_metadata"]["choice"] == "no_change"
+        assert routed["intent"] == "coaching_qa"
+        assert routed["intent_metadata"] == {}
 
 
-def test_deload_pipeline_says_nothing_to_change_in_both_wrong_directions(fresh_store):
+def test_deload_pipeline_says_nothing_to_change_in_both_wrong_directions(fresh_store, monkeypatch):
     from agent.assistant_graph import stream_assistant_turn
 
     ledger = fresh_store.ledger
@@ -265,10 +251,15 @@ def test_deload_pipeline_says_nothing_to_change_in_both_wrong_directions(fresh_s
             "response_content": None,
         }
         prescription = {"deload": {"state": current_state}}
+        model = ScriptedChatModel([ToolCallsTurn(calls=[{
+            "name": "choose_deload", "args": {}, "id": "deload-choice",
+        }])])
+        monkeypatch.setattr("agent.assistant_graph.llm", model)
         with patch("service.workouts.build_prescription", return_value=prescription):
             rendered = "".join(stream_assistant_turn(state, ledger=ledger, store=fresh_store))
         assert "There is nothing to change." in rendered
         assert state["program_updated"] is False
+        assert state["selected_tools"] == ["choose_deload"]
 
 
 def test_unknown_arabic_deload_reason_uses_generic_localized_copy(fresh_store, monkeypatch):
@@ -304,8 +295,8 @@ def test_unknown_arabic_deload_reason_uses_generic_localized_copy(fresh_store, m
     )
 
 
-def test_phase1_tier1_catalog_search():
-    """Validates catalog movement searches."""
+def test_safety_gate_passes_catalog_search_requests_to_generation():
+    """The safety gate passes catalog searches through to generation."""
     queries = [
         ("search incline dumbbell press", "incline dumbbell press"),
         ("find cable chest fly", "cable chest fly"),
@@ -313,18 +304,17 @@ def test_phase1_tier1_catalog_search():
         ("list exercises lateral raise", "lateral raise"),
     ]
 
-    for q, expected_term in queries:
+    for q, _expected_term in queries:
         state = {"messages": [HumanMessage(content=q)]}
         res = router_node(state)  # type: ignore
 
-        assert res["intent"] == "catalog_search", f"Failed intent for: {q}"
-        assert res["intent_metadata"]["search_query"].lower() == expected_term.lower()
+        assert res["intent"] == "coaching_qa", f"Safety gate intercepted: {q}"
 
     logger.info("✅ Phase 1 Tier 1: Catalog search tokens verified.")
 
 
 def test_phase1_tier2_coaching_qa_passthrough():
-    """Validates that standard coaching queries bypass LLM classification in <0.5ms."""
+    """Validates that ordinary coaching questions pass the safety gate."""
     queries = [
         "How should I tuck my elbows on the close grip bench press?",
         "What is the best rep range for calf hypertrophy?",
@@ -333,7 +323,6 @@ def test_phase1_tier2_coaching_qa_passthrough():
     ]
 
     for q in queries:
-        assert not RE_ACTION_HINT.search(q), f"Query accidentally triggered action hint: {q}"
         state = {"messages": [HumanMessage(content=q)]}
         res = router_node(state)  # type: ignore
 
@@ -364,8 +353,7 @@ def test_phase2_streaming_generator_qa(fresh_store, monkeypatch):
     monkeypatch.setattr("agent.assistant_graph.llm", model)
     generator = stream_assistant_turn(state, ledger=fresh_store.ledger, store=fresh_store)
     first = next(generator)
-    # Complete sentences stream as soon as their boundary is known, so a capped
-    # response can omit only its unfinished trailing sentence.
+    # The completed final round preserves sentence boundaries when released.
     assert first == "Keep your elbows tucked."
     yielded_tokens = [first, *generator]
     assert "".join(yielded_tokens) == "Keep your elbows tucked. Use controlled reps."
@@ -379,9 +367,24 @@ def test_phase2_streaming_generator_qa(fresh_store, monkeypatch):
 
 
 def test_phase2_streaming_generator_programmatic_bypass(fresh_store, monkeypatch, scripted_chat_model):
-    """Validates that programmatic nodes stream confirmation without invoking llm.stream()."""
+    """A saved rebuild offer is confirmed without invoking the model (#718)."""
+    from langchain_core.messages import AIMessage
+    from service.chat_program_edit import plan_chat_program_rebuild
+
+    ledger = fresh_store.ledger
+    row = fresh_store.catalog_conn.execute("SELECT id, name FROM exercises ORDER BY id LIMIT 1").fetchone()
+    original = PersistedProgramSchema(program_name="Original", split_type="Full Body", weekly_frequency=1,
+        days=[PersistedProgramDaySchema(day_name="Day 1", day_order=1, exercises=[
+            PersistedProgramExerciseSchema(exercise_id=str(row[0]), exercise_name=str(row[1]),
+                target_reps_min=8, target_reps_max=12)])])
+    ledger.save_training_program(original.model_dump())
+    active = ledger.get_active_program()
+    rebuilt = active.model_copy(update={"program_name": "Confirmed rebuild"})
+    planned = plan_chat_program_rebuild(fresh_store, ledger, None, rebuilt)
+    offer = "Program rebuild preview. Confirm or cancel."
+    ledger.set_pending_chat_program_edit(planned["proposal"], offer)
     state = {
-        "messages": [HumanMessage(content="switch split to 3 days")],
+        "messages": [AIMessage(content=offer), HumanMessage(content="yes")],
         "trainee_id": "test_user",
         "coach_tone": "Direct and pragmatic",
         "custom_instructions": "",
@@ -392,20 +395,16 @@ def test_phase2_streaming_generator_programmatic_bypass(fresh_store, monkeypatch
         "response_content": None,
     }
 
+    scripted_chat_model.reset([AssertionError("Pending confirmation must bypass the model")])
     monkeypatch.setattr("agent.assistant_graph.llm", scripted_chat_model)
-    with patch("agent.assistant_graph.program_mutation_node") as mock_mutation:
-        mock_mutation.return_value = {"program_updated": True, "response_content": "Rebuilt routine for 3 days/week."}
+    output = list(stream_assistant_turn(state, ledger=ledger, store=fresh_store))
 
-        generator = stream_assistant_turn(state, ledger=fresh_store.ledger, store=fresh_store)
-        output = list(generator)
-
-        assert scripted_chat_model.calls == []
-        mock_mutation.assert_called_once()
-        assert len(output) > 0
-        assert "".join(output) == "Rebuilt routine for 3 days/week."
-        assert state["program_updated"] is True
-
-    logger.info("✅ Phase 2: Programmatic zero-LLM streaming bypass verified.")
+    assert scripted_chat_model.calls == []
+    assert "".join(output) == "I saved the Program edit as one new version."
+    assert state["program_updated"] is True
+    assert ledger.get_active_program().program_name == "Confirmed rebuild"
+    assert ledger.get_active_program().version == active.version + 1
+    assert ledger.get_pending_chat_program_edit() is None
 
 
 def test_phase3_substitution_lookup_candidates(fresh_store):

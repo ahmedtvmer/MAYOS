@@ -11,6 +11,7 @@ only the ADR 038 metering rows are written (role ``coach``).
 
 import asyncio
 import json
+import logging
 import queue
 import threading
 from dataclasses import dataclass, field
@@ -24,6 +25,7 @@ from service import coach_ai as coach_ai_service
 from service import coach_history as coach_history_service
 from service.messages import MessageMetadata, chat_error_message
 from service.model_limits import ModelAdmissionContext, admit_model_request
+from service.inference_metrics import log_turn_exception
 from svc.dependencies import VerifiedPlayer, account_id_of, get_current_coach, get_db
 from svc.errors import message_http_exception
 from svc.llm import (
@@ -38,6 +40,7 @@ from svc.schemas import CoachAssistantIn
 from utils.text_scrubber import PIPELINE_ERROR_RESPONSE
 
 router = APIRouter(prefix="/coach/assignments", tags=["coach"])
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -184,7 +187,10 @@ def _run_stream_turn(stream: _CoachAssistantStream) -> None:
     try:
         answer = _consume_model_stream(stream)
         stream.events.put(("done", _coach_done_payload(stream, answer)))
-    except Exception:
+    except Exception as exc:
+        log_turn_exception(logger, "Coach assistant stream worker failed", exc,
+                           request_id=stream.turn.turn_id)
+        stream.turn.mark_error()
         if stream.disconnected.is_set():
             stream.turn.mark_interrupted()
         stream.events.put(("error", _stream_error_payload()))
@@ -249,6 +255,11 @@ async def _event_stream(stream: _CoachAssistantStream):
             yield _sse_frame(kind, payload)
             if kind == "done":
                 stream.answer_delivered = True
+    except Exception as exc:
+        log_turn_exception(logger, "Coach assistant SSE delivery failed", exc,
+                           request_id=stream.turn.turn_id)
+        stream.turn.mark_error()
+        yield _sse_frame("error", _stream_error_payload())
     finally:
         if not stream.worker_done.is_set() or not stream.answer_delivered:
             stream.disconnected.set()

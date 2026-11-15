@@ -52,6 +52,7 @@ from agent.focus_muscles import (
 )
 from agent.program_rationale import (
     SELECTION_ALREADY_USED_TODAY,
+    SELECTION_REBUILD_VARIETY,
     SELECTION_EQUIPMENT_ACCESS_STAPLE,
     SELECTION_HIDDEN,
     SELECTION_FALLBACK,
@@ -311,6 +312,7 @@ class DayGenerationContext:
     recovery_cut: bool
     experience_level: ExperienceLevel
     movement_restrictions: tuple[str, ...] = ()
+    previous_exercise_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -349,6 +351,7 @@ class ProgramGenerationRequest:
     frequency_override: int | None = None
     split_id_override: str | None = None
     coach_cardio: CoachCardioOptions | None = None
+    previous_exercise_ids: tuple[str, ...] = ()
 
 
 def get_biomechanical_cue(
@@ -634,7 +637,13 @@ def _assemble_deterministic_day_with_rationale(
         candidates, limitation_removed_staples = _fetch_generation_candidates(
             slot_key, context, excluded_ids, ledger=ledger
         )
-        chosen = _pick_candidate(candidates, slot_key, excluded_ids)
+        # A rebuild prefers fresh choices without dropping a slot whose only
+        # safe, available exercise is already in the current program.
+        regular_choice = _pick_candidate(candidates, slot_key, excluded_ids)
+        chosen = _pick_candidate(candidates, slot_key, excluded_ids | set(context.previous_exercise_ids))
+        if chosen is None:
+            chosen = regular_choice
+        variety_selected = chosen is not None and regular_choice is not None and chosen["id"] != regular_choice["id"]
         resolved_slot = slot_key
         candidate_slot = slot_key
         blocked_reasons = restricted_candidate_reasons(
@@ -693,15 +702,14 @@ def _assemble_deterministic_day_with_rationale(
                     rep_preference=context.rep_preference,
                     experience_level=context.experience_level,
                 )
+        if variety_selected:
+            selection_code = SELECTION_REBUILD_VARIETY
+        elif resolved_slot != slot_key:
+            selection_code = SELECTION_LIMITATION_SUBSTITUTE if limitation_removed_staples else SELECTION_FALLBACK
+        else:
+            selection_code = _limitation_selection_code(chosen, slot_key, context, ledger, excluded_ids)
         options = ExerciseRationaleOptions(
-                    selection_code=(
-                        (
-                            SELECTION_LIMITATION_SUBSTITUTE
-                            if limitation_removed_staples else SELECTION_FALLBACK
-                        ) if resolved_slot != slot_key else _limitation_selection_code(
-                            chosen, slot_key, context, ledger, excluded_ids
-                        )
-                    ),
+                    selection_code=selection_code,
                     selection_params={"slot": slot_key, "rank": SLOT_STAPLES.get(slot_key, ()).index(str(chosen["id"])) + 1} if str(chosen["id"]) in SLOT_STAPLES.get(slot_key, ()) else {"slot": slot_key},
                     sets_code=SETS_RECOVERY_CUT if apply_cut else SETS_COACH_DOSE,
                     day_slots=tuple(day.target_slots),
@@ -1452,6 +1460,7 @@ def _generate_program_days(
         recovery_cut=is_poor_recovery(profile.get("stress_and_sleep")),
         experience_level=experience_level_for_training_age(profile.get("training_age_years", 0.0)),
         movement_restrictions=tuple(profile.get("movement_restrictions", ())),
+        previous_exercise_ids=request.previous_exercise_ids,
     )
     days = []
     rationale_days = []

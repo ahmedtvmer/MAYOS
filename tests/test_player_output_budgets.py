@@ -9,7 +9,6 @@ from utils import player_output_budgets
 REPORT_PATH = Path(__file__).parents[1] / "reports" / "player_output_budgets.json"
 SPLIT_MEASUREMENT_PATH = Path(__file__).parents[1] / "reports" / "issue_406_split_plan_measurement.json"
 STRUCTURED_CALL_SITES = (
-    "intent_routing",
     "abbreviation_expansion",
 )
 
@@ -71,7 +70,8 @@ def test_dynamic_split_budget_covers_historical_and_issue_406_maxima():
 def test_report_covers_every_measured_player_call_site():
     report = json.loads(REPORT_PATH.read_text(encoding="utf-8"))
 
-    assert set(report["call_sites"]) == set(player_output_budgets.CALL_SITE_BUDGETS)
+    # The measured classifier is historical; #718 removes that production call.
+    assert set(report["call_sites"]) - {"intent_routing"} == set(player_output_budgets.CALL_SITE_BUDGETS)
     assert report["status"] in {"complete", "complete with reduced n"}
     target_n = report["sample_count_per_language_per_call_site"] * 2
     assert all(0 <= metrics["n"] <= target_n for metrics in report["call_sites"].values())
@@ -123,9 +123,9 @@ def test_report_covers_every_measured_player_call_site():
 
 
 def test_measurement_budget_override_does_not_change_production_budget():
-    production_budget = player_output_budgets.player_output_budget("intent_routing")
+    production_budget = player_output_budgets.player_output_budget("chat_reply")
 
-    with player_output_budgets.override_player_output_budgets({"intent_routing": 2400}):
-        assert player_output_budgets.player_output_budget("intent_routing") == 2400
+    with player_output_budgets.override_player_output_budgets({"chat_reply": 2400}):
+        assert player_output_budgets.player_output_budget("chat_reply") == 2400
 
-    assert player_output_budgets.player_output_budget("intent_routing") == production_budget
+    assert player_output_budgets.player_output_budget("chat_reply") == production_budget
