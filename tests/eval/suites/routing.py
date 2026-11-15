@@ -625,6 +625,7 @@ def _observe_case_with_catalog(
             }]), case.get("hermetic_answer", "A safer option depends on what feels uncomfortable.")] if scripted_tool_selection is not None else []
             model_patch = (
                 patch.object(graph, "llm", ScriptedChatModel(model_turns,
+                    final_turns=[case.get("hermetic_answer", "")],
                     default_turn="A safer option depends on what feels uncomfortable."))
                 if scripted_tool_selection is not None
                 else nullcontext()

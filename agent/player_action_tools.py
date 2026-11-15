@@ -102,13 +102,15 @@ def _exercise_history(turn: PlayerToolTurn, **kwargs: Any) -> dict[str, Any]:
 
 def _substitute_exercise(turn: PlayerToolTurn, **kwargs: Any) -> dict[str, Any]:
     from agent import assistant_graph as graph
-    from agent.player_swap_authorization import authorized_swap_metadata
+    from agent.player_swap_authorization import authorized_swap_metadata, has_affirmative_swap_request
 
     args = SubstitutionArgs(**kwargs)
     if not args.target_exercise:
         return _substitution_alternatives(turn, args)
     metadata = authorized_swap_metadata(turn, args)
     if metadata is None:
+        if not has_affirmative_swap_request(turn.query):
+            return turn.finish(graph._response(graph.AUTHORIZATION_RESPONSE))
         reply = graph.ARABIC_SWAP_CLARIFICATION_RESPONSE if graph._is_arabic_dominant(turn.query) else graph.AUTHORIZATION_RESPONSE
         program = turn.handles[0].get_active_program()
         if (graph._is_arabic_dominant(turn.query) and args.day_name and program is not None
@@ -313,7 +315,7 @@ _ACTION_NAMES = frozenset({
 })
 
 _WRITE_TOOL_GROUPS = {
-    r"rebuild|regenerate|preview|draft|generate|create|new|swap|replace|substitut|switch|change|add|remove|confirm|cancel|yes|alternativ|instead|بديل|بدائل|بدل|غير|بناء|ضيف|شيل|اكد|ايوه|نعم|جهز|غييرات|ظبط|جدد|حط|زود|انقل|عدل":
+    r"rebuild|regenerate|preview|draft|generate|create|new|swap|replace|substitut|switch|change|add|remove|confirm|cancel|yes|alternativ|instead|بديل|بدائل|بدل|غير|بناء|ضيف|شيل|اكد|ايوه|نعم|جهز|غييرات|ظبط.{0,30}(?:برنامج|برامج|تقسيم|ايام|يوم)|جدد|حط|زود|انقل|عدل":
         {"substitute_exercise", "preview_program_rebuild", "preview_program_edit", "confirm_program_edit"},
     r"deload|ديلود|تخفيف": {"choose_deload"},
     r"injur|doctor|physician|clear|pain|اصاب|دكتور|طبيب|وجع|الم": {"update_injury", "update_movement_restrictions"},
@@ -345,8 +347,8 @@ def select_player_chat_tools(tools, state):
     # A named split continues the Program topic; other short follow-ups may refer anywhere.
     if len(state.get("messages", [])) > 1 and len(latest.split()) < 4 and not match_split_keyword(latest):
         return tools
-    known_topic = re.search(r"program|routine|split|workout|exercises?|search|bench|squat|sets?|reps?|rest|performance|"
-                            r"برنامج|تمرين|بنش|سكوات|سيت|عدات|راحة|أداء|اداء", text, re.I)
+    known_topic = re.search(r"program|routine|split|workout|exercises?|search|bench|squat|sets?|reps?|rest|performance|profile|know about me|"
+                            r"برنامج|تمرين|بنش|سكوات|سيت|عدات|راحة|أداء|اداء|ملفي|تعرف عني", text, re.I)
     if not known_topic and not selected:
         return tools
     return [tool for tool in tools

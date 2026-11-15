@@ -82,6 +82,16 @@ def authorized_swap_metadata(turn: Any, args: Any) -> dict[str, Any] | None:
     return None
 
 
+def has_affirmative_swap_request(query: str) -> bool:
+    from agent import assistant_graph as graph
+
+    return any(
+        graph.RE_ARABIC_SWAP_REQUEST.match(clause.strip())
+        or graph.RE_EXPLICIT_SWAP.fullmatch(graph._action_command(clause))
+        for clause in _affirmative_swap_clauses(query)
+    )
+
+
 def _affirmative_swap_clauses(query: str):
     from agent import assistant_graph as graph
 

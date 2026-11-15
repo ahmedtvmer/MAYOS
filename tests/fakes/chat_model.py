@@ -8,6 +8,7 @@ by ``chunk_size``.
 
 Action-final calls consume ``final_turns`` separately, defaulting to empty text
 so the application displays its exact receipt without consuming the next user turn.
+For a compound tool batch, the next sequential text turn can supply its answer.
 """
 
 import json
@@ -275,9 +276,14 @@ class ScriptedChatModel(BaseChatModel):
                          and messages[-1].type == "system"
                          and messages[-1].content == ACTION_ANSWER_INSTRUCTION)
         if action_answer:
-            # Legacy scripts describe user turns. The receipt needs no extra prose;
-            # compound answers and provider failures have their own explicit queue.
-            turn = self._final_turns.popleft() if self._final_turns else ""
+            last_tool_batch = next((message.tool_calls for message in reversed(messages)
+                                    if isinstance(message, AIMessage) and message.tool_calls), [])
+            if self._final_turns:
+                turn = self._final_turns.popleft()
+            elif len(last_tool_batch) > 1 and self._turns and isinstance(self._turns[0], str):
+                turn = self._turns.popleft()
+            else:
+                turn = ""
         elif self._turns:
             turn = self._turns.popleft()
         elif self.default_turn is not None:
