@@ -92,7 +92,7 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
         'في الاتصال أو مشكلة في MAYOS.',
     target: 'home',
     location: TourShellTabLocation(tabIndex: 0),
-    release: 6,
+    release: 7,
     audience: 'lifter',
   ),
   FeatureEntry(
