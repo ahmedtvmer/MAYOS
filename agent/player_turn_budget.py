@@ -4,12 +4,14 @@ import json
 from dataclasses import dataclass, replace
 from typing import Any
 
-from langchain_core.messages import SystemMessage
+from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
 
 from agent.player_prompt import (
-    CONTEXT_TOO_LONG_RESPONSE, HOSTED_PROMPT_REAL_TOKEN_SAFETY_CEILING,
+    ACTION_ANSWER_INSTRUCTION, CONTEXT_TOO_LONG_RESPONSE,
+    HOSTED_PROMPT_REAL_TOKEN_SAFETY_CEILING, HOSTED_PROMPT_TOOL_RESULT_RESERVE_BYTES,
     PromptBudgetError, message_role, prompt_token_count,
 )
+from agent.player_tools import MAX_TOOL_RESULT_BYTES
 
 
 # Escaped bytes upper-bound text tokens even if calibrated estimates undercount.
@@ -52,11 +54,20 @@ class PlayerTurnInputBudget:
     estimated_consumed: int = 0
 
     def fits_tool_round(self, messages, schemas, attempts=1) -> bool:
-        """Check capacity without spending it, including a schema-free final answer."""
+        """Project a tool exchange and final answer without spending the budget."""
         projected = replace(self)
+        # The final request includes the next result, not just this transcript.
+        # Reserve a capped result plus call/argument slack and the action prompt;
+        # actual responses still pass through full admission before being sent.
+        final_messages = [
+            *messages,
+            AIMessage(content=" " * HOSTED_PROMPT_TOOL_RESULT_RESERVE_BYTES),
+            ToolMessage(content=" " * MAX_TOOL_RESULT_BYTES, tool_call_id="reserved-tool-result"),
+            SystemMessage(content=ACTION_ANSWER_INSTRUCTION),
+        ]
         try:
             projected.admit(messages, schemas, attempts)
-            projected.prepare_request(messages, attempts=attempts)
+            projected.prepare_request(final_messages, attempts=attempts)
         except PromptBudgetError:
             return False
         return True
