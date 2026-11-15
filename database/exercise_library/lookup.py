@@ -16,6 +16,9 @@ from database.exercise_library.vocabulary import equipment_category_for, equipme
 from utils.equipment_access import equipment_access_sql
 
 
+FUZZY_NAME_MATCH_THRESHOLD = 0.72
+
+
 @dataclass(frozen=True)
 class _NameSearch:
     query: str
@@ -273,11 +276,6 @@ def _passes_fuzzy_prefilter(
 
 
 def _fuzzy_name_score(query: _NameQuery, candidate: _NameCandidate) -> float:
-    scores = []
-    if _passes_fuzzy_prefilter(
-        query.compact, query.compact_grams, candidate.compact, candidate.compact_grams
-    ):
-        scores.append(SequenceMatcher(None, query.compact, candidate.compact).ratio())
     token_scores = []
     for word, word_grams in zip(query.words, query.word_grams, strict=True):
         possible_scores = [
@@ -287,11 +285,14 @@ def _fuzzy_name_score(query: _NameQuery, candidate: _NameCandidate) -> float:
             )
             if _passes_fuzzy_prefilter(word, word_grams, candidate_word, candidate_grams)
         ]
-        if possible_scores:
-            token_scores.append(max(possible_scores))
-    if len(token_scores) == len(query.words):
-        scores.append(sum(token_scores) / len(token_scores))
-    return max(scores, default=0.0)
+        if not possible_scores:
+            return 0.0
+        token_scores.append(max(possible_scores))
+    # Phrase similarity alone can mistake different movement modifiers for typos.
+    if not token_scores or min(token_scores) < FUZZY_NAME_MATCH_THRESHOLD:
+        return 0.0
+    compact_score = SequenceMatcher(None, query.compact, candidate.compact).ratio()
+    return max(sum(token_scores) / len(token_scores), compact_score)
 
 
 def _prepare_name_query(search: _NameSearch) -> _NameQuery:
@@ -318,7 +319,7 @@ def _score_fuzzy_name_rows(rows: list[_PreparedNameRow], search: _NameSearch):
             ),
             default=0.0,
         )
-        if score >= 0.72:
+        if score >= FUZZY_NAME_MATCH_THRESHOLD:
             scored.append((score, candidate.row))
     return scored
 
@@ -329,7 +330,11 @@ def _fuzzy_name_rows(rows: list[_PreparedNameRow], search: _NameSearch):
         return []
     scored.sort(key=lambda candidate: (-candidate[0], str(candidate[1]["display_name"])))
     best_score = scored[0][0]
-    matches = [row for score, row in scored if score >= max(0.72, best_score - 0.08)]
+    matches = [
+        row
+        for score, row in scored
+        if score >= max(FUZZY_NAME_MATCH_THRESHOLD, best_score - 0.08)
+    ]
     return matches[:search.limit]
 
 
@@ -506,12 +511,12 @@ class ExerciseLookupMixin:
         detail["provenance"] = entry["provenance"]
         return detail
 
-    def find_unique_exercise_id_by_exact_name(self, query: str) -> str | None:
-        """Return an id only when its normalized source, display, or alias is unique."""
+    def _find_exact_exercise_ids_by_name(self, query: str) -> frozenset[str]:
+        """Return ids whose source, display name, or alias matches after normalization."""
         clean = query.strip().lower()
         normalized = _normalize_exercise_name(clean)
         if not normalized:
-            return None
+            return frozenset()
         search = _NameSearch(
             query=clean,
             normalized_query=normalized,
@@ -531,9 +536,13 @@ class ExerciseLookupMixin:
             )
         rows = _normalized_name_rows(_prepare_name_rows(rows), search)
         rejected_ids = near_miss_exercise_ids(clean)
-        exercise_ids = {
+        return frozenset(
             str(row["id"]) for row in rows if str(row["id"]) not in rejected_ids
-        }
+        )
+
+    def find_unique_exercise_id_by_exact_name(self, query: str) -> str | None:
+        """Return an id only when its normalized source, display, or alias is unique."""
+        exercise_ids = self._find_exact_exercise_ids_by_name(query)
         return next(iter(exercise_ids)) if len(exercise_ids) == 1 else None
 
     def find_exercises_by_name(

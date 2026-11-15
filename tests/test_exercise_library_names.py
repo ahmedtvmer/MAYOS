@@ -175,12 +175,13 @@ def test_unique_exact_exercise_id_lookup_uses_names_and_rejects_ambiguity(seed_s
 def test_real_y_raise_variants_ask_between_curated_exercises(real_library_store, query):
     matches = real_library_store.find_exercises_by_name(query, limit=3)
 
-    assert {match["id"] for match in matches} == {"3541", "mayos:3"}
+    assert {match["id"] for match in matches} == {"1017", "3541", "mayos:3"}
     assert real_library_store.find_unique_exercise_id_by_exact_name(query) is None
     assert real_library_store.find_exercise_by_name(query) is None
 
     reply = _catalog_search_reply(real_library_store, query, "en")
     assert "Did you mean" in reply["response_content"]
+    assert "Band Y-Raise" in reply["response_content"]
     assert "Incline Y-Raise (Dumbbell)" in reply["response_content"]
     assert "Cable Y-Raise" in reply["response_content"]
 
@@ -332,12 +333,17 @@ def test_food_search_keeps_matching_plural_food_names():
 @pytest.mark.parametrize(
     ("query", "language", "expected_question", "expected_candidates"),
     [
-        ("y raise", "en", "Did you mean", ("Incline Y-Raise (Dumbbell)", "Cable Y-Raise")),
+        (
+            "y raise",
+            "en",
+            "Did you mean",
+            ("Band Y-Raise", "Cable Y-Raise", "Incline Y-Raise (Dumbbell)"),
+        ),
         (
             "واي رفعة",
             "ar",
             "هل تقصد",
-            ("Incline Y-Raise (Dumbbell)", "Cable Y-Raise"),
+            ("Band Y-Raise", "Cable Y-Raise", "Incline Y-Raise (Dumbbell)"),
         ),
     ],
 )
@@ -345,6 +351,7 @@ def test_ambiguous_exercise_names_ask_in_the_players_language(
     real_library_store, query, language, expected_question, expected_candidates
 ):
     if language == "ar":
+        _insert_name_alias(real_library_store, "1017", "واي رفعة")
         _insert_name_alias(real_library_store, "3541", "واي رفعة")
         _insert_name_alias(real_library_store, "mayos:3", "واي رفعة")
     reply = _catalog_search_reply(real_library_store, query, language)
@@ -361,6 +368,7 @@ def test_arabic_y_raise_swap_clarifies_unless_the_program_has_a_candidate(
 
     from agent import assistant_graph
 
+    _insert_name_alias(real_library_store, "1017", "واي رفعة")
     _insert_name_alias(real_library_store, "3541", "واي رفعة")
     _insert_name_alias(real_library_store, "mayos:3", "واي رفعة")
     curated_entry = real_library_store.get_exercise_library_entry("3541")
@@ -396,6 +404,7 @@ def test_arabic_y_raise_swap_clarifies_unless_the_program_has_a_candidate(
         )
         assert route["intent"] == "arabic_swap_clarification"
         assert "هل تقصد" in reply["response_content"]
+        assert "Band Y-Raise" in reply["response_content"]
         assert "Incline Y-Raise (Dumbbell)" in reply["response_content"]
         assert "Cable Y-Raise" in reply["response_content"]
 

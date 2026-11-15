@@ -95,9 +95,11 @@ from agent.telemetry_reconciler import (
     reconcile_telemetry_query,
 )
 from database.exercise_library.schema import exercise_library_visible_sql
+from database.exercise_library.lookup import FUZZY_NAME_MATCH_THRESHOLD
 from service.exercise_context import describe_exercise, describe_exercises
 from service.inference_metrics import record_failure, record_first_token
 from database.exercise_library.names import near_miss_exercise_ids
+from database.shared import _normalize_exercise_name
 from service import programs as programs_service
 from service.program_requests import MAX_REASON_CHARS
 from service.program_substitution import ProgramSubstitution, substitute_program_exercise
@@ -1316,6 +1318,22 @@ def _arabic_name_search_candidates(store: Any, name: str) -> list[dict[str, Any]
     return store.find_exercises_by_name(name, limit=3)
 
 
+def _arabic_target_name_similarity(name: str, match: dict[str, Any]) -> float:
+    normalized_name = _normalize_exercise_name(name)
+    return max(
+        (
+            SequenceMatcher(
+                None,
+                normalized_name,
+                _normalize_exercise_name(str(candidate_name)),
+            ).ratio()
+            for candidate_name in (match.get("name"), match.get("source_name"))
+            if candidate_name
+        ),
+        default=0.0,
+    )
+
+
 @dataclass(frozen=True)
 class _ArabicTargetResolution:
     target: tuple[str, dict[str, Any]] | None = None
@@ -1334,11 +1352,17 @@ def _arabic_target_name_matches(
     store: Any, source: Any, name: str
 ) -> tuple[list[dict[str, Any]], frozenset[str]]:
     near_miss_ids = near_miss_exercise_ids(name)
+    exact_ids = store._find_exact_exercise_ids_by_name(name)
+    # A single fuzzy hit must be close to the request before an Arabic swap can write.
     matches = [
         match for match in _arabic_name_search_candidates(store, name)
         if str(match["id"]) != str(source.exercise_id)
         and str(match["id"]) not in near_miss_ids
         and store.is_exercise_library_exercise_visible(str(match["id"]))
+        and (
+            str(match["id"]) in exact_ids
+            or _arabic_target_name_similarity(name, match) >= FUZZY_NAME_MATCH_THRESHOLD
+        )
     ]
     return matches, near_miss_ids
 
