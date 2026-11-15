@@ -18,6 +18,7 @@ from agent.player_prompt import (
 )
 from agent.player_tools import run_player_tool_calls
 from core.weak_point_suggestions import WEAK_POINT_ALIASES
+from database.shared import _normalize_exercise_name
 
 MAX_CONTEXT_PIECE_BYTES = 8 * 1024
 PROGRAM_TOPIC = "program_what_how_many"
@@ -90,9 +91,10 @@ def _normalize(text: str) -> str:
 
 
 def _mentions(text: str, vocabulary: Sequence[tuple[str, str]]) -> list[_Mention]:
+    text = _normalize_exercise_name(text)
     matches = []
     for key, phrase in vocabulary:
-        phrase = _normalize(phrase)
+        phrase = _normalize_exercise_name(phrase)
         if not phrase:
             continue
         # Arabic articles/conjunctions can attach to gym nicknames.
@@ -222,6 +224,7 @@ def _day_words(days: Sequence[Any]) -> list[tuple[str, str]]:
 
 def _without_day_names(text: str, days: Sequence[Any]) -> str:
     # Day labels such as Chest & Back scope the whole day, not only those muscles.
+    text = _normalize_exercise_name(text)
     characters = list(text)
     for match in _mentions(text, _day_words(days)):
         characters[match.start:match.end] = " " * (match.end - match.start)
