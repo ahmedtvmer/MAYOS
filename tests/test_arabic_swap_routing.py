@@ -249,7 +249,7 @@ def test_arabic_swap_with_weight_question_executes_the_selected_operation(
 ):
     before = _seed_program(fresh_store)
     answer = "تمام، زوّد الوزن لما توصل لأعلى عدد تكرار مطلوب في كل سيت بنفس الفورم."
-    model = ScriptedChatModel([_substitution_call("Bench Press (Barbell)", "Dumbbell Bench Press"), answer])
+    model = ScriptedChatModel([_substitution_call("Bench Press (Barbell)", "Dumbbell Bench Press")], final_turns=[answer])
     monkeypatch.setattr("agent.assistant_graph.llm", model)
     state = _turn("بدّل لي البنش بالدامبل. وقولّي أزوّد الوزن إمتى؟")
 

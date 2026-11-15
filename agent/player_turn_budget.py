@@ -51,6 +51,25 @@ class PlayerTurnInputBudget:
     consumed: int = 0
     estimated_consumed: int = 0
 
+    def prepare_request(self, messages, schemas=(), attempts=1):
+        """Reserve the complete request, dropping only old conversation exchanges."""
+        prepared = list(messages)
+        while True:
+            try:
+                self.admit(prepared, schemas, attempts)
+                return prepared
+            except PromptBudgetError:
+                # Keep the fixed prompt, current query and every current tool pair.
+                current = max((index for index, message in enumerate(prepared)
+                               if message_role(message) == "user"), default=0)
+                oldest = next((index for index in range(current)
+                               if message_role(prepared[index]) in {"user", "assistant"}), None)
+                if oldest is None:
+                    raise
+                end = next((index for index in range(oldest + 1, current)
+                            if message_role(prepared[index]) == "user"), current)
+                del prepared[oldest:end]
+
     def admit(self, messages, schemas=(), attempts=1) -> None:
         request = {"messages": [_provider_message(message) for message in messages]}
         if schemas:

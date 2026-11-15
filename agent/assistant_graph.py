@@ -70,6 +70,7 @@ from agent.prompts import (
     FRANCO_ARABIC_INPUT_RESPONSE,
 )
 from agent.player_prompt import (
+    ACTION_ANSWER_INSTRUCTION,
     CONTEXT_TOO_LONG_RESPONSE,
     PromptBudgetError,
     HOSTED_PROMPT_TOKEN_BUDGET as HOSTED_PROMPT_TOKEN_BUDGET,
@@ -4253,7 +4254,7 @@ async def _publish_stream_chunk(channel: queue.Queue, chunk: Any) -> None:
 async def _produce_player_model_attempt(
     model: Any, messages: Any, settings: _FirstTokenStreamSettings, channel: queue.Queue
 ) -> None:
-    settings.budget.admit(messages, settings.schemas, provider_request_attempts(model))
+    messages = settings.budget.prepare_request(messages, settings.schemas, provider_request_attempts(model))
     stream = model.astream(messages)
     try:
         first_chunk, prefix_chunks = await _next_chunk_before_deadline(
@@ -4382,11 +4383,6 @@ def _stream_player_answer(
 
 
 MAX_PLAYER_TOOL_ROUNDS = 3
-ACTION_ANSWER_INSTRUCTION = (
-    "The operation's exact receipt will be appended by the application. Answer every other part "
-    "of the current Player message from all tool results; do not repeat or paraphrase the receipt. "
-    "If there are no other parts, return no text."
-)
 
 
 def _invalid_player_tool_reply(language: str) -> str:
@@ -4447,7 +4443,7 @@ def _invoke_player_tool_loop(
     model_fetched_more = False
     try:
         for _round in range(MAX_PLAYER_TOOL_ROUNDS):
-            budget.admit(messages, schemas, provider_request_attempts(bound_model))
+            messages = budget.prepare_request(messages, schemas, provider_request_attempts(bound_model))
             response = bound_model.invoke(messages)
             tool_calls = list(getattr(response, "tool_calls", ()) or ())
             if not tool_calls:
@@ -4466,7 +4462,7 @@ def _invoke_player_tool_loop(
             if state.get("tool_action_result") is not None:
                 messages.append(SystemMessage(content=ACTION_ANSWER_INSTRUCTION))
                 break
-        budget.admit(messages, attempts=provider_request_attempts(llm))
+        messages = budget.prepare_request(messages, attempts=provider_request_attempts(llm))
         response = llm.invoke(messages)
         if getattr(response, "tool_calls", None) or getattr(response, "invalid_tool_calls", None):
             reply = PIPELINE_ERROR_RESPONSE if state.get("tool_action_result") is not None else _invalid_player_tool_reply(_tool_reply_language(state))

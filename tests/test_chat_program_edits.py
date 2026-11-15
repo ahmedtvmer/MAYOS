@@ -308,7 +308,7 @@ def test_model_selected_edit_keeps_preview_bound_to_displayed_reply(fresh_store,
         ToolCallsTurn(content="Progress by adding a rep when you can.", calls=[{
             "name": "preview_program_edit", "args": {}, "id": "day-edit",
         }]),
-    ]))
+    ], final_turns=["Progress by adding a rep when you can."]))
     state = {"messages": [HumanMessage(content="Add biceps and triceps to leg days and how should I progress?")],
         "player_account_id": "00000000-0000-4000-8000-000000000001", "display_language": "en"}
 
@@ -318,6 +318,7 @@ def test_model_selected_edit_keeps_preview_bound_to_displayed_reply(fresh_store,
     assert len(state["program_edit_preview"]["days"][0]["exercises"]) == 3
     pending = ledger.get_pending_chat_program_edit()
     assert pending["offer_text"] == state["response_content"]
+    assert "Progress by adding a rep when you can." in state["response_content"]
 
 def test_batch_noop_does_not_publish_a_version(fresh_store):
     db = fresh_store

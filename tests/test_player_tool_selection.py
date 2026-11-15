@@ -450,7 +450,7 @@ def test_718_failed_answer_after_preview_cannot_leave_an_unseen_confirmable_offe
     before = store.ledger.get_active_program().model_dump()
     failure = RuntimeError("private provider failure")
     final = StreamErrorTurn("I prepared a private partial answer.", failure) if streaming else failure
-    monkeypatch.setattr(graph, "llm", ScriptedChatModel([_narrated_call("preview_program_rebuild"), final]))
+    monkeypatch.setattr(graph, "llm", ScriptedChatModel([_narrated_call("preview_program_rebuild")], final_turns=[final]))
 
     result = _run(_turn("Rebuild my program"), store, streaming)
 

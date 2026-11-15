@@ -333,7 +333,8 @@ def test_goal_change_chat_offers_and_saves_named_weak_points(
     assert client.get("/programs/active", headers=headers).json()[
         "regeneration_offer_reason"
     ] == "focus_muscles_changed"
-    assert len(model.calls) == 1
+    assert len(model.calls) == 2
+    assert [call["mode"] for call in model.calls] == ["tools", "stream"]
 
 
 def test_declining_goal_weak_point_suggestion_does_not_save_it(api, monkeypatch):
@@ -1462,7 +1463,7 @@ def test_unyielded_text_before_tool_call_is_discarded(api, monkeypatch):
     assert "I can't see those session figures yet." in token_text
 
 
-def test_yielded_text_before_tool_call_is_not_retracted(api, monkeypatch):
+def test_completed_tool_round_never_releases_buffered_text(api, monkeypatch):
     client, _db = api
     headers = _authed(_register(client, "tool-round-yielded-text")["access_token"])
     model = ScriptedChatModel(
@@ -1488,11 +1489,11 @@ def test_yielded_text_before_tool_call_is_not_retracted(api, monkeypatch):
         for line in body.splitlines()
         if line.startswith("data: ") and '"token"' in line
     )
-    assert "Your profile is ready." in token_text
-    assert "Your saved profile is ready." in token_text
+    assert "Your profile is ready." not in token_text
+    assert token_text == _done_content(body) == "Your saved profile is ready."
 
 
-def test_http_stream_emits_before_model_requests_final_chunk(api, monkeypatch):
+def test_http_stream_buffers_until_model_round_completes(api, monkeypatch):
     import asyncio
     from threading import Event
 
@@ -1514,29 +1515,30 @@ def test_http_stream_emits_before_model_requests_final_chunk(api, monkeypatch):
                     and message.get("type") == "http.response.body"
                     and b'"token"' in message.get("body", b"")
                 ):
+                    assert model.completed
                     first_token_sent.set()
 
             await self.app(scope, receive, observe_send)
 
     class IncrementalModel:
         second_chunk_requested_after_first_token = False
+        completed = False
 
         def bind_tools(self, _tools):
             return self
 
         def stream(self, _messages):
             yield AIMessageChunk(content="First sentence. ")
-            self.second_chunk_requested_after_first_token = first_token_sent.wait(timeout=5.0)
+            self.second_chunk_requested_after_first_token = first_token_sent.is_set()
             yield AIMessageChunk(content="Second sentence.")
+            self.completed = True
 
         async def astream(self, _messages):
             yield AIMessageChunk(content="First sentence. ")
-            # Wait for the ASGI send, not just the model-queue acknowledgement (#630).
-            # The event is a threading.Event; keep its wait off the model's event loop.
-            self.second_chunk_requested_after_first_token = await asyncio.to_thread(
-                first_token_sent.wait, timeout=5.0
-            )
+            await asyncio.sleep(0)
+            self.second_chunk_requested_after_first_token = first_token_sent.is_set()
             yield AIMessageChunk(content="Second sentence.")
+            self.completed = True
 
     model = IncrementalModel()
     monkeypatch.setattr(assistant_graph, "llm", model)
@@ -1553,8 +1555,10 @@ def test_http_stream_emits_before_model_requests_final_chunk(api, monkeypatch):
         for line in body.splitlines()
         if line.startswith("data: ") and '"token"' in line
     )
-    assert model.second_chunk_requested_after_first_token
-    assert token_text == "First sentence. Second sentence."
+    assert model.completed
+    assert first_token_sent.is_set()
+    assert not model.second_chunk_requested_after_first_token
+    assert token_text == _done_content(body) == "First sentence. Second sentence."
 
 
 def test_partial_profile_update_does_not_expose_storage_defaults(api, monkeypatch):
@@ -4051,7 +4055,8 @@ def test_full_physician_clearance_requires_player_confirmation(api, monkeypatch,
         assert response.status_code == 200
     assert _done_content(body) == "I marked the injury as resolved."
     assert client.get("/profile/injuries", headers=headers).json()[0]["status"] == "resolved"
-    assert len(model.calls) == 1  # The saved resolution question bypasses the model.
+    assert len(model.calls) == 2  # The action and its answer; confirmation bypasses inference.
+    assert [call["mode"] for call in model.calls] == ["tools", "stream"]
 
 
 def test_doctor_cleared_my_knee_is_not_saved_as_an_exercise_clearance(api, monkeypatch):
@@ -4103,7 +4108,8 @@ def test_remember_tool_saves_once(api, monkeypatch, message, expected_text):
         assert response.status_code == 200
 
     assert expected_text in _done_content(body)
-    assert len(model.calls) == 1
+    assert len(model.calls) == 2
+    assert [call["mode"] for call in model.calls] == ["tools", "stream"]
     assert "manage_assistant_preference" in model.calls[0]["tools"]
     assert [row["text"] for row in client.get("/chat/preferences", headers=headers).json()] == [expected_text]
 
@@ -4142,7 +4148,8 @@ def test_forget_proposes_closest_preference_and_requires_confirmation(api, monke
         confirmed = response.read().decode("utf-8")
     assert "forgot" in _done_content(confirmed).lower()
     assert client.get("/chat/preferences", headers=headers).json() == []
-    assert len(model.calls) == 3  # Both confirmation turns resolve before inference.
+    assert len(model.calls) == 6  # Three actions plus answers; confirmations bypass inference.
+    assert [call["mode"] for call in model.calls] == ["tools", "stream"] * 3
 
 
 def test_stale_forget_confirmation_cannot_answer_physician_question(api, monkeypatch):

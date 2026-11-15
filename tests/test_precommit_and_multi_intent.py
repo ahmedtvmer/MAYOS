@@ -153,12 +153,12 @@ def test_fuzzy_threshold_elevation(db_fixture):
 @pytest.mark.parametrize("streaming", [False, True])
 def test_multiple_selected_tools_read_history_and_apply_a_swap(fresh_store, monkeypatch, streaming):
     """Verifies compound query combining exercise history and exercise substitution."""
-    from agent.ProgramState import GeneratedProgramSchema, ProgramDaySchema, ProgramExerciseSchema
+    from agent.ProgramState import PersistedProgramSchema, PersistedProgramDaySchema, PersistedProgramExerciseSchema
 
     db_fixture = fresh_store
     entry = fresh_store.find_exercises_by_name("barbell bench press", limit=1)[0]
-    program = GeneratedProgramSchema(program_name="Compound request", split_type="Full Body", weekly_frequency=1,
-        days=[ProgramDaySchema(day_name="Full A", day_order=1, exercises=[ProgramExerciseSchema(
+    program = PersistedProgramSchema(program_name="Compound request", split_type="Full Body", weekly_frequency=1,
+        days=[PersistedProgramDaySchema(day_name="Full A", day_order=1, exercises=[PersistedProgramExerciseSchema(
             exercise_id=str(entry["id"]), exercise_name=entry["name"], target_reps_min=6, target_reps_max=10,
         )])])
     fresh_store.ledger.upsert_player_profile({"weekly_frequency": 1, "equipment_access": "Commercial gym"})
@@ -210,7 +210,7 @@ def test_multiple_selected_tools_read_history_and_apply_a_swap(fresh_store, monk
         {"name": "get_exercise_history", "args": {"exercise_name": first_ex.exercise_name}, "id": "history"},
         {"name": "substitute_exercise", "args": {"source_exercise": first_ex.exercise_name,
             "target_exercise": "dumbbell bench press"}, "id": "swap"},
-    ]), answer])
+    ])], final_turns=[answer])
     monkeypatch.setattr(graph, "llm", model)
     if streaming:
         shown = "".join(graph.stream_assistant_turn(state, ledger=db_fixture.ledger, store=db_fixture))

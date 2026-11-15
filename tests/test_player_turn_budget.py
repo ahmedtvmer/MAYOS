@@ -21,6 +21,8 @@ def test_718_oversized_request_component_is_refused(component):
 
     with pytest.raises(PromptBudgetError):
         PlayerTurnInputBudget().admit(messages, schemas)
+    with pytest.raises(PromptBudgetError):
+        PlayerTurnInputBudget().prepare_request(messages, schemas)
 
 
 def test_718_individually_small_rounds_cannot_exceed_the_turn_budget():
@@ -43,3 +45,22 @@ def test_718_transport_retry_reservation_cannot_escape_the_turn_ceiling():
     budget = PlayerTurnInputBudget()
     with pytest.raises(PromptBudgetError):
         budget.admit(messages, attempts=30)
+
+
+def test_718_schema_pressure_trims_old_exchanges_but_preserves_current_tool_pairs():
+    system = SystemMessage(content="Coach safely.")
+    current = [HumanMessage(content="Show my last workout."),
+               AIMessage(content="", tool_calls=[{"name": "read", "id": "read-1", "args": {}}]),
+               ToolMessage(content="100 kg for 8 reps", tool_call_id="read-1")]
+    messages = [system, HumanMessage(content="old question"), AIMessage(content="a" * 32_000), *current]
+    schemas = [{"type": "function", "function": {"name": "read", "description": "a" * 12_000,
+                "parameters": {"type": "object", "properties": {}}}}]
+    with pytest.raises(PromptBudgetError):
+        PlayerTurnInputBudget().admit(messages, schemas)
+
+    budget = PlayerTurnInputBudget()
+    prepared = budget.prepare_request(messages, schemas)
+
+    assert prepared == [system, *current]
+    assert len(messages) == 6
+    assert 0 < budget.consumed <= PLAYER_TURN_INPUT_TOKEN_LIMIT

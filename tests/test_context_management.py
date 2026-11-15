@@ -115,8 +115,9 @@ def test_explicit_name_and_recall(graph, query):
     recall = state("what's my name?")
     assert "".join(graph.stream_assistant_turn(recall, ledger=graph.db, store=graph.db)) == f"You asked me to call you {name}."
     assert recall["messages"][-1].content == recall["response_content"]
-    assert len(graph.llm.calls) == 2
-    assert all("preferred_name" in call["tools"] for call in graph.llm.calls)
+    assert len(graph.llm.calls) == 4
+    assert all("preferred_name" in call["tools"] for call in graph.llm.calls[::2])
+    assert all(not call["tools"] for call in graph.llm.calls[1::2])
 
 
 def test_unresolved_history_graph_uses_generation_without_injected_comparison(graph, comparison):

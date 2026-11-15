@@ -110,6 +110,10 @@ def _substitute_exercise(turn: PlayerToolTurn, **kwargs: Any) -> dict[str, Any]:
     metadata = authorized_swap_metadata(turn, args)
     if metadata is None:
         reply = graph.ARABIC_SWAP_CLARIFICATION_RESPONSE if graph._is_arabic_dominant(turn.query) else graph.AUTHORIZATION_RESPONSE
+        program = turn.handles[0].get_active_program()
+        if (graph._is_arabic_dominant(turn.query) and args.day_name and program is not None
+                and not any(day.day_name == args.day_name for day in program.days)):
+            reply = graph.ARABIC_ACTION_CLARIFICATION_RESPONSE
         return turn.finish(graph._response(reply))
     return turn.finish(graph._apply_validated_swap(turn.state, turn.config, metadata))
 
@@ -309,14 +313,14 @@ _ACTION_NAMES = frozenset({
 })
 
 _WRITE_TOOL_GROUPS = {
-    r"rebuild|regenerate|preview|draft|generate|create|new|swap|replace|substitut|switch|change|add|remove|confirm|cancel|yes|alternativ|instead|بديل|بدائل|بد[ّ]?ل|غير|غيّر|بناء|ضيف|شيل|أكد|ايوه|أيوه|نعم|جهز|غييرات":
+    r"rebuild|regenerate|preview|draft|generate|create|new|swap|replace|substitut|switch|change|add|remove|confirm|cancel|yes|alternativ|instead|بديل|بدائل|بدل|غير|بناء|ضيف|شيل|اكد|ايوه|نعم|جهز|غييرات|ظبط|جدد|حط|زود|انقل|عدل":
         {"substitute_exercise", "preview_program_rebuild", "preview_program_edit", "confirm_program_edit"},
     r"deload|ديلود|تخفيف": {"choose_deload"},
-    r"injur|doctor|physician|clear|pain|إصاب|اصاب|دكتور|طبيب|وجع|ألم": {"update_injury", "update_movement_restrictions"},
+    r"injur|doctor|physician|clear|pain|اصاب|دكتور|طبيب|وجع|الم": {"update_injury", "update_movement_restrictions"},
     r"remember|forget|prefer|keep.*mind|خلي|افتكر|احفظ|انس|تفضيل|بالك": {"manage_assistant_preference"},
     r"goal|bulk|cut|lose|هدف|تضخيم|تنشيف|خس": {"update_training_goal"},
     r"weak|focus|ضعيف|ضعف|ركز|تركيز": {"update_weak_points"},
-    r"name|call me|i['’]m|i am|ناديني|اسمي|اسم|أنا|انا": {"preferred_name"},
+    r"name|call me|i m|i am|ناديني|اسمي|اسم|انا": {"preferred_name"},
 }
 
 _READ_TOOL_TOPICS = {
@@ -331,15 +335,20 @@ _READ_TOOL_TOPICS = {
 
 def select_player_chat_tools(tools, state):
     """Keep reads available; include write groups mentioned in recent conversation."""
+    from agent.context_router import _normalize
     from agent.player_prompt import get_message_text
+    from agent.program_blueprints import match_split_keyword
 
-    text = " ".join(get_message_text(message) for message in state.get("messages", [])[-6:])
+    text = _normalize(" ".join(get_message_text(message) for message in state.get("messages", [])[-6:]))
     selected = set().union(*(names for pattern, names in _WRITE_TOOL_GROUPS.items() if re.search(pattern, text, re.I)))
-    # Short follow-ups may refer to any saved offer or earlier message.
-    if len(state.get("messages", [])) > 1 and len(get_message_text(state["messages"][-1]).split()) < 4:
+    latest = get_message_text(state["messages"][-1])
+    # A named split continues the Program topic; other short follow-ups may refer anywhere.
+    if len(state.get("messages", [])) > 1 and len(latest.split()) < 4 and not match_split_keyword(latest):
         return tools
     known_topic = re.search(r"program|routine|split|workout|exercises?|search|bench|squat|sets?|reps?|rest|performance|"
                             r"برنامج|تمرين|بنش|سكوات|سيت|عدات|راحة|أداء|اداء", text, re.I)
+    if not known_topic and not selected:
+        return tools
     return [tool for tool in tools
             if (tool.name not in _ACTION_NAMES or tool.name in selected)
             and (not known_topic or tool.name not in _READ_TOOL_TOPICS

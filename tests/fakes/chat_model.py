@@ -5,6 +5,9 @@ mappings for structured payloads, ``ToolCallsTurn`` for bound tool responses,
 ``StructuredValue`` for an explicit prevalidated structured result, or
 ``StreamErrorTurn`` for partial failures. Text streaming is chunked centrally
 by ``chunk_size``.
+
+Action-final calls consume ``final_turns`` separately, defaulting to empty text
+so the application displays its exact receipt without consuming the next user turn.
 """
 
 import json
@@ -18,6 +21,8 @@ from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, Huma
 from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
 from langchain_core.runnables import RunnableLambda
 from pydantic import BaseModel, Field, PrivateAttr
+
+from agent.player_prompt import ACTION_ANSWER_INSTRUCTION
 
 
 @dataclass(frozen=True)
@@ -55,12 +60,14 @@ class ScriptedChatModel(BaseChatModel):
     finish_reason: str | None = None
     default_turn: Any = None
     _turns: deque[Any] = PrivateAttr(default_factory=deque)
+    _final_turns: deque[Any] = PrivateAttr(default_factory=deque)
     _streamed_chunk_count: int = PrivateAttr(default=0)
     calls: list[dict[str, Any]] = Field(default_factory=list)
 
-    def __init__(self, turns: Iterable[Any] = (), **kwargs: Any) -> None:
+    def __init__(self, turns: Iterable[Any] = (), *, final_turns: Iterable[Any] = (), **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self._turns = deque(turns)
+        self._final_turns = deque(final_turns)
         self.calls = []
 
     @property
@@ -75,8 +82,9 @@ class ScriptedChatModel(BaseChatModel):
     def streamed_chunk_count(self) -> int:
         return self._streamed_chunk_count
 
-    def reset(self, turns: Iterable[Any] = (), *, default_turn: Any = None) -> None:
+    def reset(self, turns: Iterable[Any] = (), *, default_turn: Any = None, final_turns: Iterable[Any] = ()) -> None:
         self._turns = deque(turns)
+        self._final_turns = deque(final_turns)
         self.calls.clear()
         self._streamed_chunk_count = 0
         self.default_turn = default_turn
@@ -263,7 +271,14 @@ class ScriptedChatModel(BaseChatModel):
                 "kwargs": {key: value for key, value in kwargs.items() if key not in {"tools", "bound_tools"}},
             }
         )
-        if self._turns:
+        action_answer = (mode in {"invoke", "stream"} and messages
+                         and messages[-1].type == "system"
+                         and messages[-1].content == ACTION_ANSWER_INSTRUCTION)
+        if action_answer:
+            # Legacy scripts describe user turns. The receipt needs no extra prose;
+            # compound answers and provider failures have their own explicit queue.
+            turn = self._final_turns.popleft() if self._final_turns else ""
+        elif self._turns:
             turn = self._turns.popleft()
         elif self.default_turn is not None:
             turn = self.default_turn
