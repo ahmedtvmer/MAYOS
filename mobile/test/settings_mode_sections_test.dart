@@ -263,7 +263,7 @@ void main() {
     await tester.tap(find.text('Save preference'));
     await _pumpUntilFound(
       tester,
-      find.text('MAYOS had a problem; try again.'),
+      find.text('Unavailable'),
     );
     expect(find.text('I train before breakfast'), findsOneWidget);
     expect(fake.assistantPreferences.single['text'], 'I train in the mornings');
@@ -276,7 +276,7 @@ void main() {
     await tester.tap(find.byTooltip('Delete preference'));
     await _pumpUntilFound(
       tester,
-      find.text('MAYOS had a problem; try again.'),
+      find.text('Unavailable'),
     );
     expect(fake.assistantPreferences, hasLength(1));
     await tester.tap(find.byTooltip('Delete preference'));
@@ -359,7 +359,7 @@ void main() {
     await tester.tap(find.byTooltip('حذف التفضيل'));
     await _pumpUntilFound(
       tester,
-      find.text('واجهت MAYOS مشكلة. حاول مرة أخرى.'),
+      find.text('Unavailable'),
     );
     expect(fake.assistantPreferences, hasLength(1));
     await tester.tap(find.byTooltip('حذف التفضيل'));

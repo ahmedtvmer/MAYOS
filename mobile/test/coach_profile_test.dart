@@ -399,8 +399,10 @@ void main() {
     await tester.tap(find.text('Profile'));
     await _pumpUntilFound(
       tester,
-      find.text('MAYOS had a problem; try again.'),
+      find.text('The service is unavailable.'),
     );
+    expect(find.text('MAYOS had a problem; try again.'), findsNothing);
+    expect(find.text('Offline, showing saved data'), findsNothing);
     expect(find.text('Retry'), findsOneWidget);
 
     fake.coachProfileLoadFails = false;
