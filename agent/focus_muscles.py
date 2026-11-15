@@ -45,7 +45,7 @@ FOCUS_EXTRA_TABLE = {
         "main_slot": "horizontal_row",
     },
     "rear_delts": {
-        "candidate_slots": ("rear_delts", "rear_delt_face_pull"),
+        "candidate_slots": ("rear_delts",),
         "main_slot": "rear_delts",
     },
     "shoulders": {"candidate_slots": ("shoulder_press", "side_delts"), "main_slot": "shoulder_press"},
@@ -70,7 +70,7 @@ FOCUS_MUSCLE_SLOTS = {
     "upper_chest": {"incline_press", "chest_fly"},
     "lats": {"vertical_pull", "pullover", "horizontal_row"},
     "traps": {"horizontal_row", "upper_back_pull", "shrug"},
-    "rear_delts": {"rear_delts", "rear_delt_face_pull"},
+    "rear_delts": {"rear_delts"},
     "shoulders": {"shoulder_press", "side_delts"},
     "side_delts": {"side_delts"},
     "biceps": {"biceps_preacher", "biceps_alt"},

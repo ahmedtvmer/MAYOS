@@ -248,9 +248,9 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
   FeatureEntry(
     id: 'weak_points',
     titleEn: 'Weak points',
-    sentenceEn: 'Choose up to two muscles, including lats, traps and rear delts, for Focus work in your Training program; default three to five day plans spread lats and trap volume across two days, using bodyweight rows when needed.',
+    sentenceEn: 'Choose up to two muscles, including lats, traps and rear delts, for Focus work in your Training program; default three to five day plans spread lats and trap volume across two days, using bodyweight rows when needed; muscles in the same main group share Focus volume, so the program avoids redundant sets.',
     titleAr: 'نقاط الضعف',
-    sentenceAr: 'اختر حتى عضلتين، ومنها اللاتس والترابيس والأكتاف الخلفية، ليركز عليها برنامجك التدريبي؛ وتوزع البرامج الافتراضية من ثلاثة إلى خمسة أيام حجم اللاتس والترابيس على يومين، مع استخدام تمارين الصف بوزن الجسم عند الحاجة.',
+    sentenceAr: 'اختر حتى عضلتين، ومنها اللاتس والترابيس والأكتاف الخلفية، ليركز عليها برنامجك التدريبي؛ وتوزع البرامج الافتراضية من ثلاثة إلى خمسة أيام حجم اللاتس والترابيس على يومين، مع استخدام تمارين الصف بوزن الجسم عند الحاجة؛ وتشترك العضلات في المجموعة الرئيسية نفسها في حجم التركيز، فيتجنب البرنامج إضافة مجموعات مكررة.',
     target: 'whats_new_weak_points',
     location: TourRouteLocation(profilePath),
     release: 7,

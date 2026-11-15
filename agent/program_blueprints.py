@@ -347,17 +347,6 @@ SLOT_SPECS: dict[str, SlotSpec] = {
         primary_actions=("Shoulder Horizontal Abduction",),
         primary_muscles=("Rear Delts",),
     ),
-    "rear_delt_face_pull": _slot(
-        "rear_delt_face_pull",
-        "(LOWER(name) LIKE '%rear delt row%' OR LOWER(name) LIKE '%face pull%')",
-        "isolation",
-        ("cable", "leverage machine", "band"),
-        reps=(6, 10),
-        rest_seconds=180,
-        name_rank=("kneeling", "face pull", "rear delt"),
-        primary_actions=("Shoulder Horizontal Abduction",),
-        primary_muscles=("Rear Delts",),
-    ),
     # --- Arms --------------------------------------------------------------
     "biceps_preacher": _slot(
         "biceps_preacher",
@@ -582,7 +571,6 @@ SLOT_STAPLES: dict[str, tuple[str, ...]] = {
     "shoulder_press": ("869", "587", "405", "766", "91"),  # iso-lateral machine press; plate-loaded machine press; seated DB press; Smith press; BB overhead press
     "side_delts": ("178", "584", "395", "977"),  # cable lateral raise; machine lateral raise; seated DB raise; band raise
     "rear_delts": ("mayos:3", "602", "225", "359", "993"),  # MAYOS cable Y-raise; Reverse Pec Deck; cable fly; DB fly; band fly
-    "rear_delt_face_pull": ("3697",),  # Kneeling Face Pull (Cable)
     "biceps_preacher": ("592", "372", "70", "1633"),  # machine preacher curl; DB preacher curl; BB preacher curl; cable preacher curl
     "biceps_alt": ("318", "mayos:2", "1630", "31", "1769"),  # Incline DB Curl; MAYOS Bayesian curl; cable/BB curl; bodyweight curl
     "triceps_pushdown": ("1723", "201", "200", "241"),  # one-arm pushdown; cable pushdown; rope pushdown; V-bar pushdown

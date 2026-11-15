@@ -1265,6 +1265,14 @@ class MayosCopy {
         return '$muscle is progressing; keep the current set count.';
     }
   }
+  String? focusReason(Map<String, dynamic>? reason) {
+    if (reason == null || reason['code'] != 'focus.already_at_target') return null;
+    final Object? rawMessages = reason['messages'];
+    if (rawMessages is! Map<String, dynamic>) return null;
+    final Object? localizedMessage = rawMessages[languageCode];
+    return localizedMessage is String ? localizedMessage : null;
+  }
+
   String get acceptVolumeReview => isArabic ? 'قبول' : 'Accept';
   String get dismissVolumeReview => isArabic ? 'تجاهل' : 'Dismiss';
   String get volumeReviewSaved => isArabic ? 'تم تحديث البرنامج التدريبي.' : 'Your program was updated.';

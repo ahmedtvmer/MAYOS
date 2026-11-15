@@ -310,6 +310,7 @@ def test_focus_source_and_unavailable_equipment_are_recorded(
         assert focus["reason"]["params"]["equipment_access"] == equipment
 
 
+# #713: upper-chest credit must cover the later named chest target.
 def test_two_focus_muscles_keep_named_order_when_opening_same_day(fresh_store):
     fresh_store.switch_user("focus_two_same_day")
     fresh_store.ledger.upsert_player_profile({
@@ -323,11 +324,24 @@ def test_two_focus_muscles_keep_named_order_when_opening_same_day(fresh_store):
     focus = program.program_rationale["focus_muscles"]
     assert [item["muscle"] for item in focus] == ["upper_chest", "chest"]
     upper_chest = focus[0]
+    assert upper_chest["status"] == "added"
     assert upper_chest["exercise_id"] == "171" or upper_chest["slot"] == "incline_press"
-    same_day = [item for item in focus if item["day_order"] == focus[0]["day_order"]]
-    assert len(same_day) == 2
-    day = next(day for day in program.days if day.day_order == same_day[0]["day_order"])
-    assert [ex.exercise_id for ex in day.exercises[:2]] == [item["exercise_id"] for item in same_day]
+    chest = focus[1]
+    assert chest["status"] == "covered"
+    assert chest["reason"]["code"] == "focus.already_at_target"
+    assert chest["reason"]["params"]["missing_weekly_sets"] == 0
+    assert chest["reason"]["messages"]["en"] == (
+        "Chest already gets its Focus volume from Upper chest work."
+    )
+    assert chest["reason"]["messages"]["ar"] == (
+        "يحصل الصدر بالفعل على حجم التركيز من تمارين أعلى الصدر."
+    )
+    assert chest["covered_by_muscle"] == "upper_chest"
+    assert (chest["day_order"], chest["exercise_id"]) == (
+        upper_chest["day_order"], upper_chest["exercise_id"]
+    )
+    day = next(day for day in program.days if day.day_order == upper_chest["day_order"])
+    assert day.exercises[0].exercise_id == upper_chest["exercise_id"]
 
 
 def test_barbell_only_chest_extra_candidates_fall_through_to_unavailable(
@@ -678,6 +692,7 @@ def test_focus_dose_reaches_rounded_targets_with_multiple_extras(
     assert focus_reason["reason"]["params"]["missing_weekly_sets"] == 1
 
 
+# #713: a muscle can be covered by credited work from the other named Focus.
 def test_focus_rubric_covers_every_selectable_split_and_frequency(fresh_store):
     fresh_store.switch_user("focus_split_muscle_rubric")
     pairs = (
@@ -701,7 +716,15 @@ def test_focus_rubric_covers_every_selectable_split_and_frequency(fresh_store):
                         item for item in focused.program_rationale["focus_muscles"]
                         if item["muscle"] == muscle
                     )
-                    assert focus["status"] == "added", (split_type, frequency, muscle)
+                    assert focus["status"] in {"added", "covered"}, (
+                        split_type, frequency, muscle, focus["status"]
+                    )
+                    if focus["status"] == "covered":
+                        assert focus["reason"]["code"] == "focus.already_at_target"
+                        covered = focus["reason"]["params"]
+                        assert covered["missing_weekly_sets"] == 0
+                        assert covered["actual_weekly_sets"] >= covered["target_weekly_sets"]
+                        continue
                     dose = next(
                         item["rationale"]["prescription"]["sets"]["params"]
                         for _, item in extra_records

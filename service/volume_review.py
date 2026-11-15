@@ -130,9 +130,28 @@ def review_facts(ledger: Any, program: Any, profile: dict[str, Any], as_of: date
         if delta and not placed_sets:
             continue
         actual_delta = placed_sets if delta > 0 else -placed_sets if delta < 0 else 0
-        results.append({"muscle": muscle, "verdict": verdict, "reason": reason, "set_delta": actual_delta, "edits": edits, "weekly_sets": sets_by_muscle[muscle]})
+        review_muscle = {
+            "muscle": muscle, "verdict": verdict, "reason": reason,
+            "set_delta": actual_delta, "edits": edits, "weekly_sets": sets_by_muscle[muscle],
+        }
+        focus_reason = _covered_focus_reason(program, muscle)
+        if focus_reason:
+            review_muscle["focus_reason"] = focus_reason
+        results.append(review_muscle)
     eligible = bool(results)
     return {"eligible": eligible, "next_eligible_date": next_date.isoformat(), "muscles": results}
+
+
+def _covered_focus_reason(program: Any, muscle: str) -> dict[str, Any] | None:
+    rationale = getattr(program, "program_rationale", None) or {}
+    for focus in rationale.get("focus_muscles", []):
+        if not isinstance(focus, dict):
+            continue
+        if focus.get("status") != "covered":
+            continue
+        if muscle in FOCUS_REVIEW_MUSCLES.get(str(focus.get("muscle", "")), set()):
+            return focus.get("reason")
+    return None
 
 
 def _current_week_days(program_weeks: list[dict[str, Any]], current_week: int) -> list[dict[str, Any]]:

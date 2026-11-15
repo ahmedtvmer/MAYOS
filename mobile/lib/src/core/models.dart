@@ -2607,19 +2607,32 @@ class CheckpointReviewListItem {
 }
 
 class VolumeReviewMuscle {
-  const VolumeReviewMuscle({required this.muscle, required this.verdict, required this.reason, required this.setDelta});
+  const VolumeReviewMuscle({
+    required this.muscle,
+    required this.verdict,
+    required this.reason,
+    required this.setDelta,
+    this.focusReason,
+  });
 
-  factory VolumeReviewMuscle.fromJson(Map<String, dynamic> json) => VolumeReviewMuscle(
-        muscle: json['muscle'] as String,
-        verdict: json['verdict'] as String,
-        reason: json['reason'] as String,
-        setDelta: (json['set_delta'] as num).toInt(),
-      );
+  factory VolumeReviewMuscle.fromJson(Map<String, dynamic> json) {
+    final dynamic rawFocusReason = json['focus_reason'];
+    return VolumeReviewMuscle(
+      muscle: json['muscle'] as String,
+      verdict: json['verdict'] as String,
+      reason: json['reason'] as String,
+      setDelta: (json['set_delta'] as num).toInt(),
+      focusReason: rawFocusReason is Map<String, dynamic>
+          ? Map<String, dynamic>.unmodifiable(rawFocusReason)
+          : null,
+    );
+  }
 
   final String muscle;
   final String verdict;
   final String reason;
   final int setDelta;
+  final Map<String, dynamic>? focusReason;
 }
 
 class VolumeReview {

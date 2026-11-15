@@ -707,6 +707,7 @@ PLAYER_READ_TOOL_REGISTRY: tuple[PlayerReadTool, ...] = (
             "Read recorded reasons for the active Training program. Use this for every why-question "
             "about the Split, day order, exercises, skipped restricted slots or prescriptions. Scope by day_name/day_order or "
             "exercise_name/exercise_id and week_order; use page/next_page to read large results. "
+            "For Focus status 'covered', explain the already-at-target reason using its English or Arabic message for the reply language. "
             "If reason_available is false, no recorded generator reason exists."
         ),
         args_schema=ProgramRationaleArgs,

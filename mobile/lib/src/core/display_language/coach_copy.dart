@@ -21,6 +21,8 @@ class CoachCopy {
   String get weakPoints => isArabic ? 'نقاط الضعف' : 'Weak points';
   String get focusMuscles => isArabic ? 'العضلات محل التركيز' : 'Focus muscles';
   String get noExtraExerciseAvailable => isArabic ? 'لا يتوفر تمرين إضافي' : 'No extra exercise available';
+  String? focusReason(Map<String, dynamic>? reason) =>
+      MayosCopy(languageCode).focusReason(reason);
   String get noWeakPoints => isArabic ? 'لم يحدد اللاعب نقاط ضعف.' : 'The lifter has not named any Weak points.';
   String get noFocusMuscles => isArabic ? 'لا توجد عضلات محل تركيز.' : 'There are no Focus muscles.';
   String weakPointSource(String source) => switch (source) {

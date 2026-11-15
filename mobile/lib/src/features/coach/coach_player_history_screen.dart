@@ -1054,11 +1054,7 @@ class _CoachPlayerHistoryScreenState
       MayosSectionHeader(title: copy.focusMuscles),
       if (active.focusMuscles.isEmpty) Text(copy.noFocusMuscles),
       for (final Map<String, dynamic> focus in active.focusMuscles)
-        Text(
-          '${copy.muscleName(focus['muscle'] as String? ?? '')} · '
-          '${copy.weakPointSource(focus['source'] as String? ?? '')}'
-          '${focus['status'] == 'unavailable' ? ' · ${copy.noExtraExerciseAvailable}' : ''}',
-        ),
+        _focusEntry(focus, copy),
       const SizedBox(height: MayosSpacing.md),
     ];
     return Column(
@@ -1089,6 +1085,19 @@ class _CoachPlayerHistoryScreenState
         const SizedBox(height: MayosSpacing.md),
         ...emphasis,
       ],
+    );
+  }
+
+  Widget _focusEntry(Map<String, dynamic> focus, CoachCopy copy) {
+    final String muscle = focus['muscle'] as String? ?? '';
+    final String detail = switch (focus['status']) {
+      'unavailable' => copy.noExtraExerciseAvailable,
+      'covered' => copy.focusReason(focus['reason'] as Map<String, dynamic>?) ?? '',
+      _ => '',
+    };
+    return Text(
+      '${copy.muscleName(muscle)} · ${copy.weakPointSource(focus['source'] as String? ?? '')}'
+      '${detail.isEmpty ? '' : ' · $detail'}',
     );
   }
 
