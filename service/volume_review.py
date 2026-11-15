@@ -287,7 +287,13 @@ def _second_staple(
     present = {eid for _, _, eid, _credit in placements}
     for source_day, source, source_id, _source_credit in placements:
         source_slot = str(source.get("slot_key") or "")
-        staple_lists = [SLOT_STAPLES[source_slot]] if source_slot in SLOT_STAPLES else list(SLOT_STAPLES.values())
+        staple_lists = (
+            [SLOT_STAPLES[source_slot]]
+            if source_slot in SLOT_STAPLES
+            else [staples for staples in SLOT_STAPLES.values() if source_id in staples]
+        )
+        if not staple_lists:
+            staple_lists = list(SLOT_STAPLES.values())
         next_ids = []
         for staples in staple_lists:
             try:

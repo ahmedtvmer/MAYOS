@@ -160,10 +160,35 @@ def _remove_expected_back_slot_additions(snapshot, additions):
     return snapshot
 
 
+def _remove_rebalanced_coach_slots(snapshot, days):
+    split_type = snapshot["split_type"]
+    if days == 3:
+        removed_by_day = {"Full Body #3": {"chest_fly", "shrug"}}
+    elif split_type == "PPL × UL":
+        removed_by_day = {"Push": {"chest_fly"}, "Pull": {"shrug"}}
+    elif split_type == "Upper / Lower (Arms & Delts Augmented)":
+        removed_by_day = {"Upper 2": {"shrug"}}
+    else:
+        removed_by_day = {
+            day["day_name"]: {"chest_fly"} for day in snapshot["days"]
+        }
+    for day in snapshot["days"]:
+        removed = removed_by_day.get(day["day_name"], set())
+        day["exercises"] = [
+            exercise for exercise in day["exercises"]
+            if exercise["slot_key"] not in removed
+        ]
+    return snapshot
+
+
 def test_commercial_and_home_program_outputs_match_baseline_snapshot(real_library_store):
     fresh_store = real_library_store
     snapshot_path = Path(__file__).parent / "fixtures" / "coach_pattern_program_baseline.json"
     expected = json.loads(snapshot_path.read_text())
+    expected = {
+        key: _remove_rebalanced_coach_slots(snapshot, int(key.split("|", 2)[1]))
+        for key, snapshot in expected.items()
+    }
     actual = {}
     for equipment in ("Commercial gym", "Home gym"):
         for experience in ("beginner", "intermediate", "advanced"):
@@ -175,9 +200,12 @@ def test_commercial_and_home_program_outputs_match_baseline_snapshot(real_librar
                     days=days,
                     equipment=equipment,
                 )
-                actual[key] = _remove_expected_back_slot_additions(
-                    _program_snapshot(program),
-                    COACH_PATTERN_BACK_SLOT_ADDITIONS[days],
+                actual[key] = _remove_rebalanced_coach_slots(
+                    _remove_expected_back_slot_additions(
+                        _program_snapshot(program),
+                        COACH_PATTERN_BACK_SLOT_ADDITIONS[days],
+                    ),
+                    days,
                 )
     assert actual == expected
 
@@ -424,7 +452,7 @@ def test_focus_region_policy_covers_weak_point_vocabulary():
     assert set(policy) == set(WEAK_POINT_MUSCLES)
     expected = {
         **{muscle: ("upper", ()) for muscle in (
-            "chest", "upper_chest", "lats", "traps", "shoulders",
+            "chest", "upper_chest", "lats", "traps", "shoulders", "rear_delts",
         )},
         **{muscle: ("upper", ("lower",)) for muscle in (
             "side_delts", "biceps", "triceps", "forearms",
@@ -640,7 +668,7 @@ def test_focus_dose_reaches_rounded_targets_with_multiple_extras(
     focus_reason = limited.program_rationale["focus_muscles"][0]
     assert focus_reason["status"] == "added"
     assert focus_reason["reason"]["code"] == "focus.unavailable"
-    assert focus_reason["reason"]["params"]["missing_weekly_sets"] == 2
+    assert focus_reason["reason"]["params"]["missing_weekly_sets"] == 1
 
 
 def test_focus_rubric_covers_every_selectable_split_and_frequency(fresh_store):
@@ -818,6 +846,14 @@ def test_generated_programs_pass_the_coach_pattern_rubric(
             )
             assert all(len(day.exercises) >= 3 for day in pull_days)
     for staple_slot in CORE_STAPLE_SLOTS:
+        if staple_slot == "shrug" and (
+            days == 3
+            or expected_split in {
+                "Upper / Lower (Arms & Delts Augmented)", "PPL × UL",
+            }
+        ):
+            # Separate row days meet the traps dose; shrug is an optional third exposure.
+            continue
         if equipment == "Bodyweight only" and staple_slot in BODYWEIGHT_STAPLE_EXCEPTIONS:
             continue
         if equipment == "Bodyweight only":

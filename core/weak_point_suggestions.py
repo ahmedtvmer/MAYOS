@@ -14,6 +14,7 @@ WEAK_POINT_ALIASES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("chest", ("chest", "chests", "pec", "pecs", "صدر", "الصدر", "صدري", "صدور")),
     ("lats", ("lats", "lat", "latissimus dorsi", "back", "backs", "ظهر", "الظهر", "ضهر", "ضهري", "الظهر العريض", "لاتس", "اللاتس")),
     ("traps", ("traps", "trap", "trapezius", "upper trapezius", "mid trapezius", "middle trapezius", "lower trapezius", "upper traps", "mid traps", "middle traps", "lower traps", "rhomboids", "rhomboid", "upper back", "upper-back", "mid back", "mid-back", "middle back", "middle-back", "الترابيس", "ترابيس", "العضلات المعينية")),
+    ("rear_delts", ("rear delts", "rear delt", "posterior delts", "posterior delt", "الأكتاف الخلفية", "الكتف الخلفي")),
     ("shoulders", ("shoulder", "shoulders", "كتف", "كتفي", "كتافي", "كتاف", "الأكتاف", "الأكتفين", "الكتفين")),
     ("biceps", ("biceps", "bicep", "arms", "arm", "بايسبس", "البايسبس", "عضلة الذراع", "دراع", "دراعي", "دراعات", "دراعاتي", "ذراع", "ذراعي")),
     ("triceps", ("triceps", "tricep", "arms", "arm", "ترايسبس", "الترايسبس", "دراع", "دراعي", "دراعات", "دراعاتي", "ذراع", "ذراعي")),

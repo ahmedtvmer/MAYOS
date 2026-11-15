@@ -6,7 +6,7 @@ import 'tour_targets.dart';
 
 /// The shared Feature list used by the Tour and later discovery surfaces.
 const int tourCurrentVersion = 1;
-const int currentFeatureRelease = 6;
+const int currentFeatureRelease = 7;
 const int kReleaseShareCard = 3;
 const int kReleasePrCelebration = 3;
 const int kReleaseDurationCheck = 4;
@@ -248,12 +248,12 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
   FeatureEntry(
     id: 'weak_points',
     titleEn: 'Weak points',
-    sentenceEn: 'Choose muscles you want your Training program to focus on.',
+    sentenceEn: 'Choose up to two muscles, including lats, traps and rear delts, for your Training program to focus on. Default plans with three to five training days spread direct lats work across two days within the weekly volume cap.',
     titleAr: 'نقاط الضعف',
-    sentenceAr: 'اختر العضلات التي تريد أن يركز عليها برنامجك التدريبي.',
+    sentenceAr: 'اختر حتى عضلتين ليركز عليهما برنامجك التدريبي، ومنها اللاتس والترابيس والأكتاف الخلفية. توزع البرامج الافتراضية من ثلاثة إلى خمسة أيام تمارين اللاتس المباشرة على يومين ضمن حد حجم التدريب الأسبوعي.',
     target: 'whats_new_weak_points',
     location: TourRouteLocation(profilePath),
-    release: 1,
+    release: 7,
     audience: 'lifter',
   ),
   FeatureEntry(

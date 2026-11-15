@@ -3,7 +3,7 @@
 from typing import Any
 
 WEAK_POINT_MUSCLES = (
-    "chest", "upper_chest", "lats", "shoulders", "side_delts", "traps", "biceps",
+    "chest", "upper_chest", "lats", "shoulders", "side_delts", "rear_delts", "traps", "biceps",
     "triceps", "forearms", "quads", "hamstrings", "glutes", "adductors",
     "calves", "abs",
 )

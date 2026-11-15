@@ -73,6 +73,7 @@ class MayosCopy {
         'upper_chest' => isArabic ? 'أعلى الصدر' : 'Upper chest',
         'back' || 'lats' => isArabic ? 'اللاتس (الظهر العريض)' : 'Lats',
         'traps' => isArabic ? 'الترابيس' : 'Traps',
+        'rear_delts' => isArabic ? 'الأكتاف الخلفية' : 'Rear delts',
         'shoulders' => isArabic ? 'الأكتاف' : 'Shoulders',
         'side_delts' => isArabic ? 'الأكتاف الجانبية' : 'Side delts',
         'biceps' => isArabic ? 'العضلة ذات الرأسين' : 'Biceps',

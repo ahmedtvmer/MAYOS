@@ -1321,7 +1321,7 @@ FEMALE_UL_DAYS: tuple[DayBlueprint, ...] = (
 # repeat each broad muscle group on two or three separate days. Priority
 # starters open the day before the remaining work is ordered by movement class.
 _COACH_PATTERN_EVENTS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("chest", ("incline_press", "flat_press", "chest_fly")),
+    ("chest", ("incline_press", "flat_press")),
     # Keep both lats exposures resolvable when the catalog has no pullover slot.
     ("lats", ("vertical_pull", "vertical_pull")),
     ("traps", ("horizontal_row", "upper_back_pull", "shrug")),
@@ -1347,7 +1347,7 @@ _COACH_PATTERN_THREE_DAY_SLOTS: tuple[tuple[str, ...], ...] = (
         "triceps_overhead", "forearm_wrist", "glute_thrust", "calf", "abs",
     ),
     (
-        "chest_fly", "vertical_pull", "horizontal_row", "shrug", "rear_delts",
+        "vertical_pull", "horizontal_row", "rear_delts",
         "forearm_reverse", "quad_iso", "ham_hinge", "glute_iso", "adductors", "abs",
     ),
 )
@@ -1458,7 +1458,7 @@ def coach_upper_lower_days(frequency: int) -> list[DayBlueprint]:
             "Upper 2",
             (
                 "rear_delts", "flat_press", "horizontal_row", "vertical_pull",
-                "shoulder_press", "biceps_alt", "triceps_overhead", "forearm_reverse", "shrug",
+                "shoulder_press", "biceps_alt", "triceps_overhead", "forearm_reverse",
             ),
             family="upper",
             sets_family="coach",
@@ -1497,7 +1497,7 @@ def coach_ppl_upper_lower_days(frequency: int) -> list[DayBlueprint]:
         DayBlueprint(
             "Push",
             (
-                "side_delts", "incline_press", "shoulder_press", "chest_fly",
+                "side_delts", "incline_press", "shoulder_press",
                 "triceps_overhead", "triceps_pushdown",
             ),
             family="upper",
@@ -1506,7 +1506,7 @@ def coach_ppl_upper_lower_days(frequency: int) -> list[DayBlueprint]:
         DayBlueprint(
             "Pull",
             (
-                "rear_delts", "vertical_pull", "horizontal_row", "shrug",
+                "rear_delts", "vertical_pull", "horizontal_row",
                 "biceps_alt", "forearm_reverse",
             ),
             family="upper",

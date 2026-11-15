@@ -2134,7 +2134,7 @@ def _validated_chat_weak_points(
     muscles = [_WEAK_POINT_NAMES.get(name) or (name if name in WEAK_POINT_MUSCLES else None) for name in names]
     if not muscles or any(muscle is None for muscle in muscles):
         reply = (
-            "Name Weak points from the list: chest, upper chest, lats, traps, shoulders, "
+            "Name Weak points from the list: chest, upper chest, lats, traps, rear delts, shoulders, "
             "side delts, biceps, triceps, forearms, quads, hamstrings, glutes, "
             "adductors, calves or abs."
             if language == "en"

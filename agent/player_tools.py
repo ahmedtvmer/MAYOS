@@ -426,7 +426,8 @@ def _program_exercise_prescription(
     row = {
         "name": exercise.exercise_name, "sets": sets,
         "reps_min": exercise.target_reps_min, "reps_max": exercise.target_reps_max,
-        "rir": rir, "muscle": normalize_main_muscle(muscle) or "not set",
+        "rir": rir,
+        "muscle": _program_exercise_muscle_label(muscle),
         "rest_seconds": exercise.rest_seconds if exercise.rest_seconds is not None else "not set",
         "secondary_muscles": secondary_groups,
         "movement_pattern": metadata.get("movement_pattern"),
@@ -435,6 +436,14 @@ def _program_exercise_prescription(
     if set_group_details is not None:
         row["set_groups"] = set_group_details
     return row
+
+
+def _program_exercise_muscle_label(muscle: str | None) -> str:
+    source_label = str(muscle or "").strip()
+    group = normalize_main_muscle(source_label)
+    if not group:
+        return "not set"
+    return source_label if source_label.casefold() == group else group
 
 
 def _program_exercise_set_group_details(

@@ -135,6 +135,7 @@ def test_active_program_volume_uses_reviewed_credits_once_per_main_group(
 ):
     seed_exercise_curation(fresh_store, {
         "3541": {
+            "display_name": "Incline Y-Raise (Dumbbell)",
             "primary_muscle": "Traps",
             "muscle_credits": "shoulders=1|traps=0.75",
         },

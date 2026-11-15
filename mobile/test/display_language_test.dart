@@ -28,7 +28,7 @@ class _FailingStore extends InMemoryDisplayLanguageStore {
 void main() {
   test('Weak point muscle labels are present in English and Arabic', () {
     const List<String> muscles = <String>[
-      'chest', 'upper_chest', 'lats', 'shoulders', 'side_delts', 'traps', 'biceps',
+      'chest', 'upper_chest', 'lats', 'shoulders', 'side_delts', 'rear_delts', 'traps', 'biceps',
       'triceps', 'forearms', 'quads', 'hamstrings', 'glutes', 'adductors',
       'calves', 'abs',
     ];
