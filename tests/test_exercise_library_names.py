@@ -379,13 +379,114 @@ def test_exercise_singularization_preserves_required_forms(name, expected):
     assert _normalize_exercise_name(name) == expected
 
 
-def test_food_search_keeps_matching_plural_food_names():
+@pytest.mark.parametrize(
+    ("query", "food_name"),
+    [
+        ("cookie", "Cookies"),
+        ("brownie", "Brownies"),
+        ("smoothie", "Smoothies"),
+        ("chicken breast", "Chicken Breasts"),
+    ],
+)
+def test_issue_720_food_search_keeps_matching_plural_food_names(query, food_name):
     from core.food_search import food_match_rank, normalize_food_query
 
-    normalized_query = normalize_food_query("chicken breasts")
+    normalized_query = normalize_food_query(query)
+    normalized_name = normalize_food_query(food_name)
 
-    assert normalized_query == "chicken breast"
-    assert food_match_rank({"chicken breast"}, set(), normalized_query) == 0
+    assert food_match_rank({normalized_name}, set(), normalized_query) == 0
+
+
+def test_issue_720_real_catalog_fuzzy_search_keeps_opposite_movement_words_distinct(
+    real_library_store,
+):
+    matches = real_library_store.find_exercises_by_name(
+        "Standing Internal Rotation (Dumbbell)", limit=None
+    )
+
+    assert "864" not in {match["id"] for match in matches}
+
+
+def test_issue_720_real_catalog_plural_name_search_keeps_all_normalized_equivalents(
+    real_library_store,
+):
+    matches = real_library_store.find_exercises_by_name(
+        "machine chest presses", limit=None
+    )
+
+    assert {"576", "577"}.issubset({match["id"] for match in matches})
+    assert real_library_store.find_exercise_by_name("machine chest presses") is None
+
+
+def test_issue_720_arabic_swap_does_not_pick_a_sibling_after_source_match(
+    real_library_store,
+):
+    from types import SimpleNamespace
+
+    from agent import assistant_graph
+
+    source_entry = real_library_store.get_exercise_library_entry("576")
+    source = SimpleNamespace(exercise_id="576", exercise_name=source_entry["name"])
+    day = SimpleNamespace(day_name="Chest", exercises=[source])
+    program = SimpleNamespace(days=[day])
+    classification = assistant_graph.ArabicIntentClassification(
+        intent="exercise_substitution",
+        source_exercise=source.exercise_name,
+        target_exercise="machine chest presses",
+    )
+    query = f"بدل {source.exercise_name} ب machine chest presses"
+
+    route = assistant_graph._classify_arabic_swap(
+        query, classification, program, real_library_store
+    )
+
+    assert route["intent"] == "arabic_swap_clarification"
+
+
+def test_issue_720_arabic_program_preference_sees_exact_matches_beyond_three(
+    real_library_store,
+):
+    from types import SimpleNamespace
+
+    from agent import assistant_graph
+
+    _insert_name_alias(real_library_store, "1017", "y raise")
+    _insert_name_alias(real_library_store, "3541", "y raise")
+    _insert_name_alias(real_library_store, "mayos:3", "y raise")
+    target_entry = real_library_store.get_exercise_library_entry("3541")
+    target_id = "arabic-y-raise-long"
+    _insert_matching_exercise(
+        real_library_store, target_id, "Very Long Cable Y-Raise Variation", target_entry
+    )
+    _insert_name_alias(real_library_store, target_id, "y raise")
+    _insert_matching_exercise(
+        real_library_store, "arabic-y-raise-source", "Cable Lateral Raise", target_entry
+    )
+    source = SimpleNamespace(
+        exercise_id="arabic-y-raise-source", exercise_name="Cable Lateral Raise"
+    )
+    target = SimpleNamespace(
+        exercise_id=target_id, exercise_name="Very Long Cable Y-Raise Variation"
+    )
+    day = SimpleNamespace(day_name="Shoulders", exercises=[source, target])
+    program = SimpleNamespace(days=[day])
+    classification = assistant_graph.ArabicIntentClassification(
+        intent="exercise_substitution",
+        source_exercise=source.exercise_name,
+        target_exercise="y raises",
+    )
+
+    ranked_matches = real_library_store.find_exercises_by_name("y raises", limit=3)
+    route = assistant_graph._classify_arabic_swap(
+        "بدل Cable Lateral Raise ب y raises",
+        classification,
+        program,
+        real_library_store,
+    )
+
+    assert target_id not in {match["id"] for match in ranked_matches}
+    assert route["intent"] == "exercise_substitution"
+    assert route["intent_metadata"]["target_exercise_id"] == target_id
 
 
 @pytest.mark.parametrize(

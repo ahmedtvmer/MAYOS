@@ -1314,10 +1314,6 @@ def _resolve_arabic_source(
     return best_matches[0]
 
 
-def _arabic_name_search_candidates(store: Any, name: str) -> list[dict[str, Any]]:
-    return store.find_exercises_by_name(name, limit=3)
-
-
 def _arabic_target_name_similarity(name: str, match: dict[str, Any]) -> float:
     normalized_name = _normalize_exercise_name(name)
     return max(
@@ -1349,18 +1345,20 @@ class _ArabicSwapTargetContext:
 
 
 def _arabic_target_name_matches(
-    store: Any, source: Any, name: str
+    store: Any, name: str
 ) -> tuple[list[dict[str, Any]], frozenset[str], frozenset[str]]:
     near_miss_ids = near_miss_exercise_ids(name)
-    exact_ids = store._find_exact_exercise_ids_by_name(name)
+    matches, exact_matches = store._find_exercises_by_name_with_exact_matches(
+        name, limit=3
+    )
+    exact_ids = frozenset(str(match["id"]) for match in exact_matches)
+    candidates = {str(match["id"]): match for match in (*exact_matches, *matches)}
     # A single fuzzy hit must be close to the request before an Arabic swap can write.
     matches = [
-        match for match in _arabic_name_search_candidates(store, name)
-        if str(match["id"]) != str(source.exercise_id)
-        and str(match["id"]) not in near_miss_ids
-        and store.is_exercise_library_exercise_visible(str(match["id"]))
+        match for exercise_id, match in candidates.items()
+        if exercise_id not in near_miss_ids
         and (
-            str(match["id"]) in exact_ids
+            exercise_id in exact_ids
             or _arabic_target_name_similarity(name, match) >= FUZZY_NAME_MATCH_THRESHOLD
         )
     ]
@@ -1396,8 +1394,10 @@ def _prefer_or_clarify_exact_arabic_targets(
     matches: list[dict[str, Any]], exact_ids: frozenset[str], program: Any
 ) -> tuple[list[dict[str, Any]], bool]:
     exact_matches = [match for match in matches if str(match["id"]) in exact_ids]
-    if len(exact_matches) < 2:
+    if not exact_matches:
         return matches, False
+    if len(exact_matches) == 1:
+        return exact_matches, False
     program_ids = {
         str(exercise.exercise_id)
         for day in program.days
@@ -1413,7 +1413,7 @@ def _resolve_arabic_target_name(
     context: _ArabicSwapTargetContext, source_entry: dict[str, Any], name: str
 ) -> _ArabicTargetResolution | None:
     matches, near_miss_ids, exact_ids = _arabic_target_name_matches(
-        context.store, context.source, name
+        context.store, name
     )
     if not matches:
         return _ArabicTargetResolution() if near_miss_ids else None
@@ -1421,7 +1421,17 @@ def _resolve_arabic_target_name(
         matches, exact_ids, context.program
     )
     if clarify:
-        return _ArabicTargetResolution(clarification_candidates=tuple(matches[:3]))
+        candidates = [
+            match for match in matches
+            if str(match["id"]) != str(context.source.exercise_id)
+        ]
+        return _ArabicTargetResolution(clarification_candidates=tuple(candidates[:3]))
+    matches = [
+        match for match in matches
+        if str(match["id"]) != str(context.source.exercise_id)
+    ]
+    if not matches:
+        return _ArabicTargetResolution()
     compatible = _compatible_arabic_targets(matches, source_entry)
     if not compatible:
         return _ArabicTargetResolution()
