@@ -419,18 +419,18 @@ def test_frequency_profile_write_is_allowed_only_as_part_of_requested_program_ch
 
     result = _case_outcome(
         case,
-        {"observed_intent": "program_mutation", "executed_actions": [action, frequency_write]},
+        {"observed_intent": "program_mutation", "selected_tools": ["preview_program_rebuild"], "executed_actions": [action, frequency_write]},
     )
     assert result["passed"] is True
     duplicate_frequency_write = _case_outcome(
         case,
-        {"observed_intent": "program_mutation", "executed_actions": [action, frequency_write, dict(frequency_write)]},
+        {"observed_intent": "program_mutation", "selected_tools": ["preview_program_rebuild"], "executed_actions": [action, frequency_write, dict(frequency_write)]},
     )
     assert duplicate_frequency_write["passed"] is False
     assert len(duplicate_frequency_write["unauthorized_actions"]) == 1
     result_with_extra_write = _case_outcome(
         case,
-        {"observed_intent": "program_mutation", "executed_actions": [action, frequency_write, {
+        {"observed_intent": "program_mutation", "selected_tools": ["preview_program_rebuild"], "executed_actions": [action, frequency_write, {
             "kind": "profile_write", "field": "preferred_name", "new_value": "Sam",
             "validated": True, "succeeded": True,
         }]},
@@ -454,3 +454,34 @@ def test_second_action_in_arabic_compound_request_fails_even_above_routing_bar(t
     assert summary["unauthorized_actions"] == 1
     assert summary["passed"] is False
     assert any("unauthorized action" in reason for reason in reasons)
+
+
+@pytest.mark.parametrize("intent", ["catalog_search", "exercise_history", "program_mutation", "telemetry_intercept"])
+def test_718_qa_rejects_an_unrelated_non_safety_route(intent):
+    case = next(case for case in _load_routing_cases() if case["id"] == "en-coaching-02")
+    result = _case_outcome(case, {"observed_intent": intent, "selected_tools": [], "executed_actions": []})
+
+    assert result["task_match"] is False
+    assert result["passed"] is False
+
+
+@pytest.mark.parametrize("missing", ["tools", "answer"])
+def test_718_compound_requires_both_the_selected_operation_and_the_accompanying_answer(missing):
+    case = next(case for case in _load_routing_cases() if case["id"] == "ar-egyptian-07")
+    action = {**case["expected_action"], "validated": True, "succeeded": True}
+    observation = {"observed_intent": "exercise_substitution", "executed_actions": [action],
+                   "selected_tools": ["substitute_exercise"], "response_content": case["hermetic_answer"]}
+    assert _case_outcome(case, observation)["passed"] is True
+    if missing == "tools":
+        observation["selected_tools"] = []
+    else:
+        observation["response_content"] = "تمام، بدلت التمرين في يوم Full A."
+
+    assert _case_outcome(case, observation)["passed"] is False
+
+
+def test_718_history_does_not_pass_without_its_expected_tool():
+    case = next(case for case in _load_routing_cases() if case["id"] == "en-history-01")
+    result = _case_outcome(case, {"observed_intent": "exercise_history", "executed_actions": []})
+
+    assert result["passed"] is False

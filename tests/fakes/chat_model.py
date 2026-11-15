@@ -350,7 +350,7 @@ def _as_response(turn: Any) -> AIMessage:
 
 def _tool_name(tool: Any) -> str:
     if isinstance(tool, dict):
-        return str(tool.get("name", ""))
+        return str(tool.get("function", tool).get("name", ""))
     return str(getattr(tool, "name", getattr(tool, "__name__", type(tool).__name__)))
 
 

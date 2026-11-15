@@ -1,5 +1,6 @@
 """Model-selected Player operations, bound to the original turn and its ledger."""
 
+import re
 import sqlite3
 import time
 from dataclasses import dataclass
@@ -101,34 +102,29 @@ def _exercise_history(turn: PlayerToolTurn, **kwargs: Any) -> dict[str, Any]:
 
 def _substitute_exercise(turn: PlayerToolTurn, **kwargs: Any) -> dict[str, Any]:
     from agent import assistant_graph as graph
+    from agent.player_swap_authorization import authorized_swap_metadata
+
     args = SubstitutionArgs(**kwargs)
-    ledger, store = turn.handles
-    metadata = {"source_exercise": args.source_exercise, "target_exercise": args.target_exercise,
-                "source_day": args.day_name}
     if not args.target_exercise:
-        # An alternatives read grants no write permission, regardless of wording.
-        from langchain_core.messages import HumanMessage
-        query = f"alternatives for {args.source_exercise}"
-        if args.day_name:
-            query += f" on {args.day_name}"
-        result = graph.exercise_substitution_node({**turn.state, "intent_metadata": {**metadata, "read_only": True},
-            "messages": [HumanMessage(content=query)]}, turn.config)
-        return {"status": "ok", "alternatives": result.get("model_context_content", result["response_content"])}
-    if graph._is_arabic_dominant(turn.query):
-        if not graph.RE_ARABIC_SWAP_REQUEST.search(graph.RE_ARABIC_DIACRITICS.sub("", turn.query)):
-            return turn.finish(graph._response(graph.AUTHORIZATION_RESPONSE))
-        program = ledger.get_active_program()
-        if args.day_name and program and not any(day.day_name == args.day_name for day in program.days):
-            return turn.finish(graph._response(graph.ARABIC_ACTION_CLARIFICATION_RESPONSE))
-        source = graph._resolve_arabic_source(program, args.source_exercise, args.day_name) if program else None
-        target = graph._resolve_arabic_target(store, source[1], source[0], args.target_exercise) \
-            if source and args.target_exercise else None
-        if source and target:
-            metadata = graph._arabic_swap_metadata(source[0], source[1], *target)
-            return turn.finish(graph._apply_validated_swap(turn.state, turn.config, metadata))
-        return turn.finish(graph._response(graph.ARABIC_SWAP_CLARIFICATION_RESPONSE))
-    state = {**turn.state, "intent_metadata": metadata}
-    return turn.finish(graph.exercise_substitution_node(state, turn.config))
+        return _substitution_alternatives(turn, args)
+    metadata = authorized_swap_metadata(turn, args)
+    if metadata is None:
+        reply = graph.ARABIC_SWAP_CLARIFICATION_RESPONSE if graph._is_arabic_dominant(turn.query) else graph.AUTHORIZATION_RESPONSE
+        return turn.finish(graph._response(reply))
+    return turn.finish(graph._apply_validated_swap(turn.state, turn.config, metadata))
+
+
+def _substitution_alternatives(turn: PlayerToolTurn, args: SubstitutionArgs) -> dict[str, Any]:
+    from agent import assistant_graph as graph
+    from langchain_core.messages import HumanMessage
+
+    query = f"alternatives for {args.source_exercise}"
+    if args.day_name:
+        query += f" on {args.day_name}"
+    metadata = {"source_exercise": args.source_exercise, "source_day": args.day_name, "read_only": True}
+    result = graph.exercise_substitution_node({**turn.state, "intent_metadata": metadata,
+        "messages": [HumanMessage(content=query)]}, turn.config)
+    return {"status": "ok", "alternatives": result.get("model_context_content", result["response_content"])}
 
 
 def _preview_rebuild(turn: PlayerToolTurn, **kwargs: Any) -> dict[str, Any]:
@@ -311,6 +307,43 @@ _ACTION_NAMES = frozenset({
     "choose_deload", "update_injury", "manage_assistant_preference", "update_training_goal",
     "update_weak_points", "update_movement_restrictions", "preferred_name",
 })
+
+_WRITE_TOOL_GROUPS = {
+    r"rebuild|regenerate|preview|draft|generate|create|new|swap|replace|substitut|switch|change|add|remove|confirm|cancel|yes|alternativ|instead|بديل|بدائل|بد[ّ]?ل|غير|غيّر|بناء|ضيف|شيل|أكد|ايوه|أيوه|نعم|جهز|غييرات":
+        {"substitute_exercise", "preview_program_rebuild", "preview_program_edit", "confirm_program_edit"},
+    r"deload|ديلود|تخفيف": {"choose_deload"},
+    r"injur|doctor|physician|clear|pain|إصاب|اصاب|دكتور|طبيب|وجع|ألم": {"update_injury", "update_movement_restrictions"},
+    r"remember|forget|prefer|keep.*mind|خلي|افتكر|احفظ|انس|تفضيل|بالك": {"manage_assistant_preference"},
+    r"goal|bulk|cut|lose|هدف|تضخيم|تنشيف|خس": {"update_training_goal"},
+    r"weak|focus|ضعيف|ضعف|ركز|تركيز": {"update_weak_points"},
+    r"name|call me|i['’]m|i am|ناديني|اسمي|اسم|أنا|انا": {"preferred_name"},
+}
+
+_READ_TOOL_TOPICS = {
+    "list_program_options": r"program|routine|split|days?|types?|options?|برنامج|برامج|تقسيم|ايام|أيام|أنواع|انواع|اختيارات",
+    "get_player_food_log": r"food|eat|ate|meal|diary|log|yesterday|اكل|أكل|طعام|وجب|امبارح|سجل",
+    "get_player_nutrition": r"nutrition|diet|targets?|calori|macro|protein|تغذي|سعر|بروتين|دايت|هدف",
+    "get_player_weight_trend": r"weight|progress|scale|gain|lost|lose|body|وزن|تقدم|ميزان|خس|جسم",
+    "get_player_telemetry": r"telemetry|fatigue|readiness|recover|sleep|tired|exhaust|مرهق|تعب|نوم|تعافي|جاهز",
+    "search_exercises": r"find|search|exercises?|movements?|alternativ|instead|options|بديل|بدائل|تمارين|تمرين|دور|ابحث|حرك",
+}
+
+
+def select_player_chat_tools(tools, state):
+    """Keep reads available; include write groups mentioned in recent conversation."""
+    from agent.player_prompt import get_message_text
+
+    text = " ".join(get_message_text(message) for message in state.get("messages", [])[-6:])
+    selected = set().union(*(names for pattern, names in _WRITE_TOOL_GROUPS.items() if re.search(pattern, text, re.I)))
+    # Short follow-ups may refer to any saved offer or earlier message.
+    if len(state.get("messages", [])) > 1 and len(get_message_text(state["messages"][-1]).split()) < 4:
+        return tools
+    known_topic = re.search(r"program|routine|split|workout|exercises?|search|bench|squat|sets?|reps?|rest|performance|"
+                            r"برنامج|تمرين|بنش|سكوات|سيت|عدات|راحة|أداء|اداء", text, re.I)
+    return [tool for tool in tools
+            if (tool.name not in _ACTION_NAMES or tool.name in selected)
+            and (not known_topic or tool.name not in _READ_TOOL_TOPICS
+                 or re.search(_READ_TOOL_TOPICS[tool.name], text, re.I))]
 
 
 def run_player_chat_tool_calls(tool_calls, **options):

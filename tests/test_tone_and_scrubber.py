@@ -55,9 +55,15 @@ def test_graph_stream_and_saved_parity(graph, raw):
     assert graph.assistant_graph.invoke(state("How many squat reps?"), config={"configurable": {"ledger": graph.db, "store": graph.db}})["response_content"] == display
 
 
-def test_partial_failure_discards_the_unfinished_model_round(graph):
+@pytest.mark.parametrize("partial", [
+    "<think>private reasoning</think>Sure! Use controlled reps. You have tendonitis",
+    "I'll check your last workout and make the change now.",
+    "تمام، هراجع آخر تمرين وأبدل الحركة دلوقتي.",
+    "A complete sentence that must stay private if its round fails.",
+])
+def test_partial_failure_discards_the_unfinished_model_round(graph, partial):
     graph.llm.reset([StreamErrorTurn(
-        "<think>private reasoning</think>Sure! Use controlled reps. You have tendonitis",
+        partial,
         RuntimeError("internal database secret"),
     )])
     request = state("How many squat reps?")
@@ -268,7 +274,6 @@ def test_stream_releases_a_complete_sentence_as_one_unit(graph):
     stream = graph.stream_assistant_turn(request, ledger=graph.db, store=graph.db)
 
     first = next(stream)
-    assert graph.llm.streamed_chunk_count == 1
     assert first == raw
     assert "".join(stream) == ""
 

@@ -248,7 +248,8 @@ def test_arabic_swap_with_weight_question_executes_the_selected_operation(
     fresh_store, monkeypatch
 ):
     before = _seed_program(fresh_store)
-    model = ScriptedChatModel([_substitution_call("Bench Press (Barbell)", "Dumbbell Bench Press")])
+    answer = "تمام، زوّد الوزن لما توصل لأعلى عدد تكرار مطلوب في كل سيت بنفس الفورم."
+    model = ScriptedChatModel([_substitution_call("Bench Press (Barbell)", "Dumbbell Bench Press"), answer])
     monkeypatch.setattr("agent.assistant_graph.llm", model)
     state = _turn("بدّل لي البنش بالدامبل. وقولّي أزوّد الوزن إمتى؟")
 
@@ -261,6 +262,8 @@ def test_arabic_swap_with_weight_question_executes_the_selected_operation(
     assert after.version == before.version + 1
     assert names.count("Bench Press (Dumbbell)") == 1
     assert "Bench Press (Barbell)" not in names
+    assert answer in state["response_content"]
+    assert "بدّلت" in state["response_content"]
 
 
 def test_preferred_name_request_is_written_by_the_selected_tool(
@@ -322,7 +325,11 @@ def test_composite_swap_request_executes_only_the_selected_operation(
     fresh_store, monkeypatch
 ):
     before = _seed_program(fresh_store)
-    model = ScriptedChatModel([_substitution_call("Barbell Bench Press", "Dumbbell Bench Press")])
+    answer = "تمام، مفيش أداء مسجّل للسكوات في آخر جلسة."
+    model = ScriptedChatModel([ToolCallsTurn(calls=[
+        {"name": "get_exercise_history", "args": {"exercise_name": "Back Squat (Barbell)"}, "id": "history"},
+        {"name": "substitute_exercise", "args": {"source_exercise": "Barbell Bench Press", "target_exercise": "Dumbbell Bench Press"}, "id": "swap"},
+    ]), answer])
     monkeypatch.setattr("agent.assistant_graph.llm", model)
     state = _turn("بدّل البنش بالدامبل وقولّي عملت إيه في السكوات")
 
@@ -330,11 +337,65 @@ def test_composite_swap_request_executes_only_the_selected_operation(
 
     after = fresh_store.ledger.get_active_program()
     names = [exercise.exercise_name for exercise in after.days[0].exercises]
-    assert state["selected_tools"] == ["substitute_exercise"]
+    assert state["selected_tools"] == ["get_exercise_history", "substitute_exercise"]
     assert state["program_updated"] is True
     assert after.version == before.version + 1
     assert "Bench Press (Dumbbell)" in names
     assert "Back Squat (Barbell)" in names
+    assert answer in state["response_content"]
+    assert _tool_results(model, "get_exercise_history")
+
+
+@pytest.mark.parametrize("message", [
+    "I don't want to swap barbell bench press for dumbbell bench press.",
+    "I don’t want to swap barbell bench press for dumbbell bench press.",
+    "I don't want to swap barbell row for another row and swap barbell bench press for dumbbell bench press.",
+    "Maybe swap barbell bench press for dumbbell bench press.",
+    "Should I swap barbell bench press for dumbbell bench press?",
+    "Swap barbell bench press for dumbbell bench press?",
+    "مش عايز أبدل البنش بالدامبل",
+    "لا أريد استبدل تمرين Barbell Bench Press بتمرين Dumbbell Bench Press.",
+    "ممكن أبدل البنش بالدامبل",
+    "هل أبدل البنش بالدامبل؟",
+    "أبدل البنش بالدامبل؟",
+    "بدل البنش بالدامبل ربما",
+])
+def test_718_negated_hedged_or_question_swap_never_writes(fresh_store, message):
+    from agent.player_action_tools import build_player_chat_tools, run_player_chat_tool_calls
+
+    before = _seed_program(fresh_store).model_dump()
+    state = _turn(message)
+    tools, definitions = build_player_chat_tools(state, {"configurable": {"ledger": fresh_store.ledger, "store": fresh_store}})
+    run_player_chat_tool_calls([{"name": "substitute_exercise", "args": {
+        "source_exercise": "Barbell Bench Press", "target_exercise": "Dumbbell Bench Press",
+    }, "id": "unconsented"}], tools=tools, definitions=definitions, language="ar")
+
+    assert state["tool_action_result"]["program_updated"] is False
+    assert fresh_store.ledger.get_active_program().model_dump() == before
+    assert fresh_store.ledger.get_pending_chat_program_edit() is None
+
+
+@pytest.mark.parametrize("message", [
+    "Swap barbell bench press for dumbbell bench press.",
+    "بدل البنش بالدامبل.",
+])
+@pytest.mark.parametrize("arguments", [
+    {"source_exercise": "Barbell Back Squat", "target_exercise": "Leg Press"},
+    {"source_exercise": "Barbell Bench Press", "target_exercise": "Incline Bench Press (Barbell)"},
+    {"source_exercise": "Bench Press (Smith Machine)", "target_exercise": "Dumbbell Bench Press"},
+    {"source_exercise": "Barbell Bench Press", "target_exercise": "Dumbbell Bench Press", "day_name": "Other Day"},
+])
+def test_718_mismatched_model_swap_arguments_never_write(fresh_store, message, arguments):
+    from agent.player_action_tools import build_player_chat_tools, run_player_chat_tool_calls
+
+    before = _seed_program(fresh_store).model_dump()
+    state = _turn(message)
+    tools, definitions = build_player_chat_tools(state, {"configurable": {"ledger": fresh_store.ledger, "store": fresh_store}})
+    run_player_chat_tool_calls([{"name": "substitute_exercise", "args": arguments, "id": "mismatch"}],
+        tools=tools, definitions=definitions, language="en")
+
+    assert state["tool_action_result"]["program_updated"] is False
+    assert fresh_store.ledger.get_active_program().model_dump() == before
 
 
 def test_unresolved_swap_target_clarifies_without_mutation(fresh_store, monkeypatch):

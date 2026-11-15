@@ -317,5 +317,5 @@ def test_stream_assistant_turn_intercept_records_zero_tokens(fresh_store, monkey
     tokens = list(stream_assistant_turn(state, ledger=fresh_store.ledger, store=fresh_store))
     assert "".join(tokens)
     assert captured["intent"] == "clinical_intercept"
-    # Intercept path records router timing only; generation fields stay defaulted.
-    assert "tokens" not in captured and "ttft_ms" not in captured
+    assert "tokens" not in captured
+    assert captured["ttft_ms"] >= 0.0

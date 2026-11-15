@@ -150,12 +150,21 @@ def test_fuzzy_threshold_elevation(db_fixture):
     assert "active movements:" in res["response_content"].lower()
 
 
-def test_multiple_selected_tools_read_history_and_apply_a_swap(db_fixture):
+@pytest.mark.parametrize("streaming", [False, True])
+def test_multiple_selected_tools_read_history_and_apply_a_swap(fresh_store, monkeypatch, streaming):
     """Verifies compound query combining exercise history and exercise substitution."""
+    from agent.ProgramState import GeneratedProgramSchema, ProgramDaySchema, ProgramExerciseSchema
+
+    db_fixture = fresh_store
+    entry = fresh_store.find_exercises_by_name("barbell bench press", limit=1)[0]
+    program = GeneratedProgramSchema(program_name="Compound request", split_type="Full Body", weekly_frequency=1,
+        days=[ProgramDaySchema(day_name="Full A", day_order=1, exercises=[ProgramExerciseSchema(
+            exercise_id=str(entry["id"]), exercise_name=entry["name"], target_reps_min=6, target_reps_max=10,
+        )])])
+    fresh_store.ledger.upsert_player_profile({"weekly_frequency": 1, "equipment_access": "Commercial gym"})
+    fresh_store.ledger.save_training_program(program.model_dump())
     active_prog = db_fixture.ledger.get_active_program()
-    press_slots = [ex for day in active_prog.days for ex in day.exercises if "press" in ex.exercise_name.lower()]
-    assert press_slots, "seeded program composition must contain a press slot for this composite swap"
-    first_ex = press_slots[0]
+    first_ex = active_prog.days[0].exercises[0]
 
     import uuid
     from datetime import datetime, UTC
@@ -179,7 +188,7 @@ def test_multiple_selected_tools_read_history_and_apply_a_swap(db_fixture):
         rpe=8.5,
     )
 
-    query = f"How did I do on {first_ex.exercise_name} and swap {first_ex.exercise_name} for dumbbell press"
+    query = f"How did I do on {first_ex.exercise_name} and swap {first_ex.exercise_name} for dumbbell bench press"
     state: AssistantState = {
         "messages": [HumanMessage(content=query)],
         "trainee_id": "default",
@@ -193,21 +202,29 @@ def test_multiple_selected_tools_read_history_and_apply_a_swap(db_fixture):
         "response_content": None,
     }
 
-    from agent.player_action_tools import build_player_chat_tools, run_player_chat_tool_calls
-    import json
+    from agent import assistant_graph as graph
+    from tests.fakes.chat_model import ScriptedChatModel, ToolCallsTurn
 
-    tools, definitions = build_player_chat_tools(state, {"configurable": {
-        "ledger": db_fixture.ledger, "store": db_fixture,
-    }})
-    messages, _metrics = run_player_chat_tool_calls([
+    answer = f"Last time on {first_ex.exercise_name}, you logged 100 kg for 8 reps."
+    model = ScriptedChatModel([ToolCallsTurn(calls=[
         {"name": "get_exercise_history", "args": {"exercise_name": first_ex.exercise_name}, "id": "history"},
         {"name": "substitute_exercise", "args": {"source_exercise": first_ex.exercise_name,
-            "target_exercise": "dumbbell press"}, "id": "swap"},
-    ], tools=tools, definitions=definitions, language="en")
+            "target_exercise": "dumbbell bench press"}, "id": "swap"},
+    ]), answer])
+    monkeypatch.setattr(graph, "llm", model)
+    if streaming:
+        shown = "".join(graph.stream_assistant_turn(state, ledger=db_fixture.ledger, store=db_fixture))
+        result = state
+    else:
+        result = graph.assistant_graph.invoke(state, config={"configurable": {"ledger": db_fixture.ledger, "store": db_fixture}})
+        shown = result["response_content"]
 
-    assert "100" in messages[0].content
-    assert json.loads(messages[1].content)["program_updated"] is True
-    assert state["tool_action_result"]["program_updated"] is True
+    assert answer in shown
+    assert result["program_updated"] is True
+    assert db_fixture.ledger.get_active_program().version == active_prog.version + 1
+    assert "Installed" in shown
+    assert any(getattr(message, "name", None) == "get_exercise_history" and "100" in message.content
+               for message in model.calls[-1]["messages"])
 
 def test_multiple_swap_text_passes_through_the_safety_gate(db_fixture):
     """Non-safety requests stay intact for the model to handle with selected tools."""

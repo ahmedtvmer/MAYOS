@@ -11,7 +11,7 @@ from agent.ProgramState import PersistedProgramDaySchema, PersistedProgramExerci
 from agent.player_action_tools import build_player_chat_tools, run_player_chat_tool_calls
 from agent.program_rules import valid_splits_for
 from service.chat_program_edit import plan_chat_program_rebuild
-from tests.fakes.chat_model import ScriptedChatModel, ToolCallsTurn
+from tests.fakes.chat_model import ScriptedChatModel, StreamErrorTurn, ToolCallsTurn
 
 
 @pytest.fixture
@@ -423,4 +423,38 @@ def test_718_preview_storage_failure_returns_honest_localized_reply(ppl_ul_playe
     assert graph.EMPTY_RESPONSE_FALLBACK not in reply
     assert not result.get("program_edit_preview")
     assert not result["program_updated"]
+    assert store.ledger.get_active_program().model_dump() == before
+
+
+@pytest.mark.parametrize("narration", [
+    "I'll check your saved profile now. This is a long sentence that previously escaped before the tool chunk.",
+    "تمام، هراجع بياناتك المحفوظة دلوقتي وبعدين أقولك الإجابة من آخر تمرين.",
+    "Your current situation needs a careful check of the available profile data before I answer.",
+])
+def test_718_late_tool_chunks_never_release_the_round_narration(player_program, monkeypatch, narration):
+    answer = "The checked Training setup is available."
+    model = ScriptedChatModel([ToolCallsTurn(content=narration, calls=[
+        _call("get_player_profile", {"sections": ["Training setup"]}),
+    ]), answer], chunk_size=1)
+    monkeypatch.setattr(graph, "llm", model)
+
+    result = _run(_turn("What is my saved training setup?"), player_program, True)
+
+    assert result["response_content"] == answer
+    assert result["messages"][-1].content == answer
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+def test_718_failed_answer_after_preview_cannot_leave_an_unseen_confirmable_offer(ppl_ul_player, monkeypatch, streaming):
+    store = ppl_ul_player
+    before = store.ledger.get_active_program().model_dump()
+    failure = RuntimeError("private provider failure")
+    final = StreamErrorTurn("I prepared a private partial answer.", failure) if streaming else failure
+    monkeypatch.setattr(graph, "llm", ScriptedChatModel([_narrated_call("preview_program_rebuild"), final]))
+
+    result = _run(_turn("Rebuild my program"), store, streaming)
+
+    assert result["response_content"] == graph.PIPELINE_ERROR_RESPONSE
+    assert not result.get("program_edit_preview")
+    assert store.ledger.get_pending_chat_program_edit() is None
     assert store.ledger.get_active_program().model_dump() == before

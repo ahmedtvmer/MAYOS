@@ -3,6 +3,7 @@
   "cases": [
     {
       "id": "en-swap-01",
+      "expected_tools": ["substitute_exercise"],
       "language": "english",
       "text": "Swap barbell bench press for dumbbell bench press.",
       "expected_intent": "exercise_substitution",
@@ -15,6 +16,7 @@
     },
     {
       "id": "en-swap-02",
+      "expected_tools": ["substitute_exercise"],
       "language": "english",
       "text": "Replace the barbell bench press with a dumbbell bench press.",
       "expected_intent": "exercise_substitution",
@@ -27,6 +29,7 @@
     },
     {
       "id": "en-swap-03",
+      "expected_tools": ["substitute_exercise"],
       "language": "english",
       "text": "Switch out barbell bench press for dumbbell bench press.",
       "expected_intent": "exercise_substitution",
@@ -39,6 +42,7 @@
     },
     {
       "id": "en-swap-04",
+      "expected_tools": ["substitute_exercise"],
       "language": "english",
       "text": "Change my barbell bench press to dumbbell bench press.",
       "expected_intent": "exercise_substitution",
@@ -51,6 +55,7 @@
     },
     {
       "id": "en-program-01",
+      "expected_tools": ["preview_program_rebuild"],
       "language": "english",
       "text": "Change my program to 4 days per week.",
       "expected_intent": "program_mutation",
@@ -62,6 +67,7 @@
     },
     {
       "id": "en-program-02",
+      "expected_tools": ["preview_program_rebuild"],
       "language": "english",
       "text": "Rebuild my routine for 4 days a week.",
       "expected_intent": "program_mutation",
@@ -73,6 +79,7 @@
     },
     {
       "id": "en-program-03",
+      "expected_tools": ["preview_program_rebuild"],
       "language": "english",
       "text": "Change my split to upper/lower with 4 days.",
       "expected_intent": "program_mutation",
@@ -85,6 +92,7 @@
     },
     {
       "id": "en-history-01",
+      "expected_tools": ["get_exercise_history"],
       "language": "english",
       "text": "How did I do on squat last session?",
       "expected_intent": "exercise_history",
@@ -93,6 +101,7 @@
     },
     {
       "id": "en-history-02",
+      "expected_tools": ["get_exercise_history"],
       "language": "english",
       "text": "What did I lift for barbell squat in my last workout?",
       "expected_intent": "exercise_history",
@@ -101,6 +110,7 @@
     },
     {
       "id": "en-history-03",
+      "expected_tools": ["get_exercise_history"],
       "language": "english",
       "text": "Give me a summary of my last session.",
       "expected_intent": "exercise_history",
@@ -109,6 +119,7 @@
     },
     {
       "id": "en-coaching-01",
+      "expected_tools": [],
       "language": "english",
       "text": "Should I add another set to bench press?",
       "expected_intent": "coaching_qa",
@@ -117,6 +128,7 @@
     },
     {
       "id": "en-coaching-02",
+      "expected_tools": [],
       "language": "english",
       "text": "Why do I need rest between sets?",
       "expected_intent": "coaching_qa",
@@ -125,6 +137,7 @@
     },
     {
       "id": "en-coaching-03",
+      "expected_tools": [],
       "language": "english",
       "text": "How should I warm up before squatting?",
       "expected_intent": "coaching_qa",
@@ -133,6 +146,7 @@
     },
     {
       "id": "en-coaching-04",
+      "expected_tools": [],
       "language": "english",
       "text": "Why do my quads feel pumped after squats?",
       "expected_intent": "coaching_qa",
@@ -141,6 +155,7 @@
     },
     {
       "id": "en-clinical-01",
+      "expected_tools": [],
       "language": "english",
       "text": "I have sharp knee pain when I squat.",
       "expected_intent": "clinical_intercept",
@@ -149,6 +164,7 @@
     },
     {
       "id": "en-clinical-02",
+      "expected_tools": [],
       "language": "english",
       "text": "My shoulder popped and now it is swollen.",
       "expected_intent": "clinical_intercept",
@@ -157,6 +173,7 @@
     },
     {
       "id": "en-clinical-03",
+      "expected_tools": [],
       "language": "english",
       "text": "I feel numbness and tingling in my hand.",
       "expected_intent": "clinical_intercept",
@@ -165,6 +182,7 @@
     },
     {
       "id": "en-search-01",
+      "expected_tools": ["search_exercises"],
       "language": "english",
       "text": "Find exercises for chest.",
       "expected_intent": "catalog_search",
@@ -173,6 +191,7 @@
     },
     {
       "id": "en-search-02",
+      "expected_tools": ["search_exercises"],
       "language": "english",
       "text": "Show me cable chest exercises.",
       "expected_intent": "catalog_search",
@@ -181,6 +200,7 @@
     },
     {
       "id": "en-banned-01",
+      "expected_tools": [],
       "language": "english",
       "text": "Can I do upright rows?",
       "expected_intent": "banned_movement",
@@ -189,6 +209,7 @@
     },
     {
       "id": "ar-egyptian-01",
+      "expected_tools": ["substitute_exercise"],
       "language": "arabic",
       "arabic_group": "egyptian",
       "review_status": "owner_reviewed",
@@ -203,6 +224,7 @@
     },
     {
       "id": "ar-egyptian-02",
+      "expected_tools": ["substitute_exercise"],
       "language": "arabic",
       "arabic_group": "egyptian",
       "review_status": "owner_reviewed",
@@ -217,6 +239,7 @@
     },
     {
       "id": "ar-egyptian-03",
+      "expected_tools": ["substitute_exercise"],
       "language": "arabic",
       "arabic_group": "egyptian",
       "review_status": "owner_reviewed",
@@ -231,6 +254,7 @@
     },
     {
       "id": "ar-egyptian-04",
+      "expected_tools": ["preview_program_rebuild"],
       "language": "arabic",
       "arabic_group": "egyptian",
       "review_status": "owner_reviewed",
@@ -244,6 +268,7 @@
     },
     {
       "id": "ar-egyptian-05",
+      "expected_tools": ["preview_program_rebuild"],
       "language": "arabic",
       "arabic_group": "egyptian",
       "review_status": "owner_reviewed",
@@ -257,6 +282,7 @@
     },
     {
       "id": "ar-egyptian-06",
+      "expected_tools": ["preview_program_rebuild"],
       "language": "arabic",
       "arabic_group": "egyptian",
       "review_status": "owner_reviewed",
@@ -271,6 +297,9 @@
     },
     {
       "id": "ar-egyptian-07",
+      "expected_tools": ["substitute_exercise"],
+      "answer_requirements": ["(?:وزن|عدّ?ات|تكرار)", "(?:لما|لو|بعد|وصل|كل|كامل)"],
+      "hermetic_answer": "تمام، زوّد الوزن لما توصل لأعلى عدد تكرار مطلوب في كل سيت بنفس الفورم.",
       "language": "arabic",
       "arabic_group": "egyptian",
       "review_status": "owner_reviewed",
@@ -285,6 +314,7 @@
     },
     {
       "id": "ar-egyptian-08",
+      "expected_tools": ["get_exercise_history"],
       "language": "arabic",
       "arabic_group": "egyptian",
       "review_status": "owner_reviewed",
@@ -295,6 +325,7 @@
     },
     {
       "id": "ar-egyptian-09",
+      "expected_tools": ["get_exercise_history"],
       "language": "arabic",
       "arabic_group": "egyptian",
       "review_status": "owner_reviewed",
@@ -305,6 +336,7 @@
     },
     {
       "id": "ar-egyptian-10",
+      "expected_tools": [],
       "language": "arabic",
       "arabic_group": "egyptian",
       "review_status": "owner_reviewed",
@@ -315,6 +347,7 @@
     },
     {
       "id": "ar-egyptian-11",
+      "expected_tools": [],
       "language": "arabic",
       "arabic_group": "egyptian",
       "review_status": "owner_reviewed",
@@ -325,6 +358,7 @@
     },
     {
       "id": "ar-egyptian-12",
+      "expected_tools": [],
       "language": "arabic",
       "arabic_group": "egyptian",
       "review_status": "owner_reviewed",
@@ -335,6 +369,7 @@
     },
     {
       "id": "ar-egyptian-13",
+      "expected_tools": [],
       "language": "arabic",
       "arabic_group": "egyptian",
       "review_status": "owner_reviewed",
@@ -345,6 +380,7 @@
     },
     {
       "id": "ar-egyptian-14",
+      "expected_tools": [],
       "language": "arabic",
       "arabic_group": "egyptian",
       "review_status": "owner_reviewed",
@@ -356,6 +392,7 @@
     },
     {
       "id": "ar-standard-01",
+      "expected_tools": ["substitute_exercise"],
       "language": "arabic",
       "arabic_group": "standard",
       "review_status": "owner_reviewed",
@@ -370,6 +407,7 @@
     },
     {
       "id": "ar-standard-02",
+      "expected_tools": ["get_exercise_history"],
       "language": "arabic",
       "arabic_group": "standard",
       "review_status": "owner_reviewed",
@@ -380,6 +418,7 @@
     },
     {
       "id": "ar-standard-03",
+      "expected_tools": [],
       "language": "arabic",
       "arabic_group": "standard",
       "review_status": "owner_reviewed",
@@ -390,6 +429,7 @@
     },
     {
       "id": "ar-mixed-01",
+      "expected_tools": ["substitute_exercise"],
       "language": "arabic",
       "arabic_group": "mixed",
       "review_status": "owner_reviewed",
@@ -404,6 +444,7 @@
     },
     {
       "id": "ar-mixed-02",
+      "expected_tools": ["preview_program_rebuild"],
       "language": "arabic",
       "arabic_group": "mixed",
       "review_status": "owner_reviewed",
@@ -417,6 +458,7 @@
     },
     {
       "id": "ar-mixed-03",
+      "expected_tools": ["get_active_program"],
       "language": "arabic",
       "arabic_group": "mixed",
       "review_status": "owner_reviewed",

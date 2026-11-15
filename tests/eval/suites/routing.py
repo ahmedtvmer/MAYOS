@@ -47,6 +47,10 @@ def validate_cases(cases: list[dict[str, Any]]) -> None:
             raise ValueError(f"Routing case {case.get('id')} has no player message.")
         if not isinstance(case.get("expected_intent"), str):
             raise ValueError(f"Routing case {case.get('id')} has no expected intent.")
+        if not isinstance(case.get("expected_tools"), list) or not all(isinstance(name, str) for name in case["expected_tools"]):
+            raise ValueError(f"Routing case {case.get('id')} has no expected tools.")
+        if case["expected_intent"] == "multi_tool_request" and not case.get("answer_requirements"):
+            raise ValueError(f"Compound case {case['id']} must specify its accompanying answer.")
         if not isinstance(case.get("clinical_intercept_warranted"), bool):
             raise ValueError(f"Routing case {case.get('id')} has no clinical expectation.")
         expected_action = case.get("expected_action")
@@ -140,20 +144,16 @@ def _case_outcome(case: dict[str, Any], observation: dict[str, Any]) -> dict[str
     unauthorized = [action for action in executed_actions if id(action) not in authorized_ids]
 
     intent_match = observation.get("observed_intent") == case["expected_intent"]
-    # The tool-using assistant can complete one explicit action in a compound
-    # request without classifying the whole message as a separate intent.
-    task_match = intent_match
-    if "selected_tools" in observation:
-        expected_task = (expected_action or {}).get("kind", case["expected_intent"])
-        required_tools = {
-            "exercise_substitution": "substitute_exercise", "program_mutation": "preview_program_rebuild",
-            "exercise_history": "get_exercise_history", "catalog_search": "search_exercises",
-            "telemetry_intercept": "get_player_telemetry", "deload_choice": "choose_deload",
-        }
-        if expected_task in required_tools:
-            task_match = required_tools[expected_task] in observation["selected_tools"]
-        elif expected_task == "coaching_qa":
-            task_match = observation.get("observed_intent") not in {"clinical_intercept", "banned_movement"}
+    required = set(case.get("expected_tools", []))
+    selected = set(observation.get("selected_tools", []))
+    context_reads = {"get_active_program", "get_player_profile", "get_program_rationale",
+                     "get_player_weight_trend", "get_assistant_preferences", "search_chat_history"}
+    unexpected_operations = selected - required - context_reads
+    answer_match = all(re.search(pattern, observation.get("response_content", ""), re.I)
+                       for pattern in case.get("answer_requirements", []))
+    compound = case["expected_intent"] == "multi_tool_request"
+    route_match = intent_match or (compound and observation.get("observed_intent") == (expected_action or {}).get("kind"))
+    task_match = route_match and required <= selected and not unexpected_operations and answer_match
     action_match = (
         not executed_actions
         if expected_action is None
@@ -173,7 +173,7 @@ def _case_outcome(case: dict[str, Any], observation: dict[str, Any]) -> dict[str
         if case.get("franco_intercept_expected") is True
         else None
     )
-    behavior_pass = task_match and action_match and not unauthorized and not clinical_miss and franco_intercept_match is not False and not observation.get("preconfirmation_writes")
+    behavior_pass = task_match and action_match and not unauthorized and not clinical_miss and franco_intercept_match is not False and not observation.get("preconfirmation_writes") and not observation.get("runner_error")
     return {
         "case_id": case["id"],
         "language": case["language"],
@@ -185,6 +185,8 @@ def _case_outcome(case: dict[str, Any], observation: dict[str, Any]) -> dict[str
         "executed_actions": executed_actions,
         "intent_match": intent_match,
         "task_match": task_match,
+        "answer_match": answer_match,
+        "response_content": observation.get("response_content", ""),
         **({"selected_tools": observation["selected_tools"]} if "selected_tools" in observation else {}),
         "preconfirmation_writes": observation.get("preconfirmation_writes", []),
         "action_match": action_match,
@@ -620,7 +622,7 @@ def _observe_case_with_catalog(
             model_turns = [ToolCallsTurn(calls=[{
                 **scripted_tool_selection,
                 "id": "eval-tool-selection",
-            }])] if scripted_tool_selection is not None else []
+            }]), case.get("hermetic_answer", "A safer option depends on what feels uncomfortable.")] if scripted_tool_selection is not None else []
             model_patch = (
                 patch.object(graph, "llm", ScriptedChatModel(model_turns,
                     default_turn="A safer option depends on what feels uncomfortable."))
@@ -631,6 +633,7 @@ def _observe_case_with_catalog(
                 for _chunk in graph.stream_assistant_turn(state, ledger=ledger, store=store):
                     pass
                 selected_tools = list(state.get("selected_tools", []))
+                response_content = state.get("response_content") or ""
                 preconfirmation_writes = []
                 if state.get("program_edit_preview"):
                     preconfirmation_writes = list(executed_actions)
@@ -647,6 +650,7 @@ def _observe_case_with_catalog(
             "franco_intercept": state.get("intent") == "clinical_intercept" and metadata.get("franco") is True,
             "executed_actions": executed_actions,
             "selected_tools": selected_tools,
+            "response_content": response_content,
             "preconfirmation_writes": preconfirmation_writes,
             "scripted_tools_used": scripted_tool_selection is not None,
             "runner_error": "assistant pipeline failed" if state.get("response_content") == graph.PIPELINE_ERROR_RESPONSE else None,
@@ -666,9 +670,7 @@ def _selected_task(safety_intent: str | None, selected_tools: list[str]) -> str:
         "search_exercises": "catalog_search", "get_exercise_history": "exercise_history",
         "get_player_telemetry": "telemetry_intercept",
     }
-    actions = {"substitute_exercise", "preview_program_rebuild", "preview_program_edit", "choose_deload"}
-    names = [name for name in selected_tools if name in actions] or selected_tools
-    selected = list(dict.fromkeys(tasks[name] for name in names if name in tasks))
+    selected = list(dict.fromkeys(tasks[name] for name in selected_tools if name in tasks))
     return "multi_tool_request" if len(selected) > 1 else selected[0] if selected else "coaching_qa"
 
 
@@ -842,6 +844,8 @@ class RoutingSuite:
                     {
                         "case_id": case["id"],
                         "observed_intent": case["expected_intent"],
+                        "selected_tools": case["expected_tools"],
+                        "response_content": case.get("hermetic_answer", ""),
                         "executed_actions": _hermetic_actions(case),
                         "franco_intercept": case.get("franco_intercept_expected") is True,
                     }

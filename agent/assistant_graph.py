@@ -86,7 +86,8 @@ from agent.player_tools import (
     cap_tool_results_for_prompt,
 )
 from agent.context_router import RoutedContext, route_player_context
-from agent.player_action_tools import build_player_chat_tools, run_player_chat_tool_calls
+from agent.player_action_tools import build_player_chat_tools, run_player_chat_tool_calls, select_player_chat_tools
+from agent.player_turn_budget import PlayerTurnInputBudget, provider_request_attempts, provider_tool_schemas
 from agent.telemetry_reconciler import (
     clean_movement_stem,
     extract_ledger_exercise_name,
@@ -3066,7 +3067,8 @@ def _apply_validated_swap(
     ledger, store = _graph_context(config)
     query = _get_message_text(state["messages"][-1])
     if not programs_service.player_controls_program(store, ledger, state.get("player_account_id")):
-        return _response(_coach_program_refusal(query))
+        suggestion = _substitution_request_suggestion(store, ledger, query, metadata)
+        return _response(_coach_program_refusal(query), request_suggestion=suggestion)
     active_program = ledger.get_active_program()
     if active_program is None:
         return _response(ARABIC_SWAP_CLARIFICATION_RESPONSE)
@@ -3972,11 +3974,20 @@ def _finish_limited(message: Any) -> bool:
 @dataclass
 class _PlayerStreamOutput:
     visible: list[str]
+    started_at: float = field(default_factory=time.perf_counter)
+    ttft_ms: float | None = None
     language: str = "en"
     scrubber: CoachOutputScrubber | None = None
     pending_output: str = ""
     round_visible_count: int = 0
     first_visible_released: bool = False
+
+    def publish(self, text: str) -> str:
+        if text and self.ttft_ms is None:
+            self.ttft_ms = (time.perf_counter() - self.started_at) * 1000.0
+            record_first_token(self.ttft_ms)
+        self.visible.append(text)
+        return text
 
     def begin_answer(self) -> None:
         self.round_visible_count = len(self.visible)
@@ -3995,9 +4006,8 @@ class _PlayerStreamOutput:
             if release_end:
                 visible_text = player_facing_text(self.pending_output[:release_end], self.language)
                 self.pending_output = self.pending_output[release_end:]
-                self.visible.append(visible_text)
                 self.first_visible_released = True
-                yield visible_text
+                yield self.publish(visible_text)
 
     def _visible_prefix_end(self) -> int:
         sentence_end = _last_complete_sentence_end(self.pending_output)
@@ -4025,16 +4035,13 @@ class _PlayerStreamOutput:
             )
         if self.pending_output:
             cleaned_output = player_facing_text(self.pending_output, self.language)
-            self.visible.append(cleaned_output)
-            yield cleaned_output
+            yield self.publish(cleaned_output)
             self.pending_output = ""
         if len(self.visible) == self.round_visible_count and not limited:
-            self.visible.append(EMPTY_RESPONSE_FALLBACK)
-            yield EMPTY_RESPONSE_FALLBACK
+            yield self.publish(EMPTY_RESPONSE_FALLBACK)
         if limited:
             note = ("\n\n" if self.visible else "") + OUTPUT_LIMIT_RESPONSE
-            self.visible.append(note)
-            yield note
+            yield self.publish(note)
 
 
 @dataclass
@@ -4050,7 +4057,6 @@ class _PlayerModelStream:
     def accept(self, chunk: Any) -> None:
         if self.ttft_seconds == 0:
             self.ttft_seconds = time.perf_counter() - self.started_at
-            record_first_token(self.ttft_seconds * 1000.0)
         self.limited = self.limited or _finish_limited(chunk)
         tool_chunks = getattr(chunk, "tool_call_chunks", None) or getattr(chunk, "tool_calls", None)
         self.tool_mode = self.tool_mode or bool(tool_chunks)
@@ -4115,6 +4121,8 @@ class _FirstTokenDeadlineTimeout(TimeoutError):
 class _FirstTokenStreamSettings:
     timeout_seconds: float
     max_attempts: int
+    budget: PlayerTurnInputBudget = field(default_factory=PlayerTurnInputBudget)
+    schemas: Sequence[dict[str, Any]] = ()
 
 
 async def _next_chunk_before_deadline(
@@ -4245,6 +4253,7 @@ async def _publish_stream_chunk(channel: queue.Queue, chunk: Any) -> None:
 async def _produce_player_model_attempt(
     model: Any, messages: Any, settings: _FirstTokenStreamSettings, channel: queue.Queue
 ) -> None:
+    settings.budget.admit(messages, settings.schemas, provider_request_attempts(model))
     stream = model.astream(messages)
     try:
         first_chunk, prefix_chunks = await _next_chunk_before_deadline(
@@ -4328,13 +4337,14 @@ def _retry_first_chunk_attempts(
 
 
 def _stream_model_with_first_token_deadline(
-    model: Any, messages: Any
+    model: Any, messages: Any, budget: PlayerTurnInputBudget | None = None, schemas=()
 ) -> Generator[Any, None, None]:
     """Retries a player model call only before its first parsed chunk."""
     from utils.model_downloader import first_token_max_attempts, first_token_timeout_seconds
 
     settings = _FirstTokenStreamSettings(
-        first_token_timeout_seconds(), first_token_max_attempts()
+        first_token_timeout_seconds(), first_token_max_attempts(),
+        budget if budget is not None else PlayerTurnInputBudget(), schemas,
     )
     # At most one unacknowledged chunk plus a terminal event can be queued when
     # the async producer is cancelled; both are bounded by this two-slot queue.
@@ -4350,22 +4360,8 @@ def _stream_player_answer(
     output.language = language
     output.begin_answer()
     capture = _PlayerModelStream()
-    deferred_text = ""
-    opening_decided = False
     for chunk in chunks:
         capture.accept(chunk)
-        if not capture.tool_mode:
-            piece = chunk.content if hasattr(chunk, "content") else str(chunk)
-            deferred_text += str(piece)
-            if not opening_decided:
-                opening = deferred_text.lstrip().casefold()
-                # Keep action narration and hidden-reasoning rounds private until completion.
-                narration = ("let me", "i will", "i can", "i am going to", "<think>")
-                if any(prefix.startswith(opening) or opening.startswith(prefix) for prefix in narration):
-                    continue
-                opening_decided = True
-            yield from output.add_text(deferred_text)
-            deferred_text = ""
     message = capture.message()
     tool_calls = list(getattr(message, "tool_calls", ()) or ())
     capture.tool_mode = capture.tool_mode or bool(tool_calls)
@@ -4378,13 +4374,19 @@ def _stream_player_answer(
         yield from output.add_text(_invalid_player_tool_reply(language))
     elif not capture.raw_pieces or not any(capture.raw_pieces):
         yield from output.add_text("" if capture.limited else empty_response)
-    elif deferred_text:
-        yield from output.add_text(deferred_text)
+    else:
+        # No text leaves a round that might still call tools or fail.
+        yield from output.add_text("".join(capture.raw_pieces))
     yield from output.finish_answer(capture.limited)
     return _StreamedPlayerAnswer(message, [], capture.telemetry())
 
 
 MAX_PLAYER_TOOL_ROUNDS = 3
+ACTION_ANSWER_INSTRUCTION = (
+    "The operation's exact receipt will be appended by the application. Answer every other part "
+    "of the current Player message from all tool results; do not repeat or paraphrase the receipt. "
+    "If there are no other parts, return no text."
+)
 
 
 def _invalid_player_tool_reply(language: str) -> str:
@@ -4394,6 +4396,8 @@ def _invalid_player_tool_reply(language: str) -> str:
 
 
 def _empty_player_tool_reply(state: dict[str, Any]) -> str:
+    if state.get("tool_action_result") is not None:
+        return state["tool_action_result"]["response_content"]
     if not state.get("selected_tools"):
         return EMPTY_RESPONSE_FALLBACK
     query = _get_message_text(state["messages"][-1])
@@ -4430,7 +4434,10 @@ def _invoke_player_tool_loop(
     """Invokes the same bounded tool loop for non-streaming graph callers."""
     ledger, _store = _graph_context(config)
     tools, definitions = build_player_chat_tools(state, config)
-    bound_model = llm.bind_tools(tools)
+    tools = select_player_chat_tools(tools, state)
+    schemas = provider_tool_schemas(tools)
+    bound_model = llm.bind_tools(schemas)
+    budget = PlayerTurnInputBudget()
     context = RoutedContext(list(payload))
     if (state.get("intent") or "coaching_qa") == "coaching_qa":
         context = route_player_context(payload, ledger, _store, {
@@ -4440,6 +4447,7 @@ def _invoke_player_tool_loop(
     model_fetched_more = False
     try:
         for _round in range(MAX_PLAYER_TOOL_ROUNDS):
+            budget.admit(messages, schemas, provider_request_attempts(bound_model))
             response = bound_model.invoke(messages)
             tool_calls = list(getattr(response, "tool_calls", ()) or ())
             if not tool_calls:
@@ -4456,10 +4464,15 @@ def _invoke_player_tool_loop(
             tool_messages = cap_tool_results_for_prompt([*messages, response], tool_messages)
             messages.extend([response, *tool_messages])
             if state.get("tool_action_result") is not None:
-                return AIMessage(content=state["tool_action_result"]["response_content"])
+                messages.append(SystemMessage(content=ACTION_ANSWER_INSTRUCTION))
+                break
+        budget.admit(messages, attempts=provider_request_attempts(llm))
         response = llm.invoke(messages)
         if getattr(response, "tool_calls", None) or getattr(response, "invalid_tool_calls", None):
-            return AIMessage(content=_invalid_player_tool_reply(_tool_reply_language(state)))
+            reply = PIPELINE_ERROR_RESPONSE if state.get("tool_action_result") is not None else _invalid_player_tool_reply(_tool_reply_language(state))
+            return AIMessage(content=reply)
+        if not response.content:
+            return AIMessage(content=_empty_player_tool_reply(state))
         return response
     finally:
         _record_context_retrieval(context, model_fetched_more)
@@ -4469,6 +4482,27 @@ def _ensure_tool_call_ids(tool_calls: list[dict[str, Any]]) -> None:
     for index, call in enumerate(tool_calls):
         if not call.get("id"):
             call["id"] = f"player-tool-call-{index + 1}"
+
+
+def _complete_player_action(state: dict[str, Any], content: str) -> dict[str, Any]:
+    action = state.pop("tool_action_result", None)
+    if action is None:
+        return _response(content)
+    receipt = action["response_content"]
+    reply = content if receipt in content else f"{content}\n\n{receipt}".strip()
+    return {**action, "response_content": reply, "messages": [AIMessage(content=reply)]}
+
+
+def _failed_player_action(state: dict[str, Any], config, content=PIPELINE_ERROR_RESPONSE) -> dict[str, Any]:
+    action = state.pop("tool_action_result", None) or {}
+    if action.pop("program_edit_preview", None):
+        ledger, _store = _graph_context(config)
+        ledger.clear_pending_chat_program_edit()
+    return {**action, **_response(content),
+            "program_updated": bool(action.get("program_updated")),
+            "movement_restrictions_updated": bool(action.get("movement_restrictions_updated")),
+            "program_change": action.get("program_change"),
+            "selected_tools": state.get("selected_tools", [])}
 
 
 def _last_complete_sentence_end(text: str) -> int:
@@ -4522,14 +4556,16 @@ def generation_node(state: AssistantState, config: dict[str, Any] | None = None)
         if _finish_limited(response):
             content = _trim_to_last_complete_sentence(content)
             content = f"{content}\n\n{OUTPUT_LIMIT_RESPONSE}" if content else OUTPUT_LIMIT_RESPONSE
-        action_result = state.pop("tool_action_result", None)
-        result = action_result if action_result is not None else _response(content)
+        result = _complete_player_action(state, content)
+        if result.get("program_edit_preview"):
+            ledger, _store = _graph_context(config)
+            ledger.update_pending_chat_program_edit_offer(result["program_edit_preview"]["id"], result["response_content"])
         return {**result, "selected_tools": state.get("selected_tools", [])}
     except PromptBudgetError as exc:
-        return _response(str(exc))
+        return _failed_player_action(state, config, str(exc))
     except Exception as exc:
         log_turn_exception(logger, "Assistant generation failed", exc)
-        return _response(PIPELINE_ERROR_RESPONSE)
+        return _failed_player_action(state, config)
 
 
 def _safe_node(handler):
@@ -4710,7 +4746,7 @@ def stream_assistant_turn(
     original_messages = list(state.get("messages", []))
     result = None
     visible = []
-    stream_output = _PlayerStreamOutput(visible)
+    stream_output = _PlayerStreamOutput(visible, started_at=t_start)
     tool_metrics: list[tuple[str, float]] = []
     intent = "coaching_qa"
     router_ms = 0.0
@@ -4740,7 +4776,10 @@ def stream_assistant_turn(
         else:
             payload = build_prompt_payload(state)
             tools, definitions = build_player_chat_tools(state, config)
-            bound_model = llm.bind_tools(tools)
+            tools = select_player_chat_tools(tools, state)
+            schemas = provider_tool_schemas(tools)
+            bound_model = llm.bind_tools(schemas)
+            budget = PlayerTurnInputBudget()
             routed_context = RoutedContext(list(payload))
             if intent == "coaching_qa":
                 routed_context = route_player_context(payload, ledger, store, {
@@ -4751,7 +4790,7 @@ def stream_assistant_turn(
 
             for _round_index in range(MAX_PLAYER_TOOL_ROUNDS):
                 streamed_answer = yield from _stream_player_answer(
-                    _stream_model_with_first_token_deadline(bound_model, model_messages),
+                    _stream_model_with_first_token_deadline(bound_model, model_messages, budget, schemas),
                     stream_output,
                     _empty_player_tool_reply(state),
                     _tool_reply_language(state),
@@ -4778,14 +4817,23 @@ def stream_assistant_turn(
                 tool_metrics.extend(round_metrics)
                 model_messages.extend([response_message, *tool_messages])
                 if state.get("tool_action_result") is not None:
+                    model_messages.append(SystemMessage(content=ACTION_ANSWER_INSTRUCTION))
+                    final_answer = yield from _stream_player_answer(
+                        _stream_model_with_first_token_deadline(llm, model_messages, budget),
+                        stream_output, _empty_player_tool_reply(state), _tool_reply_language(state),
+                    )
                     result = state.pop("tool_action_result")
-                    telemetry = {}
+                    if final_answer.tool_calls:
+                        result["response_content"] = PIPELINE_ERROR_RESPONSE + "\n\n" + result["response_content"]
+                    if result["response_content"] in "".join(visible):
+                        result["response_content"] = ""
+                    telemetry = final_answer.telemetry
                     break
             else:
                 # The three tool rounds are complete. A plain model call gets
                 # the results and must answer without starting another round.
                 final_answer = yield from _stream_player_answer(
-                    _stream_model_with_first_token_deadline(llm, model_messages),
+                    _stream_model_with_first_token_deadline(llm, model_messages, budget),
                     stream_output,
                     _empty_player_tool_reply(state),
                     _tool_reply_language(state),
@@ -4793,6 +4841,7 @@ def stream_assistant_turn(
                 telemetry = final_answer.telemetry
                 if final_answer.tool_calls:
                     result = _response(_invalid_player_tool_reply(_tool_reply_language(state)))
+            telemetry["ttft_ms"] = stream_output.ttft_ms or 0.0
             _record_telemetry_event(
                 intent,
                 router_ms,
@@ -4801,11 +4850,8 @@ def stream_assistant_turn(
                 **telemetry,
             )
             telemetry_recorded = True
-        if result is not None:
-            _record_telemetry_event(
-                intent, router_ms, user_id=state.get("trainee_id", "default")
-            )
     except _FirstTokenDeadlineTimeout:
+        _failed_player_action(state, config)
         if tool_metrics and not telemetry_recorded:
             _record_telemetry_event(
                 intent,
@@ -4815,35 +4861,24 @@ def stream_assistant_turn(
             )
         raise
     except PromptBudgetError as exc:
-        result = _response(str(exc))
+        result = _failed_player_action(state, config, str(exc))
     except Exception as exc:
         log_turn_exception(logger, "Assistant turn failed", exc)
         state["pipeline_error"] = PIPELINE_ERROR_RESPONSE
-        if tool_metrics and not telemetry_recorded:
-            _record_telemetry_event(
-                intent,
-                router_ms,
-                user_id=state.get("trainee_id", "default"),
-                tool_metrics=tool_metrics,
-            )
         record_failure(exc)
-        if stream_output.scrubber is not None:
-            cleaned = stream_output.scrubber.finish()
-            if cleaned:
-                stream_output.pending_output += cleaned
-            if stream_output.pending_output:
-                cleaned_output = player_facing_text(stream_output.pending_output, _tool_reply_language(state))
-                visible.append(cleaned_output)
-                yield cleaned_output
-        result = _response(PIPELINE_ERROR_RESPONSE, bool(result and result.get("program_updated")))
+        stream_output.scrubber = None
+        stream_output.pending_output = ""
+        result = _failed_player_action(state, config)
     finally:
         if routed_context is not None:
             _record_context_retrieval(routed_context, model_fetched_more)
-    if result is not None:
+    if result is not None and result.get("response_content"):
         cleaned = finalize_coach_output(result.get("response_content") or "")
         piece = ("\n\n" if visible else "") + cleaned
-        visible.append(piece)
-        yield piece
+        yield stream_output.publish(piece)
+    if not telemetry_recorded:
+        _record_telemetry_event(intent, router_ms, ttft_ms=stream_output.ttft_ms or 0.0,
+                                user_id=state.get("trainee_id", "default"), tool_metrics=tool_metrics)
     content = "".join(visible)
     if ledger is not None and not (result and result.get("program_edit_preview")) and _can_append_physician_followup(
         intent, content, pending_area_clarification
