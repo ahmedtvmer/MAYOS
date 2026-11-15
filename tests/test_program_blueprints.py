@@ -321,6 +321,19 @@ def test_weekly_muscle_coverage_guarantees(gender, frequency, preference):
     assert len(triceps_slots & slots) >= 2, f"Triceps direct work missing: {sorted(slots)}"
     assert {"forearm_wrist", "forearm_reverse"} & slots, "Forearm work missing"
     assert "shrug" in slots, "Shrug (Kelso nearest-match) work missing"
+    slots_by_day = {
+        day.day_name: {exercise.slot_key for exercise in day.exercises}
+        for day in program.days
+    }
+    if frequency == 3:
+        assert "shrug" in slots_by_day["Full Body #2"]
+        assert {"vertical_pull", "horizontal_row"} <= slots_by_day["Full Body #3"]
+    elif frequency == 4:
+        assert "horizontal_row" in slots_by_day["Upper 1"]
+        assert "shrug" in slots_by_day["Upper 2"]
+    else:
+        assert "chest_fly" in slots_by_day["Push"]
+        assert "shrug" in slots_by_day["Pull"]
 
 
 @pytest.mark.parametrize("gender,frequency", [("male", 3), ("female", 3)])
@@ -686,15 +699,15 @@ def test_five_day_ppl_upper_lower_has_balanced_volume():
         for day in program.days
     }
     assert slots_by_day["Push"] == [
-        "side_delts", "incline_press", "shoulder_press",
-        "triceps_overhead", "triceps_pushdown",
+        "side_delts", "incline_press", "shoulder_press", "chest_fly",
+        "triceps_overhead",
     ]
     assert slots_by_day["Upper"] == [
         "forearm_wrist", "flat_press", "vertical_pull", "horizontal_row", "biceps_preacher",
         "triceps_pushdown",
     ]
     assert slots_by_day["Pull"] == [
-        "rear_delts", "vertical_pull", "horizontal_row", "biceps_alt", "forearm_reverse",
+        "rear_delts", "vertical_pull", "shrug", "biceps_alt", "forearm_reverse",
     ]
     assert {
         day.day_name for day in program.days
@@ -704,7 +717,7 @@ def test_five_day_ppl_upper_lower_has_balanced_volume():
         [exercise for exercise in day.exercises if exercise.slot_key in {"incline_press", "flat_press", "chest_fly"}]
         for day in program.days
     ]
-    assert sum(exercise.working_sets for day in chest_days for exercise in day) == 4
+    assert sum(exercise.working_sets for day in chest_days for exercise in day) == 6
     assert sum(bool(day) for day in chest_days) == 2
     totals = [sum(exercise.working_sets for exercise in day.exercises) for day in program.days]
     assert all(10 <= total <= 15 for total in totals), totals

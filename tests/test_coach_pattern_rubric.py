@@ -161,13 +161,20 @@ def _remove_expected_back_slot_additions(snapshot, additions):
 
 
 def _remove_rebalanced_coach_slots(snapshot, days):
+    # Compare the rest of the template; focused assertions cover these trades.
     split_type = snapshot["split_type"]
     if days == 3:
-        removed_by_day = {"Full Body #3": {"chest_fly", "shrug"}}
+        removed_by_day = {
+            "Full Body #2": {"horizontal_row", "shrug"},
+            "Full Body #3": {"chest_fly", "shrug"},
+        }
     elif split_type == "PPL × UL":
-        removed_by_day = {"Push": {"chest_fly"}, "Pull": {"shrug"}}
+        removed_by_day = {
+            "Push": {"chest_fly", "triceps_pushdown"},
+            "Pull": {"horizontal_row", "shrug"},
+        }
     elif split_type == "Upper / Lower (Arms & Delts Augmented)":
-        removed_by_day = {"Upper 2": {"shrug"}}
+        removed_by_day = {"Upper 2": {"horizontal_row", "shrug"}}
     else:
         removed_by_day = {
             day["day_name"]: {"chest_fly"} for day in snapshot["days"]

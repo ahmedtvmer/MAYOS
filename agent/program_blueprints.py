@@ -1342,8 +1342,10 @@ _COACH_PATTERN_THREE_DAY_SLOTS: tuple[tuple[str, ...], ...] = (
         "incline_press", "vertical_pull", "shoulder_press", "biceps_preacher",
         "triceps_pushdown", "quad_compound", "ham_curl", "adductors", "calf",
     ),
+    # Keep the added third-day pull and row without exceeding 18 sets/day:
+    # trade the earlier row exposure for a shrug, preserving two trap days.
     (
-        "flat_press", "horizontal_row", "side_delts", "biceps_alt",
+        "flat_press", "shrug", "side_delts", "biceps_alt",
         "triceps_overhead", "forearm_wrist", "glute_thrust", "calf", "abs",
     ),
     (
@@ -1457,7 +1459,9 @@ def coach_upper_lower_days(frequency: int) -> list[DayBlueprint]:
         DayBlueprint(
             "Upper 2",
             (
-                "rear_delts", "flat_press", "horizontal_row", "vertical_pull",
+                # Upper 1 keeps the added row; swap this row for a shrug to keep
+                # the upper-day cap while spreading traps across both days.
+                "rear_delts", "flat_press", "shrug", "vertical_pull",
                 "shoulder_press", "biceps_alt", "triceps_overhead", "forearm_reverse",
             ),
             family="upper",
@@ -1498,7 +1502,9 @@ def coach_ppl_upper_lower_days(frequency: int) -> list[DayBlueprint]:
             "Push",
             (
                 "side_delts", "incline_press", "shoulder_press",
-                "triceps_overhead", "triceps_pushdown",
+                # The Upper day retains pushdowns, so trade Push's duplicate
+                # pushdown for chest fly without increasing weekly sets.
+                "chest_fly", "triceps_overhead",
             ),
             family="upper",
             sets_family="coach",
@@ -1506,7 +1512,9 @@ def coach_ppl_upper_lower_days(frequency: int) -> list[DayBlueprint]:
         DayBlueprint(
             "Pull",
             (
-                "rear_delts", "vertical_pull", "horizontal_row",
+                # Upper keeps the added row; Pull trades its row for direct
+                # trap work while retaining two lats days.
+                "rear_delts", "vertical_pull", "shrug",
                 "biceps_alt", "forearm_reverse",
             ),
             family="upper",

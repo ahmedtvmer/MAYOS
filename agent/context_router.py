@@ -19,7 +19,7 @@ from agent.player_tools import run_player_tool_calls
 from core.muscle_volume import default_muscle_credits
 from core.weak_point_suggestions import WEAK_POINT_ALIASES
 
-MAX_ROUTED_CONTEXT_BYTES = 3 * 1024
+MAX_ROUTED_CONTEXT_BYTES = 8 * 1024
 PROGRAM_TOPIC = "program_what_how_many"
 _PROGRAM = re.compile(r"\b(?:program|routine|split|(?:training|workout) plan)\b|برنامج|برنامجي|تقسيم", re.I)
 _QUESTION = re.compile(
