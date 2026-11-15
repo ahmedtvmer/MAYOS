@@ -469,7 +469,7 @@ void main() {
     await tester.tap(find.text('OK'));
     await _pumpUntilFound(
       tester,
-      find.text('The service is unavailable.'),
+      find.text('MAYOS had a problem; try again.'),
     );
     expect(find.text(disclosure), findsOneWidget);
     expect(find.text('OK'), findsOneWidget);
