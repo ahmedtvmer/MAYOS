@@ -74,17 +74,23 @@ def test_assembled_page_has_working_destinations(tmp_path):
     _html, parser = _parse(output)
     by_id = {link.get("id"): link for link in parser.links if link.get("id")}
     by_contact = {link.get("data-contact"): link for link in parser.links if link.get("data-contact")}
+    instagram_links = [link for link in parser.links if link.get("data-contact") == "instagram"]
 
     assert by_id["login"]["href"] == "/app/login"
     assert by_id["start-free"]["href"] == "/app/register"
-    assert by_id["coach-contact-en"]["href"] == "mailto:ahmedtamerhejazi@gmail.com?subject=MAYOS%20coach%20request"
+    assert by_id["coach-contact-en"]["href"] == "mailto:founders@mayos.online?subject=MAYOS%20coach%20request"
     assert by_id["coach-contact-ar"]["href"] == (
-        "mailto:ahmedtamerhejazi@gmail.com?subject=%D8%B7%D9%84%D8%A8%20"
+        "mailto:founders@mayos.online?subject=%D8%B7%D9%84%D8%A8%20"
         "%D8%A7%D9%86%D8%B6%D9%85%D8%A7%D9%85%20%D9%85%D8%AF%D8%B1%D8%A8%20%D8%A5%D9%84%D9%89%20%D9%85%D9%8A%D9%88%D8%B3"
     )
-    assert by_contact["instagram"]["href"] == "https://instagram.com/ahmedtvmer"
-    assert by_contact["tiktok"]["href"] == "https://tiktok.com/@ahmedforges"
-    assert by_contact["email"]["href"] == "mailto:ahmedtamerhejazi@gmail.com"
+    assert len(instagram_links) == 2
+    assert all(link["href"] == "https://www.instagram.com/mayosapp" for link in instagram_links)
+    assert by_contact["instagram"]["aria-label"] == "Instagram @mayosapp"
+    assert by_contact["instagram"]["title"] == "Instagram @mayosapp"
+    assert by_contact["tiktok"]["href"] == "https://www.tiktok.com/@mayosapp"
+    assert by_contact["tiktok"]["aria-label"] == "TikTok @mayosapp"
+    assert by_contact["tiktok"]["title"] == "TikTok @mayosapp"
+    assert by_contact["email"]["href"] == "mailto:founders@mayos.online"
     assert by_id["privacy-link"]["href"] == "https://api.mayos.online/privacy"
 
 

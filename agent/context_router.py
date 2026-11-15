@@ -20,6 +20,7 @@ from agent.player_tools import (
 )
 from core.muscle_volume import default_muscle_credits
 from core.weak_point_suggestions import WEAK_POINT_ALIASES
+from database.shared import _normalize_exercise_name
 
 MAX_ROUTED_CONTEXT_BYTES = 8 * 1024
 # Preserve a capped result for each remaining model tool round.
@@ -94,9 +95,10 @@ def _normalize(text: str) -> str:
 
 
 def _mentions(text: str, vocabulary: Sequence[tuple[str, str]]) -> list[_Mention]:
+    text = _normalize_exercise_name(text)
     matches = []
     for key, phrase in vocabulary:
-        phrase = _normalize(phrase)
+        phrase = _normalize_exercise_name(phrase)
         if not phrase:
             continue
         # Arabic articles/conjunctions can attach to gym nicknames.
@@ -256,6 +258,7 @@ def _day_words(days: Sequence[Any]) -> list[tuple[str, str]]:
 
 def _without_day_names(text: str, days: Sequence[Any]) -> str:
     # Named muscle days scope the whole day, not only matching exercises.
+    text = _normalize_exercise_name(text)
     characters = list(text)
     for match in _mentions(text, _day_words(days)):
         characters[match.start:match.end] = " " * (match.end - match.start)

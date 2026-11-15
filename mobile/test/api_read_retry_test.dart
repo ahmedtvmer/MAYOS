@@ -159,7 +159,9 @@ void main() {
 
     await expectLater(_client(adapter, delays).volume(),
         throwsA(isA<ApiException>()
-            .having((error) => error.statusCode, 'status', 503)));
+            .having((error) => error.statusCode, 'status', isNull)
+            .having((error) => error.message, 'message',
+                "You're offline. We'll retry when you're back online.")));
     expect(adapter.requests, hasLength(1));
     expect(delays, isEmpty);
   });

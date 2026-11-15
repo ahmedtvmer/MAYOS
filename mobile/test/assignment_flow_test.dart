@@ -467,7 +467,10 @@ void main() {
     await _pumpUntilFound(tester, find.text(disclosure));
 
     await tester.tap(find.text('OK'));
-    await _pumpUntilFound(tester, find.text('The service is unavailable.'));
+    await _pumpUntilFound(
+      tester,
+      find.text('MAYOS had a problem; try again.'),
+    );
     expect(find.text(disclosure), findsOneWidget);
     expect(find.text('OK'), findsOneWidget);
     expect(fake.rosterAiDisclosureRequests, 1);
@@ -598,7 +601,7 @@ void main() {
     await tester.tap(find.text('Accept assignment'));
     await _pumpUntilFound(tester, find.text('Your coach'));
     expect(find.text('Coach Bob'), findsOneWidget);
-    expect(find.text('The service is unavailable.'), findsNothing);
+    expect(find.text('MAYOS had a problem; try again.'), findsNothing);
     expect(
       fake.adapter.requests.where((r) => r.path == '/assignments/me').length,
       meCallsBefore,

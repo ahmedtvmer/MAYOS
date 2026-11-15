@@ -191,7 +191,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
           accountId == null ? null : await cache.readLatestSession(accountId);
     }
     if (program != null && _isCurrentLoad(generation, accountId) &&
-        !ref.read(authControllerProvider).isOffline) {
+        !ref.read(authControllerProvider).isShowingSavedData) {
       final ProgramDay? nextDay = selectNextDay(program, <TrainedDay>[
         if (latestSession != null) TrainedDay.fromLatestSession(latestSession),
         for (final WorkoutDraft draft in ref.read(draftSyncServiceProvider).drafts)
@@ -496,7 +496,7 @@ class _HomeBody extends StatelessWidget {
             ),
           if (programFromCache) ...<Widget>[
             const SizedBox(height: MayosSpacing.sm),
-            _InlineNotice(message: displayCopyOf(context).offlineSavedProgram),
+            _InlineNotice(message: displayCopyOf(context).savedProgramNote),
           ] else if (data.partialError != null) ...<Widget>[
             const SizedBox(height: MayosSpacing.sm),
             _InlineNotice(message: copy.failureMessage(data.partialError!)),
