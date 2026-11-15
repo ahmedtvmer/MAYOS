@@ -582,6 +582,26 @@ def _weekly_slot_sets(program, slots):
     )
 
 
+@pytest.mark.parametrize("muscle", ["forearms", "adductors"])
+def test_nonaggregate_focus_muscles_keep_extra_gym_work(fresh_store, muscle):
+    fresh_store.switch_user(f"focus_nonaggregate_{muscle}")
+    baseline = _focus_draft(fresh_store, "ppl_x_ul", 5)
+    focused = _focus_draft(fresh_store, "ppl_x_ul", 5, (muscle,))
+    focus = focused.program_rationale["focus_muscles"][0]
+    assert focus["status"] == "added"
+    assert _weekly_slot_sets(focused, FOCUS_MUSCLE_SLOTS[muscle]) >= (
+        _weekly_slot_sets(baseline, FOCUS_MUSCLE_SLOTS[muscle]) + 2
+    )
+    baseline_ids = {exercise.exercise_id for day in baseline.days for exercise in day.exercises}
+    assert not baseline_ids.intersection(focus["extra_exercise_ids"])
+    for day, record in _focus_extra_records(focused):
+        assert day.exercises[0].exercise_id == record["exercise_id"]
+        dose = record["rationale"]["prescription"]["sets"]["params"]
+        assert dose["actual_weekly_sets"] >= dose["target_weekly_sets"]
+    credits = fresh_store.ledger.volume_review_exercise_credits(focus["extra_exercise_ids"])
+    assert all(muscle not in attribution for attribution in credits.values())
+
+
 def _weekly_credited_sets(program, ledger, focus_muscle):
     main_group = main_group_for_focus(focus_muscle)
     exercise_ids = [

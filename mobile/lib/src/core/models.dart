@@ -2621,7 +2621,7 @@ class VolumeReviewMuscle {
       muscle: json['muscle'] as String,
       verdict: json['verdict'] as String,
       reason: json['reason'] as String,
-      setDelta: (json['set_delta'] as num).toInt(),
+      setDelta: (json['set_delta'] as num).toDouble(),
       focusReason: rawFocusReason is Map<String, dynamic>
           ? Map<String, dynamic>.unmodifiable(rawFocusReason)
           : null,
@@ -2631,7 +2631,7 @@ class VolumeReviewMuscle {
   final String muscle;
   final String verdict;
   final String reason;
-  final int setDelta;
+  final double setDelta;
   final Map<String, dynamic>? focusReason;
 }
 

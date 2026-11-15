@@ -1010,26 +1010,13 @@ def _apply_focus_muscles(program, focus_muscles, profile, ledger, day_families):
     for focus in focus_muscles:
         muscle = focus["muscle"]
         focus_policy = FOCUS_EXTRA_TABLE[muscle]
-        target_group = main_group_for_focus(muscle)
-        if target_group is None:
-            focus_reasons.append({
-                "muscle": muscle,
-                "source": focus.get("source", "named"),
-                "status": "unavailable",
-                "reason": _focus_unavailable_reason(
-                    muscle,
-                    context.equipment_access,
-                    None,
-                    _focus_restriction_reason(focus_policy, context, ledger),
-                ),
-            })
-            continue
-        baseline_ids = [
-            str(exercise.exercise_id)
+        target_group = main_group_for_focus(muscle) or muscle
+        baseline_slots = {
+            str(exercise.exercise_id): exercise.slot_key
             for exercises in baseline_exercises.values()
             for exercise in exercises
-        ]
-        exercise_credits = ledger.volume_review_exercise_credits(baseline_ids)
+        }
+        exercise_credits = _focus_placement_credits(ledger, baseline_slots)
         baseline = _focus_baseline_sets(target_group, baseline_exercises, exercise_credits)
         target = _focus_target_weekly_sets(baseline)
         plan = _FocusDosePlan(
@@ -1055,14 +1042,24 @@ def _focus_baseline_sets(target_group, baseline_exercises, exercise_credits):
     )
 
 
+def _focus_placement_credits(ledger, exercise_slots):
+    credits = ledger.volume_review_exercise_credits(list(exercise_slots))
+    # These Focus choices use their established slots without joining aggregate volume.
+    for exercise_id, slot in exercise_slots.items():
+        for muscle in ("forearms", "adductors"):
+            if slot in FOCUS_MUSCLE_SLOTS[muscle]:
+                credits.setdefault(exercise_id, {})[muscle] = {"credit": 1.0}
+    return credits
+
+
 def _current_focus_weekly_sets(program, plan, ledger):
     current_exercises = _current_focus_exercises(program)
-    exercise_ids = [
-        str(exercise.exercise_id)
+    exercise_slots = {
+        str(exercise.exercise_id): exercise.slot_key
         for exercises in current_exercises.values()
         for exercise in exercises
-    ]
-    plan.exercise_credits.update(ledger.volume_review_exercise_credits(exercise_ids))
+    }
+    plan.exercise_credits.update(_focus_placement_credits(ledger, exercise_slots))
     return _focus_baseline_sets(plan.target_group, current_exercises, plan.exercise_credits)
 
 
@@ -1118,7 +1115,7 @@ def _insert_focus_extras(program, plan, ledger, previous_focus_reasons):
 
 def _covering_focus_exercise(plan, previous_focus_reasons):
     for previous in reversed(previous_focus_reasons):
-        if main_group_for_focus(previous["muscle"]) != plan.target_group:
+        if (main_group_for_focus(previous["muscle"]) or previous["muscle"]) != plan.target_group:
             continue
         for extra in reversed(previous.get("extras", [])):
             exercise_id = str(extra["exercise_id"])
@@ -1156,7 +1153,7 @@ def _insert_next_focus_extra(program, plan, opened_days, ledger):
     if candidate is None:
         return None
     candidate_id = str(candidate["id"])
-    plan.exercise_credits.update(ledger.volume_review_exercise_credits([candidate_id]))
+    plan.exercise_credits.update(_focus_placement_credits(ledger, {candidate_id: slot_key}))
     if _focus_exercise_credit(plan, candidate_id) <= 0:
         return None
     day, day_choice = _focus_target_day_for_extra(
@@ -1287,16 +1284,14 @@ def _record_focus_actual(program, focus_reason, actual):
 
 def _recompute_focus_actual_weekly_sets(program, focus_reasons, ledger):
     current_exercises = _current_focus_exercises(program)
-    exercise_ids = [
-        str(exercise.exercise_id)
+    exercise_slots = {
+        str(exercise.exercise_id): exercise.slot_key
         for exercises in current_exercises.values()
         for exercise in exercises
-    ]
-    exercise_credits = ledger.volume_review_exercise_credits(exercise_ids)
+    }
+    exercise_credits = _focus_placement_credits(ledger, exercise_slots)
     for focus_reason in focus_reasons:
-        target_group = main_group_for_focus(focus_reason["muscle"])
-        if target_group is None:
-            continue
+        target_group = main_group_for_focus(focus_reason["muscle"]) or focus_reason["muscle"]
         actual = _focus_baseline_sets(target_group, current_exercises, exercise_credits)
         _record_focus_actual(program, focus_reason, actual)
 

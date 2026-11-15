@@ -735,9 +735,15 @@ class MayosCopy {
       ? primaryMuscle
       : '$primaryMuscle ($selectedCount)';
   String primaryMuscleLabel(String muscle) {
+    switch (muscle.trim().toLowerCase()) {
+      case 'shoulders':
+        return isArabic ? 'الأكتاف' : 'Shoulders';
+      case 'core':
+        return isArabic ? 'عضلات الجذع' : 'Core';
+    }
     for (final PrimaryMuscle primaryMuscle in primaryMuscles) {
-      if (primaryMuscle.apiValue == muscle) {
-        return isArabic ? primaryMuscle.arabicLabel : muscle;
+      if (primaryMuscle.apiValue.toLowerCase() == muscle.trim().toLowerCase()) {
+        return isArabic ? primaryMuscle.arabicLabel : primaryMuscle.apiValue;
       }
     }
     return muscle;
@@ -1233,9 +1239,14 @@ class MayosCopy {
 
   // #234 Volume review copy.
   String get volumeReview => isArabic ? 'مراجعة مجموعات التدريب' : 'Volume review';
-  String volumeReviewChange(int delta) => isArabic
-      ? '${delta > 0 ? '+' : ''}$delta مجموعة أسبوعيًا'
-      : '${delta > 0 ? '+' : ''}$delta sets per week';
+  String volumeReviewChange(num delta) {
+    final String amount = delta == delta.roundToDouble()
+        ? delta.toInt().toString()
+        : delta.toString();
+    return isArabic
+        ? '${delta > 0 ? '+' : ''}$amount مجموعة أسبوعيًا'
+        : '${delta > 0 ? '+' : ''}$amount sets per week';
+  }
   String volumeReviewReason(String verdict, String muscle) {
     if (isArabic) {
       switch (verdict) {

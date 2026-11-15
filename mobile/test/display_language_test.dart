@@ -26,6 +26,30 @@ class _FailingStore extends InMemoryDisplayLanguageStore {
 }
 
 void main() {
+  test('review groups and fractional changes translate in both modes', () {
+    const Map<String, String> english = <String, String>{
+      'chest': 'Chest', 'lats': 'Lats', 'traps': 'Traps',
+      'rear delts': 'Rear Delts', 'shoulders': 'Shoulders', 'core': 'Core',
+      'biceps': 'Biceps', 'triceps': 'Triceps', 'quads': 'Quads',
+      'hamstrings': 'Hamstrings', 'glutes': 'Glutes', 'calves': 'Calves',
+    };
+    for (final MapEntry<String, String> muscle in english.entries) {
+      expect(const MayosCopy('en').primaryMuscleLabel(muscle.key), muscle.value);
+      expect(const MayosCopy('ar').primaryMuscleLabel(muscle.key),
+          isNot(contains(muscle.key)));
+      expect(const CoachCopy('ar').muscleName(muscle.key),
+          isNot(contains(muscle.key)));
+    }
+    final VolumeReviewMuscle muscle = VolumeReviewMuscle.fromJson(<String, dynamic>{
+      'muscle': 'triceps', 'verdict': 'stalled', 'reason': 'Flat primary lifts',
+      'set_delta': 0.5, 'edits': <dynamic>[], 'weekly_sets': 7.5,
+    });
+    expect(muscle.setDelta, 0.5);
+    expect(const MayosCopy('en').volumeReviewChange(muscle.setDelta), '+0.5 sets per week');
+    expect(const MayosCopy('ar').volumeReviewChange(muscle.setDelta), '+0.5 مجموعة أسبوعيًا');
+    expect(const MayosCopy('en').volumeReviewChange(1.0), '+1 sets per week');
+  });
+
   test('Weak point muscle labels are present in English and Arabic', () {
     const List<String> muscles = <String>[
       'chest', 'upper_chest', 'lats', 'shoulders', 'side_delts', 'rear_delts', 'traps', 'biceps',

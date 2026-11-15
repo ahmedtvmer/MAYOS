@@ -258,6 +258,8 @@ def test_chat_writes_weak_points_in_english_and_arabic_without_guessing(api, mon
     for request_text, expected in (
         ("My weak points are chest and upper chest", ["chest", "upper_chest"]),
         ("نقاط ضعفي هي الصدر والظهر", ["chest", "lats"]),
+        ("My weak point is rear delts", ["rear_delts"]),
+        ("نقطة ضعفي هي الأكتاف الخلفية", ["rear_delts"]),
         ("My weak points are lats and traps", ["lats", "traps"]),
     ):
         response = client.post(
@@ -289,6 +291,8 @@ def test_chat_writes_weak_points_in_english_and_arabic_without_guessing(api, mon
         ("Change my current goal to grow my glutes", "yes", ["glutes"], "Weak point"),
         ("Change my current goal to build my shoulders", "ماشي", ["shoulders"], "Weak point"),
         ("My goal is grow my abs", "تمام", ["abs"], "Weak point"),
+        ("My goal is grow my rear delts", "yes", ["rear_delts"], "rear delts"),
+        ("عايز أكبر الأكتاف الخلفية", "أيوه", ["rear_delts"], "الأكتاف الخلفية"),
         ("غيّر هدفي الحالي إلى عايز صدر أكبر", "أيوه", ["chest"], "نقطة ضعف"),
         ("هدفي أكبر صدري", "نعم", ["chest"], "نقطة ضعف"),
         ("عايز أكبر صدري", "ايوة", ["chest"], "نقطة ضعف"),

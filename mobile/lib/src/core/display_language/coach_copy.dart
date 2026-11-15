@@ -36,7 +36,7 @@ class CoachCopy {
         'upper_chest' => isArabic ? 'أعلى الصدر' : 'Upper chest',
         'back' || 'lats' => isArabic ? 'اللاتس (الظهر العريض)' : 'Lats',
         'traps' => isArabic ? 'الترابيس' : 'Traps',
-        'rear_delts' => isArabic ? 'الأكتاف الخلفية' : 'Rear delts',
+        'rear_delts' || 'rear delts' => isArabic ? 'الأكتاف الخلفية' : 'Rear delts',
         'shoulders' => isArabic ? 'الأكتاف' : 'Shoulders',
         'side_delts' => isArabic ? 'الأكتاف الجانبية' : 'Side delts',
         'biceps' => isArabic ? 'العضلة ذات الرأسين' : 'Biceps',
@@ -48,6 +48,7 @@ class CoachCopy {
         'adductors' => isArabic ? 'المقربات' : 'Adductors',
         'calves' => isArabic ? 'السمانة' : 'Calves',
         'abs' => isArabic ? 'البطن' : 'Abs',
+        'core' => isArabic ? 'عضلات الجذع' : 'Core',
         _ => key,
       };
   String get profile => isArabic ? 'الملف الشخصي' : 'Profile';
