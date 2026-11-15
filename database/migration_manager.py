@@ -1281,7 +1281,7 @@ def _migrate_v54_to_v55(conn: sqlite3.Connection) -> None:
 
 
 def _migrate_v55_to_v56(conn: sqlite3.Connection) -> None:
-    """An empty slot: the meal setup change it was reserved for landed after chat search, as v58."""
+    """An empty slot: the meal setup change it was reserved for landed after chat search, as v59."""
 
 
 def _migrate_v56_to_v57(conn: sqlite3.Connection) -> None:

@@ -27,11 +27,11 @@ def _candidates(client, headers, plan, query=""):
     return response.json()
 
 
-def _add_search_food(db):
+def _add_search_food(db, name="Searched food"):
     with db.catalog_locked() as connection:
         cursor = connection.execute("SELECT * FROM foods WHERE id='alternative'")
         food = dict(zip([column[0] for column in cursor.description], cursor.fetchone()))
-        food.update(id="searched", name="Searched food", source_name="Searched food",
+        food.update(id="searched", name=name, source_name=name,
                     staple_roles_json="[]")
         columns = ",".join(food)
         placeholders = ",".join("?" for _ in food)
@@ -129,6 +129,16 @@ def test_search_swap_survives_target_regeneration_and_is_removed_when_strictly_r
         "restrictions": {"allergies": [], "dislikes": [], "vegetarian": True}})
     assert changed.status_code == 200, changed.text
     assert client.get("/nutrition/meals", headers=headers).json()["meals"][0]["foods"][0]["id"] == "protein"
+
+
+def test_food_swap_search_normalizes_cookies_to_cookie(meals_api):
+    client, db, headers, _today = meals_api
+    _add_search_food(db, "Cookie")
+    plan = _enable(client, headers)
+
+    candidates = _candidates(client, headers, plan, "cookies")
+
+    assert [candidate["food"]["id"] for candidate in candidates["search"]] == ["searched"]
 
 
 def test_allowed_swap_survives_temporarily_unavailable_generation(meals_api):

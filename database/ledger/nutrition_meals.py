@@ -87,8 +87,18 @@ def _variant_fingerprint(request, replacements):
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
 
+def _ledger_database_identity(ledger):
+    """Separate worker-cache entries for reused ledger ids in different stores."""
+    database_path = next(
+        (row[2] for row in ledger.conn.execute("PRAGMA database_list") if row[1] == "main"),
+        "",
+    )
+    return database_path or f"connection:{id(ledger.conn)}"
+
+
 def _variant_generation_key(ledger, entry_date, day_type, fingerprint):
-    return f"{ledger.ledger_id}:{entry_date}:{day_type}:{fingerprint}"
+    identity = _ledger_database_identity(ledger)
+    return f"{ledger.ledger_id}:{identity}:{entry_date}:{day_type}:{fingerprint}"
 
 
 def _food_cache_identity(ledger):

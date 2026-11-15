@@ -116,7 +116,10 @@ def test_other_day_type_is_generated_on_demand_from_pinned_foods(meals_api):
     assert not _meal_cache_rows(db, ledger_id, anchor, first["plan_version_id"])
     demanded = client.get("/nutrition/meals", headers=headers).json()
 
-    assert demanded == read_only
+    api_permissions = {"can_enable", "can_request_swap"}
+    assert {key: value for key, value in demanded.items() if key not in api_permissions} == read_only
+    assert demanded["can_enable"] is True
+    assert demanded["can_request_swap"] is False
     assert demanded["status"] == "ready" and demanded["day_type"] == other
     assert demanded["plan_version_id"] == first["plan_version_id"]
     assert all(meal["foods"][0]["nutrients_per_100g"]["energy_kcal"] == 128 for meal in demanded["meals"])
@@ -412,13 +415,15 @@ def test_coach_target_edits_preserve_coach_meals_with_notice_and_gate_enable(mea
     assert client.get("/nutrition/meals", headers=headers).json()["targets_changed"]
 
 
-def test_lazy_v59_adds_meals_without_rewriting_existing_versions(tmp_path):
+def test_lazy_v60_adds_meals_without_rewriting_existing_versions(tmp_path):
     with sqlite3.connect(":memory:") as connection:
         connection.execute("CREATE TABLE nutrition_plan_versions(id INTEGER PRIMARY KEY, targets_json TEXT)")
         connection.execute("INSERT INTO nutrition_plan_versions VALUES(1,'{\"calories\":2000}')")
-        set_ledger_schema_version(connection, 58)
+        set_ledger_schema_version(connection, 59)
         connection.commit()
-        apply_lazy_migrations(connection, "meal-player", tmp_path / "users", tmp_path / "backups")
+        apply_lazy_migrations(
+            connection, "meal-player", tmp_path / "users", tmp_path / "backups", target_version=60
+        )
         assert connection.execute("SELECT targets_json, meals_json FROM nutrition_plan_versions").fetchone() == ('{"calories":2000}', None)
 
 

@@ -26,7 +26,7 @@ def food_api(api, tmp_path):  # noqa: F811
     names = {
         "staple": "Chicken thigh", "exact": "Chicken", "prefix": "Chicken breast",
         "alias": "Poultry cooked", "contains": "Roast chicken", "raw": "Chicken raw",
-        "hidden": "Chicken hidden", "egg": "Egg", "rice": "Rice",
+        "hidden": "Chicken hidden", "egg": "Egg", "rice": "Rice", "cookie": "Cookie",
         **{f"extra-{index}": f"Food item {index}" for index in range(11)},
     }
     sources = [{"id": key, "name": name, "source": "SR Legacy", "category": "Food",
@@ -119,6 +119,14 @@ def test_search_matches_display_arabic_and_aliases_with_letter_normalization(foo
     client, _db, headers, _today = food_api
     foods = client.get("/nutrition/foods", headers=headers, params={"q": query}).json()["foods"]
     assert [food["id"] for food in foods] == [food_id]
+
+
+def test_food_library_search_matches_cookies_to_cookie(food_api):
+    client, _db, headers, _today = food_api
+    foods = client.get(
+        "/nutrition/foods", headers=headers, params={"q": "cookies"}
+    ).json()["foods"]
+    assert [food["id"] for food in foods] == ["cookie"]
 
 
 def test_unreviewed_arabic_names_and_aliases_do_not_match(food_api):
