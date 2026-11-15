@@ -158,7 +158,8 @@ class AuthState {
   const AuthState._(this.status, this.session, this.notice, this.noticeFailure,
       [this.savedSessionIssue]);
 
-  const AuthState.loading() : this._(AuthStatus.loading, null, null, null);
+  const AuthState.loading({SavedSessionIssue? savedSessionIssue})
+      : this._(AuthStatus.loading, null, null, null, savedSessionIssue);
 
   const AuthState.unauthenticated([String? notice])
       : this._(AuthStatus.unauthenticated, null, notice, null);
@@ -177,7 +178,8 @@ class AuthState {
   final AccountSession? session;
   final SavedSessionIssue? savedSessionIssue;
 
-  bool get isShowingSavedData => savedSessionIssue != null;
+  bool get isShowingSavedData =>
+      status == AuthStatus.authenticated && savedSessionIssue != null;
 
   /// A one-shot message to show on the login screen (for example, after account
   /// deletion). It is not a session: [isAuthenticated] ignores it.
@@ -365,7 +367,7 @@ class AuthController extends StateNotifier<AuthState> {
     // Older installs without a saved Account stay on splash until online.
     _needsSessionConfirmation = true;
     state = saved == null
-        ? const AuthState.loading()
+        ? AuthState.loading(savedSessionIssue: _savedSessionIssue(error))
         : AuthState.authenticated(
             saved,
             savedSessionIssue: _savedSessionIssue(error),
@@ -377,7 +379,10 @@ class AuthController extends StateNotifier<AuthState> {
 
   void _showSavedSessionIssue(ApiException error) {
     final AccountSession? session = state.session;
-    if (session == null) return;
+    if (session == null) {
+      state = AuthState.loading(savedSessionIssue: _savedSessionIssue(error));
+      return;
+    }
     state = AuthState.authenticated(
       session,
       notice: state.notice,

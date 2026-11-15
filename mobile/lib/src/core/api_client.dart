@@ -15,6 +15,7 @@ import 'baselines.dart';
 import 'chat_models.dart';
 import 'chat_stream_fetch.dart';
 import 'client_dimensions.dart';
+import 'display_language/message_resolution.dart';
 import 'models.dart';
 import 'coach_food_log_models.dart';
 import 'food_log_models.dart';
@@ -607,17 +608,14 @@ class ApiClient {
     int? status,
     Map<String, dynamic> body,
   ) {
+    if (status != null && status >= 500) {
+      return _serverErrorFailure(status, body);
+    }
     final Object? rawDetail = body['detail'];
     const String genericDetail = 'The request contains invalid fields.';
     final String fallback = rawDetail is String ? rawDetail : genericDetail;
     final ServerFailureMessage? serverFailure =
         _serverMessageMetadata(body, fallback);
-    if (status != null &&
-        status >= 500 &&
-        serverFailure == null &&
-        !_hasFailureDetail(body)) {
-      return _serviceProblem(status);
-    }
     if (rawDetail is String) {
       return _detailFailure(status, body, rawDetail, serverFailure);
     }
@@ -633,11 +631,45 @@ class ApiClient {
     return ApiException(genericDetail, statusCode: status, failureMessage: serverFailure);
   }
 
-  static bool _hasFailureDetail(Map<String, dynamic> body) {
-    final Object? detail = body['detail'];
-    final Object? errorCode = body['error'];
-    return (detail is String && detail.trim().isNotEmpty) ||
-        (errorCode is String && errorCode.trim().isNotEmpty);
+  static ApiException _serverErrorFailure(
+    int status,
+    Map<String, dynamic> body,
+  ) {
+    final ServerFailureMessage? safeFailure =
+        _localizedServerFailure(body);
+    if (safeFailure == null) return _serviceProblem(status);
+    return ApiException(
+      safeFailure.safeEnglishFallback,
+      statusCode: status,
+      errorCode: _machineCode(body),
+      failureMessage: safeFailure,
+    );
+  }
+
+  static ServerFailureMessage? _localizedServerFailure(
+    Map<String, dynamic> body,
+  ) {
+    final ServerFailureMessage? metadata = _serverMessageMetadata(body, '');
+    if (metadata == null) return null;
+    // A server detail is safe only when the code has catalog copy in both UI
+    // languages; the server fallback itself is never trusted for a 5xx.
+    final String? englishMessage = resolveCatalogMessage(
+      messageCode: metadata.messageCode,
+      messageParams: metadata.messageParams,
+      displayLanguage: 'en',
+    );
+    final String? arabicMessage = resolveCatalogMessage(
+      messageCode: metadata.messageCode,
+      messageParams: metadata.messageParams,
+      displayLanguage: 'ar',
+    );
+    if (englishMessage == null || arabicMessage == null) return null;
+    return ServerFailureMessage(
+      englishMessage,
+      messageCode: metadata.messageCode,
+      messageParams: metadata.messageParams,
+      messageFallback: englishMessage,
+    );
   }
 
   static ApiException _detailFailure(

@@ -493,6 +493,7 @@ class FakeMayosApi {
   int _chatSeq = 0;
   // When true, chat reads/sends fail as a dropped connection (offline).
   bool chatOffline = false;
+  int? chatHistoryFailureStatus;
   // When true, `POST /chat/messages` emits an SSE error frame after the user
   // message is stored (a failed turn; no assistant reply is persisted).
   bool chatSendError = false;
@@ -2288,6 +2289,13 @@ class FakeMayosApi {
     }
     if (chatOffline) {
       return const FakeResponse.networkFailure();
+    }
+    final int? failureStatus = chatHistoryFailureStatus;
+    if (failureStatus != null) {
+      return FakeResponse(
+        failureStatus,
+        const <String, dynamic>{'detail': 'Database not ready.'},
+      );
     }
     if (request.method == 'DELETE') {
       chatHistory.clear();

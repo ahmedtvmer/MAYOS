@@ -4,6 +4,7 @@ import 'package:mayos_mobile/src/core/app_failure.dart';
 import 'package:mayos_mobile/src/core/chat_models.dart';
 import 'package:mayos_mobile/src/core/connectivity_message.dart';
 import 'package:mayos_mobile/src/core/display_language/catalog.dart';
+import 'package:mayos_mobile/src/core/display_language/message_copy.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 
 import 'support/fake_api_adapter.dart';
@@ -125,7 +126,7 @@ void main() {
     );
   });
 
-  test('network and 5xx failures without detail use localized generic copy',
+  test('#721 unsupported 5xx details use localized generic copy',
       () async {
     final ApiException network = await _expectApiException(
       _client(FakeApiAdapter((_) => const FakeResponse.networkFailure()),
@@ -145,14 +146,21 @@ void main() {
       null,
       '<html>Bad gateway</html>',
       <String, String>{'detail': ' '},
+      <String, String>{'detail': 'Database not ready.'},
+      <String, String>{
+        'detail': 'Internal Server Error',
+        'message_code': 'http.future_error.v1',
+        'message_fallback': 'Internal Server Error',
+      },
     ]) {
       final ApiException noDetail = await _expectApiException(
         _client(FakeApiAdapter((_) => FakeResponse(503, body)), language: 'ar')
             .clearChatHistory,
       );
+      expect(noDetail.message, 'MAYOS had a problem; try again.');
       expect(
         MayosCopy('ar').failureMessage(apiFailureMessage(noDetail)),
-        'واجهت MAYOS مشكلة. حاول مرة أخرى.',
+        MayosCopy('ar').serviceUnavailable,
       );
       expect(
         MayosCopy('en').failureMessage(apiFailureMessage(noDetail)),
@@ -162,11 +170,14 @@ void main() {
   });
 
   for (final bool streamed in <bool>[false, true]) {
-    test('#721 ${streamed ? 'streamed' : 'JSON'} 5xx keeps the action detail',
+    test('#721 ${streamed ? 'streamed' : 'JSON'} 5xx localizes a known code',
         () async {
       final ApiClient client = _client(FakeApiAdapter(
         (_) => const FakeResponse(503, <String, dynamic>{
-          'detail': 'Could not save food.',
+          'detail': 'Database not ready.',
+          'message_code': 'http.server_error.v1',
+          'message_params': <String, Object>{},
+          'message_fallback': 'Internal Server Error.',
         }),
       ));
       final ApiException error = await _expectApiException(() async {
@@ -178,12 +189,13 @@ void main() {
       });
 
       expect(error.statusCode, 503);
-      expect(error.message, 'Could not save food.');
+      expect(error.message, 'The service is unavailable. Please retry.');
       for (final String language in <String>['en', 'ar']) {
-        expect(
-          MayosCopy(language).failureMessage(mutationFailureMessage(error)),
-          'Could not save food.',
-        );
+        final String localized = MayosCopy(language)
+            .failureMessage(mutationFailureMessage(error));
+        expect(localized, MessageCopy(language).requestUnavailable);
+        expect(localized, isNot('Database not ready.'));
+        expect(localized, isNot('Internal Server Error.'));
       }
     });
   }

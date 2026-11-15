@@ -22,7 +22,7 @@ FailureMessage apiFailureMessage(ApiException error) =>
     error.failureMessage ?? ServerFailureMessage(error.message);
 
 /// A failed mutation gets its stronger app-authored connectivity message;
-/// every service refusal retains the original server detail or typed code.
+/// service refusals retain typed messages or the safe generic 5xx copy.
 FailureMessage mutationFailureMessage(ApiException error) =>
     isNetworkFailure(error)
         ? const AppFailureMessage(

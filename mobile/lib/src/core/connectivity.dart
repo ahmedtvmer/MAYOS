@@ -151,24 +151,24 @@ class OfflineBannerSlot extends ConsumerWidget {
         },
       );
     }
-    final SavedSessionIssue? savedIssue =
+    final SavedSessionIssue? restoreIssue =
         ref.watch(authControllerProvider).savedSessionIssue;
-    final bool saved = savedIssue != null;
+    final bool hasRestoreIssue = restoreIssue != null;
     final bool online =
         enabled ? ref.watch(connectivityControllerProvider) : true;
-    final String? message = switch (savedIssue) {
+    final String? message = switch (restoreIssue) {
       null => null,
       SavedSessionIssue.offline => displayCopyOf(context).offlineSavedData,
       SavedSessionIssue.serviceProblem =>
         displayCopyOf(context).serviceUnavailable,
     };
     return Visibility(
-      visible: saved || (enabled && !online),
+      visible: hasRestoreIssue || (enabled && !online),
       child: SizedBox(
         width: double.infinity,
         child: OfflineBanner(
           label: message,
-          icon: savedIssue == SavedSessionIssue.serviceProblem
+          icon: restoreIssue == SavedSessionIssue.serviceProblem
               ? Icons.warning_amber_rounded
               : null,
         ),
