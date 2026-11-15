@@ -397,11 +397,34 @@ def test_issue_720_food_search_keeps_matching_plural_food_names(query, food_name
     assert food_match_rank({normalized_name}, set(), normalized_query) == 0
 
 
+@pytest.mark.parametrize(
+    ("query", "expected_matches"),
+    [
+        ("inclne bench press", {"47": "Incline Bench Press (Barbell)"}),
+        ("decilne bench press", {"33": "Decline Bench Press (Barbell)"}),
+    ],
+)
+def test_issue_720_real_catalog_fuzzy_search_matches_movement_qualifier_typos(
+    real_library_store, query, expected_matches
+):
+    matches = real_library_store.find_exercises_by_name(query, limit=None)
+
+    assert {match["id"]: match["name"] for match in matches} == expected_matches
+
+
+def test_issue_720_real_catalog_fuzzy_search_keeps_internal_and_external_distinct(
+    real_library_store,
+):
+    matches = real_library_store.find_exercises_by_name("internal rotation", limit=None)
+
+    assert all("External Rotation" not in match["name"] for match in matches)
+
+
 def test_issue_720_real_catalog_fuzzy_search_keeps_opposite_movement_words_distinct(
     real_library_store,
 ):
     matches = real_library_store.find_exercises_by_name(
-        "Standing Internal Rotation (Dumbbell)", limit=None
+        "standing internal rotation", limit=None
     )
 
     assert "864" not in {match["id"] for match in matches}

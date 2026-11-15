@@ -1,6 +1,7 @@
 """Exercise library lookup with display names and aliases (ADR 053, #225)."""
 
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Any, Iterable, Literal
 from database.shared import _normalize_exercise_name
 from database.exercise_library.filters import ExerciseFilters
@@ -281,15 +282,42 @@ def _edit_distance_with_transposition(left: str, right: str) -> int:
     return previous[-1]
 
 
+@lru_cache(maxsize=512)
+def _closest_movement_tokens(word: str) -> tuple[str, ...]:
+    if word in EXACT_MOVEMENT_TOKENS:
+        return (word,)
+    closest_tokens = []
+    closest_distance = None
+    for movement_token in EXACT_MOVEMENT_TOKENS:
+        if min(len(word), len(movement_token)) < 4:
+            continue
+        maximum_length = max(len(word), len(movement_token))
+        maximum_distance = max(1, maximum_length // 4)
+        if abs(len(word) - len(movement_token)) > maximum_distance:
+            continue
+        distance = _edit_distance_with_transposition(word, movement_token)
+        if distance > maximum_distance:
+            continue
+        if closest_distance is None or distance < closest_distance:
+            closest_tokens = [movement_token]
+            closest_distance = distance
+        elif distance == closest_distance:
+            closest_tokens.append(movement_token)
+    return tuple(sorted(closest_tokens))
+
+
 def _fuzzy_token_matches(
     word: str, candidate_words: tuple[str, ...]
 ) -> list[tuple[int, float]]:
     matches = []
+    query_movement_tokens = _closest_movement_tokens(word)
     for index, candidate_word in enumerate(candidate_words):
-        if word in EXACT_MOVEMENT_TOKENS or candidate_word in EXACT_MOVEMENT_TOKENS:
-            if word == candidate_word:
-                matches.append((index, 1.0))
-            continue
+        candidate_movement_token = (
+            candidate_word if candidate_word in EXACT_MOVEMENT_TOKENS else None
+        )
+        if query_movement_tokens or candidate_movement_token:
+            if candidate_movement_token not in query_movement_tokens:
+                continue
         if min(len(word), len(candidate_word)) < 4:
             if word == candidate_word:
                 matches.append((index, 1.0))
