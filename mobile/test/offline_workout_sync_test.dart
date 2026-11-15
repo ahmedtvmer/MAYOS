@@ -873,7 +873,7 @@ void main() {
 
   group('program tab offline fallback', () {
     testWidgets(
-        'falls back to the cached program when offline, with a banner shown only then',
+        '#721 keeps the cached program on 5xx without calling it offline',
         (WidgetTester tester) async {
       final FakeMayosApi fake = FakeMayosApi()..activeProgramFails = true;
       final InMemoryDraftStore draftStore = InMemoryDraftStore();
@@ -906,7 +906,8 @@ void main() {
       await tester.tap(find.text('Program'));
       await _pumpUntilFound(tester, find.text('Cached Split'));
 
-      expect(find.text('Offline — showing saved program'), findsOneWidget);
+      expect(find.text('Showing saved program'), findsOneWidget);
+      expect(find.textContaining('Offline'), findsNothing);
       expect(find.text('Cached Split'), findsOneWidget);
     });
 
@@ -919,7 +920,7 @@ void main() {
       await tester.tap(find.text('Program'));
       await _pumpUntilFound(tester, find.text('Upper/Lower 4x'));
 
-      expect(find.text('Offline — showing saved program'), findsNothing);
+      expect(find.text('Showing saved program'), findsNothing);
     });
   });
 
@@ -938,10 +939,10 @@ void main() {
       await tester.tap(find.text('Log workout'));
       await _pumpUntilFound(tester, find.text('Bench Press'));
 
-      expect(find.text('Offline: showing your cached program.'), findsNothing);
+      expect(find.text('Showing your saved program.'), findsNothing);
     });
 
-    testWidgets('offline banner when the program can only be served from cache',
+    testWidgets('#721 logger shows a saved-program note after 5xx',
         (WidgetTester tester) async {
       final FakeMayosApi fake = FakeMayosApi()
         ..programVersion = 1
@@ -958,8 +959,8 @@ void main() {
       await tester.tap(find.text('Log workout'));
       await _pumpUntilFound(tester, find.text('Bench Press'));
 
-      expect(
-          find.text('Offline: showing your cached program.'), findsOneWidget);
+      expect(find.text('Showing your saved program.'), findsOneWidget);
+      expect(find.textContaining('Offline'), findsNothing);
     });
   });
 

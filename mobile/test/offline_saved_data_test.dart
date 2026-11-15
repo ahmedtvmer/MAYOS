@@ -11,10 +11,13 @@ import 'package:mayos_mobile/src/app.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/connectivity.dart';
 import 'package:mayos_mobile/src/core/display_language/catalog.dart';
+import 'package:mayos_mobile/src/core/display_language/controller.dart';
+import 'package:mayos_mobile/src/core/display_language/store.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/core/saved_player_data.dart';
 import 'package:mayos_mobile/src/features/player/auth/auth_controller.dart';
 import 'package:mayos_mobile/src/features/player/dashboard/dashboard_tab.dart';
+import 'package:mayos_mobile/src/features/shared/splash_screen.dart';
 import 'package:mayos_mobile/src/providers.dart';
 
 import 'support/auth_harness.dart';
@@ -206,6 +209,115 @@ void main() {
         await tester.pumpWidget(const SizedBox.shrink());
         await tester.pump(Duration.zero);
       });
+
+      testWidgets(
+          '5xx keeps saved Player data and shows a server problem in $language with ${androidStorage ? 'Android' : 'web'} storage',
+          (WidgetTester tester) async {
+        final FakeMayosApi fake = FakeMayosApi();
+        final InMemoryTokenStore tokens = InMemoryTokenStore();
+        final InMemoryBrowserKeyValueStore storage =
+            InMemoryBrowserKeyValueStore();
+        final List<Override> overrides = <Override>[
+          if (androidStorage)
+            savedPlayerDataStoreProvider.overrideWith((ref) {
+              final SavedPlayerDataStore store = SavedPlayerDataStore();
+              ref.onDispose(store.dispose);
+              return store;
+            }),
+          if (!androidStorage)
+            offlineWorkoutDraftsEnabledProvider.overrideWithValue(false),
+        ];
+        await _primePlayerCache(
+          tester: tester,
+          fake: fake,
+          tokens: tokens,
+          storage: storage,
+          language: language,
+          extraOverrides: overrides,
+        );
+        fake.meFails = true;
+
+        await tester.pumpWidget(authApp(
+          fake,
+          tokens,
+          savedPlayerDataBrowser: storage,
+          extraOverrides: overrides,
+        ));
+        final MayosCopy copy = MayosCopy(language);
+        await _pumpUntilFound(tester, find.text(copy.serviceUnavailable));
+        await _pumpUntilFound(tester, find.text('Upper/Lower 4x'));
+
+        expect(find.text(copy.serviceUnavailable), findsOneWidget);
+        expect(find.text(copy.offlineSavedData), findsNothing);
+        expect(find.text(copy.offlineBanner), findsNothing);
+        expect(find.text(copy.home), findsWidgets);
+        expect(find.text('Upper/Lower 4x'), findsWidgets);
+        expect(find.byKey(const Key('login_username')), findsNothing);
+        final ProviderContainer container = ProviderScope.containerOf(
+          tester.element(find.byType(MayosApp)),
+          listen: false,
+        );
+        expect(
+          container.read(authControllerProvider).savedSessionIssue,
+          SavedSessionIssue.serviceProblem,
+        );
+        expect(
+          container.read(authControllerProvider).isShowingSavedData,
+          isTrue,
+        );
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(Duration.zero);
+      });
+    }
+  }
+
+  for (final String language in <String>['en', 'ar']) {
+    for (final bool transportFailure in <bool>[false, true]) {
+      testWidgets(
+          '#721 a stored bearer without a snapshot shows the correct splash banner in $language (${transportFailure ? 'transport failure' : '5xx'})',
+          (WidgetTester tester) async {
+        final FakeMayosApi fake = FakeMayosApi()
+          ..issuedToken = 'legacy-bearer'
+          ..tokenValid = true
+          ..meFails = !transportFailure
+          ..allRequestsOffline = transportFailure;
+        final InMemoryTokenStore tokens = InMemoryTokenStore();
+        await tokens.save('legacy-bearer');
+        final InMemoryDisplayLanguageStore languageStore =
+            InMemoryDisplayLanguageStore()..value = language;
+        await tester.pumpWidget(authApp(
+          fake,
+          tokens,
+          extraOverrides: <Override>[
+            displayLanguageStoreProvider.overrideWithValue(languageStore),
+            systemDisplayLanguageProvider.overrideWithValue('en'),
+          ],
+        ));
+
+        final MayosCopy copy = MayosCopy(language);
+        final String expectedBanner = transportFailure
+            ? copy.offlineSavedData
+            : copy.serviceUnavailable;
+        await _pumpUntilFound(tester, find.text(expectedBanner));
+
+        final ProviderContainer container = ProviderScope.containerOf(
+          tester.element(find.byType(MayosApp)),
+          listen: false,
+        );
+        final AuthState state = container.read(authControllerProvider);
+        expect(find.byType(SplashScreen), findsOneWidget);
+        expect(find.text(expectedBanner), findsOneWidget);
+        expect(state.status, AuthStatus.loading);
+        expect(state.session, isNull);
+        expect(state.savedSessionIssue, transportFailure
+            ? SavedSessionIssue.offline
+            : SavedSessionIssue.serviceProblem);
+        expect(state.isShowingSavedData, isFalse);
+
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(Duration.zero);
+      });
     }
   }
 
@@ -284,7 +396,10 @@ void main() {
           tester.element(find.byType(MayosApp)),
           listen: false,
         );
-        expect(container.read(authControllerProvider).isOffline, isFalse);
+        expect(
+          container.read(authControllerProvider).isShowingSavedData,
+          isFalse,
+        );
         expect(find.text(MayosCopy('en').offlineSavedData), findsNothing);
         expect(find.byKey(const Key('login_username')), findsNothing);
         await tester.scrollUntilVisible(find.text('99'), 250,
@@ -581,7 +696,7 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
       await tester.pump(Duration.zero);
       expect(confirmations(), before + 3);
-      expect(container.read(authControllerProvider).isOffline, isTrue);
+      expect(container.read(authControllerProvider).isShowingSavedData, isTrue);
       expect(await _waitWithPumps(tester, tokens.read()), isNotNull);
     } finally {
       container.dispose();
@@ -602,7 +717,7 @@ void main() {
     fake.meRefusalStatus = 403;
     await container.read(authControllerProvider.notifier).initialize();
     expect(container.read(authControllerProvider).isAuthenticated, isFalse);
-    expect(container.read(authControllerProvider).isOffline, isFalse);
+    expect(container.read(authControllerProvider).isShowingSavedData, isFalse);
     expect(await tokens.read(), isNotNull);
     expect(
       await container

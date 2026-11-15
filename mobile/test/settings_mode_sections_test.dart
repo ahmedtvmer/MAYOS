@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/app.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/app_mode.dart';
+import 'package:mayos_mobile/src/core/display_language/catalog.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/features/shared/mode_switch.dart';
 import 'package:mayos_mobile/src/providers.dart';
@@ -263,7 +264,7 @@ void main() {
     await tester.tap(find.text('Save preference'));
     await _pumpUntilFound(
       tester,
-      find.text('The service is unavailable. Please retry.'),
+      find.text(MayosCopy('en').serviceUnavailable),
     );
     expect(find.text('I train before breakfast'), findsOneWidget);
     expect(fake.assistantPreferences.single['text'], 'I train in the mornings');
@@ -276,7 +277,7 @@ void main() {
     await tester.tap(find.byTooltip('Delete preference'));
     await _pumpUntilFound(
       tester,
-      find.text('The service is unavailable. Please retry.'),
+      find.text(MayosCopy('en').serviceUnavailable),
     );
     expect(fake.assistantPreferences, hasLength(1));
     await tester.tap(find.byTooltip('Delete preference'));
@@ -357,7 +358,10 @@ void main() {
     expect(find.byTooltip('حذف التفضيل'), findsOneWidget);
     fake.assistantPreferenceWriteFailuresRemaining = 1;
     await tester.tap(find.byTooltip('حذف التفضيل'));
-    await _pumpUntilFound(tester, find.text('الخدمة غير متاحة. حاول مجددًا.'));
+    await _pumpUntilFound(
+      tester,
+      find.text(MayosCopy('ar').serviceUnavailable),
+    );
     expect(fake.assistantPreferences, hasLength(1));
     await tester.tap(find.byTooltip('حذف التفضيل'));
     await _pumpUntilFound(tester, find.text('لا توجد تفضيلات محفوظة.'));

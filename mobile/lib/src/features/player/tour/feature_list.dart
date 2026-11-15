@@ -81,11 +81,15 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
     titleEn: 'Open your saved training offline',
     sentenceEn:
         'After opening the installed app online once, reopen it without a '
-        'connection to view saved Home, Program, workout targets and Nutrition data.',
+        'connection to view saved Home, Program, workout targets and Nutrition '
+        'data. During startup, a localized banner distinguishes a connection '
+        'problem from a MAYOS service problem.',
     titleAr: 'افتح بيانات تدريبك المحفوظة دون اتصال',
     sentenceAr:
         'بعد فتح التطبيق المثبّت عبر الإنترنت مرة واحدة، أعد فتحه دون اتصال '
-        'للاطّلاع على بيانات الرئيسية والبرنامج التدريبي وأهداف التمرين والتغذية المحفوظة.',
+        'للاطّلاع على بيانات الرئيسية والبرنامج التدريبي وأهداف التمرين والتغذية '
+        'المحفوظة. توضّح رسالة منفصلة أثناء البدء ما إذا كانت هناك مشكلة '
+        'في الاتصال أو مشكلة في MAYOS.',
     target: 'home',
     location: TourShellTabLocation(tabIndex: 0),
     release: 6,

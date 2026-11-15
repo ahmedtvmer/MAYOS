@@ -335,9 +335,9 @@ class WorkoutCopy {
   String get recordWeight => isArabic ? 'الوزن' : 'Weight';
   String get workoutProgressBlocked =>
       isArabic ? 'سجّل مجموعة واحدة على الأقل' : 'Log at least one set';
-  String get trainingDayUnavailableOffline => isArabic
-      ? 'يوم التدريب هذا غير متاح دون اتصال.'
-      : 'This training day is not available offline.';
+  String get trainingDayNotSaved => isArabic
+      ? 'يوم التدريب هذا غير محفوظ على هذا الجهاز.'
+      : 'This training day is not saved on this device.';
   String dateWindowClamped(String started, String corrected) => isArabic
       ? 'بدأت هذه الحصة في $started، خارج فترة إدخال التاريخ المسموحة، لذلك ضُبط تاريخها إلى $corrected.'
       : 'This workout started on $started, outside the allowed entry window, so its performed date was set to $corrected.';
@@ -415,9 +415,9 @@ class WorkoutCopy {
           ? 'Undo replace and discard 1 logged set?'
           : 'Undo replace and discard $count logged sets?';
   String get retry => isArabic ? 'إعادة المحاولة' : 'Retry';
-  String get offlineCachedProgram => isArabic
-      ? 'غير متصل: يعرض البرنامج التدريبي المحفوظ.'
-      : 'Offline: showing your cached program.';
+  String get savedProgramNote => isArabic
+      ? 'يعرض البرنامج التدريبي المحفوظ.'
+      : 'Showing your saved program.';
   String get noDraftsYet => isArabic ? 'لا توجد مسودات بعد.' : 'No drafts yet.';
   String draftsCounts(int pending, int synced) => isArabic
       ? '${_ltr('$pending')} بانتظار المزامنة · ${_ltr('$synced')} تمت مزامنتها'

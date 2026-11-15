@@ -406,7 +406,9 @@ class _PlayerShellState extends ConsumerState<PlayerShell> {
   @override
   Widget build(BuildContext context) {
     ref.listen<AuthState>(authControllerProvider, (previous, next) {
-      if (previous?.isOffline == true && next.isAuthenticated && !next.isOffline) {
+      if (previous?.isShowingSavedData == true &&
+          next.isAuthenticated &&
+          !next.isShowingSavedData) {
         // Recreate the read views once after confirmation, including the nested
         // Nutrition day. Active workouts remain in their account-scoped provider.
         setState(() => _confirmedDataRevision++);
