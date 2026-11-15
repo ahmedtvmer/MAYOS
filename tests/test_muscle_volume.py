@@ -72,6 +72,7 @@ def test_reviewed_credits_and_defaults_are_materialized_per_exercise(
     }
     assert credits["mayos:1"] == {
         "traps": {"credit": 1.0, "is_primary": True, "source": "default"},
+        "lats": {"credit": 0.5, "is_primary": False, "source": "default"},
     }
     assert credits["mayos:3"] == {
         "shoulders": {"credit": 1.0, "is_primary": True, "source": "reviewed"},
@@ -134,6 +135,7 @@ def test_active_program_volume_uses_reviewed_credits_once_per_main_group(
 ):
     seed_exercise_curation(fresh_store, {
         "3541": {
+            "display_name": "Incline Y-Raise (Dumbbell)",
             "primary_muscle": "Traps",
             "muscle_credits": "shoulders=1|traps=0.75",
         },

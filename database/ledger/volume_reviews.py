@@ -66,7 +66,8 @@ class LedgerVolumeReviewsMixin:
         credits = {exercise_id: {} for exercise_id in exercise_ids}
         for exercise_id, muscle, credit, is_primary, source in self.conn.execute(
             f"SELECT exercise_id, muscle, credit, is_primary, source "
-            f"FROM catalog.exercise_muscle_credits WHERE exercise_id IN ({placeholders})",
+            f"FROM catalog.exercise_muscle_credits WHERE exercise_id IN ({placeholders}) "
+            "AND source = 'reviewed'",
             exercise_ids,
         ):
             credits[str(exercise_id)][str(muscle)] = {

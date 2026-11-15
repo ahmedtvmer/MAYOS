@@ -237,6 +237,38 @@ void main() {
     });
   }
 
+  testWidgets('#721 splash reserves a large-text banner above its lockup',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(360, 640);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    const Key bannerKey = Key('splash_status_banner');
+    await tester.pumpWidget(
+      MaterialApp(
+        debugShowCheckedModeBanner: false,
+        theme: MayosTheme.light,
+        home: MediaQuery(
+          data: const MediaQueryData(textScaler: TextScaler.linear(2)),
+          child: const SplashScreen(
+            statusBanner: Padding(
+              key: bannerKey,
+              padding: EdgeInsets.all(8),
+              child: Text('MAYOS had a problem; try again.'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(
+      tester.getRect(find.byKey(bannerKey)).bottom,
+      lessThanOrEqualTo(tester.getRect(find.byType(MayosBrandLockup)).top),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('the photo is cover-fit and bundled', (WidgetTester tester) async {
     await _pumpSplash(tester, ThemeMode.dark);
     final Image photo =

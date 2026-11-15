@@ -10,6 +10,7 @@ FOCUS_REGION_POLICY = {
     "upper_chest": {"home_region": "upper", "isolation_cross_regions": ()},
     "lats": {"home_region": "upper", "isolation_cross_regions": ()},
     "traps": {"home_region": "upper", "isolation_cross_regions": ()},
+    "rear_delts": {"home_region": "upper", "isolation_cross_regions": ()},
     "shoulders": {"home_region": "upper", "isolation_cross_regions": ()},
     "side_delts": {"home_region": "upper", "isolation_cross_regions": ("lower",)},
     "biceps": {"home_region": "upper", "isolation_cross_regions": ("lower",)},
@@ -36,12 +37,16 @@ FOCUS_EXTRA_TABLE = {
         "excluded_equipment": ("barbell", "ez barbell"),
     },
     "lats": {
-        "candidate_slots": ("pullover", "upper_back_pull", "vertical_pull", "horizontal_row"),
+        "candidate_slots": ("pullover", "vertical_pull", "horizontal_row"),
         "main_slot": "vertical_pull",
     },
     "traps": {
         "candidate_slots": ("horizontal_row", "upper_back_pull", "shrug"),
         "main_slot": "horizontal_row",
+    },
+    "rear_delts": {
+        "candidate_slots": ("rear_delts",),
+        "main_slot": "rear_delts",
     },
     "shoulders": {"candidate_slots": ("shoulder_press", "side_delts"), "main_slot": "shoulder_press"},
     "side_delts": {"candidate_slots": ("side_delts",), "main_slot": "side_delts"},
@@ -65,6 +70,7 @@ FOCUS_MUSCLE_SLOTS = {
     "upper_chest": {"incline_press", "chest_fly"},
     "lats": {"vertical_pull", "pullover", "horizontal_row"},
     "traps": {"horizontal_row", "upper_back_pull", "shrug"},
+    "rear_delts": {"rear_delts"},
     "shoulders": {"shoulder_press", "side_delts"},
     "side_delts": {"side_delts"},
     "biceps": {"biceps_preacher", "biceps_alt"},
@@ -81,6 +87,11 @@ FOCUS_MUSCLE_SLOTS = {
 FOCUS_REVIEW_MUSCLES = {
     muscle: ({FOCUS_MAIN_GROUPS[muscle]} if FOCUS_MAIN_GROUPS.get(muscle) else set())
     for muscle in WEAK_POINT_MUSCLES
+}
+
+FOCUS_REVIEW_PRIMARY_TARGETS = {
+    "upper_chest": "upper chest",
+    "side_delts": "side delts",
 }
 
 assert set(FOCUS_EXTRA_TABLE) == set(WEAK_POINT_MUSCLES)

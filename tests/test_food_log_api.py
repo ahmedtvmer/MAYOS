@@ -339,6 +339,21 @@ def test_personal_food_search_uses_the_library_arabic_normalization(food_api):
     assert [item["id"] for item in found] == [food["id"]]
 
 
+@pytest.mark.parametrize(
+    ("food_name", "query"),
+    [("Cookies", "cookie"), ("Brownies", "brownie"), ("Smoothies", "smoothie")],
+)
+def test_issue_720_personal_food_search_matches_ies_plural_names(food_api, food_name, query):
+    client, _db, headers, _today = food_api
+    food = _personal(client, headers, name=food_name).json()
+
+    found = client.get(
+        "/nutrition/foods", headers=headers, params={"q": query}
+    ).json()["foods"]
+
+    assert found[0]["id"] == food["id"]
+
+
 @pytest.mark.parametrize("portion", [
     {"portion_label": "bowl"}, {"portion_grams": 200},
     {"portion_label": "bowl", "portion_grams": 1e-320},

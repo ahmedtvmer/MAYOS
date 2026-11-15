@@ -317,6 +317,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
           // Network failure: keep the cached history and read-only offline.
           _offline = true;
         } else {
+          _offline = false;
           _historyFailure = apiFailureMessage(error);
         }
       });

@@ -4,6 +4,7 @@ import 'package:mayos_mobile/src/core/app_failure.dart';
 import 'package:mayos_mobile/src/core/chat_models.dart';
 import 'package:mayos_mobile/src/core/connectivity_message.dart';
 import 'package:mayos_mobile/src/core/display_language/catalog.dart';
+import 'package:mayos_mobile/src/core/display_language/message_copy.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 
 import 'support/fake_api_adapter.dart';
@@ -125,7 +126,7 @@ void main() {
     );
   });
 
-  test('network and bodyless service failures use localized generic copy',
+  test('#721 unsupported 5xx details use localized generic copy',
       () async {
     final ApiException network = await _expectApiException(
       _client(FakeApiAdapter((_) => const FakeResponse.networkFailure()),
@@ -141,19 +142,63 @@ void main() {
       "You're offline. We'll retry when you're back online.",
     );
 
-    final ApiException noBody = await _expectApiException(
-      _client(FakeApiAdapter((_) => const FakeResponse(503)), language: 'ar')
-          .clearChatHistory,
-    );
-    expect(
-      MayosCopy('ar').failureMessage(apiFailureMessage(noBody)),
-      'الخدمة غير متاحة. حاول مجددًا.',
-    );
-    expect(
-      MayosCopy('en').failureMessage(apiFailureMessage(noBody)),
-      'The service is unavailable. Please retry.',
-    );
+    for (final Object? body in <Object?>[
+      null,
+      '<html>Bad gateway</html>',
+      <String, String>{'detail': ' '},
+      <String, String>{'detail': 'Database not ready.'},
+      <String, String>{
+        'detail': 'Internal Server Error',
+        'message_code': 'http.future_error.v1',
+        'message_fallback': 'Internal Server Error',
+      },
+    ]) {
+      final ApiException noDetail = await _expectApiException(
+        _client(FakeApiAdapter((_) => FakeResponse(503, body)), language: 'ar')
+            .clearChatHistory,
+      );
+      expect(noDetail.message, 'MAYOS had a problem; try again.');
+      expect(
+        MayosCopy('ar').failureMessage(apiFailureMessage(noDetail)),
+        MayosCopy('ar').serviceUnavailable,
+      );
+      expect(
+        MayosCopy('en').failureMessage(apiFailureMessage(noDetail)),
+        'MAYOS had a problem; try again.',
+      );
+    }
   });
+
+  for (final bool streamed in <bool>[false, true]) {
+    test('#721 ${streamed ? 'streamed' : 'JSON'} 5xx localizes a known code',
+        () async {
+      final ApiClient client = _client(FakeApiAdapter(
+        (_) => const FakeResponse(503, <String, dynamic>{
+          'detail': 'Database not ready.',
+          'message_code': 'http.server_error.v1',
+          'message_params': <String, Object>{},
+          'message_fallback': 'Internal Server Error.',
+        }),
+      ));
+      final ApiException error = await _expectApiException(() async {
+        if (streamed) {
+          await client.streamChatMessage('Hello').drain<void>();
+        } else {
+          await client.clearChatHistory();
+        }
+      });
+
+      expect(error.statusCode, 503);
+      expect(error.message, 'The service is unavailable. Please retry.');
+      for (final String language in <String>['en', 'ar']) {
+        final String localized = MayosCopy(language)
+            .failureMessage(mutationFailureMessage(error));
+        expect(localized, MessageCopy(language).requestUnavailable);
+        expect(localized, isNot('Database not ready.'));
+        expect(localized, isNot('Internal Server Error.'));
+      }
+    });
+  }
 
   test('Google conflict keeps the machine distinction and translates',
       () async {

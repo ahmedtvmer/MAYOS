@@ -1,3 +1,4 @@
+import json
 from datetime import date, datetime, timedelta, timezone
 
 import pytest
@@ -97,7 +98,7 @@ def test_volume_review_counts_sets_across_groups(fresh_store):
     assert row["weekly_sets"] == 5
 
 
-def test_volume_review_counts_secondary_credit_in_its_main_group(fresh_store):
+def test_helper_only_history_does_not_produce_a_performance_verdict(fresh_store):
     ledger, program, profile, today, _muscle = _seed_review(
         fresh_store, "progressing", target_muscle="Quads"
     )
@@ -111,8 +112,160 @@ def test_volume_review_counts_secondary_credit_in_its_main_group(fresh_store):
 
     result = review_facts(ledger, program, profile, today)
 
-    row = next(item for item in result["muscles"] if item["muscle"] == "triceps")
-    assert row["weekly_sets"] == 1.0
+    assert "triceps" not in {item["muscle"] for item in result["muscles"]}
+
+
+def _set_review_credits(db, exercise_id, attributions):
+    with db.catalog_conn:
+        db.catalog_conn.execute(
+            "DELETE FROM exercise_muscle_credits WHERE exercise_id = ?", (exercise_id,)
+        )
+        db.catalog_conn.executemany(
+            "INSERT INTO exercise_muscle_credits "
+            "(exercise_id, muscle, credit, is_primary, source) VALUES (?, ?, ?, ?, 'reviewed')",
+            [(exercise_id, muscle, credit, primary) for muscle, credit, primary in attributions],
+        )
+
+
+def _shared_review(db, direct_weights):
+    ledger, program, profile, today, _ = _seed_review(db, "stalled", target_muscle="Chest")
+    press = program.days[0].exercises[0]
+    triceps_id, triceps_name = db.catalog_conn.execute(
+        "SELECT e.id, e.name FROM exercises e JOIN exercise_curated_fields f ON e.id=f.exercise_id "
+        "WHERE f.primary_muscle = 'Triceps' ORDER BY e.id LIMIT 1"
+    ).fetchone()
+    triceps = PersistedProgramExerciseSchema(
+        exercise_id=str(triceps_id), exercise_name=triceps_name,
+        target_sets=2, target_reps_min=8, target_reps_max=12,
+    )
+    program.days[0].exercises.append(triceps)
+    _set_review_credits(db, press.exercise_id, [("chest", 1, 1), ("triceps", 0.5, 0)])
+    _set_review_credits(db, triceps.exercise_id, [("triceps", 1, 1)])
+    for index, weight in enumerate(direct_weights):
+        ledger.log_workout_set(
+            f"direct-triceps-{index}", f"review-stalled-{index}",
+            triceps.exercise_id, 1, weight, 8, 8, 0,
+        )
+    return ledger, program, profile, today
+
+
+@pytest.mark.parametrize(
+    ("direct_weights", "helper_weights", "expected"),
+    [([40] * 4, [40, 42, 46, 50], "stalled"), ([40, 42, 46, 50], [50, 48, 44, 40], "progressing")],
+)
+def test_primary_lifts_determine_verdict_while_helpers_count_volume(fresh_store, direct_weights, helper_weights, expected):
+    ledger, program, profile, today = _shared_review(fresh_store, direct_weights)
+    with ledger.conn:
+        ledger.conn.executemany(
+            "UPDATE workout_sets SET weight_kg = ? WHERE session_id = ? AND exercise_id = ? AND is_warmup = 0",
+            [(weight, f"review-stalled-{index}", program.days[0].exercises[0].exercise_id)
+             for index, weight in enumerate(helper_weights)],
+        )
+    facts = review_facts(ledger, program, profile, today)
+    triceps = next(muscle for muscle in facts["muscles"] if muscle["muscle"] == "triceps")
+    assert triceps["verdict"] == expected
+    assert triceps["weekly_sets"] == 3
+
+
+def test_two_muscles_sharing_a_lift_report_the_combined_credited_changes(fresh_store):
+    ledger, program, profile, today = _shared_review(fresh_store, [40] * 4)
+    facts = review_facts(ledger, program, profile, today)
+    edits = [edit for muscle in facts["muscles"] for edit in muscle["edits"]]
+    assert len(edits) == len({(edit["week_order"], edit["day_order"], edit["exercise_id"]) for edit in edits}) == 2
+    assert {muscle["muscle"]: muscle["set_delta"] for muscle in facts["muscles"]} == {
+        "chest": 1, "triceps": 1.5,
+    }
+    assert all(edit["target_sets"] == 3 for edit in edits)
+
+
+def _store_pending_proposal(ledger, program, muscles):
+    ledger.save_training_program(program.model_dump())
+    active = ledger.get_active_program()
+    today = datetime.now(timezone.utc).date().isoformat()
+    ledger.save_volume_review({
+        "id": "shared-proposal", "program_version": active.version,
+        "review_date": today, "next_eligible_date": today, "status": "pending",
+        "payload_json": json.dumps(muscles), "created_at": today,
+    })
+    return active
+
+
+def test_acceptance_merges_opposing_shared_changes_instead_of_applying_the_last(fresh_store):
+    ledger, program, _profile, _today = _shared_review(fresh_store, [40] * 4)
+    exercise_id = program.days[0].exercises[0].exercise_id
+    edits = [{"week_order": 1, "day_order": 1, "exercise_id": exercise_id, "target_sets": sets} for sets in (3, 1)]
+    payload = [
+        {"muscle": muscle, "edits": [edit], "set_delta": delta}
+        for muscle, edit, delta in zip(("chest", "triceps"), edits, (1, -0.5))
+    ]
+    before = _store_pending_proposal(ledger, program, payload)
+
+    with pytest.raises(ValueError, match="review_not_pending"):
+        accept_review(fresh_store, ledger, "player-one", "shared-proposal")
+
+    assert ledger.get_active_program().version == before.version
+    assert ledger.get_active_program().days[0].exercises[0].working_sets == 2
+
+
+def test_acceptance_merges_duplicate_replacement_staples_from_two_muscles(fresh_store):
+    ledger, program, _profile, _today = _shared_review(fresh_store, [40] * 4)
+    present = {exercise.exercise_id for exercise in program.days[0].exercises}
+    staple_id, staple_name = fresh_store.catalog_conn.execute(
+        "SELECT id, name FROM exercises WHERE id NOT IN (?, ?) ORDER BY id LIMIT 1", tuple(present)
+    ).fetchone()
+    _set_review_credits(fresh_store, str(staple_id), [("chest", 1, 1), ("triceps", 0.5, 0)])
+    addition = PersistedProgramExerciseSchema(
+        exercise_id=str(staple_id), exercise_name=staple_name,
+        target_sets=1, target_reps_min=8, target_reps_max=12,
+    ).model_dump()
+    payload = [
+        {"muscle": muscle, "set_delta": delta, "edits": [
+            {"week_order": 1, "day_order": 1, "add_exercise": addition},
+        ]}
+        for muscle, delta in (("chest", 1), ("triceps", 0.5))
+    ]
+    _store_pending_proposal(ledger, program, payload)
+
+    accept_review(fresh_store, ledger, "player-one", "shared-proposal")
+
+    added = [exercise for exercise in ledger.get_active_program().days[0].exercises if exercise.exercise_id == str(staple_id)]
+    assert len(added) == 1
+    assert added[0].working_sets == 2
+
+
+@pytest.mark.parametrize("staple_credit, expected_delta", [(1.0, 0), (0.5, 0.5)])
+def test_fractional_ceiling_does_not_round_up_a_replacement_staple(fresh_store, staple_credit, expected_delta):
+    ledger, program, profile, today, _ = _seed_review(fresh_store, "stalled", target_muscle="Chest")
+    source = program.days[0].exercises[0]
+    source.exercise_id = "576"
+    source.slot_key = "flat_press"
+    source.set_groups[0].sets = 3
+    other_id, other_name = fresh_store.catalog_conn.execute(
+        "SELECT id, name FROM exercises WHERE id NOT IN ('576', '25') ORDER BY id LIMIT 1"
+    ).fetchone()
+    other = PersistedProgramExerciseSchema(
+        exercise_id=str(other_id), exercise_name=other_name,
+        target_sets=6, target_reps_min=8, target_reps_max=12,
+    )
+    program.days.append(PersistedProgramDaySchema(day_name="Other", day_order=2, exercises=[other]))
+    _set_review_credits(fresh_store, source.exercise_id, [("chest", 0.5, 1)])
+    _set_review_credits(fresh_store, other.exercise_id, [("chest", 1, 1)])
+    _set_review_credits(fresh_store, "25", [("chest", staple_credit, 1)])
+    original_id = ledger.volume_review_workout_rows(program.version, "2000-01-01", today.isoformat())[0]["exercise_id"]
+    with ledger.conn:
+        ledger.conn.execute("UPDATE workout_sets SET exercise_id = ? WHERE exercise_id = ?", ("576", original_id))
+    profile["training_age_years"] = 1
+
+    facts = review_facts(ledger, program, profile, today)
+
+    chest = next(muscle for muscle in facts["muscles"] if muscle["muscle"] == "chest")
+    assert chest["weekly_sets"] == 7.5
+    assert chest["set_delta"] == expected_delta
+    assert chest["weekly_sets"] + chest["set_delta"] <= 8
+    if expected_delta:
+        assert chest["edits"][0]["add_exercise"]["target_sets"] == 1
+    else:
+        assert chest["edits"] == []
 
 
 def test_grouped_volume_reduction_keeps_backoffs_and_places_remaining_cut(fresh_store):
@@ -407,7 +560,10 @@ def test_placement_adds_existing_set_before_second_staple(fresh_store, slot_key)
         {"training_age_years": 3, "weekly_frequency": 2},
         now,
     )
-    chest = next(item for item in facts["muscles"] if item["muscle"] == target[0])
+    chest = next(
+        item for item in facts["muscles"]
+        if item["muscle"] == normalize_main_muscle(target[0])
+    )
     assert chest["edits"][0]["target_sets"] == 3
     assert chest["edits"][1]["add_exercise"]["exercise_id"] == second_id
     assert chest["edits"][1]["day_order"] == 2

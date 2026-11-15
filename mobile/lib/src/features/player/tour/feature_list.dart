@@ -78,18 +78,35 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
     requiresProgramControl: true,
   ),
   FeatureEntry(
+    id: 'assistant_exercise_lookup',
+    titleEn: 'Search exercises by the name you know',
+    sentenceEn:
+        'Search by nicknames, singular or plural forms, and common spelling variations; choose from close matches when a name could mean more than one exercise.',
+    titleAr: 'ابحث عن التمرين بالاسم الذي تعرفه',
+    sentenceAr:
+        'ابحث بالأسماء البديلة والمفرد والجمع واختلافات الكتابة الشائعة، واختر من الخيارات الأقرب عندما يحتمل الاسم أكثر من تمرين.',
+    target: 'whats_new_assistant_why',
+    location: TourRouteLocation(chatPath),
+    release: 7,
+    audience: 'lifter',
+  ),
+  FeatureEntry(
     id: 'offline_start',
     titleEn: 'Open your saved training offline',
     sentenceEn:
         'After opening the installed app online once, reopen it without a '
-        'connection to view saved Home, Program, workout targets and Nutrition data.',
+        'connection to view saved Home, Program, workout targets and Nutrition '
+        'data. During startup, a localized banner distinguishes a connection '
+        'problem from a MAYOS service problem.',
     titleAr: 'افتح بيانات تدريبك المحفوظة دون اتصال',
     sentenceAr:
         'بعد فتح التطبيق المثبّت عبر الإنترنت مرة واحدة، أعد فتحه دون اتصال '
-        'للاطّلاع على بيانات الرئيسية والبرنامج التدريبي وأهداف التمرين والتغذية المحفوظة.',
+        'للاطّلاع على بيانات الرئيسية والبرنامج التدريبي وأهداف التمرين والتغذية '
+        'المحفوظة. توضّح رسالة منفصلة أثناء البدء ما إذا كانت هناك مشكلة '
+        'في الاتصال أو مشكلة في MAYOS.',
     target: 'home',
     location: TourShellTabLocation(tabIndex: 0),
-    release: 6,
+    release: 7,
     audience: 'lifter',
   ),
   FeatureEntry(
@@ -262,12 +279,12 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
   FeatureEntry(
     id: 'weak_points',
     titleEn: 'Weak points',
-    sentenceEn: 'Choose muscles you want your Training program to focus on.',
+    sentenceEn: 'Choose up to two muscles, including lats, traps and rear delts, for Focus work in your Training program; muscles in the same main group share credited Focus volume, forearms and adductors retain their extra work, and Volume reviews combine shared exercise changes within weekly limits.',
     titleAr: 'نقاط الضعف',
-    sentenceAr: 'اختر العضلات التي تريد أن يركز عليها برنامجك التدريبي.',
+    sentenceAr: 'اختر حتى عضلتين، ومنها اللاتس والترابيس والأكتاف الخلفية، ليركز عليها برنامجك التدريبي؛ وتشترك العضلات في المجموعة الرئيسية نفسها في حجم التركيز المحتسب، ويحتفظ الساعد والعضلات المقربة بتمارينهما الإضافية، وتجمع مراجعات مجموعات التدريب تغييرات التمارين المشتركة ضمن الحدود الأسبوعية.',
     target: 'whats_new_weak_points',
     location: TourRouteLocation(profilePath),
-    release: 1,
+    release: 7,
     audience: 'lifter',
   ),
   FeatureEntry(

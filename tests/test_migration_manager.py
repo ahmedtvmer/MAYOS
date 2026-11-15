@@ -2048,6 +2048,9 @@ def test_v57_to_v58_migrates_persisted_group_and_focus_values_to_lats():
         "SELECT value FROM intake_answers WHERE field='weak_points'"
     ).fetchone()[0]) == [{"muscle": "lats", "source": "named"}]
     assert conn.execute("SELECT day_name FROM program_days WHERE id='day-1'").fetchone()[0] == "Chest, Lats & Traps"
+    before_retry = conn.total_changes
+    MIGRATION_REGISTRY[57](conn)
+    assert conn.total_changes == before_retry
 
 
 def test_v51_upgrade_adds_deleted_injury_source_event_storage(temp_db_env):

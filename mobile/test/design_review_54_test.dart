@@ -216,8 +216,8 @@ void main() {
       // Next session is derived from the cached latest session (#54).
       expect(find.textContaining('Next session'), findsOneWidget);
       expect(find.text('Lower 1'), findsOneWidget);
-      expect(
-          find.text('Offline — showing your saved program.'), findsOneWidget);
+      expect(find.text('Showing your saved program.'), findsOneWidget);
+      expect(find.textContaining('Offline'), findsNothing);
     });
   });
 

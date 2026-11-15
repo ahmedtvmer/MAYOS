@@ -1,7 +1,7 @@
 """Exercise library lookup with display names and aliases (ADR 053, #225)."""
 
-import re
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Any, Iterable, Literal
 from database.shared import _normalize_exercise_name
 from database.exercise_library.filters import ExerciseFilters
@@ -9,12 +9,22 @@ from database.exercise_library.values import split_curation_values
 from database.exercise_library.names import near_miss_exercise_ids
 from database.exercise_library.ranking import replacement_rank_sql
 from database.exercise_library.schema import (
-    EFFECTIVE_EXERCISE_NAME_SQL,
     effective_exercise_name_sql,
     exercise_library_visible_sql,
 )
 from database.exercise_library.vocabulary import equipment_category_for, equipment_category_sql
 from utils.equipment_access import equipment_access_sql
+
+
+FUZZY_NAME_MATCH_THRESHOLD = 0.72
+EXACT_MOVEMENT_TOKENS = frozenset({
+    "internal", "external", "incline", "decline", "front", "rear", "reverse",
+    "close", "wide", "seated", "standing", "flexion", "extension",
+    "adduction", "abduction", "pronated", "supinated", "upright", "supine",
+    "prone", "anterior", "posterior", "horizontal", "vertical", "overhand",
+    "underhand", "neutral", "side", "overhead", "behind", "forward", "backward",
+    "kneeling", "lying", "narrow", "unilateral", "bilateral", "left", "right",
+})
 
 
 @dataclass(frozen=True)
@@ -34,6 +44,28 @@ class _NameRowsOptions:
     limit: int | None
     ranking: Literal["name_length", "display_name_first"] = "name_length"
     replacing_exercise_id: str | None = None
+    include_aliases: bool = False
+
+
+@dataclass(frozen=True)
+class _NameCandidate:
+    normalized: str
+    compact: str
+    words: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class _NameQuery:
+    compact: str
+    words: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class _PreparedNameRow:
+    row: dict[str, Any]
+    candidates: tuple[_NameCandidate, ...]
+    forms: frozenset[str]
+    exact_names: frozenset[str]
 
 
 def _exercise_name_rows(
@@ -53,6 +85,12 @@ def _exercise_name_rows(
             order_by = f"{replacement_rank_sql()}, {display_name_order}"
     else:
         order_by = "LENGTH(e.name)"
+    aliases_expression = (
+        "(SELECT GROUP_CONCAT(a.alias, char(31)) FROM exercise_aliases a "
+        "WHERE a.exercise_id = e.id) AS aliases"
+        if options.include_aliases
+        else "NULL AS aliases"
+    )
     replacement_join = ""
     if options.replacing_exercise_id:
         replacement_join = (
@@ -65,6 +103,7 @@ def _exercise_name_rows(
         SELECT e.id AS id, {name_expression} AS display_name, e.body_part AS body_part,
                e.target_muscle AS target_muscle, e.equipment AS equipment,
                e.image_path AS image_path, e.name AS source_name,
+               {aliases_expression},
                cf.primary_muscle AS primary_muscle,
                cf.primary_action AS primary_action,
                COALESCE(cf.secondary_actions, '') AS secondary_actions,
@@ -81,6 +120,7 @@ def _exercise_name_rows(
         replacement_join=replacement_join,
         where_sql=where_sql,
         order_by=order_by,
+        aliases_expression=aliases_expression,
     )
     if options.limit is not None:
         query += " LIMIT ?"
@@ -117,105 +157,269 @@ def _name_match_results(rows):
     return [_name_match_result(row) for row in rows]
 
 
-def _exact_name_rows(cursor, search: _NameSearch):
-    where = (
-        f"({search.filter_clause}) AND (LOWER(e.name) = ? "
-        f"OR LOWER({EFFECTIVE_EXERCISE_NAME_SQL}) = ? "
-        "OR EXISTS (SELECT 1 FROM exercise_aliases a "
-        "WHERE a.exercise_id = e.id AND a.normalized_alias = ?))"
-    )
-    if search.equipment_clause:
-        where = f"({where}) AND ({search.equipment_clause})"
-    params = [*search.filter_params, search.query, search.query, search.normalized_query]
-    return _exercise_name_rows(
-        cursor, where, params, _NameRowsOptions(limit=search.limit)
+def _normalized_name_forms(normalized: str) -> set[str]:
+    forms = {normalized, normalized.replace(" ", "")}
+    if normalized in {"pulldown", "pull down"}:
+        forms.update(("lat pulldown", "latpulldown"))
+    return {form for form in forms if form}
+
+
+def _prepare_name_candidate(name: str) -> _NameCandidate:
+    normalized = _normalize_exercise_name(name)
+    compact = normalized.replace(" ", "")
+    words = tuple(normalized.split())
+    return _NameCandidate(
+        normalized=normalized,
+        compact=compact,
+        words=words,
     )
 
 
-def _normalized_name_rows(cursor, search: _NameSearch):
-    where = search.filter_clause
-    if search.equipment_clause:
-        where += f" AND ({search.equipment_clause})"
-    rows = _exercise_name_rows(
-        cursor,
-        where,
-        list(search.filter_params),
-        _NameRowsOptions(limit=None),
+def _prepare_name_rows(rows: list[dict[str, Any]]) -> list[_PreparedNameRow]:
+    prepared = []
+    for row in rows:
+        aliases = (row.get("aliases") or "").split("\x1f")
+        display_source_candidates = tuple(
+            _prepare_name_candidate(str(name))
+            for name in (row.get("display_name"), row.get("source_name"))
+            if name
+        )
+        alias_candidates = tuple(
+            _prepare_name_candidate(alias) for alias in aliases if alias
+        )
+        candidates = tuple(dict.fromkeys((*display_source_candidates, *alias_candidates)))
+        forms = frozenset().union(*(
+            _normalized_name_forms(candidate.normalized) for candidate in candidates
+        )) if candidates else frozenset()
+        prepared.append(
+            _PreparedNameRow(
+                row=row,
+                candidates=candidates,
+                forms=forms,
+                exact_names=frozenset(
+                    str(name).lower()
+                    for name in (row.get("display_name"), row.get("source_name"))
+                    if name
+                ),
+            )
+        )
+    return prepared
+
+
+def _normalized_name_rows(rows: list[_PreparedNameRow], search: _NameSearch):
+    query_forms = _normalized_name_forms(search.normalized_query)
+    matches = [candidate.row for candidate in rows if query_forms & candidate.forms]
+    return matches
+
+
+def _equivalent_name_rows(rows: list[_PreparedNameRow], search: _NameSearch):
+    query_forms = _normalized_name_forms(search.normalized_query)
+    matches = {
+        candidate.row["id"]: candidate.row
+        for candidate in rows
+        if search.query in candidate.exact_names
+        or query_forms & candidate.forms
+    }
+    matches = list(matches.values())
+    matches.sort(key=lambda row: len(row["source_name"] or ""))
+    return matches[:search.limit]
+
+
+def _substring_name_rows(rows: list[_PreparedNameRow], search: _NameSearch):
+    query_forms = tuple(
+        form for form in _normalized_name_forms(search.normalized_query) if len(form) > 1
     )
+    if not query_forms:
+        return []
     matches = [
-        row for row in rows
-        if _normalize_exercise_name(row["display_name"]) == search.normalized_query
-        or _normalize_exercise_name(row["source_name"]) == search.normalized_query
+        candidate.row
+        for candidate in rows
+        if any(
+            query_form in name.normalized or query_form in name.compact
+            for name in candidate.candidates
+            for query_form in query_forms
+        )
     ]
     matches.sort(key=lambda row: len(row["source_name"] or ""))
     return matches[:search.limit]
 
 
-def _substring_name_rows(cursor, search: _NameSearch):
-    like = f"%{search.query}%"
-    where = (
-        f"({search.filter_clause}) AND (LOWER(e.name) LIKE ? "
-        f"OR LOWER({EFFECTIVE_EXERCISE_NAME_SQL}) LIKE ? "
-        "OR EXISTS (SELECT 1 FROM exercise_aliases a "
-        "WHERE a.exercise_id = e.id AND LOWER(a.alias) LIKE ?))"
-    )
-    if search.equipment_clause:
-        where = f"({where}) AND ({search.equipment_clause})"
-    return _exercise_name_rows(
-        cursor,
-        where,
-        [*search.filter_params, like, like, like],
-        _NameRowsOptions(limit=search.limit),
-    )
-
-
-def _token_name_rows(cursor, search: _NameSearch):
-    tokens = [token for token in re.split(r"\s+", search.query) if len(token) > 2]
-    if not tokens:
+def _token_name_rows(rows: list[_PreparedNameRow], search: _NameSearch):
+    query_tokens = tuple(search.normalized_query.split())
+    if not query_tokens:
         return []
-    source_pattern = " AND ".join("LOWER(e.name) LIKE ?" for _ in tokens)
-    display_pattern = " AND ".join(
-        f"LOWER({EFFECTIVE_EXERCISE_NAME_SQL}) LIKE ?" for _ in tokens
-    )
-    alias_pattern = " AND ".join("LOWER(a.alias) LIKE ?" for _ in tokens)
-    where = (
-        f"({search.filter_clause}) AND (({source_pattern}) OR ({display_pattern}) "
-        "OR EXISTS (SELECT 1 FROM exercise_aliases a "
-        f"WHERE a.exercise_id = e.id AND {alias_pattern}))"
-    )
-    if search.equipment_clause:
-        where = f"({where}) AND ({search.equipment_clause})"
-    token_values = [f"%{token}%" for token in tokens]
-    params = [*search.filter_params, *token_values, *token_values, *token_values]
-    return _exercise_name_rows(
-        cursor, where, params, _NameRowsOptions(limit=search.limit)
-    )
+    required_tokens = set(query_tokens)
+    matches = [
+        candidate.row
+        for candidate in rows
+        if any(required_tokens.issubset(name.words) for name in candidate.candidates)
+    ]
+    matches.sort(key=lambda row: len(row["source_name"] or ""))
+    return matches[:search.limit]
 
 
-def _find_name_rows(cursor, search: _NameSearch):
-    if search.filter_browse:
-        where = search.filter_clause
-        if search.equipment_clause:
-            where += f" AND ({search.equipment_clause})"
-        return _exercise_name_rows(
-            cursor,
-            where,
-            list(search.filter_params),
-            _NameRowsOptions(
-                limit=search.limit,
-                ranking="display_name_first",
-                replacing_exercise_id=search.replacing_exercise_id,
-            ),
+def _edit_distance_with_transposition(left: str, right: str) -> int:
+    previous_previous = None
+    previous = list(range(len(right) + 1))
+    for left_index, left_character in enumerate(left, start=1):
+        current = [left_index]
+        for right_index, right_character in enumerate(right, start=1):
+            distance = min(
+                current[-1] + 1,
+                previous[right_index] + 1,
+                previous[right_index - 1] + (left_character != right_character),
+            )
+            if (
+                previous_previous is not None
+                and left_index > 1
+                and right_index > 1
+                and left_character == right[right_index - 2]
+                and left[left_index - 2] == right_character
+            ):
+                distance = min(distance, previous_previous[right_index - 2] + 1)
+            current.append(distance)
+        previous_previous, previous = previous, current
+    return previous[-1]
+
+
+@lru_cache(maxsize=512)
+def _closest_movement_tokens(word: str) -> tuple[str, ...]:
+    if word in EXACT_MOVEMENT_TOKENS:
+        return (word,)
+    closest_tokens = []
+    closest_distance = None
+    for movement_token in EXACT_MOVEMENT_TOKENS:
+        if min(len(word), len(movement_token)) < 4:
+            continue
+        maximum_length = max(len(word), len(movement_token))
+        maximum_distance = max(1, maximum_length // 4)
+        if abs(len(word) - len(movement_token)) > maximum_distance:
+            continue
+        distance = _edit_distance_with_transposition(word, movement_token)
+        if distance > maximum_distance:
+            continue
+        if closest_distance is None or distance < closest_distance:
+            closest_tokens = [movement_token]
+            closest_distance = distance
+        elif distance == closest_distance:
+            closest_tokens.append(movement_token)
+    return tuple(sorted(closest_tokens))
+
+
+def _fuzzy_token_matches(
+    word: str, candidate_words: tuple[str, ...]
+) -> list[tuple[int, float]]:
+    matches = []
+    query_movement_tokens = _closest_movement_tokens(word)
+    for index, candidate_word in enumerate(candidate_words):
+        candidate_movement_token = (
+            candidate_word if candidate_word in EXACT_MOVEMENT_TOKENS else None
         )
-    if not search.normalized_query:
+        if query_movement_tokens or candidate_movement_token:
+            if candidate_movement_token not in query_movement_tokens:
+                continue
+        if min(len(word), len(candidate_word)) < 4:
+            if word == candidate_word:
+                matches.append((index, 1.0))
+            continue
+        maximum_length = max(len(word), len(candidate_word))
+        maximum_distance = max(1, maximum_length // 4)
+        if abs(len(word) - len(candidate_word)) > maximum_distance:
+            continue
+        distance = _edit_distance_with_transposition(word, candidate_word)
+        if distance <= maximum_distance:
+            matches.append((index, 1 - distance / maximum_length))
+    return matches
+
+
+def _match_query_tokens(
+    query_words: tuple[str, ...], candidate_words: tuple[str, ...]
+) -> tuple[float, ...] | None:
+    token_matches = []
+    for word in query_words:
+        possible_matches = _fuzzy_token_matches(word, candidate_words)
+        if not possible_matches:
+            return None
+        token_matches.append(possible_matches)
+    used_candidate_words = set()
+    matched_scores = []
+    for possible_matches in sorted(token_matches, key=len):
+        best_match = max(
+            (
+                match
+                for match in possible_matches
+                if match[0] not in used_candidate_words
+            ),
+            key=lambda match: match[1],
+            default=None,
+        )
+        if best_match is None:
+            return None
+        index, score = best_match
+        used_candidate_words.add(index)
+        matched_scores.append(score)
+    return tuple(matched_scores)
+
+
+def _fuzzy_name_score(query: _NameQuery, candidate: _NameCandidate) -> float:
+    if not query.words or not candidate.words:
+        return 0.0
+    token_scores = _match_query_tokens(query.words, candidate.words)
+    if token_scores is None:
+        return 0.0
+    phrase_coverage = len(query.words) / len(candidate.words)
+    return sum(token_scores) / len(token_scores) * phrase_coverage
+
+
+def _prepare_name_query(search: _NameSearch) -> _NameQuery:
+    words = tuple(search.normalized_query.split())
+    compact = search.normalized_query.replace(" ", "")
+    return _NameQuery(
+        compact=compact,
+        words=words,
+    )
+
+
+def _score_fuzzy_name_rows(rows: list[_PreparedNameRow], search: _NameSearch):
+    query = _prepare_name_query(search)
+    if len(query.compact) < 3:
         return []
+    scored = []
+    for candidate in rows:
+        score = max(
+            (
+                _fuzzy_name_score(query, name)
+                for name in candidate.candidates
+            ),
+            default=0.0,
+        )
+        if score >= FUZZY_NAME_MATCH_THRESHOLD:
+            scored.append((score, candidate.row))
+    return scored
+
+
+def _fuzzy_name_rows(rows: list[_PreparedNameRow], search: _NameSearch):
+    scored = _score_fuzzy_name_rows(rows, search)
+    if not scored:
+        return []
+    scored.sort(key=lambda candidate: (-candidate[0], str(candidate[1]["display_name"])))
+    best_score = scored[0][0]
+    matches = [
+        row
+        for score, row in scored
+        if score >= max(FUZZY_NAME_MATCH_THRESHOLD, best_score - 0.08)
+    ]
+    return matches[:search.limit]
+
+
+def _find_name_rows(rows: list[_PreparedNameRow], search: _NameSearch):
     for search_tier in (
-        _exact_name_rows,
-        _normalized_name_rows,
+        _equivalent_name_rows,
         _substring_name_rows,
         _token_name_rows,
+        _fuzzy_name_rows,
     ):
-        matches = search_tier(cursor, search)
+        matches = search_tier(rows, search)
         if matches:
             return matches
     return []
@@ -380,25 +584,75 @@ class ExerciseLookupMixin:
         detail["provenance"] = entry["provenance"]
         return detail
 
-    def find_unique_exercise_id_by_exact_name(self, query: str) -> str | None:
-        """Return an exercise id only when an exact source, display, or alias name is unique."""
-        clean = query.strip().lower()
-        normalized = _normalize_exercise_name(clean)
-        if not normalized:
+    def _search_name_rows(
+        self, search: _NameSearch
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        if search.limit is not None and search.limit <= 0:
+            return [], []
+        rows = self._fetch_name_rows(search)
+        if rows is None:
+            return [], []
+        if search.filter_browse:
+            return _name_match_results(rows), []
+        prepared_rows = _prepare_name_rows(rows)
+        rejected_ids = near_miss_exercise_ids(search.query)
+        ranked_rows = _find_name_rows(prepared_rows, search)
+        exact_rows = _normalized_name_rows(prepared_rows, search)
+        return (
+            _name_match_results(
+                [row for row in ranked_rows if str(row["id"]) not in rejected_ids]
+            ),
+            _name_match_results(
+                [row for row in exact_rows if str(row["id"]) not in rejected_ids]
+            ),
+        )
+
+    def _fetch_name_rows(self, search: _NameSearch) -> list[dict[str, Any]] | None:
+        if not search.filter_browse and not search.normalized_query:
             return None
+        where = search.filter_clause
+        if search.equipment_clause:
+            where += f" AND ({search.equipment_clause})"
+        options = (
+            _NameRowsOptions(
+                limit=search.limit,
+                ranking="display_name_first",
+                replacing_exercise_id=search.replacing_exercise_id,
+            )
+            if search.filter_browse
+            else _NameRowsOptions(limit=None, include_aliases=True)
+        )
+        with self._catalog_lock:
+            return _exercise_name_rows(
+                self.catalog_conn.cursor(), where, list(search.filter_params), options
+            )
+
+    def _find_exact_exercise_ids_by_name(self, query: str) -> frozenset[str]:
+        """Return ids whose source, display name, or alias matches after normalization."""
+        _, exact_matches = self._find_exercises_by_name_with_exact_matches(
+            query, limit=3
+        )
+        return frozenset(str(match["id"]) for match in exact_matches)
+
+    def _find_exercises_by_name_with_exact_matches(
+        self, query: str, limit: int | None = 3
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """Return ranked matches and every normalized-equivalent match from one snapshot."""
+        clean = query.strip().lower()
         search = _NameSearch(
             query=clean,
-            normalized_query=normalized,
+            normalized_query=_normalize_exercise_name(clean),
             filter_clause="1 = 1",
             filter_params=(),
             equipment_clause=None,
             filter_browse=False,
-            limit=None,
+            limit=limit,
         )
-        with self._catalog_lock:
-            cursor = self.catalog_conn.cursor()
-            rows = _exact_name_rows(cursor, search)
-        exercise_ids = {str(row["id"]) for row in rows}
+        return self._search_name_rows(search)
+
+    def find_unique_exercise_id_by_exact_name(self, query: str) -> str | None:
+        """Return an id only when its normalized source, display, or alias is unique."""
+        exercise_ids = self._find_exact_exercise_ids_by_name(query)
         return next(iter(exercise_ids)) if len(exercise_ids) == 1 else None
 
     def find_exercises_by_name(
@@ -412,9 +666,11 @@ class ExerciseLookupMixin:
         filters: ExerciseFilters | None = None,
         replacing_exercise_id: str | None = None,
     ) -> list[dict[str, Any]]:
-        """Ranked Exercise library matches across source names, display names, and aliases.
+        """Rank source names, display names, and aliases by name-match strength.
 
-        Name tiers are exact → punctuation-insensitive → substring → token-AND.
+        Name tiers are normalized-equivalent, substring, token-AND, then fuzzy. Normalization
+        folds common plurals and spacing, aliases include gym nicknames, and typo matches
+        stay behind every stronger tier.
 
         Each tier short-circuits: weaker-tier matches are only returned when every stronger
         tier came up empty. The substitution resolver uses this so an explicitly named
@@ -455,18 +711,13 @@ class ExerciseLookupMixin:
             limit=limit,
             replacing_exercise_id=(replacing_exercise_id or None),
         )
-        with self._catalog_lock:
-            cursor = self.catalog_conn.cursor()
-            rejected_ids = near_miss_exercise_ids(clean)
-            rows = _find_name_rows(cursor, search)
-            return _name_match_results(
-                [row for row in rows if str(row["id"]) not in rejected_ids]
-            )
+        matches, _ = self._search_name_rows(search)
+        return matches
 
     def find_exercise_by_name(self, query: str) -> dict[str, Any] | None:
-        """Best Exercise library match (exact → punctuation-insensitive → substring → token-AND)."""
-        matches = self.find_exercises_by_name(query, limit=1)
-        return matches[0] if matches else None
+        """Return a name match only when the lookup has one clear candidate."""
+        matches = self.find_exercises_by_name(query, limit=3)
+        return matches[0] if len(matches) == 1 else None
 
 
 def _exercise_filter_predicate(

@@ -21,6 +21,8 @@ class CoachCopy {
   String get weakPoints => isArabic ? 'نقاط الضعف' : 'Weak points';
   String get focusMuscles => isArabic ? 'العضلات محل التركيز' : 'Focus muscles';
   String get noExtraExerciseAvailable => isArabic ? 'لا يتوفر تمرين إضافي' : 'No extra exercise available';
+  String? focusReason(Map<String, dynamic>? reason) =>
+      MayosCopy(languageCode).focusReason(reason);
   String get noWeakPoints => isArabic ? 'لم يحدد اللاعب نقاط ضعف.' : 'The lifter has not named any Weak points.';
   String get noFocusMuscles => isArabic ? 'لا توجد عضلات محل تركيز.' : 'There are no Focus muscles.';
   String weakPointSource(String source) => switch (source) {
@@ -34,6 +36,7 @@ class CoachCopy {
         'upper_chest' => isArabic ? 'أعلى الصدر' : 'Upper chest',
         'back' || 'lats' => isArabic ? 'اللاتس (الظهر العريض)' : 'Lats',
         'traps' => isArabic ? 'الترابيس' : 'Traps',
+        'rear_delts' || 'rear delts' => isArabic ? 'الأكتاف الخلفية' : 'Rear delts',
         'shoulders' => isArabic ? 'الأكتاف' : 'Shoulders',
         'side_delts' => isArabic ? 'الأكتاف الجانبية' : 'Side delts',
         'biceps' => isArabic ? 'العضلة ذات الرأسين' : 'Biceps',
@@ -45,6 +48,7 @@ class CoachCopy {
         'adductors' => isArabic ? 'المقربات' : 'Adductors',
         'calves' => isArabic ? 'السمانة' : 'Calves',
         'abs' => isArabic ? 'البطن' : 'Abs',
+        'core' => isArabic ? 'عضلات الجذع' : 'Core',
         _ => key,
       };
   String get profile => isArabic ? 'الملف الشخصي' : 'Profile';

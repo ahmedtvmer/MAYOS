@@ -321,6 +321,19 @@ def test_weekly_muscle_coverage_guarantees(gender, frequency, preference):
     assert len(triceps_slots & slots) >= 2, f"Triceps direct work missing: {sorted(slots)}"
     assert {"forearm_wrist", "forearm_reverse"} & slots, "Forearm work missing"
     assert "shrug" in slots, "Shrug (Kelso nearest-match) work missing"
+    slots_by_day = {
+        day.day_name: {exercise.slot_key for exercise in day.exercises}
+        for day in program.days
+    }
+    if frequency == 3:
+        assert "shrug" in slots_by_day["Full Body #2"]
+        assert {"vertical_pull", "horizontal_row"} <= slots_by_day["Full Body #3"]
+    elif frequency == 4:
+        assert "horizontal_row" in slots_by_day["Upper 1"]
+        assert "shrug" in slots_by_day["Upper 2"]
+    else:
+        assert "chest_fly" in slots_by_day["Push"]
+        assert "shrug" in slots_by_day["Pull"]
 
 
 @pytest.mark.parametrize("gender,frequency", [("male", 3), ("female", 3)])
@@ -687,14 +700,19 @@ def test_five_day_ppl_upper_lower_has_balanced_volume():
     }
     assert slots_by_day["Push"] == [
         "side_delts", "incline_press", "shoulder_press", "chest_fly",
-        "triceps_overhead", "triceps_pushdown",
+        "triceps_overhead",
     ]
     assert slots_by_day["Upper"] == [
-        "forearm_wrist", "flat_press", "vertical_pull", "biceps_preacher",
+        "forearm_wrist", "flat_press", "vertical_pull", "horizontal_row", "biceps_preacher",
         "triceps_pushdown",
     ]
-    push_fly = next(exercise for exercise in program.days[2].exercises if exercise.slot_key == "chest_fly")
-    assert push_fly.exercise_id == "596"
+    assert slots_by_day["Pull"] == [
+        "rear_delts", "vertical_pull", "shrug", "biceps_alt", "forearm_reverse",
+    ]
+    assert {
+        day.day_name for day in program.days
+        if any(exercise.slot_key == "vertical_pull" for exercise in day.exercises)
+    } == {"Upper", "Pull"}
     chest_days = [
         [exercise for exercise in day.exercises if exercise.slot_key in {"incline_press", "flat_press", "chest_fly"}]
         for day in program.days
@@ -703,7 +721,7 @@ def test_five_day_ppl_upper_lower_has_balanced_volume():
     assert sum(bool(day) for day in chest_days) == 2
     totals = [sum(exercise.working_sets for exercise in day.exercises) for day in program.days]
     assert all(10 <= total <= 15 for total in totals), totals
-    assert totals == [10, 12, 12, 10, 12]
+    assert totals == [12, 12, 10, 10, 12]
     assert sum(totals) == 56
 
 

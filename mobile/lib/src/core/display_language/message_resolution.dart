@@ -44,20 +44,35 @@ String resolveStructuredMessage({
       !_englishSpecificErrorCodes.contains(messageCode)) {
     return fallback;
   }
+  return resolveCatalogMessage(
+        messageCode: messageCode,
+        messageParams: messageParams,
+        displayLanguage: displayLanguage,
+      ) ??
+      fallback;
+}
+
+/// Resolves a message only when its code and parameters have catalog copy.
+/// Unlike [resolveStructuredMessage], this also returns catalog English copy
+/// instead of trusting a server-supplied fallback.
+String? resolveCatalogMessage({
+  required Object? messageCode,
+  required Object? messageParams,
+  required String displayLanguage,
+}) {
   if (messageCode is! String || messageParams is! Map<String, dynamic>) {
-    return fallback;
+    return null;
   }
   final Set<String>? allowedParams = _paramKeys[messageCode];
   if (allowedParams == null || !_hasExactKeys(messageParams, allowedParams)) {
-    return fallback;
+    return null;
   }
   final _MessageTemplate? template = _templates[messageCode];
-  // The shared import handler uses the registry key to select localized copy.
-  return template?.call(
+  final String? message = template?.call(
         <String, dynamic>{...messageParams, '_message_code': messageCode},
-        copy,
-      ) ??
-      fallback;
+        MessageCopy(displayLanguage),
+      );
+  return message?.trim().isNotEmpty == true ? message : null;
 }
 
 bool _hasExactKeys(Map<String, dynamic> params, Set<String> allowed) =>

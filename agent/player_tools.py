@@ -38,6 +38,7 @@ from agent.player_prompt import (
 logger = logging.getLogger(__name__)
 
 MAX_TOOL_RESULT_BYTES = 4 * 1024
+MAX_PLAYER_TOOL_ROUNDS = 3
 CHAT_SEARCH_MATCH_MAX_CHARS = 300
 TOOL_TIMEOUT_SECONDS = 5.0
 _TRUNCATED_PROMPT_RESULT = '{"status":"truncated"}'
@@ -426,7 +427,8 @@ def _program_exercise_prescription(
     row = {
         "name": exercise.exercise_name, "sets": sets,
         "reps_min": exercise.target_reps_min, "reps_max": exercise.target_reps_max,
-        "rir": rir, "muscle": normalize_main_muscle(muscle) or "not set",
+        "rir": rir,
+        "muscle": _program_exercise_muscle_label(muscle),
         "rest_seconds": exercise.rest_seconds if exercise.rest_seconds is not None else "not set",
         "secondary_muscles": secondary_groups,
         "movement_pattern": metadata.get("movement_pattern"),
@@ -435,6 +437,14 @@ def _program_exercise_prescription(
     if set_group_details is not None:
         row["set_groups"] = set_group_details
     return row
+
+
+def _program_exercise_muscle_label(muscle: str | None) -> str:
+    source_label = str(muscle or "").strip()
+    group = normalize_main_muscle(source_label)
+    if not group:
+        return "not set"
+    return source_label if source_label.casefold() == group else group
 
 
 def _program_exercise_set_group_details(
@@ -697,6 +707,7 @@ PLAYER_READ_TOOL_REGISTRY: tuple[PlayerReadTool, ...] = (
             "Read recorded reasons for the active Training program. Use this for every why-question "
             "about the Split, day order, exercises, skipped restricted slots or prescriptions. Scope by day_name/day_order or "
             "exercise_name/exercise_id and week_order; use page/next_page to read large results. "
+            "For Focus status 'covered', explain the already-at-target reason using its English or Arabic message for the reply language. "
             "If reason_available is false, no recorded generator reason exists."
         ),
         args_schema=ProgramRationaleArgs,

@@ -8,6 +8,7 @@ normal publish path with default request resolution.
 """
 
 import copy
+import json
 import sqlite3
 from pathlib import Path
 
@@ -215,6 +216,39 @@ def test_assign_copies_template_to_multiple_players_with_source_template_id(api)
     assert draft1["source_template_id"] == template["template_id"]
     assert draft1["source_template_name"] == "My Template"
     assert draft2["source_template_id"] == template["template_id"]
+
+
+def test_assign_translates_legacy_template_labels_without_renaming_exercises(api):
+    client, db, _ = api
+    coach = _make_coach(client, db, "coach")
+    _, assignment_id = _assign_player(client, coach, "p1")
+    template = _create_template(client, coach)
+    legacy = template["program"]
+    for day in legacy["days"]:
+        day["day_name"] = "Chest & Back"
+        day["exercises"][0]["exercise_name"] = "Back Squat"
+    for week in legacy.get("weeks", []):
+        for day in week["days"]:
+            day["day_name"] = "Chest and Back"
+            day["exercises"][0]["exercise_name"] = "Back Squat"
+    legacy["program_rationale"] = {"focus_muscles": [{"muscle": "back"}]}
+    with db.catalog_conn:
+        db.catalog_conn.execute(
+            "UPDATE program_templates SET program_json = ? WHERE template_id = ?",
+            (json.dumps(legacy), template["template_id"]),
+        )
+
+    response = client.post(
+        f"{TEMPLATES_PATH}/{template['template_id']}/assign", headers=coach,
+        json={"targets": [{"assignment_id": assignment_id}]},
+    )
+
+    assert response.status_code == 200, response.text
+    draft = _working_draft(client, coach, assignment_id)["draft"]
+    assert draft["days"][0]["day_name"] == "Chest, Lats & Traps"
+    assert draft["days"][0]["exercises"][0]["exercise_name"] == "Back Squat"
+    assert draft["program_rationale"]["focus_muscles"] == [{"muscle": "lats"}]
+    assert all(day["day_name"] == "Chest, Lats & Traps" for week in draft["weeks"] for day in week["days"])
 
 
 def test_assign_partial_failure_rejects_bad_assignment_without_failing_rest(api):

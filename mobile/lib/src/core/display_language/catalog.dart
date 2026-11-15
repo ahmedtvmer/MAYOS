@@ -37,6 +37,9 @@ class MayosCopy {
   String get offlineSavedData => isArabic
       ? 'أنت غير متصل، نعرض البيانات المحفوظة'
       : 'Offline, showing saved data';
+  String get serviceUnavailable => isArabic
+      ? 'واجهت MAYOS مشكلة. حاول مرة أخرى.'
+      : 'MAYOS had a problem; try again.';
   String get program => isArabic ? 'البرنامج التدريبي' : 'Program';
   String get progress => isArabic ? 'التقدم' : 'Progress';
   String get nutritionTab => nutrition.tab;
@@ -46,7 +49,7 @@ class MayosCopy {
   String get whatsNewTitle => isArabic ? 'ما الجديد' : "What's new";
   String whatsNewRelease(int release) => switch (release) {
         1 || 4 => isArabic ? 'أكتوبر 2026' : 'October 2026',
-        6 => isArabic ? 'نوفمبر 2026' : 'November 2026',
+        6 || 7 => isArabic ? 'نوفمبر 2026' : 'November 2026',
         _ => isArabic ? 'إصدار $release' : 'Release $release',
       };
   String get whatsNewProfile => whatsNewTitle;
@@ -73,6 +76,7 @@ class MayosCopy {
         'upper_chest' => isArabic ? 'أعلى الصدر' : 'Upper chest',
         'back' || 'lats' => isArabic ? 'اللاتس (الظهر العريض)' : 'Lats',
         'traps' => isArabic ? 'الترابيس' : 'Traps',
+        'rear_delts' => isArabic ? 'الأكتاف الخلفية' : 'Rear delts',
         'shoulders' => isArabic ? 'الأكتاف' : 'Shoulders',
         'side_delts' => isArabic ? 'الأكتاف الجانبية' : 'Side delts',
         'biceps' => isArabic ? 'العضلة ذات الرأسين' : 'Biceps',
@@ -513,7 +517,7 @@ class MayosCopy {
                   AppFailureId.cannotReachService =>
                     'أنت غير متصل بالإنترنت. سنعيد المحاولة عند عودة الاتصال.',
                   AppFailureId.serviceUnavailable =>
-                    'الخدمة غير متاحة. حاول مجددًا.',
+                    serviceUnavailable,
                   AppFailureId.requestFailed =>
                     'فشل الطلب (\u2066$value\u2069).',
                   AppFailureId.serviceRejected => 'رفضت الخدمة هذا الطلب.',
@@ -674,9 +678,9 @@ class MayosCopy {
       : '$count reps';
   String get loadHomeFailed =>
       isArabic ? 'تعذر تحميل الصفحة الرئيسية.' : 'Could not load your home.';
-  String get offlineSavedProgram => isArabic
-      ? 'غير متصل — يعرض البرنامج التدريبي المحفوظ.'
-      : 'Offline — showing your saved program.';
+  String get savedProgramNote => isArabic
+      ? 'يعرض البرنامج التدريبي المحفوظ.'
+      : 'Showing your saved program.';
   String get noSetsRecordedForExercise => isArabic
       ? 'لا توجد مجموعات مسجلة لهذا التمرين بعد. سجّل حصة تدريبية لبدء متابعة التقدم.'
       : 'No sets recorded for this exercise yet. Log a workout to start a trend.';
@@ -713,9 +717,9 @@ class MayosCopy {
   String get everyExerciseMatchInWorkout => isArabic
       ? 'كل النتائج موجودة بالفعل في هذه الحصة.'
       : 'Every match is already in this workout.';
-  String get offlineProgramBanner => isArabic
-      ? 'غير متصل — يعرض البرنامج المحفوظ'
-      : 'Offline — showing saved program';
+  String get savedProgramBanner => isArabic
+      ? 'يعرض البرنامج التدريبي المحفوظ'
+      : 'Showing saved program';
   String get warmup => isArabic ? 'الإحماء' : 'Warm-up';
   String get workingSets => isArabic ? 'مجموعات التدريب' : 'Working sets';
   String get cardio => isArabic ? 'تمارين اللياقة' : 'Cardio';
@@ -731,9 +735,15 @@ class MayosCopy {
       ? primaryMuscle
       : '$primaryMuscle ($selectedCount)';
   String primaryMuscleLabel(String muscle) {
+    switch (muscle.trim().toLowerCase()) {
+      case 'shoulders':
+        return isArabic ? 'الأكتاف' : 'Shoulders';
+      case 'core':
+        return isArabic ? 'عضلات الجذع' : 'Core';
+    }
     for (final PrimaryMuscle primaryMuscle in primaryMuscles) {
-      if (primaryMuscle.apiValue == muscle) {
-        return isArabic ? primaryMuscle.arabicLabel : muscle;
+      if (primaryMuscle.apiValue.toLowerCase() == muscle.trim().toLowerCase()) {
+        return isArabic ? primaryMuscle.arabicLabel : primaryMuscle.apiValue;
       }
     }
     return muscle;
@@ -1229,9 +1239,14 @@ class MayosCopy {
 
   // #234 Volume review copy.
   String get volumeReview => isArabic ? 'مراجعة مجموعات التدريب' : 'Volume review';
-  String volumeReviewChange(int delta) => isArabic
-      ? '${delta > 0 ? '+' : ''}$delta مجموعة أسبوعيًا'
-      : '${delta > 0 ? '+' : ''}$delta sets per week';
+  String volumeReviewChange(num delta) {
+    final String amount = delta == delta.roundToDouble()
+        ? delta.toInt().toString()
+        : delta.toString();
+    return isArabic
+        ? '${delta > 0 ? '+' : ''}$amount مجموعة أسبوعيًا'
+        : '${delta > 0 ? '+' : ''}$amount sets per week';
+  }
   String volumeReviewReason(String verdict, String muscle) {
     if (isArabic) {
       switch (verdict) {
@@ -1264,6 +1279,14 @@ class MayosCopy {
         return '$muscle is progressing; keep the current set count.';
     }
   }
+  String? focusReason(Map<String, dynamic>? reason) {
+    if (reason == null || reason['code'] != 'focus.already_at_target') return null;
+    final Object? rawMessages = reason['messages'];
+    if (rawMessages is! Map<String, dynamic>) return null;
+    final Object? localizedMessage = rawMessages[languageCode];
+    return localizedMessage is String ? localizedMessage : null;
+  }
+
   String get acceptVolumeReview => isArabic ? 'قبول' : 'Accept';
   String get dismissVolumeReview => isArabic ? 'تجاهل' : 'Dismiss';
   String get volumeReviewSaved => isArabic ? 'تم تحديث البرنامج التدريبي.' : 'Your program was updated.';
