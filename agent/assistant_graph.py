@@ -84,6 +84,7 @@ from agent.player_prompt import (
     valid_preferred_name as _valid_preferred_name,
 )
 from agent.player_tools import (
+    MAX_PLAYER_TOOL_ROUNDS,
     build_player_read_tools,
     cap_tool_results_for_prompt,
     run_player_tool_calls,
@@ -5070,9 +5071,6 @@ def _stream_player_answer(
         return _StreamedPlayerAnswer(message, tool_calls, {})
     yield from output.finish_answer(capture.limited)
     return _StreamedPlayerAnswer(message, [], capture.telemetry())
-
-
-MAX_PLAYER_TOOL_ROUNDS = 3
 
 
 def _tool_reply_language(state: dict[str, Any]) -> str:

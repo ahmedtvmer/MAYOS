@@ -15,11 +15,15 @@ from agent.player_prompt import (
     HOSTED_PROMPT_MAX_BYTES, HOSTED_PROMPT_TOOL_RESULT_RESERVE_BYTES,
     get_message_text, message_role,
 )
-from agent.player_tools import run_player_tool_calls
+from agent.player_tools import (
+    MAX_PLAYER_TOOL_ROUNDS, MAX_TOOL_RESULT_BYTES, run_player_tool_calls,
+)
 from core.muscle_volume import default_muscle_credits
 from core.weak_point_suggestions import WEAK_POINT_ALIASES
 
 MAX_ROUTED_CONTEXT_BYTES = 8 * 1024
+# Preserve a capped result for each remaining model tool round.
+ROUTED_CONTEXT_FALLBACK_RESERVE_BYTES = MAX_TOOL_RESULT_BYTES * MAX_PLAYER_TOOL_ROUNDS
 PROGRAM_TOPIC = "program_what_how_many"
 _PROGRAM = re.compile(r"\b(?:program|routine|split|(?:training|workout) plan)\b|برنامج|برنامجي|تقسيم", re.I)
 _QUESTION = re.compile(
@@ -313,24 +317,47 @@ def _bounded_context(
     messages: Sequence[BaseMessage], calls: Sequence[dict[str, Any]], results: Sequence[ToolMessage],
 ) -> RoutedContext:
     available = _available_context_bytes(messages)
-    included_calls, included_results, pieces = [], [], []
-    for call, result in zip(calls, results):
-        size = len(str(result.content).encode("utf-8")) + len(
-            json.dumps(call, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-        )
-        if size <= available:
-            included_calls.append(call)
-            included_results.append(result)
-            pieces.append(_piece_name(call["args"]))
-            available -= size
-    if not included_calls:
+    included = _fit_context_pieces(calls, results, available)
+    if not included:
         return RoutedContext(list(messages), (PROGRAM_TOPIC,))
+    included_calls = [call for call, _result in included]
+    included_results = [result for _call, result in included]
+    pieces = [_piece_name(call["args"]) for call in included_calls]
     simulated = AIMessage(content="", tool_calls=included_calls)
     return RoutedContext([*messages, simulated, *included_results], (PROGRAM_TOPIC,), tuple(pieces))
 
 
+def _fit_context_pieces(
+    calls: Sequence[dict[str, Any]], results: Sequence[ToolMessage], available: int,
+) -> list[tuple[dict[str, Any], ToolMessage]]:
+    # Prescription-bearing results are larger than empty scopes and should get space first.
+    prioritized = sorted(
+        (
+            (index, call, result, _context_piece_bytes(call, result))
+            for index, (call, result) in enumerate(zip(calls, results))
+        ),
+        key=lambda piece: (-piece[3], piece[0]),
+    )
+    included = []
+    for index, call, result, size in prioritized:
+        if size <= available:
+            included.append((index, call, result))
+            available -= size
+    included.sort(key=lambda piece: piece[0])
+    return [(call, result) for _index, call, result in included]
+
+
+def _context_piece_bytes(call: dict[str, Any], result: ToolMessage) -> int:
+    result_bytes = len(str(result.content).encode("utf-8"))
+    call_bytes = len(json.dumps(call, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+    return result_bytes + call_bytes
+
+
 def _available_context_bytes(messages: Sequence[BaseMessage]) -> int:
     # Empty/one/many and Unicode results share the content-byte ceiling used by the tool loop.
-    return min(MAX_ROUTED_CONTEXT_BYTES, HOSTED_PROMPT_MAX_BYTES
-               - HOSTED_PROMPT_TOOL_RESULT_RESERVE_BYTES
-               - sum(len(str(message.content).encode("utf-8")) for message in messages))
+    return min(
+        MAX_ROUTED_CONTEXT_BYTES,
+        HOSTED_PROMPT_MAX_BYTES - HOSTED_PROMPT_TOOL_RESULT_RESERVE_BYTES
+        - ROUTED_CONTEXT_FALLBACK_RESERVE_BYTES
+        - sum(len(str(message.content).encode("utf-8")) for message in messages),
+    )

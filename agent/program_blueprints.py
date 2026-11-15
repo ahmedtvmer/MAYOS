@@ -257,13 +257,13 @@ SLOT_SPECS: dict[str, SlotSpec] = {
     ),
     "upper_back_pull": _slot(
         "upper_back_pull",
-        "(LOWER(name) LIKE '%unilateral row%' OR LOWER(name) LIKE '%one arm row%' "
-        "OR LOWER(name) LIKE '%single arm row%' OR LOWER(name) LIKE '%t bar row%' "
+        "(LOWER(name) LIKE '%inverted row%' OR LOWER(name) LIKE '%unilateral row%' "
+        "OR LOWER(name) LIKE '%one arm row%' OR LOWER(name) LIKE '%single arm row%' OR LOWER(name) LIKE '%t bar row%' "
         "OR LOWER(name) LIKE '%t-bar%' OR LOWER(name) LIKE '%high row%' "
         "OR LOWER(name) LIKE '%bent over row%' OR LOWER(name) LIKE '%barbell row%') "
         "AND LOWER(target_muscle) IN ('upper back', 'upper-back', 'mid back', 'mid-back', 'middle back', 'middle-back', 'rhomboid', 'rhomboids', 'traps', 'upper traps', 'mid traps', 'middle traps', 'lower traps', 'trapezius', 'upper trapezius', 'mid trapezius', 'middle trapezius', 'lower trapezius', 'lats', 'latissimus dorsi')",
         "medium_compound",
-        ("leverage machine", "cable", "dumbbell", "smith machine", "barbell"),
+        ("leverage machine", "cable", "dumbbell", "smith machine", "barbell", "body weight"),
         reps=(6, 10),
         rest_seconds=240,
         warmup_sets=1,
@@ -700,6 +700,7 @@ MAX_COACH_PATTERN_RECOVERY_CUTS_PER_DAY = 2
 SLOT_FALLBACKS: dict[str, dict[str | None, tuple[str, ...]]] = {
     # The back limitation can empty this slot's hinge pool; leg curls are safe.
     "ham_hinge": {None: ("ham_curl",)},
+    "shrug": {BODYWEIGHT_ONLY: ("upper_back_pull",)},
     # Remaining bodyweight fallbacks keep a day populated when a slot is empty.
     "incline_press": {BODYWEIGHT_ONLY: ("flat_press", "quad_lunge")},
     "flat_press": {BODYWEIGHT_ONLY: ("quad_lunge",)},

@@ -1235,13 +1235,11 @@ def _record_focus_actual(program, focus_reason, actual):
         for item in day["exercises"]:
             if item["exercise_id"] in exercise_id_set:
                 item["rationale"]["prescription"]["sets"]["params"]["actual_weekly_sets"] = actual
-    if exercise_ids:
+    extras = focus_reason.get("extras", [])
+    if extras:
         focus_reason.update({
-            "exercise_id": exercise_ids[0],
-            "day_order": next(
-                day["day_order"] for day in program.program_rationale["days"]
-                if any(item["exercise_id"] == exercise_ids[0] for item in day["exercises"])
-            ),
+            "exercise_id": extras[0]["exercise_id"],
+            "day_order": extras[0]["day_order"],
         })
 
 

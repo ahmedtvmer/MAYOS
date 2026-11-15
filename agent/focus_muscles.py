@@ -37,7 +37,7 @@ FOCUS_EXTRA_TABLE = {
         "excluded_equipment": ("barbell", "ez barbell"),
     },
     "lats": {
-        "candidate_slots": ("pullover", "upper_back_pull", "vertical_pull", "horizontal_row"),
+        "candidate_slots": ("pullover", "vertical_pull", "horizontal_row"),
         "main_slot": "vertical_pull",
     },
     "traps": {

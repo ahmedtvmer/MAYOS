@@ -38,6 +38,7 @@ from agent.player_prompt import (
 logger = logging.getLogger(__name__)
 
 MAX_TOOL_RESULT_BYTES = 4 * 1024
+MAX_PLAYER_TOOL_ROUNDS = 3
 CHAT_SEARCH_MATCH_MAX_CHARS = 300
 TOOL_TIMEOUT_SECONDS = 5.0
 _TRUNCATED_PROMPT_RESULT = '{"status":"truncated"}'
