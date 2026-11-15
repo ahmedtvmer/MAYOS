@@ -263,9 +263,9 @@ def build_player_chat_tools(state: dict[str, Any], config: dict[str, Any] | None
     operations = [
         ("search_exercises", "Search the Exercise library by exercise name, muscle or equipment; never program types.",
          ExerciseSearchArgs, lambda **args: _search_exercises(turn, **args)),
-        ("get_exercise_history", "Read latest-session comparisons by exercise_name/exercise_id, or its last logged occurrence. Translate names to English; omit scope names for the whole latest session. Arbitrary date ranges are unavailable.",
+        ("get_exercise_history", "Read latest-session comparisons or an exercise's last logged occurrence. Translate names to English; omit exercise_name/exercise_id for the whole latest session. Arbitrary dates are unavailable.",
          ExerciseHistoryArgs, lambda **args: _exercise_history(turn, **args)),
-        ("get_player_telemetry", "Read saved training telemetry and fatigue facts; never infer logged figures from the user's question.",
+        ("get_player_telemetry", "Read saved training telemetry; do not infer logged facts.",
          EmptyToolArgs, lambda: {"telemetry": ledger.get_compact_telemetry()}),
         ("substitute_exercise", "Replace a named program exercise only on an explicit swap directive. Copy source/day from program; translate target to English. Omit target to request alternatives without saving.",
          SubstitutionArgs, lambda **args: _substitute_exercise(turn, **args)),
@@ -325,18 +325,9 @@ _WRITE_TOOL_GROUPS = {
     r"name|call me|i m|i am|ناديني|اسمي|اسم|انا": {"preferred_name"},
 }
 
-_READ_TOOL_TOPICS = {
-    "list_program_options": r"program|routine|split|days?|types?|options?|برنامج|برامج|تقسيم|ايام|أيام|أنواع|انواع|اختيارات",
-    "get_player_food_log": r"food|eat|ate|meal|diary|log|yesterday|اكل|أكل|طعام|وجب|امبارح|سجل",
-    "get_player_nutrition": r"nutrition|diet|targets?|calori|macro|protein|تغذي|سعر|بروتين|دايت|هدف",
-    "get_player_weight_trend": r"weight|progress|scale|gain|lost|lose|body|وزن|تقدم|ميزان|خس|جسم",
-    "get_player_telemetry": r"telemetry|fatigue|readiness|recover|sleep|tired|exhaust|مرهق|تعب|نوم|تعافي|جاهز",
-    "search_exercises": r"find|search|exercises?|movements?|alternativ|instead|options|بديل|بدائل|تمارين|تمرين|دور|ابحث|حرك",
-}
-
 
 def select_player_chat_tools(tools, state):
-    """Keep reads available; include write groups mentioned in recent conversation."""
+    """Always bind reads; include only write groups mentioned recently."""
     from agent.context_router import _normalize
     from agent.player_prompt import get_message_text
     from agent.program_blueprints import match_split_keyword
@@ -347,14 +338,7 @@ def select_player_chat_tools(tools, state):
     # A named split continues the Program topic; other short follow-ups may refer anywhere.
     if len(state.get("messages", [])) > 1 and len(latest.split()) < 4 and not match_split_keyword(latest):
         return tools
-    known_topic = re.search(r"program|routine|split|workout|exercises?|search|bench|squat|sets?|reps?|rest|performance|profile|know about me|"
-                            r"برنامج|تمرين|بنش|سكوات|سيت|عدات|راحة|أداء|اداء|ملفي|تعرف عني", text, re.I)
-    if not known_topic and not selected:
-        return tools
-    return [tool for tool in tools
-            if (tool.name not in _ACTION_NAMES or tool.name in selected)
-            and (not known_topic or tool.name not in _READ_TOOL_TOPICS
-                 or re.search(_READ_TOOL_TOPICS[tool.name], text, re.I))]
+    return [tool for tool in tools if tool.name not in _ACTION_NAMES or tool.name in selected]
 
 
 def run_player_chat_tool_calls(tool_calls, **options):

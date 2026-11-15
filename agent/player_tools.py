@@ -628,9 +628,10 @@ def _read_program_rationale(ledger: Any, args: ProgramRationaleArgs) -> dict[str
 PLAYER_READ_TOOL_REGISTRY: tuple[PlayerReadTool, ...] = (
     PlayerReadTool(
         name="list_program_options",
-        description="List supported Training program types and who each suits for days per week. "
-                    "Use for other programs, splits or available program types, never exercise search. "
-                    "Omit days to use the active program or saved frequency. Does not change anything.",
+        description=(
+            "List supported Training program types and who each suits by days per week. Omit days to "
+            "use the active program or saved frequency. Read-only; never exercise search."
+        ),
         args_schema=ProgramOptionsArgs,
         reader=_read_program_options,
         args_reader=_read_program_options,
@@ -653,14 +654,14 @@ PLAYER_READ_TOOL_REGISTRY: tuple[PlayerReadTool, ...] = (
     PlayerReadTool(
         name="get_active_program",
         description=(
-            "Read active Program overview: ordered days and muscles, weekly sets, who manages it and "
-            "restriction skips; no prescriptions. Defaults to current week; week_order selects another. "
-            "Scope day_name, exercise_name/exercise_id or muscle for matching prescriptions only. "
-            "Rows include secondary_muscles and movement_pattern (curated primary action or null). "
-            "weekly_volume_by_muscle gives planned direct/indirect/total sets; logged_volume_7d "
-            "gives Home weighted sets, even without a program. how_mayos_counts explains attribution. "
-            "Muscle matches primary or secondary muscles and Weak point groups. Groups can overlap. "
-            "For next_offset, repeat the same scope with offset to read remaining complete prescriptions."
+            "Read the active Program overview (days, muscles, sets, manager and restriction skips); "
+            "prescriptions require day_name, exercise_name/exercise_id or muscle scope. Defaults to "
+            "the current week; week_order selects another. Rows include secondary_muscles and the "
+            "movement_pattern (curated Primary action or null). Volume fields give planned "
+            "direct/indirect/total sets and Home's logged weighted sets for the last 7 days; "
+            "how_mayos_counts explains attribution. "
+            "Muscle scope matches primary/secondary muscles and Weak point groups. Use offset/next_offset "
+            "for remaining complete prescriptions."
         ),
         args_schema=ActiveProgramArgs,
         reader=_read_active_program,
@@ -671,10 +672,11 @@ PLAYER_READ_TOOL_REGISTRY: tuple[PlayerReadTool, ...] = (
     PlayerReadTool(
         name="get_program_rationale",
         description=(
-            "Read recorded reasons for the active Training program. Use this for every why-question "
-            "about the Split, day order, exercises, skipped restricted slots or prescriptions. Scope by day_name/day_order or "
-            "exercise_name/exercise_id and week_order; use page/next_page to read large results. "
-            "If reason_available is false, no recorded generator reason exists."
+            "Read recorded reasons for the active Training program. Use for why questions about its "
+            "Split, day order, exercises, skipped restrictions and prescriptions. Scope by "
+            "day_name/day_order, exercise_name/exercise_id or week_order; use page/next_page for "
+            "large results. "
+            "reason_available=false means no generator reason was recorded."
         ),
         args_schema=ProgramRationaleArgs,
         reader=lambda ledger, args=None: _read_program_rationale(ledger, args or ProgramRationaleArgs()),
@@ -685,8 +687,8 @@ PLAYER_READ_TOOL_REGISTRY: tuple[PlayerReadTool, ...] = (
     PlayerReadTool(
         name="get_player_weight_trend",
         description=(
-            "Read the current player's dated body-weight trend and computed changes. Use this "
-            "before answering questions about weight changes or progress toward a target weight."
+            "Read the player's dated body-weight trend and computed changes. Use for weight changes "
+            "or target progress."
         ),
         args_schema=EmptyToolArgs,
         reader=_read_weight_trend,
@@ -696,10 +698,8 @@ PLAYER_READ_TOOL_REGISTRY: tuple[PlayerReadTool, ...] = (
     PlayerReadTool(
         name="get_player_nutrition",
         description=(
-            "Read the current player's active Nutrition targets, author, Nutrition goal, pace, "
-            "last-14-day adherence counts, and today's Cardio calories and calorie adjustment. "
-            "This is read-only; direct target changes "
-            "to the Nutrition tab."
+            "Read active Nutrition targets, author, goal, pace, 14-day adherence, and today's Cardio "
+            "calories and adjustment. Read-only; change targets in Nutrition."
         ),
         args_schema=EmptyToolArgs,
         reader=_read_player_nutrition,
@@ -709,13 +709,11 @@ PLAYER_READ_TOOL_REGISTRY: tuple[PlayerReadTool, ...] = (
     PlayerReadTool(
         name="get_player_food_log",
         description=(
-            "Read what the current player ate on one Player-local day and its whole-day "
-            "calorie and Macro totals. day defaults to today; accepts today, yesterday, "
-            "or YYYY-MM-DD within the last 14 days including today. Personal food names "
-            "are the player's own data. Null nutrients are unknown and count as zero in "
-            "totals. Names longer than 200 characters are marked truncated. "
-            "If next_offset is set, call again with that offset and the returned "
-            "date to read remaining entries; totals always cover the whole day. Read-only."
+            "Read one Player-local day and whole-day calorie/Macro totals. day defaults to today; "
+            "accepts yesterday or YYYY-MM-DD within the last 14 days including today. Food names belong "
+            "to this Player; unknown nutrients count as zero. Long names are marked truncated. "
+            "If next_offset appears, repeat with the returned date and offset; totals still cover the "
+            "full day. Read-only."
         ),
         args_schema=FoodLogArgs,
         reader=lambda ledger: _read_player_food_log(ledger, FoodLogArgs()),
@@ -726,8 +724,8 @@ PLAYER_READ_TOOL_REGISTRY: tuple[PlayerReadTool, ...] = (
     PlayerReadTool(
         name="get_assistant_preferences",
         description=(
-            "Read preferences the current player explicitly asked the assistant to remember. "
-            "Use when answering how the player likes to train. Do not infer or write preferences."
+            "Read preferences the player asked the assistant to remember. Use for training preferences; "
+            "do not infer or change them."
         ),
         args_schema=EmptyToolArgs,
         reader=_read_assistant_preferences,
@@ -737,11 +735,9 @@ PLAYER_READ_TOOL_REGISTRY: tuple[PlayerReadTool, ...] = (
     PlayerReadTool(
         name="search_chat_history",
         description=(
-            "Search the current player's own older chat messages by English or Arabic keywords. "
-            "Use when the player refers to something from an older conversation that is outside "
-            "the recent chat window. start_date and end_date are inclusive UTC dates in YYYY-MM-DD "
-            "format. limit is 1 to 10. Recent-window messages and session-pointer debriefs are "
-            "excluded. A no_matches status means nothing older matched."
+            "Search the player's older chats by English or Arabic keywords when a reference is outside "
+            "recent history. start_date/end_date are inclusive UTC dates; limit is 1-10. Recent-window "
+            "messages and session-pointer debriefs are excluded. no_matches means no older message matched."
         ),
         args_schema=ChatHistorySearchArgs,
         reader=_read_chat_history_search,

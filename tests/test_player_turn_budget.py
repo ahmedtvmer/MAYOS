@@ -3,8 +3,14 @@
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
+from agent.player_action_tools import build_player_chat_tools, select_player_chat_tools
 from agent.player_prompt import PromptBudgetError
-from agent.player_turn_budget import PLAYER_TURN_INPUT_TOKEN_LIMIT, PlayerTurnInputBudget
+from agent.player_turn_budget import (
+    PLAYER_TURN_ESTIMATED_INPUT_TOKEN_LIMIT,
+    PLAYER_TURN_INPUT_TOKEN_LIMIT,
+    PlayerTurnInputBudget,
+    provider_tool_schemas,
+)
 
 
 @pytest.mark.parametrize("component", ["system", "history", "schema", "arguments", "result"])
@@ -45,6 +51,30 @@ def test_718_transport_retry_reservation_cannot_escape_the_turn_ceiling():
     budget = PlayerTurnInputBudget()
     with pytest.raises(PromptBudgetError):
         budget.admit(messages, attempts=30)
+
+
+def test_718_all_read_tool_schemas_fit_repeated_turn_estimate(fresh_store):
+    state = {"messages": [HumanMessage(content="What do you know about my profile?")]}
+    config = {"configurable": {"ledger": fresh_store.ledger, "store": fresh_store}}
+    tools, _definitions = build_player_chat_tools(state, config)
+    selected_tools = select_player_chat_tools(tools, state)
+    read_names = {
+        "list_program_options", "get_player_profile", "get_active_program",
+        "get_program_rationale", "get_player_weight_trend", "get_player_nutrition",
+        "get_player_food_log", "get_assistant_preferences", "search_chat_history",
+        "get_exercise_history", "get_player_telemetry", "search_exercises",
+    }
+    assert read_names <= {tool.name for tool in selected_tools}
+    assert "preview_program_rebuild" not in {tool.name for tool in selected_tools}
+
+    messages = [SystemMessage(content="Coach safely."), state["messages"][0]]
+    schemas = provider_tool_schemas(selected_tools)
+    budget = PlayerTurnInputBudget()
+    budget.admit(messages, schemas)
+    budget.admit(messages, schemas)
+
+    assert 0 < budget.estimated_consumed <= PLAYER_TURN_ESTIMATED_INPUT_TOKEN_LIMIT
+    assert budget.consumed <= PLAYER_TURN_INPUT_TOKEN_LIMIT
 
 
 def test_718_schema_pressure_trims_old_exchanges_but_preserves_current_tool_pairs():
