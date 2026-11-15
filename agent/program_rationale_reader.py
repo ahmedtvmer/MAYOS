@@ -22,6 +22,8 @@ def _compact(value: Any) -> Any:
                 result["p"] = _compact(value["params"])
             if value.get("at"):
                 result["at"] = value["at"]
+            if value.get("messages"):
+                result["messages"] = value["messages"]
             return result
         return {key: _compact(item) for key, item in value.items() if key not in {"rationale"}}
     if isinstance(value, list):

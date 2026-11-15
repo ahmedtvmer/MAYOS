@@ -348,7 +348,7 @@ class ProgramState(TypedDict):
 
 class CustomDayPlan(_ProgramStateModel):
     day_order: int = Field(ge=1, le=MAX_PROGRAM_DAYS)
-    day_name: str = Field(description="e.g., 'Chest & Back', 'Upper', 'Arms & Delts'")
+    day_name: str = Field(description="e.g., 'Chest, Lats & Traps', 'Upper', 'Arms & Delts'")
     target_slots: list[str] = Field(
         default_factory=list,
         max_length=MAX_DYNAMIC_TARGET_SLOTS_PER_DAY,

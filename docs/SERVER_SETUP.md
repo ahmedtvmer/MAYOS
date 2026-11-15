@@ -319,10 +319,15 @@ port 22; port 8000 must not appear as a host listener. Cloudflare Tunnel
 traffic is outbound from `cloudflared`.
 
 The server's `/mnt/mayos-data/data` directory is on its local disk, with no
-separate volume. Durability rests on that disk plus Litestream's continuous R2
-replication and the daily R2 snapshots. Player ledgers use 10-second monitor
-and sync intervals, so about 10–20 seconds of a Player's newest writes can be
-lost if the server dies; catalog and deletion records retain 1-second defaults.
+separate volume. Durability rests on that disk plus Litestream's hourly R2
+replication and the daily R2 snapshots. Until MAYOS has paying users, a server
+failure can lose up to about one hour of the newest committed writes. Litestream
+monitors catalog and deletion WALs each second and Player-ledger WALs every 10
+seconds, and checkpoints locally every minute; these tasks keep WAL handling
+active without increasing R2 operations. Hourly replication lag does not make
+`/readyz` or the Monitoring page unready; those check API and local storage
+health. Restore the previous R2 cadence when paying users arrive, as described
+in the deployment runbook.
 
 ### Pre-cutover load test
 

@@ -5,9 +5,8 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 /// Shared keystore-backed storage used by the account-separated local stores
 /// (offline drafts, cached program/prescription, chat disclosure + history).
 ///
-/// One construction site (ADR 022 keeps web online-only, so these are only
-/// used where `offlineWorkoutDraftsEnabledProvider` is true) and one JSON
-/// read/write helper, so every store decodes the same way and cannot drift.
+/// Android protected stores share one JSON read/write helper. Saved Player
+/// reads use this helper on Android and browser storage on web (ADR 112).
 class SecureStore {
   SecureStore({FlutterSecureStorage? storage})
       : storage = storage ??

@@ -202,7 +202,7 @@ Future<
   WidgetTester tester, {
   bool coachControlled = false,
   bool failActiveProgramFetch = false,
-  bool failIfConnectivityWatched = false,
+  ConnectivityController? connectivity,
   int liveProgramVersion = 3,
   ThemeMode mode = ThemeMode.light,
   Size size = const Size(1080, 2400),
@@ -260,11 +260,9 @@ Future<
           client.onUnauthorized = ref.watch(unauthorizedEventsProvider).signal;
           return client;
         }),
-        if (failIfConnectivityWatched)
+        if (connectivity != null)
           connectivityControllerProvider.overrideWith(
-            (ref) => throw StateError(
-              'The logger must not create connectivityControllerProvider.',
-            ),
+            (ref) => connectivity,
           ),
       ],
       child: const MayosApp(),
@@ -1055,9 +1053,11 @@ void main() {
         'cable_fly');
   });
 
-  testWidgets('logger never creates connectivity controller on Android',
+  testWidgets('an Android network hint does not block a successful Replace',
       (WidgetTester tester) async {
-    final harness = await _openLogger(tester, failIfConnectivityWatched: true);
+    final ConnectivityController connectivity = ConnectivityController()
+      ..markOffline();
+    final harness = await _openLogger(tester, connectivity: connectivity);
     await _pickMenuItem(tester, 0, _replaceItem(0));
     await _confirmReplace(tester, keepInProgram: true);
     await _searchAndPick(tester, 'fly', 'Cable Fly');

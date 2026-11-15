@@ -265,7 +265,7 @@ CANONICAL_FIXTURE: dict[str, Any] = {
                             },
                             {
                                 "name": "Row",
-                                "description": "Row — Primary action: Horizontal Pull; Primary muscle: Back; Equipment category: Free weight",
+                                "description": "Row — Primary action: Horizontal Pull; Primary muscle: Upper Back; Equipment category: Free weight",
                                 "sets": 3,
                                 "reps": "8-12",
                                 "rpe": 8.0,
@@ -596,6 +596,7 @@ def coach_program_rationale_context(program: Any) -> dict[str, Any]:
         "reason_available": header.get("reason_available", False),
         "split": header.get("split"),
         "day_order": header.get("day_order"),
+        "focus_muscles": header.get("focus_muscles", []),
         "days": days,
     })
 
@@ -683,6 +684,7 @@ def _minimal_coach_rationale(compact: dict[str, Any]) -> dict[str, Any]:
         "reason_available": compact["reason_available"],
         "split": compact["split"],
         "day_order": compact["day_order"],
+        "focus_muscles": compact.get("focus_muscles", []),
         "days": [_minimal_coach_day(day) for day in compact["days"]],
     }
     if _rationale_size(fallback) <= COACH_PROGRAM_RATIONALE_MAX_BYTES:

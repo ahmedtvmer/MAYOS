@@ -23,31 +23,57 @@ class SecureTokenStore implements TokenStore {
       : _storage = storage ??
             const FlutterSecureStorage(
               aOptions: AndroidOptions(encryptedSharedPreferences: true),
-            );
+            ),
+        _usesPlatformStorage = storage == null;
 
   static const String _tokenKey = 'mayos.access_token';
   static const String _accountIdKey = 'mayos.account_id';
 
   final FlutterSecureStorage _storage;
+  final bool _usesPlatformStorage;
+  Future<void> _writeQueue = Future<void>.value();
+  int _generation = 0;
+
+  bool get usesPlatformStorage => _usesPlatformStorage;
+
+  Future<void> _serializeWrite(Future<void> Function() write) {
+    final Future<void> pending = _writeQueue.then((_) => write());
+    _writeQueue = pending.catchError((Object _) {});
+    return pending;
+  }
 
   @override
-  Future<void> save(String token) =>
-      _storage.write(key: _tokenKey, value: token);
+  Future<void> save(String token) {
+    final int generation = _generation;
+    return _serializeWrite(() async {
+      if (generation != _generation) return;
+      await _storage.write(key: _tokenKey, value: token);
+    });
+  }
 
   @override
   Future<String?> read() => _storage.read(key: _tokenKey);
 
   @override
-  Future<void> saveAccountId(String accountId) =>
-      _storage.write(key: _accountIdKey, value: accountId);
+  Future<void> saveAccountId(String accountId) {
+    final int generation = _generation;
+    return _serializeWrite(() async {
+      if (generation != _generation) return;
+      await _storage.write(key: _accountIdKey, value: accountId);
+    });
+  }
 
   @override
   Future<String?> readAccountId() => _storage.read(key: _accountIdKey);
 
   @override
-  Future<void> clear() async {
-    await _storage.delete(key: _tokenKey);
-    await _storage.delete(key: _accountIdKey);
+  Future<void> clear() {
+    final int generation = ++_generation;
+    return _serializeWrite(() async {
+      await _storage.delete(key: _tokenKey);
+      if (generation != _generation) return;
+      await _storage.delete(key: _accountIdKey);
+    });
   }
 }
 

@@ -175,7 +175,8 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Add'));
     await tester.pumpAndSettle();
     expect(find.byType(QuickAddScreen), findsOneWidget);
-    expect(find.text('Could not save food.'), findsOneWidget);
+    // #721: the fake's unrecognized 5xx detail is replaced with safe copy.
+    expect(find.text('MAYOS had a problem; try again.'), findsOneWidget);
     expect(tester.widget<TextField>(find.byKey(const Key('food_energy_kcal'))).controller!.text, '250');
     fake.foodWriteFails = false;
     final Completer<void> pending = Completer<void>();

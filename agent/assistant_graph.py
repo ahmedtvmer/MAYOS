@@ -84,6 +84,7 @@ from agent.player_prompt import (
     valid_preferred_name as _valid_preferred_name,
 )
 from agent.player_tools import (
+    MAX_PLAYER_TOOL_ROUNDS,
     build_player_read_tools,
     cap_tool_results_for_prompt,
     run_player_tool_calls,
@@ -95,9 +96,11 @@ from agent.telemetry_reconciler import (
     reconcile_telemetry_query,
 )
 from database.exercise_library.schema import exercise_library_visible_sql
+from database.exercise_library.lookup import FUZZY_NAME_MATCH_THRESHOLD
 from service.exercise_context import describe_exercise, describe_exercises
 from service.inference_metrics import record_failure, record_first_token
 from database.exercise_library.names import near_miss_exercise_ids
+from database.shared import _normalize_exercise_name
 from service import programs as programs_service
 from service.program_requests import MAX_REASON_CHARS
 from service.program_substitution import ProgramSubstitution, substitute_program_exercise
@@ -1312,70 +1315,159 @@ def _resolve_arabic_source(
     return best_matches[0]
 
 
-def _arabic_name_search_candidates(store: Any, name: str) -> list[dict[str, Any]]:
-    exact_resolver = getattr(store, "find_unique_exercise_id_by_exact_name", None)
-    exact_id = exact_resolver(name) if callable(exact_resolver) else None
-    if exact_id:
-        return [
-            entry
-            for entry in (store.get_exercise_library_entry(str(exact_id)),)
-            if entry is not None
-        ]
+def _arabic_target_name_similarity(name: str, match: dict[str, Any]) -> float:
+    normalized_name = _normalize_exercise_name(name)
+    return max(
+        (
+            SequenceMatcher(
+                None,
+                normalized_name,
+                _normalize_exercise_name(str(candidate_name)),
+            ).ratio()
+            for candidate_name in (match.get("name"), match.get("source_name"))
+            if candidate_name
+        ),
+        default=0.0,
+    )
 
-    key_words = set(re.findall(r"[a-z0-9]+", name.casefold()))
-    return [
-        match
-        for match in store.find_exercises_by_name(name, limit=None)
-        if key_words
-        and key_words.issubset(
-            set(re.findall(r"[a-z0-9]+", str(match.get("name", "")).casefold()))
-        )
-    ]
+
+@dataclass(frozen=True)
+class _ArabicTargetResolution:
+    target: tuple[str, dict[str, Any]] | None = None
+    clarification_candidates: tuple[dict[str, Any], ...] = ()
+
+
+@dataclass(frozen=True)
+class _ArabicSwapTargetContext:
+    store: Any
+    source: Any
+    source_day: Any
+    program: Any
 
 
 def _arabic_target_name_matches(
-    store: Any, source: Any, name: str
-) -> tuple[list[dict[str, Any]], frozenset[str]]:
+    store: Any, name: str
+) -> tuple[list[dict[str, Any]], frozenset[str], frozenset[str]]:
     near_miss_ids = near_miss_exercise_ids(name)
+    matches, exact_matches = store._find_exercises_by_name_with_exact_matches(
+        name, limit=3
+    )
+    exact_ids = frozenset(str(match["id"]) for match in exact_matches)
+    candidates = {str(match["id"]): match for match in (*exact_matches, *matches)}
+    # A single fuzzy hit must be close to the request before an Arabic swap can write.
     matches = [
-        match for match in _arabic_name_search_candidates(store, name)
-        if str(match["id"]) != str(source.exercise_id)
-        and str(match["id"]) not in near_miss_ids
-        and store.is_exercise_library_exercise_visible(str(match["id"]))
+        match for exercise_id, match in candidates.items()
+        if exercise_id not in near_miss_ids
+        and (
+            exercise_id in exact_ids
+            or _arabic_target_name_similarity(name, match) >= FUZZY_NAME_MATCH_THRESHOLD
+        )
     ]
-    return matches, near_miss_ids
+    return matches, near_miss_ids, exact_ids
+
+
+def _compatible_arabic_targets(
+    matches: list[dict[str, Any]], source_entry: dict[str, Any]
+) -> list[dict[str, Any]]:
+    return [
+        match for match in matches
+        if _muscle_compatible(
+            match, source_entry.get("target_muscle"), source_entry.get("body_part")
+        )
+    ]
+
+
+def _prefer_program_exercise_matches(
+    candidates: list[dict[str, Any]], program: Any
+) -> list[dict[str, Any]]:
+    if len(candidates) < 2:
+        return candidates
+    program_ids = {
+        str(exercise.exercise_id)
+        for day in program.days
+        for exercise in day.exercises
+    }
+    in_program = [match for match in candidates if str(match["id"]) in program_ids]
+    return in_program if len(in_program) == 1 else candidates
+
+
+def _prefer_or_clarify_exact_arabic_targets(
+    matches: list[dict[str, Any]], exact_ids: frozenset[str], program: Any
+) -> tuple[list[dict[str, Any]], bool]:
+    exact_matches = [match for match in matches if str(match["id"]) in exact_ids]
+    if not exact_matches:
+        return matches, False
+    if len(exact_matches) == 1:
+        return exact_matches, False
+    program_ids = {
+        str(exercise.exercise_id)
+        for day in program.days
+        for exercise in day.exercises
+    }
+    in_program = [match for match in exact_matches if str(match["id"]) in program_ids]
+    if len(in_program) == 1:
+        return in_program, False
+    return in_program or exact_matches, True
+
+
+def _resolve_arabic_target_name(
+    context: _ArabicSwapTargetContext, source_entry: dict[str, Any], name: str
+) -> _ArabicTargetResolution | None:
+    matches, near_miss_ids, exact_ids = _arabic_target_name_matches(
+        context.store, name
+    )
+    if not matches:
+        return _ArabicTargetResolution() if near_miss_ids else None
+    matches, clarify = _prefer_or_clarify_exact_arabic_targets(
+        matches, exact_ids, context.program
+    )
+    if clarify:
+        candidates = [
+            match for match in matches
+            if str(match["id"]) != str(context.source.exercise_id)
+        ]
+        return _ArabicTargetResolution(clarification_candidates=tuple(candidates[:3]))
+    matches = [
+        match for match in matches
+        if str(match["id"]) != str(context.source.exercise_id)
+    ]
+    if not matches:
+        return _ArabicTargetResolution()
+    compatible = _compatible_arabic_targets(matches, source_entry)
+    if not compatible:
+        return _ArabicTargetResolution()
+    compatible = _prefer_program_exercise_matches(compatible, context.program)
+    if len(compatible) > 1:
+        return _ArabicTargetResolution(clarification_candidates=tuple(compatible[:3]))
+    match = _compatible_name_match(
+        compatible,
+        source_entry.get("target_muscle"),
+        source_entry.get("body_part"),
+        context.source_day,
+    )
+    if match is None:
+        return _ArabicTargetResolution()
+    target_id = str(match["id"])
+    target = context.store.get_exercise_library_entry(target_id)
+    return (
+        _ArabicTargetResolution(target=(target_id, target))
+        if target
+        else _ArabicTargetResolution()
+    )
 
 
 def _resolve_arabic_target(
-    store: Any, source: Any, source_day: Any, requested_name: str
-) -> tuple[str, dict[str, Any]] | None:
-    source_entry = store.get_exercise_library_entry(str(source.exercise_id))
+    context: _ArabicSwapTargetContext, requested_name: str
+) -> _ArabicTargetResolution:
+    source_entry = context.store.get_exercise_library_entry(str(context.source.exercise_id))
     if source_entry is None:
-        return None
+        return _ArabicTargetResolution()
     raw_name = requested_name.strip()
     for name in dict.fromkeys((raw_name, expand_fitness_abbreviations(raw_name))):
-        matches, near_miss_ids = _arabic_target_name_matches(
-            store, source, name
-        )
-        if not matches:
-            if near_miss_ids:
-                return None
-            continue
-        if len(matches) != 1:
-            return None
-        match = _compatible_name_match(
-            matches,
-            source_entry.get("target_muscle"),
-            source_entry.get("body_part"),
-            source_day,
-        )
-        if match is not None:
-            target_id = str(match["id"])
-            target = store.get_exercise_library_entry(target_id)
-            return (target_id, target) if target is not None else None
-        if matches or near_miss_ids:
-            return None
-    return None
+        resolution = _resolve_arabic_target_name(context, source_entry, name)
+        if resolution is not None:
+            return resolution
+    return _ArabicTargetResolution()
 
 
 def _arabic_swap_source(
@@ -1413,10 +1505,17 @@ def _validated_arabic_swap(
     if source_match is None:
         return None
     source_day, source = source_match
-    target = _resolve_arabic_target(store, source, source_day, intent.target_exercise)
-    if target is None:
+    resolution = _resolve_arabic_target(
+        _ArabicSwapTargetContext(
+            store=store, source=source, source_day=source_day, program=program
+        ),
+        intent.target_exercise,
+    )
+    if resolution.clarification_candidates:
+        return {"clarification_candidates": list(resolution.clarification_candidates)}
+    if resolution.target is None:
         return None
-    return _arabic_swap_metadata(source_day, source, *target)
+    return _arabic_swap_metadata(source_day, source, *resolution.target)
 
 
 def _arabic_history_program_match(program: Any, requested_name: str) -> tuple[str, str] | None:
@@ -1515,6 +1614,12 @@ def _arabic_swap_route(
         return _arabic_clarification_route(
             "program_reference" if classification.target_day else None
         )
+    clarification_candidates = metadata.get("clarification_candidates")
+    if clarification_candidates:
+        return {
+            "intent": "arabic_swap_clarification",
+            "intent_metadata": {"clarification_candidates": clarification_candidates},
+        }
     if classification.intent == "composite_intent" or classification.has_additional_request:
         metadata["has_additional_request"] = True
         return {"intent": "composite_intent", "intent_metadata": {"arabic_validated_swap": metadata}}
@@ -1560,7 +1665,11 @@ def _classify_arabic_intent(query: str, config: dict[str, Any] | None) -> dict[s
 def arabic_swap_clarification_node(
     state: AssistantState, config: dict[str, Any] | None = None
 ) -> dict[str, Any]:
-    kind = (state.get("intent_metadata") or {}).get("clarification_kind")
+    metadata = state.get("intent_metadata") or {}
+    candidates = metadata.get("clarification_candidates")
+    if isinstance(candidates, list) and 2 <= len(candidates) <= 3:
+        return _name_clarification_reply(candidates, "ar")
+    kind = metadata.get("clarification_kind")
     response = {
         "program_change": ARABIC_PROGRAM_CHANGE_CLARIFICATION_RESPONSE,
         "program_reference": ARABIC_ACTION_CLARIFICATION_RESPONSE,
@@ -1765,9 +1874,36 @@ def _preference_write_intent(
 _WEAK_POINT_NAMES = {
     "chest": "chest",
     "upper chest": "upper_chest",
-    "back": "back",
+    "lats": "lats",
+    "lat": "lats",
+    "latissimus dorsi": "lats",
+    "back": "lats",
+    "traps": "traps",
+    "trap": "traps",
+    "trapezius": "traps",
+    "upper trapezius": "traps",
+    "mid trapezius": "traps",
+    "middle trapezius": "traps",
+    "lower trapezius": "traps",
+    "upper traps": "traps",
+    "mid traps": "traps",
+    "middle traps": "traps",
+    "lower traps": "traps",
+    "rhomboids": "traps",
+    "rhomboid": "traps",
+    "upper back": "traps",
+    "upper-back": "traps",
+    "mid back": "traps",
+    "mid-back": "traps",
+    "middle back": "traps",
+    "middle-back": "traps",
     "shoulders": "shoulders",
     "side delts": "side_delts",
+    "rear delts": "rear_delts",
+    "rear delt": "rear_delts",
+    "rear shoulders": "rear_delts",
+    "posterior delts": "rear_delts",
+    "posterior delt": "rear_delts",
     "biceps": "biceps",
     "triceps": "triceps",
     "forearms": "forearms",
@@ -1779,9 +1915,17 @@ _WEAK_POINT_NAMES = {
     "abs": "abs",
     "الصدر": "chest",
     "أعلى الصدر": "upper_chest",
-    "الظهر": "back",
+    "الظهر": "lats",
+    "الظهر العريض": "lats",
+    "لاتس": "lats",
+    "اللاتس": "lats",
+    "الترابيس": "traps",
+    "ترابيس": "traps",
     "الأكتاف": "shoulders",
     "الأكتاف الجانبية": "side_delts",
+    "الأكتاف الخلفية": "rear_delts",
+    "الكتف الخلفي": "rear_delts",
+    "كتف خلفي": "rear_delts",
     "البايسبس": "biceps",
     "الترايسبس": "triceps",
     "الساعد": "forearms",
@@ -1796,9 +1940,11 @@ _WEAK_POINT_NAMES = {
 _WEAK_POINT_CHAT_LABELS = {
     "chest": ("chest", "الصدر"),
     "upper_chest": ("upper chest", "أعلى الصدر"),
-    "back": ("back", "الظهر"),
+    "lats": ("lats", "اللاتس (الظهر العريض)"),
+    "traps": ("traps", "الترابيس"),
     "shoulders": ("shoulders", "الأكتاف"),
     "side_delts": ("side delts", "الأكتاف الجانبية"),
+    "rear_delts": ("rear delts", "الأكتاف الخلفية"),
     "biceps": ("biceps", "البايسبس"),
     "triceps": ("triceps", "الترايسبس"),
     "forearms": ("forearms", "الساعد"),
@@ -1930,7 +2076,7 @@ def _resolve_goal_weak_point_selection(
     else:
         selected = [muscle for muscle in suggest_weak_points(query) if muscle in candidates]
         explicit_pick = bool(re.search(
-            r"\b(?:just|only|keep)\b|\b(?:chest|back|shoulders|upper chest|side delts)\s+only\b|"
+            r"\b(?:just|only|keep)\b|\b(?:chest|back|lats|traps|rhomboids|shoulders|upper chest|side delts)\s+only\b|"
             r"بس|فقط|خلي|خليلي|احتفظ",
             unicodedata.normalize("NFKC", query).casefold(),
         ))
@@ -2106,11 +2252,11 @@ def _validated_chat_weak_points(
     muscles = [_WEAK_POINT_NAMES.get(name) or (name if name in WEAK_POINT_MUSCLES else None) for name in names]
     if not muscles or any(muscle is None for muscle in muscles):
         reply = (
-            "Name Weak points from the list: chest, upper chest, back, shoulders, "
+            "Name Weak points from the list: chest, upper chest, lats, traps, rear delts, shoulders, "
             "side delts, biceps, triceps, forearms, quads, hamstrings, glutes, "
             "adductors, calves or abs."
             if language == "en"
-            else "اختار نقاط ضعفك من القائمة المعروفة، مثل الصدر أو الظهر أو البطن."
+            else "اختار نقاط ضعفك من القائمة المعروفة، مثل الصدر أو اللاتس (الظهر العريض) أو الترابيس أو البطن."
         )
         return None, reply
     try:
@@ -2169,7 +2315,11 @@ def _weak_point_write_intent(
     result = update_profile(
         store, ledger.ledger_id, {"weak_points": weak_points}, account_id, ledger
     )
-    return _response(_weak_point_write_confirmation(raw_names, result, language))
+    labels = [
+        _WEAK_POINT_CHAT_LABELS[item["muscle"]][0 if language == "en" else 1]
+        for item in weak_points
+    ]
+    return _response(_weak_point_write_confirmation(labels, result, language))
 
 
 def assistant_preference_delete_node(state: AssistantState, config: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -3439,6 +3589,28 @@ def _compatible_name_match(
     )
 
 
+def _exercise_name_clarification(
+    matches: list[dict[str, Any]], language: DisplayLanguage
+) -> str:
+    names = [f"**{match['name']}**" for match in matches[:3]]
+    if language == "ar":
+        return "هل تقصد " + " أو ".join(names) + "؟"
+    if len(names) == 2:
+        return f"Did you mean {names[0]} or {names[1]}?"
+    return f"Did you mean {', '.join(names[:-1])}, or {names[-1]}?"
+
+
+def _name_clarification_reply(
+    matches: list[dict[str, Any]], language: DisplayLanguage
+) -> dict[str, Any]:
+    message = _exercise_name_clarification(matches, language)
+    return {
+        "program_updated": False,
+        "response_content": message,
+        "messages": [AIMessage(content=message)],
+    }
+
+
 def _near_miss_refusal(store: Any, target: str, exercise_ids: frozenset[str]) -> dict[str, Any]:
     similar_names = [
         entry["name"]
@@ -4008,8 +4180,18 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
             ]
     if near_miss_ids and not name_matches:
         return _near_miss_refusal(store, resolve_text, near_miss_ids)
+    compatible_matches = [
+        match for match in name_matches
+        if _muscle_compatible(match, target_muscle, body_part)
+    ]
+    compatible_matches = _prefer_program_exercise_matches(
+        compatible_matches, active_program
+    )
+    language = resolve_reply_language(query, state.get("display_language", "en"))
+    if len(compatible_matches) > 1:
+        return _name_clarification_reply(compatible_matches, language)
     compatible_name_match = _compatible_name_match(
-        name_matches, target_muscle, body_part, target_day
+        compatible_matches, target_muscle, body_part, target_day
     )
 
     replacement = None
@@ -4530,12 +4712,13 @@ def _deload_choice_copy(
 def catalog_search_node(state: AssistantState, config: dict[str, Any] | None = None) -> dict[str, Any]:
     _, store = _graph_context(config)
     query = state.get("intent_metadata", {}).get("search_query") or _get_message_text(state["messages"][-1])
+    language = resolve_reply_language(query, state.get("display_language", "en"))
     try:
         candidates, from_name_search = _catalog_search_candidates(store, query)
         if not _catalog_search_has_matches(query, candidates, from_name_search):
-            msg = f"No exercises matching '{query}' were found in the catalog."
-            return {"response_content": msg, "messages": [AIMessage(content=msg)]}
-        return _catalog_search_response(query, candidates)
+            suggestions = candidates or _closest_catalog_suggestions(store, query)
+            return _catalog_no_match_response(query, suggestions, language)
+        return _catalog_search_response(query, candidates, language)
     except Exception as e:
         logger.error(f"Catalog search error: {e}")
         return {"response_content": "Failed to search the exercise catalog.", "messages": [AIMessage(content="Failed to search the exercise catalog.")]}
@@ -4544,11 +4727,11 @@ def catalog_search_node(state: AssistantState, config: dict[str, Any] | None = N
 def _catalog_search_candidates(store: Any, query: str) -> tuple[list[dict[str, Any]], bool]:
     if near_miss_exercise_ids(query):
         return [], True
-    name_matches = store.find_exercises_by_name(query, limit=4)
+    name_matches = store.find_exercises_by_name(query, limit=3)
     candidates = _library_search_details(store, name_matches)
     if candidates:
         return candidates, True
-    similar = store.search_similar_exercises(EMBED_MODEL.embed_query(query), limit=4)
+    similar = store.search_similar_exercises(EMBED_MODEL.embed_query(query), limit=3)
     return _library_search_details(store, similar), False
 
 
@@ -4562,7 +4745,11 @@ def _catalog_search_has_matches(
     return not _target_is_name_like(query, candidates) and candidates[0].get("distance", 1.0) <= 0.85
 
 
-def _catalog_search_response(query: str, candidates: list[dict[str, Any]]) -> dict[str, Any]:
+def _catalog_search_response(
+    query: str, candidates: list[dict[str, Any]], language: DisplayLanguage
+) -> dict[str, Any]:
+    if 2 <= len(candidates) <= 3:
+        return _response(_exercise_name_clarification(candidates, language))
     player_lines = [
         f"- **{candidate['name'].title()}** (`{candidate['target_muscle']}` | "
         f"`{candidate['equipment']}`)\n  *{candidate['instructions'][:120]}...*"
@@ -4578,6 +4765,31 @@ def _catalog_search_response(query: str, candidates: list[dict[str, Any]]) -> di
         heading + "\n\n".join(player_lines),
         heading + "\n\n".join(model_lines),
     )
+
+
+def _closest_catalog_suggestions(store: Any, query: str) -> list[dict[str, Any]]:
+    if not query.strip():
+        return []
+    similar = store.search_similar_exercises(EMBED_MODEL.embed_query(query), limit=6)
+    rejected_ids = near_miss_exercise_ids(query)
+    safe_similar = [row for row in similar if str(row["id"]) not in rejected_ids]
+    return _library_search_details(store, safe_similar)[:3]
+
+
+def _catalog_no_match_response(
+    query: str, suggestions: list[dict[str, Any]], language: DisplayLanguage
+) -> dict[str, Any]:
+    if language == "ar":
+        message = f"لم أجد تمرينًا يطابق «{query}»."
+        if suggestions:
+            names = "، ".join(f"**{candidate['name']}**" for candidate in suggestions)
+            message += f" أقرب الأسماء: {names}."
+    else:
+        message = f"No exercises matching '{query}' were found."
+        if suggestions:
+            names = ", ".join(f"**{candidate['name']}**" for candidate in suggestions)
+            message += f" Closest names: {names}."
+    return {"response_content": message, "messages": [AIMessage(content=message)]}
 
 
 def _library_search_details(store: Any, matches: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -5038,9 +5250,6 @@ def _stream_player_answer(
         return _StreamedPlayerAnswer(message, tool_calls, {})
     yield from output.finish_answer(capture.limited)
     return _StreamedPlayerAnswer(message, [], capture.telemetry())
-
-
-MAX_PLAYER_TOOL_ROUNDS = 3
 
 
 def _tool_reply_language(state: dict[str, Any]) -> str:

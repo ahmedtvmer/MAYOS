@@ -1177,9 +1177,13 @@ abstract class ActiveWorkoutStore {
 
 class SecureActiveWorkoutStore implements ActiveWorkoutStore {
   SecureActiveWorkoutStore({FlutterSecureStorage? storage})
-    : _store = SecureStore(storage: storage);
+    : _store = SecureStore(storage: storage),
+      _usesPlatformStorage = storage == null;
 
   final SecureStore _store;
+  final bool _usesPlatformStorage;
+
+  bool get usesPlatformStorage => _usesPlatformStorage;
 
   static String _key(String accountId) => 'active_workout.$accountId';
 

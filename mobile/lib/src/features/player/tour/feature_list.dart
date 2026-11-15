@@ -6,7 +6,7 @@ import 'tour_targets.dart';
 
 /// The shared Feature list used by the Tour and later discovery surfaces.
 const int tourCurrentVersion = 1;
-const int currentFeatureRelease = 6;
+const int currentFeatureRelease = 7;
 const int kReleaseShareCard = 3;
 const int kReleasePrCelebration = 3;
 const int kReleaseDurationCheck = 4;
@@ -64,11 +64,49 @@ List<String> validateFeatureEntries(
 
 const List<FeatureEntry> featureList = <FeatureEntry>[
   FeatureEntry(
+    id: 'assistant_exercise_lookup',
+    titleEn: 'Search exercises by the name you know',
+    sentenceEn:
+        'Search by nicknames, singular or plural forms, and common spelling variations; choose from close matches when a name could mean more than one exercise.',
+    titleAr: 'ابحث عن التمرين بالاسم الذي تعرفه',
+    sentenceAr:
+        'ابحث بالأسماء البديلة والمفرد والجمع واختلافات الكتابة الشائعة، واختر من الخيارات الأقرب عندما يحتمل الاسم أكثر من تمرين.',
+    target: 'whats_new_assistant_why',
+    location: TourRouteLocation(chatPath),
+    release: 7,
+    audience: 'lifter',
+  ),
+  FeatureEntry(
+    id: 'offline_start',
+    titleEn: 'Open your saved training offline',
+    sentenceEn:
+        'After opening the installed app online once, reopen it without a '
+        'connection to view saved Home, Program, workout targets and Nutrition '
+        'data. During startup, a localized banner distinguishes a connection '
+        'problem from a MAYOS service problem.',
+    titleAr: 'افتح بيانات تدريبك المحفوظة دون اتصال',
+    sentenceAr:
+        'بعد فتح التطبيق المثبّت عبر الإنترنت مرة واحدة، أعد فتحه دون اتصال '
+        'للاطّلاع على بيانات الرئيسية والبرنامج التدريبي وأهداف التمرين والتغذية '
+        'المحفوظة. توضّح رسالة منفصلة أثناء البدء ما إذا كانت هناك مشكلة '
+        'في الاتصال أو مشكلة في MAYOS.',
+    target: 'home',
+    location: TourShellTabLocation(tabIndex: 0),
+    release: 7,
+    audience: 'lifter',
+  ),
+  FeatureEntry(
     id: 'assistant_volume',
     titleEn: 'Ask about training volume',
-    sentenceEn: 'Ask about direct and indirect weekly sets, logged volume, and clearly labelled estimates with their basis.',
+    sentenceEn:
+        'Ask about weekly sets for lats, traps and other main muscle groups '
+        'using each exercise’s credits, logged volume, and clearly labelled '
+        'estimates with their basis.',
     titleAr: 'اسأل عن مجموعات التدريب',
-    sentenceAr: 'اسأل عن المجموعات الأسبوعية المباشرة وغير المباشرة والحجم المسجل والتقديرات المعلّمة بوضوح مع أساس حسابها.',
+    sentenceAr:
+        'اسأل عن مجموعات اللاتس (الظهر العريض) والترابيس والمجموعات العضلية '
+        'الرئيسية الأخرى، مع رصيد كل تمرين والحجم المسجل والتقديرات المعلّمة '
+        'مع أساس حسابها.',
     target: 'whats_new_assistant_why',
     location: TourRouteLocation(chatPath),
     release: 6,
@@ -183,12 +221,16 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
   FeatureEntry(
     id: 'progress',
     titleEn: 'Progress',
-    sentenceEn: 'Explore your charts and review Checkpoint feedback.',
+    sentenceEn:
+        'Explore your charts, including logged volume by main muscle group '
+        'using each exercise’s credits, and review Checkpoint feedback.',
     titleAr: 'التقدم',
-    sentenceAr: 'تابع مخططاتك وراجع ملاحظات محطات التقدم.',
+    sentenceAr:
+        'تابع مخططاتك، ومنها الحجم المسجل حسب المجموعة العضلية الرئيسية ورصيد '
+        'كل تمرين، وراجع ملاحظات محطات التقدم.',
     target: 'progress',
     location: TourShellTabLocation(tabIndex: 3),
-    release: 0,
+    release: 6,
     audience: 'lifter',
   ),
   FeatureEntry(
@@ -262,12 +304,12 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
   FeatureEntry(
     id: 'weak_points',
     titleEn: 'Weak points',
-    sentenceEn: 'Choose muscles you want your Training program to focus on.',
+    sentenceEn: 'Choose up to two muscles, including lats, traps and rear delts, for Focus work in your Training program; muscles in the same main group share credited Focus volume, forearms and adductors retain their extra work, and Volume reviews combine shared exercise changes within weekly limits.',
     titleAr: 'نقاط الضعف',
-    sentenceAr: 'اختر العضلات التي تريد أن يركز عليها برنامجك التدريبي.',
+    sentenceAr: 'اختر حتى عضلتين، ومنها اللاتس والترابيس والأكتاف الخلفية، ليركز عليها برنامجك التدريبي؛ وتشترك العضلات في المجموعة الرئيسية نفسها في حجم التركيز المحتسب، ويحتفظ الساعد والعضلات المقربة بتمارينهما الإضافية، وتجمع مراجعات مجموعات التدريب تغييرات التمارين المشتركة ضمن الحدود الأسبوعية.',
     target: 'whats_new_weak_points',
     location: TourRouteLocation(profilePath),
-    release: 1,
+    release: 7,
     audience: 'lifter',
   ),
   FeatureEntry(

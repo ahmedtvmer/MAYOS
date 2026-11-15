@@ -120,35 +120,43 @@ class _WhatsNewScreenState extends ConsumerState<WhatsNewScreen> {
         .toSet()
         .toList()
       ..sort((int first, int second) => second.compareTo(first));
+    final Map<String, List<int>> releasesByHeading = <String, List<int>>{};
+    for (final int release in releases) {
+      releasesByHeading
+          .putIfAbsent(copy.whatsNewRelease(release), () => <int>[])
+          .add(release);
+    }
     return MayosScaffold(
       title: copy.whatsNewTitle,
       showBack: true,
       body: ListView(
         padding: const EdgeInsets.all(MayosSpacing.md),
         children: <Widget>[
-          for (final int release in releases) ...<Widget>[
+          for (final MapEntry<String, List<int>> group
+              in releasesByHeading.entries) ...<Widget>[
             Padding(
               padding: const EdgeInsets.symmetric(vertical: MayosSpacing.sm),
               child: Text(
-                copy.whatsNewRelease(release),
+                group.key,
                 style: Theme.of(context).textTheme.titleMedium,
               ),
             ),
-            for (final FeatureEntry entry in entries.where(
-              (FeatureEntry candidate) =>
-                  candidate.audience == 'lifter' &&
-                  candidate.release == release &&
-                  candidate.release <= currentFeatureRelease &&
-                  isFeatureAvailableForAccount(
-                      candidate, accountId, availability),
-            ))
-              WhatsNewFeatureRow(
-                entry: entry,
-                copy: copy,
-                onShowMe: () => ref
-                    .read(tourControllerProvider.notifier)
-                    .showMe(entry.id, source: 'whats_new'),
-              ),
+            for (final int release in group.value)
+              for (final FeatureEntry entry in entries.where(
+                (FeatureEntry candidate) =>
+                    candidate.audience == 'lifter' &&
+                    candidate.release == release &&
+                    candidate.release <= currentFeatureRelease &&
+                    isFeatureAvailableForAccount(
+                        candidate, accountId, availability),
+              ))
+                WhatsNewFeatureRow(
+                  entry: entry,
+                  copy: copy,
+                  onShowMe: () => ref
+                      .read(tourControllerProvider.notifier)
+                      .showMe(entry.id, source: 'whats_new'),
+                ),
           ],
         ],
       ),

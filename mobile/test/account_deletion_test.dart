@@ -138,9 +138,12 @@ ProviderContainer _container({
           .overrideWithValue(InMemoryBaselineCacheStore()),
       apiClientProvider.overrideWith((ref) {
         final ApiClient client = _api(fake, ref.watch(tokenStoreProvider));
-        client.onUnauthorized = ref.watch(unauthorizedEventsProvider).signal;
-        client.onAccountDeleted =
-            ref.watch(accountDeletedEventsProvider).signal;
+        final unauthorized = ref.watch(unauthorizedEventsProvider);
+        final accountDeleted = ref.watch(accountDeletedEventsProvider);
+        client.onUnauthorized = unauthorized.signal;
+        client.waitForUnauthorizedHandling = unauthorized.waitForCleanup;
+        client.onAccountDeleted = accountDeleted.signal;
+        client.waitForAccountDeletedHandling = accountDeleted.waitForCleanup;
         return client;
       }),
     ],
@@ -402,10 +405,14 @@ void main() {
             apiClientProvider.overrideWith((ref) {
               final ApiClient client =
                   _api(fake, ref.watch(tokenStoreProvider));
-              client.onUnauthorized =
-                  ref.watch(unauthorizedEventsProvider).signal;
-              client.onAccountDeleted =
-                  ref.watch(accountDeletedEventsProvider).signal;
+              final unauthorized = ref.watch(unauthorizedEventsProvider);
+              final accountDeleted = ref.watch(accountDeletedEventsProvider);
+              client.onUnauthorized = unauthorized.signal;
+              client.waitForUnauthorizedHandling =
+                  unauthorized.waitForCleanup;
+              client.onAccountDeleted = accountDeleted.signal;
+              client.waitForAccountDeletedHandling =
+                  accountDeleted.waitForCleanup;
               return client;
             }),
           ],

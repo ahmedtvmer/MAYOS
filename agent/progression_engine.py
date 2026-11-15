@@ -4,9 +4,8 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Iterable
 
 from agent.program_weeks import find_program_day, normalize_program_weeks
+from core.muscle_volume import MAIN_MUSCLE_GROUPS, MAIN_MUSCLE_LABELS, normalize_main_muscle
 from database.database_manager import DatabaseManager
-from database.exercise_resolution import EXERCISE_DISPLAY_BODY_PART_SQL
-from database.exercise_resolution import EXERCISE_DISPLAY_TARGET_MUSCLE_SQL
 from database.exercise_resolution import EXERCISE_DISPLAY_EQUIPMENT_SQL
 from database.exercise_resolution import exercise_display_join, exercise_display_name_sql
 from utils.logger import MayosLogger
@@ -135,26 +134,8 @@ def project_next_load(
 
 
 def normalize_muscle_group(muscle_name: str) -> str:
-    m = (muscle_name or "").strip().lower()
-    if any(k in m for k in ["pectoral", "chest"]):
-        return "Chest"
-    if any(k in m for k in ["lat", "upper back", "trap", "rhomboid", "spine", "back"]):
-        return "Back"
-    if any(k in m for k in ["quad", "rectus femoris", "vastus"]):
-        return "Quads"
-    if any(k in m for k in ["hamstring", "biceps femoris", "glute"]):
-        return "Hamstrings & Glutes"
-    if any(k in m for k in ["delt", "shoulder"]):
-        return "Shoulders"
-    if any(k in m for k in ["bicep", "brachialis"]):
-        return "Biceps"
-    if any(k in m for k in ["tricep"]):
-        return "Triceps"
-    if any(k in m for k in ["calve", "soleus", "gastrocnemius"]):
-        return "Calves"
-    if any(k in m for k in ["ab", "core", "oblique"]):
-        return "Abs"
-    return "Other"
+    group = normalize_main_muscle(muscle_name)
+    return MAIN_MUSCLE_LABELS.get(group, "Other")
 
 
 def get_weekly_muscle_volume(db: DatabaseManager, days_lookback: int = 7) -> dict[str, float]:
@@ -163,56 +144,31 @@ def get_weekly_muscle_volume(db: DatabaseManager, days_lookback: int = 7) -> dic
 
     cursor.execute(
         f"""
-        SELECT ws.exercise_id, {EXERCISE_DISPLAY_TARGET_MUSCLE_SQL},
-               {EXERCISE_DISPLAY_BODY_PART_SQL}
+        SELECT ws.exercise_id
         FROM workout_sets ws
         JOIN workout_sessions s ON ws.session_id = s.id
-        {exercise_display_join('ws.exercise_id')}
         WHERE s.session_date >= ? AND ws.is_warmup = 0
     """,
         (cutoff_date,),
     )
     working_sets = cursor.fetchall()
 
-    volume_tally: dict[str, float] = {
-        "Chest": 0.0,
-        "Back": 0.0,
-        "Shoulders": 0.0,
-        "Quads": 0.0,
-        "Hamstrings & Glutes": 0.0,
-        "Biceps": 0.0,
-        "Triceps": 0.0,
-        "Calves": 0.0,
-        "Abs": 0.0,
-    }
+    volume_tally = {MAIN_MUSCLE_LABELS[group]: 0.0 for group in MAIN_MUSCLE_GROUPS}
 
     if not working_sets:
         return volume_tally
 
-    distinct_ex_ids = list({row[0] for row in working_sets})
-    placeholders = ",".join("?" for _ in distinct_ex_ids)
-    cursor.execute(
-        f"SELECT exercise_id, muscle FROM catalog.exercise_secondary_muscles WHERE exercise_id IN ({placeholders})",
-        distinct_ex_ids,
+    credits_by_exercise = db.volume_review_exercise_credits(
+        [str(row[0]) for row in working_sets]
     )
-    secondaries_map: dict[str, list[str]] = {}
-    for ex_id, muscle in cursor.fetchall():
-        secondaries_map.setdefault(ex_id, []).append(muscle)
+    for (exercise_id,) in working_sets:
+        for muscle, attribution in credits_by_exercise.get(str(exercise_id), {}).items():
+            credit = float(attribution["credit"])
+            label = MAIN_MUSCLE_LABELS.get(muscle)
+            if label and credit > 0:
+                volume_tally[label] += credit
 
-    for ex_id, target_muscle, body_part in working_sets:
-        primary_group = normalize_muscle_group(target_muscle)
-        if primary_group == "Other":
-            primary_group = normalize_muscle_group(body_part)
-
-        if primary_group in volume_tally:
-            volume_tally[primary_group] += 1.0
-
-        matched_secondaries = {normalize_muscle_group(m) for m in secondaries_map.get(ex_id, [])}
-        for sec_group in matched_secondaries:
-            if sec_group != "Other" and sec_group != primary_group and sec_group in volume_tally:
-                volume_tally[sec_group] += 0.5
-
-    return {k: round(v, 1) for k, v in volume_tally.items()}
+    return {k: round(v, 2) for k, v in volume_tally.items()}
 
 
 def get_exercise_progression_history(db: DatabaseManager, exercise_id: str) -> list[dict[str, Any]]:

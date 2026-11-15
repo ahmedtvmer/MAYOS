@@ -142,6 +142,10 @@ class CoachHistorySegment extends StatelessWidget {
               copy.primaryMuscleLabel(muscle.muscle),
             ),
           ),
+          if (copy.focusReason(muscle.focusReason) case final String reason) ...<Widget>[
+            const SizedBox(height: MayosSpacing.xs),
+            Text(reason),
+          ],
         ],
       ]),
     );

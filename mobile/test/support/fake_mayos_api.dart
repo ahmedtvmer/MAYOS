@@ -81,6 +81,7 @@ class FakeMayosApi {
   String? currentUsername;
   bool tokenValid = true;
   bool loginNetworkFails = false;
+  bool loginServerError = false;
   bool displayLanguageUpdateFails = false;
   bool analyticsAllowed = true;
   int tourSeenVersion = 1;
@@ -507,6 +508,7 @@ class FakeMayosApi {
   int _chatSeq = 0;
   // When true, chat reads/sends fail as a dropped connection (offline).
   bool chatOffline = false;
+  int? chatHistoryFailureStatus;
   // When true, `POST /chat/messages` emits an SSE error frame after the user
   // message is stored (a failed turn; no assistant reply is persisted).
   bool chatSendError = false;
@@ -524,6 +526,7 @@ class FakeMayosApi {
   // Exact method+path pairs that fail as a dropped connection (offline
   // program-changing action, spec AC3). Add via ``failOffline('POST', path)``.
   final Set<String> offlineRequests = <String>{};
+  bool allRequestsOffline = false;
 
   /// Test hook: make one method+path fail as a network error.
   void failOffline(String method, String path) {
@@ -531,6 +534,7 @@ class FakeMayosApi {
   }
 
   bool _isOfflineRequest(FakeRequest request) =>
+      allRequestsOffline ||
       offlineRequests.contains('${request.method} ${request.path}');
 
   // Player training schedule and pauses (#30).
@@ -593,6 +597,12 @@ class FakeMayosApi {
 
   /// When true, `GET /auth/me` fails with a transient 500 (token still valid).
   bool meFails = false;
+
+  /// When true, `GET /auth/me` times out before receiving a response.
+  bool meTimesOut = false;
+
+  /// When set, `GET /auth/me` answers this non-401 refusal status instead.
+  int? meRefusalStatus;
   // When true, intake confirmation returns null program fields (coach-controlled edge).
   bool nullOnboardingProgram = false;
 
@@ -1439,6 +1449,9 @@ class FakeMayosApi {
     if (loginNetworkFails) {
       return const FakeResponse.networkFailure();
     }
+    if (loginServerError) {
+      return const FakeResponse(503);
+    }
     final String? username = request.body['trainee_id'] as String?;
     final String? password = request.body['password'] as String?;
     if (username == null || passwords[username] != password) {
@@ -1452,6 +1465,12 @@ class FakeMayosApi {
   }
 
   FakeResponse _me(FakeRequest request) {
+    final int? refusal = meRefusalStatus;
+    if (refusal != null) {
+      return FakeResponse(
+          refusal, <String, dynamic>{'detail': 'The request was refused.'});
+    }
+    if (meTimesOut) return const FakeResponse.timeoutFailure();
     if (meFails) {
       return const FakeResponse(
           500, <String, dynamic>{'detail': 'The service is unavailable.'});
@@ -2368,6 +2387,13 @@ class FakeMayosApi {
     }
     if (chatOffline) {
       return const FakeResponse.networkFailure();
+    }
+    final int? failureStatus = chatHistoryFailureStatus;
+    if (failureStatus != null) {
+      return FakeResponse(
+        failureStatus,
+        const <String, dynamic>{'detail': 'Database not ready.'},
+      );
     }
     if (request.method == 'DELETE') {
       chatHistory.clear();

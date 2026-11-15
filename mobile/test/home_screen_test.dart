@@ -224,6 +224,22 @@ FakeMayosApi _signedInFake() {
   return fake;
 }
 
+const Map<String, List<String>> _releaseSevenFeatureTitles =
+    <String, List<String>>{
+  'assistant_exercise_lookup': <String>[
+    'Search exercises by the name you know',
+    'ابحث عن التمرين بالاسم الذي تعرفه',
+  ],
+  'offline_start': <String>[
+    'Open your saved training offline',
+    'افتح بيانات تدريبك المحفوظة دون اتصال',
+  ],
+  'weak_points': <String>[
+    'Weak points',
+    'نقاط الضعف',
+  ],
+};
+
 void main() {
   testWidgets('What’s new shows only unseen supported entries and Got it remembers the release', (tester) async {
     final FakeMayosApi fake = _signedInFake()..whatsNewSeenRelease = 0;
@@ -302,6 +318,38 @@ void main() {
   });
 
   testWidgets("Profile What's new list is grouped and localized", (tester) async {
+    final List<FeatureEntry> releaseSevenEntries = featureList
+        .where((FeatureEntry item) => item.release == currentFeatureRelease)
+        .toList();
+    expect(
+      releaseSevenEntries.map((FeatureEntry entry) => entry.id).toSet(),
+      _releaseSevenFeatureTitles.keys.toSet(),
+    );
+    expect(
+      releaseSevenEntries.map((FeatureEntry entry) => entry.titleEn).toSet().length,
+      releaseSevenEntries.length,
+      reason: 'Release 7 English feature titles must be unique',
+    );
+    expect(
+      releaseSevenEntries.map((FeatureEntry entry) => entry.sentenceEn).toSet().length,
+      releaseSevenEntries.length,
+      reason: 'Release 7 English feature copy must be unique',
+    );
+    expect(
+      releaseSevenEntries.map((FeatureEntry entry) => entry.titleAr).toSet().length,
+      releaseSevenEntries.length,
+      reason: 'Release 7 Arabic feature titles must be unique',
+    );
+    expect(
+      releaseSevenEntries.map((FeatureEntry entry) => entry.sentenceAr).toSet().length,
+      releaseSevenEntries.length,
+      reason: 'Release 7 Arabic feature copy must be unique',
+    );
+    for (final FeatureEntry entry in releaseSevenEntries) {
+      expect(entry.titleEn, _releaseSevenFeatureTitles[entry.id]![0]);
+      expect(entry.titleAr, _releaseSevenFeatureTitles[entry.id]![1]);
+    }
+
     for (final String language in <String>['en', 'ar']) {
       final FakeMayosApi fake = _signedInFake();
       final FakeAnalyticsClient analytics = FakeAnalyticsClient();
@@ -321,7 +369,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(container.read(routerProvider).routerDelegate.state.uri.path, whatsNewPath);
       expect(find.text(language == 'ar' ? 'نوفمبر 2026' : 'November 2026'), findsOneWidget);
-      for (final FeatureEntry entry in featureList.where((FeatureEntry item) => item.release == currentFeatureRelease)) {
+      for (final FeatureEntry entry in releaseSevenEntries) {
         await tester.scrollUntilVisible(
           find.text(language == 'ar' ? entry.titleAr : entry.titleEn),
           180,
@@ -1487,7 +1535,8 @@ void main() {
       if (entry.release == currentFeatureRelease) {
         final Finder realControl = switch (entry.id) {
           'weak_points' => find.byKey(const Key('profile_weak_points_section')),
-          'assistant_why' || 'assistant_volume' => find.byKey(const Key('chat_composer')),
+          'assistant_why' || 'assistant_volume' || 'assistant_exercise_lookup' =>
+            find.byKey(const Key('chat_composer')),
           'add_exercises' => find.byKey(const Key('program_edit_day_1')),
           'edit_program_chat' => find.byKey(const Key('chat_composer_bar')),
           'movements_to_avoid' => find.byKey(const Key('profile_movement_restrictions_section')),
@@ -1582,7 +1631,8 @@ void main() {
       if (entry.release == currentFeatureRelease) {
         final Finder realControl = switch (entry.id) {
           'weak_points' => find.byKey(const Key('profile_weak_points_section')),
-          'assistant_why' || 'assistant_volume' => find.byKey(const Key('chat_composer')),
+          'assistant_why' || 'assistant_volume' || 'assistant_exercise_lookup' =>
+            find.byKey(const Key('chat_composer')),
           'add_exercises' => find.byKey(const Key('program_edit_day_1')),
           'edit_program_chat' => find.byKey(const Key('chat_composer_bar')),
           'movements_to_avoid' => find.byKey(const Key('profile_movement_restrictions_section')),
