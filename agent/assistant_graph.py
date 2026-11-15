@@ -1350,7 +1350,7 @@ class _ArabicSwapTargetContext:
 
 def _arabic_target_name_matches(
     store: Any, source: Any, name: str
-) -> tuple[list[dict[str, Any]], frozenset[str]]:
+) -> tuple[list[dict[str, Any]], frozenset[str], frozenset[str]]:
     near_miss_ids = near_miss_exercise_ids(name)
     exact_ids = store._find_exact_exercise_ids_by_name(name)
     # A single fuzzy hit must be close to the request before an Arabic swap can write.
@@ -1364,7 +1364,7 @@ def _arabic_target_name_matches(
             or _arabic_target_name_similarity(name, match) >= FUZZY_NAME_MATCH_THRESHOLD
         )
     ]
-    return matches, near_miss_ids
+    return matches, near_miss_ids, exact_ids
 
 
 def _compatible_arabic_targets(
@@ -1392,14 +1392,36 @@ def _prefer_program_exercise_matches(
     return in_program if len(in_program) == 1 else candidates
 
 
+def _prefer_or_clarify_exact_arabic_targets(
+    matches: list[dict[str, Any]], exact_ids: frozenset[str], program: Any
+) -> tuple[list[dict[str, Any]], bool]:
+    exact_matches = [match for match in matches if str(match["id"]) in exact_ids]
+    if len(exact_matches) < 2:
+        return matches, False
+    program_ids = {
+        str(exercise.exercise_id)
+        for day in program.days
+        for exercise in day.exercises
+    }
+    in_program = [match for match in exact_matches if str(match["id"]) in program_ids]
+    if len(in_program) == 1:
+        return in_program, False
+    return in_program or exact_matches, True
+
+
 def _resolve_arabic_target_name(
     context: _ArabicSwapTargetContext, source_entry: dict[str, Any], name: str
 ) -> _ArabicTargetResolution | None:
-    matches, near_miss_ids = _arabic_target_name_matches(
+    matches, near_miss_ids, exact_ids = _arabic_target_name_matches(
         context.store, context.source, name
     )
     if not matches:
         return _ArabicTargetResolution() if near_miss_ids else None
+    matches, clarify = _prefer_or_clarify_exact_arabic_targets(
+        matches, exact_ids, context.program
+    )
+    if clarify:
+        return _ArabicTargetResolution(clarification_candidates=tuple(matches[:3]))
     compatible = _compatible_arabic_targets(matches, source_entry)
     if not compatible:
         return _ArabicTargetResolution()

@@ -1,7 +1,6 @@
 """Exercise library lookup with display names and aliases (ADR 053, #225)."""
 
 from dataclasses import dataclass
-from difflib import SequenceMatcher
 from typing import Any, Iterable, Literal
 from database.shared import _normalize_exercise_name
 from database.exercise_library.filters import ExerciseFilters
@@ -44,16 +43,12 @@ class _NameCandidate:
     normalized: str
     compact: str
     words: tuple[str, ...]
-    compact_grams: frozenset[str]
-    word_grams: tuple[frozenset[str], ...]
 
 
 @dataclass(frozen=True)
 class _NameQuery:
     compact: str
     words: tuple[str, ...]
-    compact_grams: frozenset[str]
-    word_grams: tuple[frozenset[str], ...]
 
 
 @dataclass(frozen=True)
@@ -161,10 +156,6 @@ def _normalized_name_forms(normalized: str) -> set[str]:
     return {form for form in forms if form}
 
 
-def _character_trigrams(text: str) -> frozenset[str]:
-    return frozenset(text[index : index + 3] for index in range(len(text) - 2))
-
-
 def _prepare_name_candidate(name: str) -> _NameCandidate:
     normalized = _normalize_exercise_name(name)
     compact = normalized.replace(" ", "")
@@ -173,8 +164,6 @@ def _prepare_name_candidate(name: str) -> _NameCandidate:
         normalized=normalized,
         compact=compact,
         words=words,
-        compact_grams=_character_trigrams(compact),
-        word_grams=tuple(_character_trigrams(word) for word in words),
     )
 
 
@@ -263,36 +252,86 @@ def _token_name_rows(rows: list[_PreparedNameRow], search: _NameSearch):
     return matches[:search.limit]
 
 
-def _passes_fuzzy_prefilter(
-    query: str, query_grams: frozenset[str], candidate: str, candidate_grams: frozenset[str]
-) -> bool:
-    if not query or not candidate:
-        return False
-    if abs(len(query) - len(candidate)) > max(2, max(len(query), len(candidate)) // 3):
-        return False
-    if min(len(query), len(candidate)) < 4:
-        return query == candidate
-    return bool(query_grams & candidate_grams)
+def _edit_distance_with_transposition(left: str, right: str) -> int:
+    previous_previous = None
+    previous = list(range(len(right) + 1))
+    for left_index, left_character in enumerate(left, start=1):
+        current = [left_index]
+        for right_index, right_character in enumerate(right, start=1):
+            distance = min(
+                current[-1] + 1,
+                previous[right_index] + 1,
+                previous[right_index - 1] + (left_character != right_character),
+            )
+            if (
+                previous_previous is not None
+                and left_index > 1
+                and right_index > 1
+                and left_character == right[right_index - 2]
+                and left[left_index - 2] == right_character
+            ):
+                distance = min(distance, previous_previous[right_index - 2] + 1)
+            current.append(distance)
+        previous_previous, previous = previous, current
+    return previous[-1]
+
+
+def _fuzzy_token_matches(
+    word: str, candidate_words: tuple[str, ...]
+) -> list[tuple[int, float]]:
+    matches = []
+    for index, candidate_word in enumerate(candidate_words):
+        if min(len(word), len(candidate_word)) < 4:
+            if word == candidate_word:
+                matches.append((index, 1.0))
+            continue
+        maximum_length = max(len(word), len(candidate_word))
+        maximum_distance = max(1, maximum_length // 4)
+        if abs(len(word) - len(candidate_word)) > maximum_distance:
+            continue
+        distance = _edit_distance_with_transposition(word, candidate_word)
+        if distance <= maximum_distance:
+            matches.append((index, 1 - distance / maximum_length))
+    return matches
+
+
+def _match_query_tokens(
+    query_words: tuple[str, ...], candidate_words: tuple[str, ...]
+) -> tuple[float, ...] | None:
+    token_matches = []
+    for word in query_words:
+        possible_matches = _fuzzy_token_matches(word, candidate_words)
+        if not possible_matches:
+            return None
+        token_matches.append(possible_matches)
+    used_candidate_words = set()
+    matched_scores = []
+    for possible_matches in sorted(token_matches, key=len):
+        best_match = max(
+            (
+                match
+                for match in possible_matches
+                if match[0] not in used_candidate_words
+            ),
+            key=lambda match: match[1],
+            default=None,
+        )
+        if best_match is None:
+            return None
+        index, score = best_match
+        used_candidate_words.add(index)
+        matched_scores.append(score)
+    return tuple(matched_scores)
 
 
 def _fuzzy_name_score(query: _NameQuery, candidate: _NameCandidate) -> float:
-    token_scores = []
-    for word, word_grams in zip(query.words, query.word_grams, strict=True):
-        possible_scores = [
-            SequenceMatcher(None, word, candidate_word).ratio()
-            for candidate_word, candidate_grams in zip(
-                candidate.words, candidate.word_grams, strict=True
-            )
-            if _passes_fuzzy_prefilter(word, word_grams, candidate_word, candidate_grams)
-        ]
-        if not possible_scores:
-            return 0.0
-        token_scores.append(max(possible_scores))
-    # Phrase similarity alone can mistake different movement modifiers for typos.
-    if not token_scores or min(token_scores) < FUZZY_NAME_MATCH_THRESHOLD:
+    if not query.words or not candidate.words:
         return 0.0
-    compact_score = SequenceMatcher(None, query.compact, candidate.compact).ratio()
-    return max(sum(token_scores) / len(token_scores), compact_score)
+    token_scores = _match_query_tokens(query.words, candidate.words)
+    if token_scores is None:
+        return 0.0
+    phrase_coverage = len(query.words) / len(candidate.words)
+    return sum(token_scores) / len(token_scores) * phrase_coverage
 
 
 def _prepare_name_query(search: _NameSearch) -> _NameQuery:
@@ -301,8 +340,6 @@ def _prepare_name_query(search: _NameSearch) -> _NameQuery:
     return _NameQuery(
         compact=compact,
         words=words,
-        compact_grams=_character_trigrams(compact),
-        word_grams=tuple(_character_trigrams(word) for word in words),
     )
 
 

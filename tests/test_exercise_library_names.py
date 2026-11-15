@@ -254,6 +254,64 @@ def test_real_lat_pulldown_nickname_and_typo_match_curated_row(real_library_stor
     assert "150" in {match["id"] for match in matches}
 
 
+@pytest.mark.parametrize(
+    ("query", "expected_matches"),
+    [
+        (
+            "y raises",
+            {
+                "1017": "Band Y-Raise",
+                "3541": "Incline Y-Raise (Dumbbell)",
+                "mayos:3": "Cable Y-Raise",
+            },
+        ),
+        (
+            "Y-Raise",
+            {
+                "1017": "Band Y-Raise",
+                "3541": "Incline Y-Raise (Dumbbell)",
+                "mayos:3": "Cable Y-Raise",
+            },
+        ),
+        (
+            "yraise",
+            {
+                "1017": "Band Y-Raise",
+                "3541": "Incline Y-Raise (Dumbbell)",
+                "mayos:3": "Cable Y-Raise",
+            },
+        ),
+        ("t bar row", {"606": "T-Bar Row (Plate-Loaded)"}),
+        ("t-bar rows", {"606": "T-Bar Row (Plate-Loaded)"}),
+        ("rdl", {"85": "Romanian Deadlift (Barbell)"}),
+        ("RDLs", {"85": "Romanian Deadlift (Barbell)"}),
+        ("lat pulldowns", {"150": "Lat Pulldown (Cable)"}),
+        ("lat pull down", {"150": "Lat Pulldown (Cable)"}),
+        ("pulldown", {"150": "Lat Pulldown (Cable)"}),
+        ("lat pulldwon", {"150": "Lat Pulldown (Cable)"}),
+        ("bulgarian split sqaut", {"410": "Bulgarian Split Squat (Dumbbell)"}),
+        ("incline bench presses", {"47": "Incline Bench Press (Barbell)"}),
+        ("hammer curls", {"312": "Hammer Curl (Dumbbell)"}),
+        ("farmers carry", {"2133": "Farmer's Walk (Dumbbell)"}),
+        ("leg extensions", {"585": "Leg Extension (Machine)"}),
+        ("seated cable rows", {"180": "Seated Row (Cable)"}),
+        ("pec deck", {"596": "Pec Deck (Machine)"}),
+        ("hip thrusts", {"3562": "Hip Thrust (Barbell)"}),
+        ("v squat", {}),
+    ],
+)
+def test_real_catalog_name_search_contract(real_library_store, query, expected_matches):
+    matches = real_library_store.find_exercises_by_name(query, limit=None)
+
+    assert {match["id"]: match["name"] for match in matches} == expected_matches
+    unique_match = real_library_store.find_exercise_by_name(query)
+    if len(expected_matches) == 1:
+        assert unique_match is not None
+        assert unique_match["id"] == next(iter(expected_matches))
+    else:
+        assert unique_match is None
+
+
 def test_plural_search_does_not_bypass_near_miss_exercise_safety(seed_store, tmp_path):
     _seed_name_matching_library(seed_store, tmp_path)
 
