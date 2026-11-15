@@ -145,6 +145,8 @@ def _build_snapshot(library_path: Path) -> dict:
             catalog_path=directory / "catalog.db",
             ledgers_dir=directory / "ledgers",
             backups_dir=directory / "backups",
+            deletions_path=directory / "deletions.db",
+            curation_path=directory / "curation.csv",
         )
         try:
             seed_catalog(store, csv_path=library_path)
@@ -166,9 +168,10 @@ def main() -> None:
     current = _build_snapshot(arguments.library)
     _print_changes(previous, current)
     arguments.output.parent.mkdir(parents=True, exist_ok=True)
-    with gzip.open(arguments.output, "wt", encoding="utf-8") as stream:
-        json.dump(current, stream, ensure_ascii=False, indent=2)
-        stream.write("\n")
+    payload = json.dumps(current, ensure_ascii=False, indent=2) + "\n"
+    with arguments.output.open("wb") as raw_stream:
+        with gzip.GzipFile(filename="", mode="wb", fileobj=raw_stream, mtime=0) as stream:
+            stream.write(payload.encode("utf-8"))
     print(f"Wrote {arguments.output}")
 
 
