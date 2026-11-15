@@ -181,6 +181,8 @@ Keep **kg** beside numeric weights.
 | Permanent exercise substitution | تبديل تمرين في البرنامج |
 | One-workout replacement | استبدال تمرين لهذه الحصة |
 | Substitution request to coach | طلب تبديل تمرين من المدرب |
+| Lats (latissimus dorsi) | اللاتس (الظهر العريض) |
+| Traps (including rhomboids and mid/upper back) | الترابيس |
 
 Retain **MYOS**, **Free**, **Pro**, and established split names such as
 **Upper/Lower**; translate their surrounding explanations. Retain established

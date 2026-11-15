@@ -72,16 +72,16 @@ Most per-muscle numbers below are **Practice**. The research reports volume for 
 - In a high-volume trial, 30+ sets per week grew more muscle than 6–18 at some sites, with no extra strength (Schoenfeld et al., 2019). That is one small 8-week study in trained men, so we do not set it as a default.
 - Beginners grow well on low volume (any structured training works; Currier et al., 2023). Their limit is recovery and soreness, not growth.
 
-The table uses **fractional sets** (Section 5) and **hard sets** (Section 6). Format: *minimum effective / productive range / ceiling*. The ceiling is the point where more sets add little and recovery starts to suffer. Going above it requires a coach override and is limited to blocks of at most 4 weeks. All ranges are Practice, scaled from the group-level evidence above.
+The table uses **fractional sets** (Section 5) and **hard sets** (Section 6). Format: *minimum effective / productive range / ceiling*. The ceiling is the point where more sets add little and recovery starts to suffer. Going above it requires a coach override and is limited to blocks of at most 4 weeks. All ranges are Practice, scaled from the group-level evidence above. The studies mostly report a muscle or a broad region, not separate latissimus and trapezius/rhomboid totals. The lats and traps rows are therefore judgment splits of the prior combined upper-pull region, anchored to the group-level dose response; they are not muscle-specific findings.
 
 | Muscle | Beginner | Intermediate | Advanced |
 |---|---|---|---|
 | Chest | 4 / 6–10 / 12 | 8 / 10–16 / 20 | 10 / 12–20 / 24 |
-| Back (lats + upper back) | 4 / 6–12 / 14 | 8 / 10–18 / 22 | 10 / 14–22 / 26 |
+| Lats (latissimus dorsi) | 4 / 6–10 / 12 | 8 / 10–16 / 20 | 10 / 12–20 / 24 |
 | Front delts | 0 / 0–4 / 8 | 0 / 0–6 / 10 | 0 / 0–8 / 12 |
 | Side delts | 4 / 6–10 / 12 | 6 / 8–16 / 20 | 8 / 12–20 / 26 |
 | Rear delts | 2 / 4–8 / 10 | 4 / 6–12 / 16 | 6 / 8–16 / 20 |
-| Traps (upper) | 0 / 2–6 / 10 | 2 / 4–10 / 14 | 4 / 6–12 / 18 |
+| Traps (upper, mid and lower; incl. rhomboids and mid-back) | 2 / 4–8 / 12 | 4 / 6–12 / 16 | 6 / 8–16 / 20 |
 | Quads | 4 / 6–10 / 12 | 8 / 10–16 / 20 | 10 / 12–20 / 24 |
 | Hamstrings | 3 / 4–8 / 10 | 6 / 8–14 / 18 | 8 / 10–16 / 20 |
 | Glutes | 3 / 4–8 / 12 | 4 / 6–14 / 18 | 6 / 8–16 / 22 |
@@ -129,7 +129,7 @@ The research tested only the values 0, 0.5 and 1. Any other credit value (0.25, 
 >
 > **Plain-language reason:** "When a muscle only helps in an exercise, it gets half the credit. That way we don't overwork it or forget to train it."
 
-**Starting credit table** (unlisted muscles = 0; "Back" = lats + mid-back, "Traps" = upper traps)
+**Starting credit table** (unlisted muscles = 0; lats = latissimus dorsi; traps includes upper, middle and lower trapezius plus rhomboids and upper/mid-back)
 
 | # | Exercise | Credits |
 |---|---|---|
@@ -140,13 +140,13 @@ The research tested only the values 0, 0.5 and 1. Any other credit value (0.25, 
 | 5 | Dips | Chest 1, Triceps 0.5, Front delt 0.5 |
 | 6 | Fly (cable/dumbbell/pec deck) | Chest 1 |
 | 7 | Overhead press | Front delt 1, Triceps 0.5, Side delt 0.5 |
-| 8 | Pull-up / chin-up | Back 1, Biceps 0.5 |
-| 9 | Lat pulldown | Back 1, Biceps 0.5 |
-| 10 | Barbell / cable / dumbbell row | Back 1, Rear delt 0.5, Biceps 0.5, Traps 0.25 |
-| 11 | Chest-supported row | Back 1, Rear delt 0.5, Biceps 0.5, Traps 0.25 |
-| 12 | Pullover (cable/dumbbell) | Back 1, Triceps 0.25 |
+| 8 | Pull-up / chin-up | Lats 1, Biceps 0.5 |
+| 9 | Lat pulldown | Lats 1, Biceps 0.5 |
+| 10 | Barbell / cable / dumbbell row | Traps 1, Lats 0.5, Rear delt 0.5, Biceps 0.5 |
+| 11 | Chest-supported row | Traps 1, Lats 0.5, Rear delt 0.5, Biceps 0.5 |
+| 12 | Pullover (cable/dumbbell) | Lats 1, Triceps 0.25 |
 | 13 | Romanian deadlift | Hamstrings 1, Glutes 0.5 |
-| 14 | Conventional deadlift | Glutes 1, Hamstrings 0.5, Quads 0.5, Traps 0.5, Back 0.25 |
+| 14 | Conventional deadlift | Glutes 1, Hamstrings 0.5, Quads 0.5, Traps 0.5; spinal erectors uncounted |
 | 15 | Back / front squat (full depth) | Quads 1, Glutes 0.75, Hamstrings 0 |
 | 16 | Leg press | Quads 1, Glutes 0.5 |
 | 17 | Lunge / split squat | Quads 1, Glutes 0.75 |
@@ -154,16 +154,16 @@ The research tested only the values 0, 0.5 and 1. Any other credit value (0.25, 
 | 19 | Leg extension | Quads 1 |
 | 20 | Leg curl | Hamstrings 1 |
 | 21 | Lateral raise | Side delt 1, Traps 0.25 |
-| 22 | **Y raise** | **Side delt 1, Traps 0.75** (owner input; plausible range 0.5–1, approximate) |
-| 23 | Face pull | Rear delt 1, Back 0.5, Traps 0.25 |
-| 24 | Reverse fly / rear-delt machine | Rear delt 1, Back 0.5 |
+| 22 | **Y raise** | **Shoulders 1, Traps 0.75** (owner input; plausible range 0.5–1, approximate) |
+| 23 | Face pull | Rear delt 1, Traps 0.5 |
+| 24 | Reverse fly / rear-delt machine | Rear delt 1, Traps 0.5 |
 | 25 | Shrug | Traps 1 |
 | 26 | Biceps curl (any) | Biceps 1 |
 | 27 | Triceps pushdown / extension | Triceps 1 |
 | 28 | Calf raise (standing/seated) | Calves 1 |
 | 29 | Plank / crunch / hanging leg raise | Core 1 |
 
-Coaches may edit these credits per exercise. Each override is stored with the exercise, not with the Player.
+Rows with a specific lats or traps target use the owner-directed row rule: traps 1, lats 0.5, rear delts 0.5, and biceps 0.5. The traps-first assignment is a movement-pattern judgment, not a muscle-specific trial result; the fractional helper value follows the indirect-set evidence above (Pelland et al., 2025). Face pulls and reverse flies credit the scapular retractors as traps; neither gets lats credit because neither is a shoulder-extension/adduction pull. The deadlift's removed broad-region credit represented spinal-erector work, which remains unlisted. Coaches may edit these credits per exercise. Each override is stored with the exercise, not with the Player.
 
 ---
 
@@ -195,7 +195,7 @@ Coaches may edit these credits per exercise. Each override is stored with the ex
 | Weekly volume | Intermediate typical 10–16/20 sets; ceiling 18–22; beginner ceiling 10–14; advanced ceiling 20–26 (see table) | Strong for the trend, Practice for the exact numbers |
 | Volume progression | +2 sets/muscle/week max; start low | Practice |
 | Per session | ≤ 10 fractional sets/muscle (override 12); beginners ≤ 6; main lift 2–5 sets | Moderate–Low (preprint) |
-| Counting | Direct 1, indirect 0.5, minor 0; per-exercise overrides; Y raise = side delt 1, traps 0.75 | Moderate (0/0.5/1); Judgment (other values) |
+| Counting | Direct 1, indirect 0.5, minor 0; per-exercise overrides; Y raise = shoulders 1, traps 0.75 | Moderate (0/0.5/1); Judgment (other values) |
 | Strength checks | Count direct sets only | Moderate |
 | Hard set | 5–30 reps, RIR ≤ 4 (target 1–3); RIR ≥ 5 = 0 | Moderate |
 | Failure | Not needed; allowed on last isolation set only | Moderate |

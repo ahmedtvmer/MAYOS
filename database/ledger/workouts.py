@@ -666,7 +666,7 @@ class LedgerWorkoutsMixin:
             FROM session_divergences sd
             {exercise_display_join('sd.exercise_id')}
             WHERE sd.session_id = ?
-            ORDER BY kind ASC, exercise_id ASC
+            ORDER BY sd.kind ASC, sd.exercise_id ASC
         """,
             (session_id,),
         )

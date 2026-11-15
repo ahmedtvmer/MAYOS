@@ -47,7 +47,7 @@ FITNESS_ABBREVIATIONS: dict[str, str] = {
     "ssb squat": "safety squat bar squat",
     "hip thrusts": "barbell hip thrust",
     "hip thrust": "barbell hip thrust",
-    # Pulls / Back / Biceps
+    # Pulls / Lats / Traps / Biceps
     "lat pulldowns": "cable lat pulldown",
     "lat pulldown": "cable lat pulldown",
     "pullups": "assisted standing pull-up",

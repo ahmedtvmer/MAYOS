@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/features/player/tour/feature_list.dart';
 import 'package:mayos_mobile/src/features/player/tour/tour_targets.dart';
+import 'package:mayos_mobile/src/router.dart';
 
 Set<String> _registeredTargetIds() {
   final Directory lib = Directory('lib');

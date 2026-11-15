@@ -112,6 +112,15 @@ class SchemaMixin:
                     muscle TEXT NOT NULL,
                     FOREIGN KEY(exercise_id) REFERENCES exercises(id) ON DELETE CASCADE
                 );
+                CREATE TABLE IF NOT EXISTS exercise_muscle_credits (
+                    exercise_id TEXT NOT NULL,
+                    muscle TEXT NOT NULL,
+                    credit REAL NOT NULL CHECK (credit >= 0 AND credit <= 1),
+                    is_primary INTEGER NOT NULL CHECK (is_primary IN (0, 1)),
+                    source TEXT NOT NULL CHECK (source IN ('default', 'reviewed')),
+                    PRIMARY KEY(exercise_id, muscle),
+                    FOREIGN KEY(exercise_id) REFERENCES exercises(id) ON DELETE CASCADE
+                );
                 CREATE TABLE IF NOT EXISTS exercise_provenance (
                     exercise_id TEXT PRIMARY KEY,
                     provenance TEXT NOT NULL,
@@ -127,6 +136,7 @@ class SchemaMixin:
                     embedding float[{EMBEDDING_DIM}] distance_metric=cosine
                 );
                 CREATE INDEX IF NOT EXISTS idx_secondary_muscles_ex ON exercise_secondary_muscles(exercise_id);
+                CREATE INDEX IF NOT EXISTS idx_exercise_muscle_credits_ex ON exercise_muscle_credits(exercise_id);
             """)
             if self.catalog_conn.execute(
                 "SELECT 1 FROM sqlite_master WHERE type='table' AND name='foods'"

@@ -92,15 +92,21 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
         'في الاتصال أو مشكلة في MAYOS.',
     target: 'home',
     location: TourShellTabLocation(tabIndex: 0),
-    release: 6,
+    release: 7,
     audience: 'lifter',
   ),
   FeatureEntry(
     id: 'assistant_volume',
     titleEn: 'Ask about training volume',
-    sentenceEn: 'Ask about direct and indirect weekly sets, logged volume, and clearly labelled estimates with their basis.',
+    sentenceEn:
+        'Ask about weekly sets for lats, traps and other main muscle groups '
+        'using each exercise’s credits, logged volume, and clearly labelled '
+        'estimates with their basis.',
     titleAr: 'اسأل عن مجموعات التدريب',
-    sentenceAr: 'اسأل عن المجموعات الأسبوعية المباشرة وغير المباشرة والحجم المسجل والتقديرات المعلّمة بوضوح مع أساس حسابها.',
+    sentenceAr:
+        'اسأل عن مجموعات اللاتس (الظهر العريض) والترابيس والمجموعات العضلية '
+        'الرئيسية الأخرى، مع رصيد كل تمرين والحجم المسجل والتقديرات المعلّمة '
+        'مع أساس حسابها.',
     target: 'whats_new_assistant_why',
     location: TourRouteLocation(chatPath),
     release: 6,
@@ -176,12 +182,16 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
   FeatureEntry(
     id: 'progress',
     titleEn: 'Progress',
-    sentenceEn: 'Explore your charts and review Checkpoint feedback.',
+    sentenceEn:
+        'Explore your charts, including logged volume by main muscle group '
+        'using each exercise’s credits, and review Checkpoint feedback.',
     titleAr: 'التقدم',
-    sentenceAr: 'تابع مخططاتك وراجع ملاحظات محطات التقدم.',
+    sentenceAr:
+        'تابع مخططاتك، ومنها الحجم المسجل حسب المجموعة العضلية الرئيسية ورصيد '
+        'كل تمرين، وراجع ملاحظات محطات التقدم.',
     target: 'progress',
     location: TourShellTabLocation(tabIndex: 3),
-    release: 0,
+    release: 6,
     audience: 'lifter',
   ),
   FeatureEntry(
@@ -255,12 +265,12 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
   FeatureEntry(
     id: 'weak_points',
     titleEn: 'Weak points',
-    sentenceEn: 'Choose muscles you want your Training program to focus on.',
+    sentenceEn: 'Choose up to two muscles, including lats, traps and rear delts, for Focus work in your Training program; muscles in the same main group share credited Focus volume, forearms and adductors retain their extra work, and Volume reviews combine shared exercise changes within weekly limits.',
     titleAr: 'نقاط الضعف',
-    sentenceAr: 'اختر العضلات التي تريد أن يركز عليها برنامجك التدريبي.',
+    sentenceAr: 'اختر حتى عضلتين، ومنها اللاتس والترابيس والأكتاف الخلفية، ليركز عليها برنامجك التدريبي؛ وتشترك العضلات في المجموعة الرئيسية نفسها في حجم التركيز المحتسب، ويحتفظ الساعد والعضلات المقربة بتمارينهما الإضافية، وتجمع مراجعات مجموعات التدريب تغييرات التمارين المشتركة ضمن الحدود الأسبوعية.',
     target: 'whats_new_weak_points',
     location: TourRouteLocation(profilePath),
-    release: 1,
+    release: 7,
     audience: 'lifter',
   ),
   FeatureEntry(

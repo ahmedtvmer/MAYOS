@@ -84,6 +84,7 @@ from agent.player_prompt import (
     valid_preferred_name as _valid_preferred_name,
 )
 from agent.player_tools import (
+    MAX_PLAYER_TOOL_ROUNDS,
     build_player_read_tools,
     cap_tool_results_for_prompt,
     run_player_tool_calls,
@@ -1873,9 +1874,36 @@ def _preference_write_intent(
 _WEAK_POINT_NAMES = {
     "chest": "chest",
     "upper chest": "upper_chest",
-    "back": "back",
+    "lats": "lats",
+    "lat": "lats",
+    "latissimus dorsi": "lats",
+    "back": "lats",
+    "traps": "traps",
+    "trap": "traps",
+    "trapezius": "traps",
+    "upper trapezius": "traps",
+    "mid trapezius": "traps",
+    "middle trapezius": "traps",
+    "lower trapezius": "traps",
+    "upper traps": "traps",
+    "mid traps": "traps",
+    "middle traps": "traps",
+    "lower traps": "traps",
+    "rhomboids": "traps",
+    "rhomboid": "traps",
+    "upper back": "traps",
+    "upper-back": "traps",
+    "mid back": "traps",
+    "mid-back": "traps",
+    "middle back": "traps",
+    "middle-back": "traps",
     "shoulders": "shoulders",
     "side delts": "side_delts",
+    "rear delts": "rear_delts",
+    "rear delt": "rear_delts",
+    "rear shoulders": "rear_delts",
+    "posterior delts": "rear_delts",
+    "posterior delt": "rear_delts",
     "biceps": "biceps",
     "triceps": "triceps",
     "forearms": "forearms",
@@ -1887,9 +1915,17 @@ _WEAK_POINT_NAMES = {
     "abs": "abs",
     "الصدر": "chest",
     "أعلى الصدر": "upper_chest",
-    "الظهر": "back",
+    "الظهر": "lats",
+    "الظهر العريض": "lats",
+    "لاتس": "lats",
+    "اللاتس": "lats",
+    "الترابيس": "traps",
+    "ترابيس": "traps",
     "الأكتاف": "shoulders",
     "الأكتاف الجانبية": "side_delts",
+    "الأكتاف الخلفية": "rear_delts",
+    "الكتف الخلفي": "rear_delts",
+    "كتف خلفي": "rear_delts",
     "البايسبس": "biceps",
     "الترايسبس": "triceps",
     "الساعد": "forearms",
@@ -1904,9 +1940,11 @@ _WEAK_POINT_NAMES = {
 _WEAK_POINT_CHAT_LABELS = {
     "chest": ("chest", "الصدر"),
     "upper_chest": ("upper chest", "أعلى الصدر"),
-    "back": ("back", "الظهر"),
+    "lats": ("lats", "اللاتس (الظهر العريض)"),
+    "traps": ("traps", "الترابيس"),
     "shoulders": ("shoulders", "الأكتاف"),
     "side_delts": ("side delts", "الأكتاف الجانبية"),
+    "rear_delts": ("rear delts", "الأكتاف الخلفية"),
     "biceps": ("biceps", "البايسبس"),
     "triceps": ("triceps", "الترايسبس"),
     "forearms": ("forearms", "الساعد"),
@@ -2038,7 +2076,7 @@ def _resolve_goal_weak_point_selection(
     else:
         selected = [muscle for muscle in suggest_weak_points(query) if muscle in candidates]
         explicit_pick = bool(re.search(
-            r"\b(?:just|only|keep)\b|\b(?:chest|back|shoulders|upper chest|side delts)\s+only\b|"
+            r"\b(?:just|only|keep)\b|\b(?:chest|back|lats|traps|rhomboids|shoulders|upper chest|side delts)\s+only\b|"
             r"بس|فقط|خلي|خليلي|احتفظ",
             unicodedata.normalize("NFKC", query).casefold(),
         ))
@@ -2214,11 +2252,11 @@ def _validated_chat_weak_points(
     muscles = [_WEAK_POINT_NAMES.get(name) or (name if name in WEAK_POINT_MUSCLES else None) for name in names]
     if not muscles or any(muscle is None for muscle in muscles):
         reply = (
-            "Name Weak points from the list: chest, upper chest, back, shoulders, "
+            "Name Weak points from the list: chest, upper chest, lats, traps, rear delts, shoulders, "
             "side delts, biceps, triceps, forearms, quads, hamstrings, glutes, "
             "adductors, calves or abs."
             if language == "en"
-            else "اختار نقاط ضعفك من القائمة المعروفة، مثل الصدر أو الظهر أو البطن."
+            else "اختار نقاط ضعفك من القائمة المعروفة، مثل الصدر أو اللاتس (الظهر العريض) أو الترابيس أو البطن."
         )
         return None, reply
     try:
@@ -2277,7 +2315,11 @@ def _weak_point_write_intent(
     result = update_profile(
         store, ledger.ledger_id, {"weak_points": weak_points}, account_id, ledger
     )
-    return _response(_weak_point_write_confirmation(raw_names, result, language))
+    labels = [
+        _WEAK_POINT_CHAT_LABELS[item["muscle"]][0 if language == "en" else 1]
+        for item in weak_points
+    ]
+    return _response(_weak_point_write_confirmation(labels, result, language))
 
 
 def assistant_preference_delete_node(state: AssistantState, config: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -5208,9 +5250,6 @@ def _stream_player_answer(
         return _StreamedPlayerAnswer(message, tool_calls, {})
     yield from output.finish_answer(capture.limited)
     return _StreamedPlayerAnswer(message, [], capture.telemetry())
-
-
-MAX_PLAYER_TOOL_ROUNDS = 3
 
 
 def _tool_reply_language(state: dict[str, Any]) -> str:
