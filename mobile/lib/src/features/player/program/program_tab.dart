@@ -1234,7 +1234,7 @@ class _ProgramTabState extends ConsumerState<ProgramTab>
             const SizedBox(height: MayosSpacing.md),
           ],
           if (fromCache) ...<Widget>[
-            const _OfflineBanner(),
+            const _SavedProgramNotice(),
             const SizedBox(height: MayosSpacing.md),
           ],
           if (program.offerDesignRegeneration &&
@@ -2009,8 +2009,8 @@ class _VolumeReviewCard extends StatelessWidget {
   }
 }
 
-class _OfflineBanner extends StatelessWidget {
-  const _OfflineBanner();
+class _SavedProgramNotice extends StatelessWidget {
+  const _SavedProgramNotice();
 
   @override
   Widget build(BuildContext context) {
@@ -2025,11 +2025,11 @@ class _OfflineBanner extends StatelessWidget {
       ),
       child: Row(
         children: <Widget>[
-          Icon(Icons.cloud_off, size: 18, color: c.textSecondary),
+          Icon(Icons.history, size: 18, color: c.textSecondary),
           const SizedBox(width: MayosSpacing.xs),
           Expanded(
             child: Text(
-              displayCopyOf(context).offlineProgramBanner,
+              displayCopyOf(context).savedProgramBanner,
               style: MayosTypography.of(context).bodySecondary.copyWith(
                 color: c.textSecondary,
               ),
