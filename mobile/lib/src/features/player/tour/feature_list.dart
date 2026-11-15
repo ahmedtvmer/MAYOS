@@ -126,9 +126,9 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
   FeatureEntry(
     id: 'assistant',
     titleEn: 'Assistant',
-    sentenceEn: 'Ask about programs, Exercises or recent food, remember training preferences, get answers alongside an explicit named exercise swap, and confirm before deleting a preference or saving a program preview.',
+    sentenceEn: 'Ask in English or Arabic about programs, Exercises or recent food, set your preferred name, remember training preferences, get answers alongside an explicit named exercise swap, and confirm before deleting a preference or saving a program preview.',
     titleAr: 'المساعد',
-    sentenceAr: 'اسأل عن البرامج أو التمارين أو طعامك مؤخرًا، واحفظ تفضيلات التدريب، واحصل على إجابات مع طلب واضح لاستبدال تمرين محدد، ثم أكّد قبل حذف تفضيل أو حفظ معاينة برنامج.',
+    sentenceAr: 'اسأل بالعربية أو الإنجليزية عن البرامج أو التمارين أو طعامك مؤخرًا، وحدّد الاسم الذي يناديك به المساعد، واحفظ تفضيلات التدريب، واحصل على إجابات مع طلب واضح لاستبدال تمرين محدد، ثم أكّد قبل حذف تفضيل أو حفظ معاينة برنامج.',
     target: 'assistant',
     location: TourShellTabLocation(tabIndex: 0),
     release: 0,

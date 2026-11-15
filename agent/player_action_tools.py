@@ -1,6 +1,5 @@
 """Model-selected Player operations, bound to the original turn and its ledger."""
 
-import re
 import sqlite3
 import time
 from dataclasses import dataclass
@@ -314,31 +313,19 @@ _ACTION_NAMES = frozenset({
     "update_weak_points", "update_movement_restrictions", "preferred_name",
 })
 
-_WRITE_TOOL_GROUPS = {
-    r"rebuild|regenerate|preview|draft|generate|create|new|swap|replace|substitut|switch|change|add|remove|confirm|cancel|yes|alternativ|instead|بديل|بدائل|بدل|غير|بناء|ضيف|شيل|اكد|ايوه|نعم|جهز|غييرات|ظبط.{0,30}(?:برنامج|برامج|تقسيم|ايام|يوم)|جدد|حط|زود|انقل|عدل":
-        {"substitute_exercise", "preview_program_rebuild", "preview_program_edit", "confirm_program_edit"},
-    r"deload|ديلود|تخفيف": {"choose_deload"},
-    r"injur|doctor|physician|clear|pain|اصاب|دكتور|طبيب|وجع|الم": {"update_injury", "update_movement_restrictions"},
-    r"remember|forget|prefer|keep.*mind|خلي|افتكر|احفظ|انس|تفضيل|بالك": {"manage_assistant_preference"},
-    r"goal|bulk|cut|lose|هدف|تضخيم|تنشيف|خس": {"update_training_goal"},
-    r"weak|focus|ضعيف|ضعف|ركز|تركيز": {"update_weak_points"},
-    r"name|call me|i m|i am|ناديني|اسمي|اسم|انا": {"preferred_name"},
-}
+def select_player_chat_tools(tools, messages, budget, attempts=1):
+    """Keep every read; trim actions only under actual request/turn pressure."""
+    from agent.player_turn_budget import provider_tool_schemas
 
-
-def select_player_chat_tools(tools, state):
-    """Always bind reads; include only write groups mentioned recently."""
-    from agent.context_router import _normalize
-    from agent.player_prompt import get_message_text
-    from agent.program_blueprints import match_split_keyword
-
-    text = _normalize(" ".join(get_message_text(message) for message in state.get("messages", [])[-6:]))
-    selected = set().union(*(names for pattern, names in _WRITE_TOOL_GROUPS.items() if re.search(pattern, text, re.I)))
-    latest = get_message_text(state["messages"][-1])
-    # A named split continues the Program topic; other short follow-ups may refer anywhere.
-    if len(state.get("messages", [])) > 1 and len(latest.split()) < 4 and not match_split_keyword(latest):
+    if budget.fits_tool_round(messages, provider_tool_schemas(tools), attempts):
         return tools
-    return [tool for tool in tools if tool.name not in _ACTION_NAMES or tool.name in selected]
+    selected = [tool for tool in tools if tool.name not in _ACTION_NAMES]
+    for tool in tools:
+        if tool.name in _ACTION_NAMES:
+            candidate = [*selected, tool]
+            if budget.fits_tool_round(messages, provider_tool_schemas(candidate), attempts):
+                selected.append(tool)
+    return selected
 
 
 def run_player_chat_tool_calls(tool_calls, **options):

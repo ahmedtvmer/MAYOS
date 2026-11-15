@@ -4430,9 +4430,6 @@ def _invoke_player_tool_loop(
     """Invokes the same bounded tool loop for non-streaming graph callers."""
     ledger, _store = _graph_context(config)
     tools, definitions = build_player_chat_tools(state, config)
-    tools = select_player_chat_tools(tools, state)
-    schemas = provider_tool_schemas(tools)
-    bound_model = llm.bind_tools(schemas)
     budget = PlayerTurnInputBudget()
     context = RoutedContext(list(payload))
     if (state.get("intent") or "coaching_qa") == "coaching_qa":
@@ -4443,6 +4440,9 @@ def _invoke_player_tool_loop(
     model_fetched_more = False
     try:
         for _round in range(MAX_PLAYER_TOOL_ROUNDS):
+            round_tools = select_player_chat_tools(tools, messages, budget, provider_request_attempts(llm))
+            schemas = provider_tool_schemas(round_tools)
+            bound_model = llm.bind_tools(schemas)
             messages = budget.prepare_request(messages, schemas, provider_request_attempts(bound_model))
             response = bound_model.invoke(messages)
             tool_calls = list(getattr(response, "tool_calls", ()) or ())
@@ -4455,7 +4455,7 @@ def _invoke_player_tool_loop(
             _ensure_tool_call_ids(tool_calls)
             response = response.model_copy(update={"tool_calls": tool_calls})
             tool_messages, _telemetry = run_player_chat_tool_calls(
-                tool_calls, tools=tools, definitions=definitions, language=_tool_reply_language(state),
+                tool_calls, tools=round_tools, definitions=definitions, language=_tool_reply_language(state),
             )
             tool_messages = cap_tool_results_for_prompt([*messages, response], tool_messages)
             messages.extend([response, *tool_messages])
@@ -4772,9 +4772,6 @@ def stream_assistant_turn(
         else:
             payload = build_prompt_payload(state)
             tools, definitions = build_player_chat_tools(state, config)
-            tools = select_player_chat_tools(tools, state)
-            schemas = provider_tool_schemas(tools)
-            bound_model = llm.bind_tools(schemas)
             budget = PlayerTurnInputBudget()
             routed_context = RoutedContext(list(payload))
             if intent == "coaching_qa":
@@ -4785,6 +4782,9 @@ def stream_assistant_turn(
             model_messages = routed_context.messages
 
             for _round_index in range(MAX_PLAYER_TOOL_ROUNDS):
+                round_tools = select_player_chat_tools(tools, model_messages, budget, provider_request_attempts(llm))
+                schemas = provider_tool_schemas(round_tools)
+                bound_model = llm.bind_tools(schemas)
                 streamed_answer = yield from _stream_player_answer(
                     _stream_model_with_first_token_deadline(bound_model, model_messages, budget, schemas),
                     stream_output,
@@ -4802,7 +4802,7 @@ def stream_assistant_turn(
                 )
                 tool_messages, round_metrics = run_player_chat_tool_calls(
                     streamed_answer.tool_calls,
-                    tools=tools,
+                    tools=round_tools,
                     definitions=definitions,
                     language=_tool_reply_language(state),
                     status_callback=status_callback,

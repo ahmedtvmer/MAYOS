@@ -1,7 +1,7 @@
 """Admission accounting for complete Player provider requests, including repeat rounds."""
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from langchain_core.messages import SystemMessage
@@ -51,6 +51,16 @@ class PlayerTurnInputBudget:
     consumed: int = 0
     estimated_consumed: int = 0
 
+    def fits_tool_round(self, messages, schemas, attempts=1) -> bool:
+        """Check capacity without spending it, including a schema-free final answer."""
+        projected = replace(self)
+        try:
+            projected.admit(messages, schemas, attempts)
+            projected.prepare_request(messages, attempts=attempts)
+        except PromptBudgetError:
+            return False
+        return True
+
     def prepare_request(self, messages, schemas=(), attempts=1):
         """Reserve the complete request, dropping only old conversation exchanges."""
         prepared = list(messages)
@@ -77,7 +87,9 @@ class PlayerTurnInputBudget:
         rendered = json.dumps(request, ensure_ascii=False, separators=(",", ":"))
         framing = 128 * (1 + len(messages) + len(schemas))
         upper_bound = len(json.dumps(request, ensure_ascii=True, separators=(",", ":"))) + framing
-        estimate = prompt_token_count([SystemMessage(content=rendered)]) + framing
+        # Framing is ASCII byte slack; convert it at the same rate as serialized
+        # JSON rather than charging each byte as a whole estimated token.
+        estimate = prompt_token_count([SystemMessage(content=rendered + " " * framing)])
         if (estimate > HOSTED_PROMPT_REAL_TOKEN_SAFETY_CEILING
                 or self.estimated_consumed + estimate * attempts > PLAYER_TURN_ESTIMATED_INPUT_TOKEN_LIMIT
                 or self.consumed + upper_bound * attempts > PLAYER_TURN_INPUT_TOKEN_LIMIT):
