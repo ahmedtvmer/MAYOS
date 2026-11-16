@@ -15,6 +15,7 @@ pyproject.toml
 /data/*
 !/data/exercise_curation.csv
 !/data/food_curation.csv
+!/data/food_allergens.csv
 !/data/food_recipes.csv
 !tests/data/
 !tests/data/database_manager_public_surface.json

@@ -160,6 +160,10 @@ def test_existing_coach_invite_catalog_adds_revocation_column(tmp_path: Path):
                 "SELECT token_hash, revoked_at FROM coach_invites WHERE account_id = ?",
                 ("account-id",),
             ).fetchone()
+            assert conn.execute("SELECT COUNT(*) FROM nutrition_templates").fetchone()[0] == 0
+            assert conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_nutrition_templates_owner'"
+            ).fetchone() is not None
         assert "revoked_at" in columns
         assert invite == ("a" * 64, None)
     finally:

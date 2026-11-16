@@ -20,8 +20,15 @@ from utils.equipment_access import (
 logger = MayosLogger().get_logger(__name__)
 
 # Current target schema version for all user ledgers
-CURRENT_LEDGER_SCHEMA_VERSION: int = 58
+CURRENT_LEDGER_SCHEMA_VERSION: int = 62
 
+MEAL_SETUP_DDL: tuple[str, ...] = (
+    "CREATE TABLE IF NOT EXISTS meal_setup ("
+    " id INTEGER PRIMARY KEY CHECK(id=1),"
+    " meal_count INTEGER NOT NULL CHECK(meal_count IN (3,4,5)),"
+    " training_time TEXT NOT NULL CHECK(training_time IN ('morning','afternoon','evening')),"
+    " restrictions_json TEXT NOT NULL)",
+)
 CHAT_HISTORY_FTS_DDL: tuple[str, ...] = (
     "CREATE VIRTUAL TABLE IF NOT EXISTS chat_history_fts USING fts5("
     "message_id UNINDEXED, search_text, tokenize='unicode61 remove_diacritics 2')",
@@ -1274,7 +1281,7 @@ def _migrate_v54_to_v55(conn: sqlite3.Connection) -> None:
 
 
 def _migrate_v55_to_v56(conn: sqlite3.Connection) -> None:
-    """Keeps the v56 slot available for the concurrently landing ledger change."""
+    """An empty slot: the meal setup change it was reserved for landed after chat search, as v59."""
 
 
 def _migrate_v56_to_v57(conn: sqlite3.Connection) -> None:
@@ -1353,6 +1360,30 @@ def _migrate_v57_to_v58(conn: sqlite3.Connection) -> None:
             "UPDATE program_days SET day_name = 'Chest, Lats & Traps' "
             "WHERE lower(trim(day_name)) IN ('chest & back', 'chest and back')"
         )
+
+
+def _migrate_v58_to_v59(conn: sqlite3.Connection) -> None:
+    for statement in MEAL_SETUP_DDL:
+        conn.execute(statement)
+
+
+def _migrate_v59_to_v60(conn: sqlite3.Connection) -> None:
+    if _ledger_table_exists(conn, "nutrition_plan_versions"):
+        columns = {column[1] for column in conn.execute("PRAGMA table_info(nutrition_plan_versions)")}
+        if "meals_json" not in columns:
+            conn.execute("ALTER TABLE nutrition_plan_versions ADD COLUMN meals_json TEXT")
+
+
+def _migrate_v60_to_v61(conn: sqlite3.Connection) -> None:
+    from database.ledger.nutrition_drafts import NUTRITION_DRAFTS_DDL
+
+    conn.execute(NUTRITION_DRAFTS_DDL)
+
+
+def _migrate_v61_to_v62(conn: sqlite3.Connection) -> None:
+    from database.ledger.nutrition import NUTRITION_MEAL_GENERATION_CACHE_DDL
+
+    conn.execute(NUTRITION_MEAL_GENERATION_CACHE_DDL)
 
 
 def get_ledger_schema_version(conn: sqlite3.Connection) -> int:
@@ -1509,6 +1540,10 @@ MIGRATION_REGISTRY: dict[int, MigrationCallable] = {
     55: _migrate_v55_to_v56,
     56: _migrate_v56_to_v57,
     57: _migrate_v57_to_v58,
+    58: _migrate_v58_to_v59,
+    59: _migrate_v59_to_v60,
+    60: _migrate_v60_to_v61,
+    61: _migrate_v61_to_v62,
 }
 
 

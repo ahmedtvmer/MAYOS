@@ -8,6 +8,7 @@ import pytest
 
 from database.food_library.builder import NUTRIENTS
 from database.food_library.seeding import FoodLibraryPaths, seed_food_library
+from database.ledger.nutrition import NutritionPlanVersion
 from service import analytics
 from tests.test_nutrition_api import api, _player_today, _seed_profile  # noqa: F401
 
@@ -25,7 +26,7 @@ def food_api(api, tmp_path):  # noqa: F811
     names = {
         "staple": "Chicken thigh", "exact": "Chicken", "prefix": "Chicken breast",
         "alias": "Poultry cooked", "contains": "Roast chicken", "raw": "Chicken raw",
-        "hidden": "Chicken hidden", "egg": "Egg", "rice": "Rice",
+        "hidden": "Chicken hidden", "egg": "Egg", "rice": "Rice", "cookie": "Cookie",
         **{f"extra-{index}": f"Food item {index}" for index in range(11)},
     }
     sources = [{"id": key, "name": name, "source": "SR Legacy", "category": "Food",
@@ -120,6 +121,14 @@ def test_search_matches_display_arabic_and_aliases_with_letter_normalization(foo
     assert [food["id"] for food in foods] == [food_id]
 
 
+def test_food_library_search_matches_cookies_to_cookie(food_api):
+    client, _db, headers, _today = food_api
+    foods = client.get(
+        "/nutrition/foods", headers=headers, params={"q": "cookies"}
+    ).json()["foods"]
+    assert [food["id"] for food in foods] == ["cookie"]
+
+
 def test_unreviewed_arabic_names_and_aliases_do_not_match(food_api):
     client, _db, headers, _today = food_api
     for query in ("دجاج سري", "دجاج مخفي"):
@@ -155,6 +164,54 @@ def test_add_enforces_today_and_yesterday_only(food_api, offset, status):
     client, _db, headers, today = food_api
     response = _add(client, headers, today + timedelta(days=offset))
     assert response.status_code == status, response.text
+
+
+@pytest.mark.parametrize("days_ago", [0, 1, 2])
+def test_day_check_in_returns_that_days_water_and_verdict(food_api, days_ago):
+    client, db, headers, today = food_api
+    selected = today - timedelta(days=days_ago)
+    account = db.get_active_account_by_username("food-player")
+    with db.open_ledger(account["ledger_id"]) as ledger:
+        for offset in range(3):
+            entry_date = today - timedelta(days=offset)
+            for _ in range(offset + 1):
+                ledger.change_water_glasses(entry_date, 1)
+            ledger.upsert_nutrition_adherence(entry_date, ("on_target", "roughly", "off")[offset])
+    response = client.get("/nutrition/food-log", headers=headers, params={"day": selected.isoformat()})
+    assert response.status_code == 200, response.text
+    assert response.json()["water_glasses"] == days_ago + 1
+    assert response.json()["adherence"] == ("on_target", "roughly", "off")[days_ago]
+
+
+def test_past_day_meals_use_the_saved_version_instead_of_todays_plan(food_api):
+    client, db, headers, today = food_api
+    account = db.get_active_account_by_username("food-player")
+    old_meals = [{"slot": "breakfast", "foods": [{"id": "egg", "name": "Egg",
+                  "grams": 100, "role": "protein"}], "totals": {"calories": 520}}]
+    old_targets = {"calories": 2000, "protein_g": 140, "carbs_g": 220, "fat_g": 60,
+                   "fiber_g": 28, "water_ml": 2000}
+    with db.open_ledger(account["ledger_id"]) as ledger:
+        ledger.save_nutrition_plan(NutritionPlanVersion(
+            "maintain", {"code": "default"}, None, "mostly_sitting", old_targets,
+            created_at=f"{today - timedelta(days=2)}T00:00:00+00:00",
+            meals={"enabled": True, "variants": {
+                day_type: {"status": "ready", "meals": old_meals}
+                for day_type in ("training_day", "rest_day")}},
+        ))
+        ledger.save_nutrition_plan(NutritionPlanVersion(
+            "gain", {"code": "default"}, "light", "mostly_sitting",
+            {**old_targets, "calories": 2400}, created_at=f"{today}T00:00:00+00:00",
+        ))
+    yesterday = client.get("/nutrition/food-log", headers=headers,
+                           params={"day": (today - timedelta(days=1)).isoformat()}).json()
+    assert yesterday["targets"] == old_targets
+    assert yesterday["planned_meals"]["meals"] == old_meals
+    assert yesterday["planned_meals"]["date"] == (today - timedelta(days=1)).isoformat()
+    assert client.get("/nutrition/food-log", headers=headers).json()["planned_meals"] is None
+    before_plan = client.get("/nutrition/food-log", headers=headers,
+                             params={"day": (today - timedelta(days=3)).isoformat()}).json()
+    assert before_plan["targets"] is None
+    assert before_plan["planned_meals"] is None
 
 
 def test_portions_snapshot_nutrients_and_names_and_edits_keep_original_density(food_api, recording_analytics):
