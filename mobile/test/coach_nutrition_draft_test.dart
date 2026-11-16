@@ -72,7 +72,7 @@ void main() {
     await tester.enterText(find.byKey(const Key('target_daily_calories')), '2100');
     await tester.pump(const Duration(milliseconds: 650));
     await tester.pumpAndSettle();
-    expect(find.text('Could not save draft.'), findsOneWidget);
+    expect(find.text('MAYOS had a problem; try again.'), findsOneWidget);
     await scrollToControl(tester, find.byKey(const Key('publish_nutrition_draft')));
     expect(tester.widget<FilledButton>(find.byKey(const Key('publish_nutrition_draft'))).onPressed, isNull);
     server.failSave = false;
