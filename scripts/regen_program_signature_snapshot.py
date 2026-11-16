@@ -16,17 +16,15 @@ from agent.program_blueprints import SLOT_SPECS  # noqa: E402
 from agent.program_generator import generate_program_pipeline  # noqa: E402
 from core.muscle_volume import normalize_main_muscle  # noqa: E402
 from database.database_manager import DatabaseManager  # noqa: E402
-from database.exercise_library.curation import apply_exercise_curation  # noqa: E402
+from database.exercise_library.curation import (  # noqa: E402
+    REQUIRED_CURATION_COLUMNS,
+    apply_exercise_curation,
+)
 from tests.catalog import invented_exercise_curation, seed_catalog  # noqa: E402
 from utils.equipment_access import BODYWEIGHT_ONLY, COMMERCIAL_GYM, HOME_GYM  # noqa: E402
 
 DEFAULT_LIBRARY = ROOT / "data" / "processed_exercises.csv"
 DEFAULT_SNAPSHOT = ROOT / "tests/fixtures/program_generation_empty_curation_coach_patterns.json.gz"
-CURATION_COLUMNS = (
-    "id", "source_name", "display_name", "aliases", "primary_action",
-    "secondary_actions", "primary_muscle", "load_type", "hidden",
-    "duplicate_of", "muscle_credits",
-)
 SCENARIOS = tuple(
     (equipment, frequency, "None")
     for equipment in (COMMERCIAL_GYM, HOME_GYM, BODYWEIGHT_ONLY)
@@ -41,7 +39,7 @@ def _apply_empty_curation(store, directory: Path) -> None:
         if store.get_exercise_library_entry(record["id"]) is not None
     ]
     with path.open("w", newline="", encoding="utf-8") as stream:
-        writer = csv.DictWriter(stream, fieldnames=CURATION_COLUMNS)
+        writer = csv.DictWriter(stream, fieldnames=REQUIRED_CURATION_COLUMNS)
         writer.writeheader()
         writer.writerows(support)
     with store.catalog_conn:
@@ -141,12 +139,15 @@ def _load_snapshot(path: Path) -> dict:
 def _build_snapshot(library_path: Path) -> dict:
     with tempfile.TemporaryDirectory(prefix="mayos-program-signatures-") as temp_name:
         directory = Path(temp_name)
+        curation_path = directory / "curation.csv"
+        with curation_path.open("w", newline="", encoding="utf-8") as stream:
+            csv.writer(stream).writerow(REQUIRED_CURATION_COLUMNS)
         store = DatabaseManager(
             catalog_path=directory / "catalog.db",
             ledgers_dir=directory / "ledgers",
             backups_dir=directory / "backups",
             deletions_path=directory / "deletions.db",
-            curation_path=directory / "curation.csv",
+            curation_path=curation_path,
         )
         try:
             seed_catalog(store, csv_path=library_path)
