@@ -20,6 +20,9 @@ os.environ["LLM_ENABLE_THINKING"] = ""
 # A developer's configured analytics key must never receive test traffic.
 # ``load_dotenv()`` does not override these already-present environment keys.
 os.environ["POSTHOG_API_KEY"] = ""
+os.environ["VAPID_PUBLIC_KEY"] = ""
+os.environ["VAPID_PRIVATE_KEY"] = ""
+os.environ["VAPID_SUBJECT"] = ""
 
 # Tests must not post Sentry alerts using a developer/server webhook from .env.
 os.environ["DISCORD_ALERT_WEBHOOK_URL"] = ""

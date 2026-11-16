@@ -1,10 +1,12 @@
 """Coach-only Nutrition draft lifecycle behind the active Assignment gate."""
 
 import json
+from datetime import UTC, datetime
 
 from database.ledger import nutrition_drafts as storage
 from database.ledger.nutrition import NutritionPlanVersion
 from database.ledger.nutrition_meals import generate_variants, resolve_variant, reviewed_staples
+from database.ledger import push as ledger_push
 from core.meal_setup import MEAL_LAYOUTS
 from service import nutrition
 from service.assignments import authorized_player_ledger
@@ -113,13 +115,29 @@ def run(db, coach_id, assignment_id, operation):
     authorized = authorized_player_ledger(db, coach_id, assignment_id)
     if authorized is None:
         raise DraftNotFound("No active assignment.")
-    ledger, _ = authorized
+    ledger, context = authorized
+    player_account_id = context["player"]["account_id"]
     with ledger:
         with ledger.ledger_transaction(immediate=True):
             response = operation(ledger)
             # A failed recheck rolls back a create, save or publish racing revocation.
             _require_active(db, coach_id, assignment_id)
-            return response
+            if response is not None and "plan_version_id" in response:
+                plan_version_id = response["plan_version_id"]
+                ledger_push.record_intent(
+                    ledger.conn,
+                    ledger_push.PushIntent(
+                        player_account_id, "nutrition_published",
+                        f"nutrition-published:{assignment_id}:{plan_version_id}",
+                        datetime.now(UTC).isoformat(),
+                    ),
+                )
+    if response is not None and "plan_version_id" in response:
+        from service.web_push import send_notification
+
+        send_notification(db, player_account_id, "nutrition_published",
+                          f"nutrition-published:{assignment_id}:{response['plan_version_id']}")
+    return response
 
 
 def start(ledger, assignment_id, source):

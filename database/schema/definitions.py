@@ -22,6 +22,7 @@ from database.migration_manager import EQUIPMENT_ACCESS_DDL
 from database.migration_manager import CHECKPOINT_REVIEWS_DDL
 from database.ledger.nutrition_drafts import NUTRITION_DRAFTS_DDL
 from database.ledger.nutrition import NUTRITION_MEAL_GENERATION_CACHE_DDL
+from database.ledger.push import PUSH_INTENTS_DDL
 from database.migration_manager import DELOAD_CHOICES_DDL
 from database.migration_manager import INTAKE_DDL
 from database.migration_manager import INJURY_RECORDS_DDL
@@ -448,6 +449,7 @@ class SchemaMixin:
                 *MEAL_SETUP_DDL,
                 NUTRITION_DRAFTS_DDL,
                 NUTRITION_MEAL_GENERATION_CACHE_DDL,
+                PUSH_INTENTS_DDL,
                 *EQUIPMENT_ACCESS_DDL,
                 *ASSISTANT_PREFERENCES_DDL,
                 *ASSISTANT_GOAL_WEAK_POINT_PENDING_DDL,
@@ -988,6 +990,10 @@ class SchemaMixin:
                 " AND OLD.referrer_host IS NEW.referrer_host"
                 ") BEGIN SELECT RAISE(ABORT, 'first-touch acquisition records are immutable'); END"
             )
+            self._commit_catalog()
+            from database.push import ensure_schema as ensure_push_schema
+
+            ensure_push_schema(self.catalog_conn)
             self._commit_catalog()
             self._account_schema_ready = True
 

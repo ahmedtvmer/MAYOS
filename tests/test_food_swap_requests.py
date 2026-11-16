@@ -84,6 +84,12 @@ def test_coach_decisions_reply_and_apply_only_once(swap_queue, recording_analyti
             assert payload['variants'][target['day_type']]['meals'][0]['foods'][0]['id'] == 'alternative'
     events = [event for event in recording_analytics.events if event['event'] == 'nutrition_food_swap_request_decided']
     assert len(events) == 1 and events[0]['properties']['request_status'] == response.json()['status']
+    with db.catalog_locked() as connection:
+        notification = connection.execute(
+            "SELECT notification_type, dedupe_key FROM push_events WHERE dedupe_key=?",
+            (f"food-swap-reply:{record['request_id']}",),
+        ).fetchone()
+    assert tuple(notification) == ('coach_updates', f"food-swap-reply:{record['request_id']}")
 
 
 @pytest.mark.parametrize('change', ['version', 'allergy', 'floor'])
@@ -180,8 +186,51 @@ def test_plan_insert_failure_rolls_back_the_queue_claim(swap_queue):
             record['coach_account_id'], assignment_id, record['request_id'],
             {'food_id': 'alternative', 'grams': plan['meals'][0]['foods'][0]['grams'], 'response': ''}, 'applied'))
     assert client.get('/nutrition/food-swap-requests', headers=player).json()['requests'][0]['status'] == 'pending'
+    with db.catalog_locked() as connection:
+        assert connection.execute(
+            'SELECT COUNT(*) FROM push_events WHERE dedupe_key=?',
+            (f"food-swap-reply:{record['request_id']}",),
+        ).fetchone()[0] == 0
     with db.open_ledger(_ledger_id(db)) as ledger:
         assert ledger.get_active_nutrition_plan()['id'] == plan['plan_version_id']
+
+
+def test_742_ledger_commit_failure_leaves_no_food_swap_reply(swap_queue):
+    client, db, _coach, player, assignment_id, _target, plan = swap_queue
+    record = _create(swap_queue)
+    ledger_id = db.get_account(record['player_account_id'])['ledger_id']
+    with db.open_ledger(ledger_id) as ledger:
+        ledger.conn.execute("CREATE TABLE commit_parent (id INTEGER PRIMARY KEY)")
+        ledger.conn.execute(
+            "CREATE TABLE commit_failure (parent_id INTEGER NOT NULL REFERENCES commit_parent(id) "
+            "DEFERRABLE INITIALLY DEFERRED)"
+        )
+        ledger.conn.execute(
+            "CREATE TRIGGER fail_nutrition_plan_commit AFTER INSERT ON nutrition_plan_versions "
+            "BEGIN INSERT INTO commit_failure(parent_id) VALUES (999); END"
+        )
+        ledger.conn.commit()
+
+    with pytest.raises(sqlite3.IntegrityError, match="FOREIGN KEY"):
+        request_service.decide(db, request_service.Decision(
+            record['coach_account_id'], assignment_id, record['request_id'],
+            {'food_id': 'alternative', 'grams': plan['meals'][0]['foods'][0]['grams'], 'response': ''}, 'applied'))
+
+    assert client.get('/nutrition/food-swap-requests', headers=player).json()['requests'][0]['status'] == 'pending'
+    with db.catalog_locked() as connection:
+        assert connection.execute(
+            'SELECT COUNT(*) FROM push_events WHERE dedupe_key=?',
+            (f"food-swap-reply:{record['request_id']}",),
+        ).fetchone()[0] == 0
+        assert connection.execute(
+            'SELECT COUNT(*) FROM push_deliveries d JOIN push_events e USING(event_id) '
+            'WHERE e.dedupe_key=?', (f"food-swap-reply:{record['request_id']}",),
+        ).fetchone()[0] == 0
+    with db.open_ledger(ledger_id) as ledger:
+        assert ledger.get_active_nutrition_plan()['id'] == plan['plan_version_id']
+        from database.ledger import push as ledger_push
+
+        assert ledger_push.pending_intents(ledger.conn) == []
 
 
 def test_program_and_food_requests_share_the_roster_pending_count(swap_queue):

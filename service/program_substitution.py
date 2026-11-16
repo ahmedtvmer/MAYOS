@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
+from database.ledger import push as ledger_push
 from agent.program_rationale import CHANGE_SUBSTITUTION
 from agent.program_blueprints import SLOT_SPECS, rest_seconds_for_exercise_class
 from agent.program_weeks import (
@@ -82,7 +83,8 @@ class ProgramSubstitutionUndo:
 
 
 def substitute_program_exercise(
-    ledger: Any, catalog: Any, active_program: Any, request: ProgramSubstitution
+    ledger: Any, catalog: Any, active_program: Any, request: ProgramSubstitution,
+    *, push_intent: ledger_push.PushIntent | None = None,
 ) -> dict[str, Any]:
     """Replace the requested slot(s), validate the new exercise, and publish a version."""
     current_position = ledger.get_program_position(active_program)
@@ -151,11 +153,20 @@ def substitute_program_exercise(
     )
     carry_program_rationale(active_program, program_data, occurrence_mappings=mappings)
     program_data.pop("created_at", None)
-    ledger.save_training_program(
-        program_data,
-        published_by_coach_account_id=request.published_by_coach_account_id,
-        starting_position=current_position,
-    )
+    if push_intent is None:
+        ledger.save_training_program(
+            program_data,
+            published_by_coach_account_id=request.published_by_coach_account_id,
+            starting_position=current_position,
+        )
+    else:
+        with ledger.ledger_transaction(immediate=True):
+            ledger.save_training_program(
+                program_data,
+                published_by_coach_account_id=request.published_by_coach_account_id,
+                starting_position=current_position,
+            )
+            ledger_push.record_intent(ledger.conn, push_intent)
     return {
         "ok": True,
         "replacement": replacement,

@@ -25,6 +25,8 @@ import '../../router.dart';
 import 'account_security_section.dart';
 import 'credits_dialog.dart';
 import 'logout_confirmation.dart';
+import 'push_settings_card.dart';
+import '../player/tour/tour_targets.dart';
 
 /// Settings: appearance, account, coaching, and device entry points.
 ///
@@ -278,6 +280,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
             ),
             const SizedBox(height: MayosSpacing.xl),
           ],
+          const TourTarget(id: 'push_notifications', child: PushSettingsCard()),
           MayosSectionHeader(title: ui.account),
           MayosCard(
             padding: const EdgeInsets.symmetric(

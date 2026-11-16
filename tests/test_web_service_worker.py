@@ -65,7 +65,7 @@ def test_issue_708_generated_worker_falls_back_offline_and_assembles_manifest(
         "index.html", "flutter.js", "flutter_bootstrap.js", "main.dart.js",
         "manifest.json", "favicon.png", "apple-touch-icon.png", "mayos-icon-192.png",
         "mayos-loading-wallpaper.jpg", "mayos-lockup-white.png", "safe_area.js",
-        "posthog_init.js", "pwa_bridge.js",
+        "posthog_init.js", "pwa_bridge.js", "push_bridge.js", "push_worker.js",
         "offline.html", "offline.js", "canvaskit/canvaskit.js",
         "canvaskit/canvaskit.wasm", "canvaskit/chromium/canvaskit.js",
         "canvaskit/chromium/canvaskit.wasm", "canvaskit/skwasm.js",
@@ -201,6 +201,7 @@ def test_issue_708_generated_worker_falls_back_offline_and_assembles_manifest(
         ['runtime-cache', makeCache(new Map([[`${scope}index.html`, new ServiceWorkerResponse('wrong runtime copy')]]))],
         ['workbox-precache-v2-mayos', makeCache(cacheEntries)],
       ]);
+      const importedScripts = [];
       const sandbox = {
         URL,
         Request: ServiceWorkerRequest,
@@ -218,6 +219,7 @@ def test_issue_708_generated_worker_falls_back_offline_and_assembles_manifest(
           throw new TypeError('offline');
         },
         addEventListener() {},
+        importScripts(...scripts) { importedScripts.push(...scripts); },
         registration: {scope},
         location: {origin, href: scope},
         clients: {claim: async () => {}},
@@ -287,6 +289,7 @@ def test_issue_708_generated_worker_falls_back_offline_and_assembles_manifest(
         factory(...imports);
       };
       vm.runInContext(workerSource, context, {filename: workerPath});
+      if (!importedScripts.includes('push_worker.js')) throw new Error('push handlers were not imported');
 
       const runOfflineNavigation = async route => {
         const request = new ServiceWorkerRequest(new URL(route, origin), {mode: 'navigate'});

@@ -5,6 +5,7 @@ import json
 
 import pytest
 
+from database.ledger import push as ledger_push
 from database.migration_manager import apply_lazy_migrations, set_ledger_schema_version
 from service import coach as coach_service
 from tests.test_nutrition_api import api  # noqa: F401
@@ -120,6 +121,10 @@ def test_publish_versions_plan_moves_only_nutrition_authority_and_exposes_meal_n
     assert logged.status_code == 201, logged.text
     with db.open_ledger(_ledger_id(db)) as ledger:
         assert ledger.get_active_nutrition_plan()["provenance"] == "coach"
+        intent = ledger_push.pending_intents(ledger.conn)[0]
+        assert (intent["event"], intent["dedupe_key"]) == (
+            "nutrition_published", f"nutrition-published:{path.split('/')[3]}:{meals['plan_version_id']}"
+        )
     events = [event for event in recording_analytics.events if event["event"] == "coach_nutrition_plan_published"]
     assert len(events) == 1 and events[0]["properties"]["with_meals"] is True
     assert client.post("/assignments/me/end", headers=player).status_code == 200

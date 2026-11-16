@@ -29,6 +29,7 @@ import '../workout/workout_share_card.dart';
 import '../workout/active_workout_prompt.dart';
 import 'home_planning.dart';
 import '../../shared/install_prompt.dart';
+import '../../settings/push_settings_card.dart';
 import '../tour/tour_targets.dart';
 
 /// The player Home tab: current program, the next ordered session, real
@@ -521,6 +522,7 @@ class _HomeBody extends StatelessWidget {
             ),
           ],
           if (data.latestSession != null) ...<Widget>[
+            const PushSettingsCard(compact: true),
             const SizedBox(height: MayosSpacing.md),
             _LatestWorkoutCard(
               session: data.latestSession!,
