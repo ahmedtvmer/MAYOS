@@ -1543,6 +1543,10 @@ void main() {
           'brand-mayos' => find.byKey(MayosAppHeader.brandKey),
           'workout_share_card' || 'duration_check' => find.text('Log workout'),
           'food_log' => find.byKey(const Key('food_log_entry_point')),
+          'meal_setup' => find.byKey(const Key('nutrition_targets')).evaluate().isNotEmpty
+              ? find.byKey(const Key('nutrition_targets')) : find.byKey(const Key('food_log_entry_point')),
+          'food_swap_requests' => find.byKey(const Key('food_swap_requests_history')),
+          'assistant_meals' => find.byTooltip('Assistant'),
           _ => find.text(entry.titleEn),
         };
         expect(realControl, findsOneWidget, reason: entry.id);
@@ -1635,6 +1639,10 @@ void main() {
           'brand-mayos' => find.byKey(MayosAppHeader.brandKey),
           'workout_share_card' || 'duration_check' => find.text('Log workout'),
           'food_log' => find.byKey(const Key('food_log_entry_point')),
+          'meal_setup' => find.byKey(const Key('nutrition_targets')).evaluate().isNotEmpty
+              ? find.byKey(const Key('nutrition_targets')) : find.byKey(const Key('food_log_entry_point')),
+          'food_swap_requests' => find.byKey(const Key('food_swap_requests_history')),
+          'assistant_meals' => find.byTooltip('Assistant'),
           _ => find.text(entry.titleEn),
         };
         expect(realControl, findsOneWidget, reason: entry.id);

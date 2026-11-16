@@ -3,6 +3,7 @@ class NutritionCopy {
   final String languageCode;
   bool get isArabic => languageCode == 'ar';
   String get tab => isArabic ? 'التغذية' : 'Nutrition';
+  String get targetsTitle => isArabic ? 'الأهداف الغذائية' : 'Nutrition targets';
   String get setup => isArabic ? 'إعداد الأهداف الغذائية' : 'Set up Nutrition targets';
   String get confirmSex => isArabic ? 'اختر الجنس لحساب الأهداف الغذائية.' : 'Choose your sex for Nutrition targets.';
   String get male => isArabic ? 'ذكر' : 'Male';
@@ -29,6 +30,75 @@ class NutritionCopy {
   String cardioAdjustment(int value) => isArabic ? 'تعديل الهدف بسبب الكارديو +$value سعرة' : 'Cardio target adjustment +$value kcal';
   String get protein => isArabic ? 'البروتين' : 'Protein';
   String get carbs => isArabic ? 'الكربوهيدرات' : 'Carbohydrates';
+  String get carbsShort => isArabic ? 'الكربوهيدرات' : 'Carbs';
+  String get checkIn => isArabic ? 'متابعة اليوم' : 'Check-in';
+  String get howYesterdayWent =>
+      isArabic ? 'كيف كان يوم أمس؟' : 'How did yesterday go?';
+  String get howDayWent =>
+      isArabic ? 'كيف كان هذا اليوم؟' : 'How did this day go?';
+  String onTargetCount(int count) =>
+      isArabic ? '$count على الهدف' : '$count on target';
+  String waterProgress(int glasses, int targetMl) => isArabic
+      ? '$glasses من ${targetMl ~/ 250} أكواب · ${(glasses / 4).toStringAsFixed(2)} من ${(targetMl / 1000).toStringAsFixed(1)} لتر'
+      : '$glasses of ${targetMl ~/ 250} glasses · ${(glasses / 4).toStringAsFixed(2)} of ${(targetMl / 1000).toStringAsFixed(1)} L';
+  String get removeGlass =>
+      isArabic ? 'إزالة كوب ماء' : 'Remove a glass of water';
+  String get addWaterGlass =>
+      isArabic ? 'إضافة كوب ماء' : 'Add a glass of water';
+  String get waterUnavailable => isArabic
+      ? 'لا يتوفر سجل الماء لهذا اليوم.'
+      : 'Water history is unavailable for this day.';
+  String waterAmount(int glasses) => isArabic
+      ? '$glasses أكواب · ${(glasses / 4).toStringAsFixed(2)} لتر'
+      : '$glasses glasses · ${(glasses / 4).toStringAsFixed(2)} L';
+  String weekdayInitial(DateTime date) => (isArabic
+      ? <String>['ن', 'ث', 'ر', 'خ', 'ج', 'س', 'ح']
+      : <String>['M', 'T', 'W', 'T', 'F', 'S', 'S'])[date.weekday - 1];
+  String activityExample(String activity) => switch (activity) {
+        'on_feet' => isArabic
+            ? 'مثل التدريس أو العمل في متجر.'
+            : 'For example, teaching or working in a shop.',
+        'physical_job' => isArabic
+            ? 'مثل البناء أو حمل الأوزان في العمل.'
+            : 'For example, construction or lifting at work.',
+        _ => isArabic
+            ? 'مثل العمل المكتبي أو الدراسة.'
+            : 'For example, desk work or studying.',
+      };
+  String get screeningNote => isArabic
+      ? 'إذا انطبق أي مما سبق، تحدّث إلى اختصاصي تغذية مسجل قبل تحديد الأهداف.'
+      : 'If any apply, speak with a registered dietitian before setting targets.';
+  String goalReason(Map<String, dynamic>? reason) => switch (reason?['code']) {
+        'current_goal' => isArabic
+            ? 'بناءً على هدفك الحالي: ${reason?['goal_text'] ?? ''}'
+            : 'Based on your Current goal: ${reason?['goal_text'] ?? ''}',
+        'target_weight' => isArabic
+            ? 'بناءً على وزنك المستهدف.'
+            : 'Based on your Target weight.',
+        _ => isArabic
+            ? 'الحفاظ على الوزن هو نقطة البداية الافتراضية.'
+            : 'Maintain is the default starting point.',
+      };
+  String get meals => isArabic ? 'الوجبات' : 'Meals';
+  String get mealsOn => isArabic ? 'مفعّلة' : 'On';
+  String get mealsOff => isArabic ? 'متوقفة' : 'Off';
+  String get loadingMeals => isArabic ? 'جارٍ تحميل الوجبات…' : 'Loading meals…';
+  String mealsUnavailable(String? reason) => switch (reason) {
+    'staples' => isArabic ? 'تحتاج إلى أطعمة أساسية معتمدة' : 'Needs reviewed Staple foods',
+    'coach' => isArabic ? 'مدربك يحدد وجباتك' : 'Your Coach sets your meals',
+    'targets' => isArabic ? 'حدّد أهدافك أولًا' : 'Set your targets first',
+    _ => isArabic ? 'الوجبات غير متاحة بعد' : 'Meals are not available yet',
+  };
+  String get foodRestrictions => isArabic ? 'القيود الغذائية' : 'Food restrictions';
+  String get weight => isArabic ? 'الوزن' : 'Weight';
+  String get latest => isArabic ? 'الأحدث' : 'Latest';
+  String get target => isArabic ? 'المستهدف' : 'Target';
+  String waterPrescription(int ml) => isArabic
+      ? '${(ml / 1000).toStringAsFixed(1)} لتر · ${ml ~/ 250} أكواب بسعة 250 مل'
+      : '${(ml / 1000).toStringAsFixed(1)} L · ${ml ~/ 250} glasses of 250 ml';
+  String get cardioNote => isArabic
+      ? 'تظهر تعديلات السعرات الناتجة عن الكارديو ضمن أهدافك اليومية.'
+      : 'Cardio calorie adjustments are included in your daily targets.';
   String get fat => isArabic ? 'الدهون' : 'Fat';
   String get fiberTarget => isArabic ? 'هدف الألياف' : 'Fiber target';
   String get waterTarget => isArabic ? 'هدف الماء' : 'Water target';

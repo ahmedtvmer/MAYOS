@@ -244,7 +244,13 @@ def test_rescore_cli_reuses_stored_observations_without_loading_a_model(
     stale = {**original, "context_identity_sha256": "0" * 64}
     with pytest.raises(ValueError, match="same reviewed cases and scenarios"):
         runner.rescore_report(stale)
-    report_path.write_text(json.dumps(original), encoding="utf-8")
+    # This archived run predates today's scenarios; use the current digest only
+    # on the temporary fixture that exercises the successful CLI path.
+    current_context_report = {
+        **original,
+        "context_identity_sha256": runner._context_identity_sha256(),
+    }
+    report_path.write_text(json.dumps(current_context_report), encoding="utf-8")
 
     def fail_if_model_identity_is_loaded():
         raise AssertionError("rescoring must not load a model")

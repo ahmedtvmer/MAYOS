@@ -40,6 +40,7 @@ from service.program_analytics import (
     capture_program_request_resolved,
 )
 from service import analytics
+from database import food_swap_requests
 from service.program_substitution import (
     ProgramSubstitution,
     SubstitutionErrorCode,
@@ -765,14 +766,13 @@ def list_assignment_requests(db: Any, coach_account_id: str, assignment_id: Any)
         return None
     if db.get_active_assignment_for_coach(coach_account_id, assignment_id) is None:
         return None
-    return _present_program_requests(
-        db,
-        db.list_program_requests_for_assignment(assignment_id),
-    )
+    requests = db.list_program_requests_for_assignment(assignment_id)
+    requests += food_swap_requests.for_coach(db, coach_account_id, assignment_id)
+    return _present_program_requests(db, sorted(requests, key=lambda row: row["created_at"], reverse=True))
 
 
 def list_coach_program_requests(db: Any, coach_account_id: str) -> list[dict[str, Any]]:
-    """The coach's requests across every active assignment, pending first (#118).
+    """The coach's Training program and Food swap requests, pending first (#118, #485).
 
     Pending rows come first, oldest first, then answered rows, most recently
     resolved first. Requests on ended assignments and from other coaches are
@@ -780,7 +780,10 @@ def list_coach_program_requests(db: Any, coach_account_id: str) -> list[dict[str
     beside the per-assignment fields, so the client resolves through the existing
     per-assignment endpoints. Catalog-only; no ledger mount.
     """
-    return _present_program_requests(
-        db,
-        db.list_program_requests_for_coach(coach_account_id),
-    )
+    requests = db.list_program_requests_for_coach(coach_account_id)
+    requests += food_swap_requests.for_coach(db, coach_account_id)
+    pending = sorted((row for row in requests if row["status"] == "pending"),
+                     key=lambda row: (row["created_at"], row["request_id"]))
+    answered = sorted((row for row in requests if row["status"] != "pending"), key=lambda row: row["request_id"])
+    answered.sort(key=lambda row: row["resolved_at"] or row["created_at"], reverse=True)
+    return _present_program_requests(db, pending + answered)

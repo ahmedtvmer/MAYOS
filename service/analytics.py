@@ -273,6 +273,7 @@ PROPERTY_TYPES: dict[str, PropertyType] = {
     "env": _enum(_ENVIRONMENTS),
     "signup_phase": _enum(_PHASES),
     "invite_used": _boolean(),
+    "with_meals": _boolean(),
     "duration_seconds": _bounded_int(3_155_760_000),
     "time_since_invite_seconds": _bounded_int(31_557_600),
     "prefilled_fields_count": _bounded_int(100),
@@ -342,6 +343,7 @@ PROPERTY_TYPES: dict[str, PropertyType] = {
     "floor_applied": _boolean(),
     "proposal_decision": _enum(frozenset({"accepted", "kept"})),
     "decision_actor": _enum(frozenset({"player", "coach"})),
+    "request_status": _enum(frozenset({"pending", "applied", "declined"})),
     "value": _enum({"on_target", "roughly", "off"}),
     "latency_ms": _bounded_int(31_557_600),
     "finish_reason": _enum(AI_FINISH_REASONS),
@@ -365,6 +367,20 @@ EVENT_CATALOGUE: dict[str, EventContract] = {
     "onboarding_started": EventContract("server", dict(_COMMON_PROPERTIES)),
     "nutrition_setup_completed": EventContract(
         "server", {**_COMMON_PROPERTIES, "blocked": PROPERTY_TYPES["blocked"]}
+    ),
+    "nutrition_meals_turned_on": EventContract("server", dict(_COMMON_PROPERTIES)),
+    "nutrition_meals_turned_off": EventContract("server", dict(_COMMON_PROPERTIES)),
+    "nutrition_template_saved": EventContract("server", dict(_COMMON_PROPERTIES)),
+    "nutrition_template_applied": EventContract("server", dict(_COMMON_PROPERTIES)),
+    "coach_nutrition_plan_published": EventContract(
+        "server", {**_COMMON_PROPERTIES, "with_meals": PROPERTY_TYPES["with_meals"]},
+    ),
+    "nutrition_food_swapped": EventContract("server", dict(_COMMON_PROPERTIES)),
+    "nutrition_food_swap_request_created": EventContract(
+        "server", {**_COMMON_PROPERTIES, "request_status": PROPERTY_TYPES["request_status"]},
+    ),
+    "nutrition_food_swap_request_decided": EventContract(
+        "server", {**_COMMON_PROPERTIES, "request_status": PROPERTY_TYPES["request_status"]},
     ),
     "nutrition_adherence_logged": EventContract(
         "server", {**_COMMON_PROPERTIES, "value": PROPERTY_TYPES["value"]}
@@ -887,8 +903,10 @@ def override_analytics_preference_reader(reader: Callable[[str], bool] | None) -
     _preference_reader_is_override = reader is not None
 
 
-def _account_allows_analytics(account_id: str) -> bool:
-    reader = _analytics_preference_reader
+def _account_allows_analytics(
+    account_id: str, reader: Callable[[str], bool] | None = None,
+) -> bool:
+    reader = reader if reader is not None else _analytics_preference_reader
     if reader is None:
         return False
     try:
@@ -947,8 +965,13 @@ def capture(event: AnalyticsEvent, client: ClientContext = UNKNOWN_CLIENT) -> No
     )
 
 
-def capture_for_request(request: Request, event: AnalyticsEvent) -> None:
-    """Captures using the safe client dimensions carried by this request."""
+def capture_for_request(
+    request: Request, event: AnalyticsEvent, *,
+    preference_reader: Callable[[str], bool] | None = None,
+) -> None:
+    """Use request dimensions and, when supplied, its store's live consent gate."""
+    if preference_reader is not None and not _account_allows_analytics(event.account_id, preference_reader):
+        return
     capture(event, client_context(request))
 
 

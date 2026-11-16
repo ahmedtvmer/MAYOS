@@ -1140,6 +1140,29 @@ class NutritionAdherenceIn(BaseModel):
     entry_date: date | None = None
 
 
+class FoodRestrictionsIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    allergies: list[Literal["milk", "eggs", "wheat_gluten", "peanuts", "tree_nuts",
+                            "fish", "shellfish", "sesame", "soy"]] = Field(default_factory=list, max_length=9)
+    dislikes: list[str] = Field(default_factory=list, max_length=200)
+    vegetarian: bool = False
+
+    @model_validator(mode="after")
+    def normalize_restrictions(self):
+        if any(not food_id or len(food_id) > 100 for food_id in self.dislikes):
+            raise ValueError("Each disliked food must have a Food library or Personal food id.")
+        self.allergies = list(dict.fromkeys(self.allergies))
+        self.dislikes = list(dict.fromkeys(self.dislikes))
+        return self
+
+
+class MealSetupIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    meal_count: Literal[3, 4, 5]
+    training_time: Literal["morning", "afternoon", "evening"]
+    restrictions: FoodRestrictionsIn
+
+
 class FoodLogAmountIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     quantity: float = Field(gt=0, le=10000, allow_inf_nan=False)
@@ -1197,6 +1220,13 @@ class CopyMealIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     meal_label: Literal["breakfast", "lunch", "dinner", "snack"]
     entry_date: date
+
+
+class LogPlannedMealIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    slot: str = Field(min_length=1, max_length=80)
+    entry_date: date
+    plan_version_id: int = Field(ge=1)
 
 
 class NutritionPaceIn(BaseModel):
@@ -1950,12 +1980,13 @@ class PlayerProgramRequestIn(BaseModel):
 
 
 class ProgramRequestOut(BaseModel):
-    """A program request's pinned target and its current resolution state."""
+    """An Assignment request; Food swaps pin their Nutrition target in food_swap."""
 
     request_id: str
     assignment_id: str
     kind: str
-    program_version: int
+    program_version: int | None = None
+    food_swap: dict[str, Any] | None = None
     day_name: str | None = None
     week_order: int | None = Field(default=None, ge=1, le=MAX_PROGRAM_WEEKS)
     day_order: int | None = None

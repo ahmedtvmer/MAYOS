@@ -53,6 +53,7 @@ COPY data/food_library.csv /app/data/food_library.csv
 COPY data/food_portions.csv /app/data/food_portions.csv
 COPY data/food_curation.csv /app/data/food_curation.csv
 COPY data/food_recipes.csv /app/data/food_recipes.csv
+COPY data/food_allergens.csv /app/data/food_allergens.csv
 
 COPY . .
 
