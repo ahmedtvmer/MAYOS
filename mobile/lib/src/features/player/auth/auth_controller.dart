@@ -13,6 +13,8 @@ import 'google_auth_gateway.dart';
 
 enum AuthStatus { loading, unauthenticated, authenticated }
 
+enum SavedSessionIssue { offline, serviceProblem }
+
 /// The first Google sign-up waiting for its nudge or username choice (#174).
 class PendingGoogleSignup {
   const PendingGoogleSignup({
@@ -154,9 +156,10 @@ const String kGoogleAlreadyLinkedMessage =
 @immutable
 class AuthState {
   const AuthState._(this.status, this.session, this.notice, this.noticeFailure,
-      [this.isOffline = false]);
+      [this.savedSessionIssue]);
 
-  const AuthState.loading() : this._(AuthStatus.loading, null, null, null);
+  const AuthState.loading({SavedSessionIssue? savedSessionIssue})
+      : this._(AuthStatus.loading, null, null, null, savedSessionIssue);
 
   const AuthState.unauthenticated([String? notice])
       : this._(AuthStatus.unauthenticated, null, notice, null);
@@ -167,12 +170,16 @@ class AuthState {
   ) : this._(AuthStatus.unauthenticated, null, notice, noticeFailure);
 
   const AuthState.authenticated(AccountSession session,
-      {String? notice, bool offline = false})
-      : this._(AuthStatus.authenticated, session, notice, null, offline);
+      {String? notice, SavedSessionIssue? savedSessionIssue})
+      : this._(AuthStatus.authenticated, session, notice, null,
+            savedSessionIssue);
 
   final AuthStatus status;
   final AccountSession? session;
-  final bool isOffline;
+  final SavedSessionIssue? savedSessionIssue;
+
+  bool get isShowingSavedData =>
+      status == AuthStatus.authenticated && savedSessionIssue != null;
 
   /// A one-shot message to show on the login screen (for example, after account
   /// deletion). It is not a session: [isAuthenticated] ignores it.
@@ -241,8 +248,12 @@ class AuthController extends StateNotifier<AuthState> {
     final AccountSession? session = state.session;
     if (session == null) return;
     _needsSessionConfirmation = true;
-    if (!state.isOffline) {
-      state = AuthState.authenticated(session, offline: true);
+    if (state.savedSessionIssue == null) {
+      state = AuthState.authenticated(
+        session,
+        notice: state.notice,
+        savedSessionIssue: SavedSessionIssue.offline,
+      );
     }
     _scheduleRestore();
   }
@@ -287,6 +298,7 @@ class AuthController extends StateNotifier<AuthState> {
     } on ApiException catch (error) {
       if (!mounted || revision != _sessionRevision) return;
       if (_isTransientFailure(error)) {
+        _showSavedSessionIssue(error);
         _scheduleRestore();
       } else {
         _endUnconfirmedSession(error);
@@ -317,7 +329,9 @@ class AuthController extends StateNotifier<AuthState> {
       return session == null;
     } on ApiException catch (error) {
       if (!_isCurrentRestore(revision)) return _isUnauthenticated();
-      if (_isTransientFailure(error)) return _restoreSavedSession(revision);
+      if (_isTransientFailure(error)) {
+        return _restoreSavedSession(revision, error);
+      }
       _endUnconfirmedSession(error);
       return true;
     } on Object {
@@ -343,19 +357,43 @@ class AuthController extends StateNotifier<AuthState> {
         : AuthState.unauthenticated(state.notice);
   }
 
-  Future<bool> _restoreSavedSession(int revision) async {
+  Future<bool> _restoreSavedSession(
+    int revision,
+    ApiException error,
+  ) async {
     if (!_isCurrentRestore(revision)) return _isUnauthenticated();
     final AccountSession? saved = await _repository.savedSession();
     if (!_isCurrentRestore(revision)) return _isUnauthenticated();
     // Older installs without a saved Account stay on splash until online.
     _needsSessionConfirmation = true;
     state = saved == null
-        ? const AuthState.loading()
-        : AuthState.authenticated(saved, offline: true);
+        ? AuthState.loading(savedSessionIssue: _savedSessionIssue(error))
+        : AuthState.authenticated(
+            saved,
+            savedSessionIssue: _savedSessionIssue(error),
+          );
     if (saved != null) _repository.useSavedData();
     _scheduleRestore();
     return false;
   }
+
+  void _showSavedSessionIssue(ApiException error) {
+    final AccountSession? session = state.session;
+    if (session == null) {
+      state = AuthState.loading(savedSessionIssue: _savedSessionIssue(error));
+      return;
+    }
+    state = AuthState.authenticated(
+      session,
+      notice: state.notice,
+      savedSessionIssue: _savedSessionIssue(error),
+    );
+  }
+
+  SavedSessionIssue _savedSessionIssue(ApiException error) =>
+      error.statusCode != null && error.statusCode! >= 500
+          ? SavedSessionIssue.serviceProblem
+          : SavedSessionIssue.offline;
 
   /// The server was not reached, or answered 5xx while restarting (a tunnel
   /// 502 included): the saved session stays. Any other answer is a refusal.
@@ -385,7 +423,9 @@ class AuthController extends StateNotifier<AuthState> {
     state = AuthState.authenticated(
       session,
       notice: notice,
-      offline: _needsSessionConfirmation,
+      savedSessionIssue: _needsSessionConfirmation
+          ? state.savedSessionIssue ?? SavedSessionIssue.offline
+          : null,
     );
     if (!_needsSessionConfirmation) unawaited(_repository.saveSession(session));
   }

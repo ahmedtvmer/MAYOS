@@ -16,11 +16,12 @@ day_order.ppl_x_ul_spaces_leg_days. Change codes: change.substitution,
 change.program_edit_removed, change.program_edit_trimmed,
 change.program_edit_reordered, change.program_edit_added,
 change.program_edit_raised, change.volume_review, change.coach_edit.
-Parameters are stable JSON values; message
-text belongs to the reading assistant.
+Parameters are stable JSON values; Focus reason messages are bilingual so
+Program readers can render or explain them in the selected language.
 selection.focus_muscle_extra, position.focus_first, sets.focus_multiplier,
-focus.unavailable, focus.new_weekly_exposure and focus.lightest_training_day
-are the Focus muscle codes (#492, #512).
+focus.unavailable, focus.already_at_target, focus.new_weekly_exposure and
+focus.lightest_training_day
+are the Focus muscle codes (#492, #512, #713).
 """
 
 from dataclasses import dataclass
@@ -80,8 +81,49 @@ POSITION_FOCUS_FIRST = "position.focus_first"
 POSITION_AFTER_FOCUS_EXTRA = "position.after_focus_extra"
 SETS_FOCUS_MULTIPLIER = "sets.focus_multiplier"
 FOCUS_UNAVAILABLE = "focus.unavailable"
+FOCUS_ALREADY_AT_TARGET = "focus.already_at_target"
 FOCUS_NEW_WEEKLY_EXPOSURE = "focus.new_weekly_exposure"
 FOCUS_LIGHTEST_TRAINING_DAY = "focus.lightest_training_day"
+
+_FOCUS_MUSCLE_LABELS = {
+    "chest": ("Chest", "الصدر"),
+    "upper_chest": ("Upper chest", "أعلى الصدر"),
+    "lats": ("Lats", "اللاتس (الظهر العريض)"),
+    "traps": ("Traps", "الترابيس"),
+    "rear_delts": ("Rear delts", "الأكتاف الخلفية"),
+    "shoulders": ("Shoulders", "الأكتاف"),
+    "side_delts": ("Side delts", "الأكتاف الجانبية"),
+    "biceps": ("Biceps", "العضلة ذات الرأسين"),
+    "triceps": ("Triceps", "العضلة ثلاثية الرؤوس"),
+    "forearms": ("Forearms", "الساعدان"),
+    "quads": ("Quads", "الرباعية"),
+    "hamstrings": ("Hamstrings", "أوتار الركبة"),
+    "glutes": ("Glutes", "المؤخرة"),
+    "adductors": ("Adductors", "المقربات"),
+    "calves": ("Calves", "السمانة"),
+    "abs": ("Abs", "البطن"),
+}
+
+
+def focus_already_at_target_messages(
+    muscle: str, covered_by_muscle: str | None
+) -> dict[str, str]:
+    muscle_en, muscle_ar = _FOCUS_MUSCLE_LABELS.get(
+        muscle, (muscle.replace("_", " ").title(), muscle)
+    )
+    if covered_by_muscle is None:
+        return {
+            "en": f"{muscle_en} already gets its Focus volume from the current program.",
+            "ar": f"يحصل {muscle_ar} بالفعل على حجم التركيز من البرنامج الحالي.",
+        }
+    covering_en, covering_ar = _FOCUS_MUSCLE_LABELS.get(
+        covered_by_muscle,
+        (covered_by_muscle.replace("_", " ").title(), covered_by_muscle),
+    )
+    return {
+        "en": f"{muscle_en} already gets its Focus volume from {covering_en} work.",
+        "ar": f"يحصل {muscle_ar} بالفعل على حجم التركيز من تمارين {covering_ar}.",
+    }
 
 
 @dataclass(frozen=True)

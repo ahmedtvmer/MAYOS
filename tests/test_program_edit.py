@@ -327,13 +327,23 @@ def test_program_edit_warning_uses_unchanged_edited_week(fresh_store, monkeypatc
             PersistedProgramWeekSchema(week_name="Build", week_order=2, days=[second_day]),
         ]).model_dump())
     monkeypatch.setattr(ledger, "volume_review_exercise_targets", lambda ids: {exercise_id: "Biceps" for exercise_id in ids})
+    monkeypatch.setattr(
+        ledger,
+        "volume_review_exercise_credits",
+        lambda ids: {
+            exercise_id: {
+                "biceps": {"credit": 1.0, "is_primary": True, "source": "default"}
+            }
+            for exercise_id in ids
+        },
+    )
     active = ledger.get_active_program()
 
     response = edit_active_program_day(db, ledger, ProgramEdit(day_name="Full A", expected_active_version=active.version,
         exercises=[ProgramEditExercise(index, str(row[0]), 3) for index, row in enumerate(rows[1:])],
         player_account_id=TEST_PLAYER_ID, actor=ProgramAnalyticsActor(TEST_PLAYER_ID, "player"), week_order=2, day_order=1))
 
-    assert response["volume_warnings"] == [{"muscle": "Biceps", "weekly_sets": 12, "ceiling": 8}]
+    assert response["volume_warnings"] == [{"muscle": "biceps", "weekly_sets": 12, "ceiling": 8}]
 
 
 def test_program_edit_rejects_more_than_ten_exercises(fresh_store):

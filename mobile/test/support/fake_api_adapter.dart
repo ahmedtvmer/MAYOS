@@ -27,14 +27,24 @@ class FakeResponse {
     this.status, [
     this.body,
     this.chunks,
-  ]) : networkFailure = false;
+  ])  : networkFailure = false,
+        timeoutFailure = false;
 
   /// The transport fails before any response arrives (offline simulation).
   const FakeResponse.networkFailure()
       : status = 0,
         body = null,
         chunks = null,
-        networkFailure = true;
+        networkFailure = true,
+        timeoutFailure = false;
+
+  /// The transport times out while waiting for a response.
+  const FakeResponse.timeoutFailure()
+      : status = 0,
+        body = null,
+        chunks = null,
+        networkFailure = false,
+        timeoutFailure = true;
 
   final int status;
   final Object? body;
@@ -45,6 +55,7 @@ class FakeResponse {
   final List<String>? chunks;
 
   final bool networkFailure;
+  final bool timeoutFailure;
 }
 
 typedef FakeHandler = FakeResponse Function(FakeRequest request);
@@ -97,6 +108,13 @@ class FakeApiAdapter implements HttpClientAdapter {
       throw DioException.connectionError(
         requestOptions: options,
         reason: 'Network unavailable (test).',
+      );
+    }
+    if (response.timeoutFailure) {
+      throw DioException(
+        requestOptions: options,
+        type: DioExceptionType.receiveTimeout,
+        message: 'Response timed out (test).',
       );
     }
     final List<String>? chunks = response.chunks;

@@ -270,22 +270,47 @@ def editable_catalog_rows(fresh_store):
         ).fetchall()
 
 
-@pytest.fixture
-def real_library_store(tmp_path):
-    """Optional full-library contracts whose names/relationships are not tracked."""
+@pytest.fixture(scope="module")
+def real_library_catalog(tmp_path_factory):
+    """Build one closed full-library snapshot for optional catalog contracts."""
     from database.database_manager import DatabaseManager
     from tests.catalog import ROOT, close_catalog_store, seed_catalog
 
     real_exercises = ROOT / "data" / "processed_exercises.csv"
     if not real_exercises.is_file():
         pytest.skip("Full-library contract requires optional licensed data/processed_exercises.csv; tracked sources do not supply its complete names/relationships")
+    directory = tmp_path_factory.mktemp("real-library-catalog")
     store = DatabaseManager(
-        catalog_path=tmp_path / "real-library.db",
+        catalog_path=directory / "real-library.db",
+        ledgers_dir=directory / "users",
+        backups_dir=directory / "backups",
+    )
+    try:
+        seed_catalog(store, csv_path=real_exercises)
+        checkpoint = store.catalog_conn.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+        if checkpoint[0] != 0:
+            raise RuntimeError("Real exercise catalog checkpoint was blocked")
+        return store.catalog_path
+    finally:
+        close_catalog_store(store)
+
+
+@pytest.fixture
+def real_library_store(tmp_path, real_library_catalog):
+    """Give each full-library contract a writable copy of the shared snapshot."""
+    import shutil
+
+    from database.database_manager import DatabaseManager
+    from tests.catalog import close_catalog_store
+
+    catalog_path = tmp_path / "real-library.db"
+    shutil.copyfile(real_library_catalog, catalog_path)
+    store = DatabaseManager(
+        catalog_path=catalog_path,
         ledgers_dir=tmp_path / "users",
         backups_dir=tmp_path / "backups",
     )
     try:
-        seed_catalog(store, csv_path=real_exercises)
         yield store
     finally:
         close_catalog_store(store)
@@ -346,6 +371,7 @@ def seed_exercise_curation(tmp_path, monkeypatch):
             "load_type",
             "hidden",
             "duplicate_of",
+            "muscle_credits",
         ]
         with curation_path.open("w", newline="", encoding="utf-8") as curation_file:
             writer = csv.writer(curation_file)

@@ -5,6 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mayos_mobile/src/app.dart';
 import 'package:mayos_mobile/src/core/app_failure.dart';
+import 'package:mayos_mobile/src/core/app_mode.dart';
+import 'package:mayos_mobile/src/core/connectivity.dart';
 import 'package:mayos_mobile/src/core/display_language/catalog.dart';
 import 'package:mayos_mobile/src/core/display_language/coach_copy.dart';
 import 'package:mayos_mobile/src/core/display_language/controller.dart';
@@ -14,11 +16,13 @@ import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/core/workout_storage.dart';
 import 'package:mayos_mobile/src/features/player/tour/feature_list.dart';
 import 'package:mayos_mobile/src/features/settings/settings_screen.dart';
+import 'package:mayos_mobile/src/features/shared/splash_screen.dart';
 import 'package:mayos_mobile/src/providers.dart';
 import 'package:mayos_mobile/src/router.dart';
 
 import 'support/auth_harness.dart';
 import 'support/fake_google_auth.dart';
+import 'support/in_memory_browser_key_value_store.dart';
 import 'support/fake_mayos_api.dart';
 
 void main() {
@@ -62,6 +66,139 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Invalid username or password.'), findsOneWidget);
   });
+
+  for (final String language in <String>['en', 'ar']) {
+    testWidgets('login 5xx shows the server problem in $language',
+        (WidgetTester tester) async {
+      final FakeMayosApi fake = FakeMayosApi()..loginServerError = true;
+      final InMemoryTokenStore tokens = InMemoryTokenStore();
+      final InMemoryDisplayLanguageStore languageStore =
+          InMemoryDisplayLanguageStore()..value = language;
+      await tester.pumpWidget(authApp(fake, tokens, extraOverrides: <Override>[
+        displayLanguageStoreProvider.overrideWithValue(languageStore),
+        systemDisplayLanguageProvider.overrideWithValue('en'),
+      ]));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byKey(const Key('login_username')), 'alice');
+      await tester.enterText(
+        find.byKey(const Key('login_password')),
+        'password-123',
+      );
+      await tester.tap(find.byKey(const Key('login_submit')));
+      await tester.pumpAndSettle();
+
+      final MayosCopy copy = MayosCopy(language);
+      expect(find.text(copy.serviceUnavailable), findsOneWidget);
+      expect(find.text(copy.offlineSavedData), findsNothing);
+      expect(find.text(copy.offlineBanner), findsNothing);
+    });
+  }
+
+  for (final String language in <String>['en', 'ar']) {
+    testWidgets(
+        'issue #721 banner tracks saved-session failures in $language',
+        (WidgetTester tester) async {
+      final FakeMayosApi fake = FakeMayosApi()
+        ..issuedToken = 'token-alice'
+        ..currentUsername = 'alice'
+        ..profileExists = true
+        ..recoveryEmail = 'alice@example.com'
+        ..displayLanguage = language;
+      final InMemoryTokenStore tokens = InMemoryTokenStore();
+      await tokens.save('token-alice');
+      final InMemoryBrowserKeyValueStore savedPlayerDataBrowser =
+          InMemoryBrowserKeyValueStore();
+      final InMemoryDisplayLanguageStore languageStore =
+          InMemoryDisplayLanguageStore()..value = language;
+      final List<Override> overrides = <Override>[
+        displayLanguageStoreProvider.overrideWithValue(languageStore),
+        offlineBannerEnabledProvider.overrideWithValue(true),
+        systemDisplayLanguageProvider.overrideWithValue(language),
+      ];
+      await tester.pumpWidget(authApp(
+        fake,
+        tokens,
+        savedPlayerDataBrowser: savedPlayerDataBrowser,
+        extraOverrides: overrides,
+      ));
+      await tester.pumpAndSettle();
+      expect(find.text(MayosCopy(language).serviceUnavailable), findsNothing);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      fake.meFails = true;
+      final _LateAppModeRead modeStore = _LateAppModeRead();
+      addTearDown(() {
+        if (!modeStore.delayedMode.isCompleted) {
+          modeStore.delayedMode.complete(AppMode.player);
+        }
+      });
+      await tester.pumpWidget(authApp(
+        fake,
+        tokens,
+        modeStore: modeStore,
+        savedPlayerDataBrowser: savedPlayerDataBrowser,
+        extraOverrides: overrides,
+      ));
+
+      final ProviderContainer container = ProviderScope.containerOf(
+        tester.element(find.byType(MayosApp)),
+        listen: false,
+      );
+      final MayosCopy copy = MayosCopy(language);
+      final Finder serviceProblemBanner = find.text(copy.serviceUnavailable);
+      for (var attempt = 0;
+          attempt < 20 &&
+              (container.read(authControllerProvider).savedSessionIssue ==
+                      null ||
+                  serviceProblemBanner.evaluate().isEmpty);
+          attempt++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      final controller = container.read(authControllerProvider.notifier);
+
+      // #721 regression: cache activation must not overwrite the startup 5xx.
+      expect(serviceProblemBanner, findsOneWidget);
+      expect(find.text(copy.offlineSavedData), findsNothing);
+      expect(find.byType(SplashScreen), findsOneWidget);
+
+      modeStore.delayedMode.complete(AppMode.player);
+      await tester.pumpAndSettle();
+      expect(container.read(routerProvider).routeInformationProvider.value.uri.path,
+          homePath);
+      expect(serviceProblemBanner, findsOneWidget);
+
+      // A session snapshot update must retain the 5xx classification.
+      expect(controller.confirmWhatsNewSeenRelease('account-alice', 2), isTrue);
+      await tester.pump();
+      expect(find.text(copy.serviceUnavailable), findsOneWidget);
+      expect(find.text(copy.offlineSavedData), findsNothing);
+
+      // A transport timeout reclassifies the current issue as offline.
+      fake.meFails = false;
+      fake.meTimesOut = true;
+      final Future<void> timeoutRetry = controller.retrySavedSession();
+      // Dio queues requests on timers; drain that queue before awaiting.
+      await tester.pump(Duration.zero);
+      await timeoutRetry;
+      await tester.pump();
+      expect(find.text(copy.offlineSavedData), findsOneWidget);
+      expect(find.text(copy.serviceUnavailable), findsNothing);
+
+      // A later 5xx reclassifies it back to a server problem.
+      fake.meTimesOut = false;
+      fake.meFails = true;
+      final Future<void> serverRetry = controller.retrySavedSession();
+      await tester.pump(Duration.zero);
+      await serverRetry;
+      await tester.pump();
+      expect(find.text(copy.serviceUnavailable), findsOneWidget);
+      expect(find.text(copy.offlineSavedData), findsNothing);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(Duration.zero);
+    });
+  }
 
   testWidgets('Arabic auth screen keeps password-length digits Western',
       (WidgetTester tester) async {
@@ -896,6 +1033,13 @@ Future<void> _logout(WidgetTester tester) async {
   await tester.pumpAndSettle();
   await tester.tap(logOut);
   await tester.pumpAndSettle();
+}
+
+class _LateAppModeRead extends InMemoryAppModeStore {
+  final Completer<AppMode?> delayedMode = Completer<AppMode?>();
+
+  @override
+  Future<AppMode?> read(String accountId) => delayedMode.future;
 }
 
 class _LateTokenReadFailure extends InMemoryTokenStore {

@@ -15,14 +15,15 @@ import 'baselines.dart';
 import 'chat_models.dart';
 import 'chat_stream_fetch.dart';
 import 'client_dimensions.dart';
+import 'display_language/message_resolution.dart';
 import 'models.dart';
 import 'coach_food_log_models.dart';
 import 'food_log_models.dart';
 import 'sse.dart';
 import 'token_store.dart';
 
-/// Raised for any failed service call, carrying the HTTP status when there was
-/// a response and a human-readable message from the service `detail` field.
+/// Raised for a failed service call, carrying its HTTP status when available
+/// and typed app or server failure copy for the display layer.
 class ApiException implements Exception {
   const ApiException(
     this.message, {
@@ -56,6 +57,14 @@ class ApiException implements Exception {
   @override
   String toString() => 'ApiException($statusCode): $message';
 }
+
+/// Transport failures take precedence over partial response status codes.
+bool isTransportFailure(DioException error) =>
+    error.response?.statusCode == null ||
+    error.type == DioExceptionType.connectionError ||
+    error.type == DioExceptionType.connectionTimeout ||
+    error.type == DioExceptionType.sendTimeout ||
+    error.type == DioExceptionType.receiveTimeout;
 
 typedef RecoveryEmailDetails = ({
   String? email,
@@ -568,25 +577,12 @@ class ApiClient {
   static ApiException _toApiException(DioException error) {
     final int? status = error.response?.statusCode;
     final dynamic data = error.response?.data;
+    if (isTransportFailure(error)) return _networkFailure();
     if (data is Map) {
       return _apiExceptionFromBody(status, Map<String, dynamic>.from(data));
     }
-    if (status == null) {
-      return const ApiException(
-        _offlineMessage,
-        failureMessage: AppFailureMessage(
-          AppFailureId.cannotReachService,
-          _offlineMessage,
-        ),
-      );
-    }
-    if (status >= 500) {
-      return ApiException('The service is unavailable. Please retry.',
-          statusCode: status,
-          failureMessage: const AppFailureMessage(
-            AppFailureId.serviceUnavailable,
-            'The service is unavailable. Please retry.',
-          ));
+    if (status != null && status >= 500) {
+      return _serviceProblem(status);
     }
     return ApiException(
       'Request failed ($status).',
@@ -599,10 +595,22 @@ class ApiClient {
     );
   }
 
+  static ApiException _serviceProblem(int status) => ApiException(
+        'MAYOS had a problem; try again.',
+        statusCode: status,
+        failureMessage: const AppFailureMessage(
+          AppFailureId.serviceUnavailable,
+          'MAYOS had a problem; try again.',
+        ),
+      );
+
   static ApiException _apiExceptionFromBody(
     int? status,
     Map<String, dynamic> body,
   ) {
+    if (status != null && status >= 500) {
+      return _serverErrorFailure(status, body);
+    }
     final Object? rawDetail = body['detail'];
     const String genericDetail = 'The request contains invalid fields.';
     final String fallback = rawDetail is String ? rawDetail : genericDetail;
@@ -621,6 +629,47 @@ class ApiClient {
       return _machineErrorFailure(status, body, serverFailure);
     }
     return ApiException(genericDetail, statusCode: status, failureMessage: serverFailure);
+  }
+
+  static ApiException _serverErrorFailure(
+    int status,
+    Map<String, dynamic> body,
+  ) {
+    final ServerFailureMessage? safeFailure =
+        _localizedServerFailure(body);
+    if (safeFailure == null) return _serviceProblem(status);
+    return ApiException(
+      safeFailure.safeEnglishFallback,
+      statusCode: status,
+      errorCode: _machineCode(body),
+      failureMessage: safeFailure,
+    );
+  }
+
+  static ServerFailureMessage? _localizedServerFailure(
+    Map<String, dynamic> body,
+  ) {
+    final ServerFailureMessage? metadata = _serverMessageMetadata(body, '');
+    if (metadata == null) return null;
+    // A server detail is safe only when the code has catalog copy in both UI
+    // languages; the server fallback itself is never trusted for a 5xx.
+    final String? englishMessage = resolveCatalogMessage(
+      messageCode: metadata.messageCode,
+      messageParams: metadata.messageParams,
+      displayLanguage: 'en',
+    );
+    final String? arabicMessage = resolveCatalogMessage(
+      messageCode: metadata.messageCode,
+      messageParams: metadata.messageParams,
+      displayLanguage: 'ar',
+    );
+    if (englishMessage == null || arabicMessage == null) return null;
+    return ServerFailureMessage(
+      englishMessage,
+      messageCode: metadata.messageCode,
+      messageParams: metadata.messageParams,
+      messageFallback: englishMessage,
+    );
   }
 
   static ApiException _detailFailure(
@@ -3521,7 +3570,9 @@ class ApiClient {
     } on DioException catch (error) {
       final dynamic errorBody = error.response?.data;
       final int? errorStatus = error.response?.statusCode;
-      if (errorBody is ResponseBody && errorStatus != null) {
+      if (!isTransportFailure(error) &&
+          errorBody is ResponseBody &&
+          errorStatus != null) {
         final String raw = await _readStream(errorBody.stream);
         await _waitForDioErrorHandling(error);
         throw _errorFromResponse(errorStatus, raw);
@@ -3675,7 +3726,7 @@ class ApiClient {
     events.close();
   }
 
-  ApiException _networkFailure() => const ApiException(
+  static ApiException _networkFailure() => const ApiException(
         _offlineMessage,
         failureMessage: AppFailureMessage(
           AppFailureId.cannotReachService,
@@ -3770,14 +3821,7 @@ class ApiClient {
         // Fall through to the status-based message below.
       }
     }
-    if (status >= 500) {
-      return ApiException('The service is unavailable. Please retry.',
-          statusCode: status,
-          failureMessage: const AppFailureMessage(
-            AppFailureId.serviceUnavailable,
-            'The service is unavailable. Please retry.',
-          ));
-    }
+    if (status >= 500) return _serviceProblem(status);
     return ApiException(
       'Request failed ($status).',
       statusCode: status,

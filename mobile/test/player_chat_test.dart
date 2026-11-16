@@ -1269,6 +1269,41 @@ void main() {
     expect(_composer(tester).enabled, isTrue);
   });
 
+  for (final String language in <String>['en', 'ar']) {
+    testWidgets(
+        '#721 a completed 5xx retry replaces the offline chat state in $language',
+        (tester) async {
+      final InMemoryChatCacheStore store = InMemoryChatCacheStore();
+      await store.writeDisclosureAccepted('account-alice');
+      store.seedHistory('account-alice', <ChatMessage>[
+        const ChatMessage(id: 'm1', role: 'user', content: 'How was my squat?'),
+      ]);
+      final FakeMayosApi fake = _fakePlayer('alice')..chatOffline = true;
+      await _pumpChat(
+        tester,
+        fake,
+        store: store,
+        scopeKey: UniqueKey(),
+        languageCode: language,
+      );
+      expect(find.byKey(const Key('chat_offline_banner')), findsOneWidget);
+
+      fake
+        ..chatOffline = false
+        ..chatHistoryFailureStatus = 503;
+      await tester.tap(find.byKey(const Key('chat_offline_retry')));
+      final MayosCopy copy = MayosCopy(language);
+      await _pumpUntilFound(tester, find.text(copy.serviceUnavailable));
+
+      expect(find.byKey(const Key('chat_offline_banner')), findsNothing);
+      expect(find.text(copy.serviceUnavailable), findsOneWidget);
+      expect(find.text('Database not ready.'), findsNothing);
+      expect(_composer(tester).enabled, isTrue);
+
+      await tester.pumpWidget(const SizedBox());
+    });
+  }
+
   testWidgets(
       'saving the schedule offline shows the shared needs-connection message',
       (tester) async {

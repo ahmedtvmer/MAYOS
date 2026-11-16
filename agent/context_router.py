@@ -11,15 +11,20 @@ from typing import Any
 
 from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
 
-from agent.focus_muscles import FOCUS_REGION_POLICY, FOCUS_REVIEW_MUSCLES
 from agent.player_prompt import (
     HOSTED_PROMPT_MAX_BYTES, HOSTED_PROMPT_TOOL_RESULT_RESERVE_BYTES,
     get_message_text, message_role,
 )
-from agent.player_tools import run_player_tool_calls
+from agent.player_tools import (
+    MAX_PLAYER_TOOL_ROUNDS, MAX_TOOL_RESULT_BYTES, run_player_tool_calls,
+)
+from core.muscle_volume import default_muscle_credits
 from core.weak_point_suggestions import WEAK_POINT_ALIASES
+from database.shared import _normalize_exercise_name
 
-MAX_CONTEXT_PIECE_BYTES = 8 * 1024
+MAX_ROUTED_CONTEXT_BYTES = 8 * 1024
+# Preserve a capped result for each remaining model tool round.
+ROUTED_CONTEXT_FALLBACK_RESERVE_BYTES = MAX_TOOL_RESULT_BYTES * MAX_PLAYER_TOOL_ROUNDS
 PROGRAM_TOPIC = "program_what_how_many"
 _PROGRAM = re.compile(r"\b(?:program|routine|split|(?:training|workout) plan)\b|برنامج|برنامجي|تقسيم", re.I)
 _QUESTION = re.compile(
@@ -90,9 +95,10 @@ def _normalize(text: str) -> str:
 
 
 def _mentions(text: str, vocabulary: Sequence[tuple[str, str]]) -> list[_Mention]:
+    text = _normalize_exercise_name(text)
     matches = []
     for key, phrase in vocabulary:
-        phrase = _normalize(phrase)
+        phrase = _normalize_exercise_name(phrase)
         if not phrase:
             continue
         # Arabic articles/conjunctions can attach to gym nicknames.
@@ -155,7 +161,15 @@ def _catalog_exercise_mentions(text, vocabulary, active, short_names) -> list[_M
                         for short in short_names)]
 
 
-def _day_has_region(day: Any, region: str, targets: dict[str, str]) -> bool:
+_MAIN_GROUP_REGION = {
+    "chest": "upper", "lats": "upper", "traps": "upper", "shoulders": "upper",
+    "rear delts": "upper", "biceps": "upper",
+    "triceps": "upper", "quads": "lower", "hamstrings": "lower",
+    "glutes": "lower", "calves": "lower", "core": "neutral",
+}
+
+
+def _day_has_region(day: Any, region: str, credits: dict[str, dict[str, dict[str, Any]]]) -> bool:
     name = _normalize(day.day_name)
     named_regions = {match.key for match in _mentions(name, [
         (key, word) for key, words in _DAY_REGIONS.items() for word in words
@@ -163,10 +177,13 @@ def _day_has_region(day: Any, region: str, targets: dict[str, str]) -> bool:
     if named_regions:
         return region in named_regions
     # Full-body days load both regions; a lower day may also have arm isolations.
-    muscles = {group for exercise in day.exercises
-               for group, names in FOCUS_REVIEW_MUSCLES.items()
-               if targets.get(str(exercise.exercise_id), "").casefold() in names}
-    regions = {FOCUS_REGION_POLICY[muscle]["home_region"] for muscle in muscles}
+    muscles = {
+        group
+        for exercise in day.exercises
+        for group, attribution in credits.get(str(exercise.exercise_id), {}).items()
+        if float(attribution["credit"]) > 0
+    }
+    regions = {_MAIN_GROUP_REGION[muscle] for muscle in muscles if muscle in _MAIN_GROUP_REGION}
     return region in regions
 
 
@@ -187,11 +204,30 @@ def _region_day_names(text: str, days: Sequence[Any], ledger: Any) -> set[str]:
         text, [(region, alias) for region, aliases in _REGIONS.items() for alias in aliases]
     )}
     if regions:
-        targets = ledger.volume_review_exercise_targets(
-            [str(exercise.exercise_id) for day in days for exercise in day.exercises]
-        )
+        exercise_ids = list(dict.fromkeys(
+            str(exercise.exercise_id) for day in days for exercise in day.exercises
+        ))
+        credit_reader = getattr(ledger, "volume_review_exercise_credits", None)
+        if callable(credit_reader):
+            credits = credit_reader(exercise_ids)
+        else:
+            targets = ledger.volume_review_exercise_targets(exercise_ids)
+            exercise_names = {
+                str(exercise.exercise_id): str(exercise.exercise_name)
+                for day in days for exercise in day.exercises
+            }
+            credits = {
+                exercise_id: {
+                    group: {"credit": credit}
+                    for group, credit in default_muscle_credits(
+                        targets.get(exercise_id),
+                        exercise_name=exercise_names.get(exercise_id),
+                    ).items()
+                }
+                for exercise_id in exercise_ids
+            }
         for region in regions:
-            matching_days = [day.day_name for day in days if _day_has_region(day, region, targets)]
+            matching_days = [day.day_name for day in days if _day_has_region(day, region, credits)]
             selected.update(matching_days or [_REGIONS[region][0]])
     return selected
 
@@ -221,7 +257,8 @@ def _day_words(days: Sequence[Any]) -> list[tuple[str, str]]:
 
 
 def _without_day_names(text: str, days: Sequence[Any]) -> str:
-    # Day labels such as Chest & Back scope the whole day, not only those muscles.
+    # Named muscle days scope the whole day, not only matching exercises.
+    text = _normalize_exercise_name(text)
     characters = list(text)
     for match in _mentions(text, _day_words(days)):
         characters[match.start:match.end] = " " * (match.end - match.start)
@@ -283,24 +320,47 @@ def _bounded_context(
     messages: Sequence[BaseMessage], calls: Sequence[dict[str, Any]], results: Sequence[ToolMessage],
 ) -> RoutedContext:
     available = _available_context_bytes(messages)
-    included_calls, included_results, pieces = [], [], []
-    for call, result in zip(calls, results):
-        size = len(str(result.content).encode("utf-8")) + len(
-            json.dumps(call, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-        )
-        if size <= available:
-            included_calls.append(call)
-            included_results.append(result)
-            pieces.append(_piece_name(call["args"]))
-            available -= size
-    if not included_calls:
+    included = _fit_context_pieces(calls, results, available)
+    if not included:
         return RoutedContext(list(messages), (PROGRAM_TOPIC,))
+    included_calls = [call for call, _result in included]
+    included_results = [result for _call, result in included]
+    pieces = [_piece_name(call["args"]) for call in included_calls]
     simulated = AIMessage(content="", tool_calls=included_calls)
     return RoutedContext([*messages, simulated, *included_results], (PROGRAM_TOPIC,), tuple(pieces))
 
 
+def _fit_context_pieces(
+    calls: Sequence[dict[str, Any]], results: Sequence[ToolMessage], available: int,
+) -> list[tuple[dict[str, Any], ToolMessage]]:
+    # Prescription-bearing results are larger than empty scopes and should get space first.
+    prioritized = sorted(
+        (
+            (index, call, result, _context_piece_bytes(call, result))
+            for index, (call, result) in enumerate(zip(calls, results))
+        ),
+        key=lambda piece: (-piece[3], piece[0]),
+    )
+    included = []
+    for index, call, result, size in prioritized:
+        if size <= available:
+            included.append((index, call, result))
+            available -= size
+    included.sort(key=lambda piece: piece[0])
+    return [(call, result) for _index, call, result in included]
+
+
+def _context_piece_bytes(call: dict[str, Any], result: ToolMessage) -> int:
+    result_bytes = len(str(result.content).encode("utf-8"))
+    call_bytes = len(json.dumps(call, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+    return result_bytes + call_bytes
+
+
 def _available_context_bytes(messages: Sequence[BaseMessage]) -> int:
     # Empty/one/many and Unicode results share the content-byte ceiling used by the tool loop.
-    return min(MAX_CONTEXT_PIECE_BYTES, HOSTED_PROMPT_MAX_BYTES
-               - HOSTED_PROMPT_TOOL_RESULT_RESERVE_BYTES
-               - sum(len(str(message.content).encode("utf-8")) for message in messages))
+    return min(
+        MAX_ROUTED_CONTEXT_BYTES,
+        HOSTED_PROMPT_MAX_BYTES - HOSTED_PROMPT_TOOL_RESULT_RESERVE_BYTES
+        - ROUTED_CONTEXT_FALLBACK_RESERVE_BYTES
+        - sum(len(str(message.content).encode("utf-8")) for message in messages),
+    )

@@ -11,6 +11,7 @@ import copy
 from typing import Any
 
 from agent.ProgramState import CardioPrescriptionSchema
+from core.legacy_muscle_labels import replace_legacy_back_muscle
 
 from agent.program_weeks import (
     find_program_day,
@@ -229,7 +230,7 @@ def _assign_one(
     if authorized is None:
         return _rejection(assignment_id, "assignment.none_active.v1", DENIED_ERROR)
     ledger, _ = authorized
-    draft = copy.deepcopy(template["program"])
+    draft, _ = replace_legacy_back_muscle(copy.deepcopy(template["program"]))
     template_id = template["template_id"]
     with ledger:
         existing = ledger.get_program_draft(assignment_id)
