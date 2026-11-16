@@ -191,7 +191,7 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
         'افتح الأهداف بجانب التاريخ لتفعيل الوجبات أو إيقافها، واختر وجباتك ووقت تدريبك، وراجع الحصص العملية والملاحظات عندما لا يحقق اليوم أهدافك، وبدّل الأطعمة في خطتك أو اتبع مدربك، وسجّل الوجبة المخططة بلمسة واحدة.',
     target: 'meal_setup',
     location: TourShellTabLocation(tabIndex: 2),
-    release: 6,
+    release: 7,
     audience: 'lifter',
   ),
   FeatureEntry(
