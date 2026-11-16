@@ -10,6 +10,7 @@ from agent.program_rationale import CHANGE_VOLUME_REVIEW
 from agent.progression_engine import set_e1rm
 from agent.ProgramState import program_exercise_working_sets
 from agent.program_blueprints import SLOT_STAPLES, experience_level_for_training_age
+from core.muscle_volume import normalize_main_muscle
 from agent.focus_muscles import (
     FOCUS_MULTIPLIER,
     FOCUS_REVIEW_MUSCLES,
@@ -425,6 +426,10 @@ def _review_edit_with_sets(edit: dict[str, Any], target_sets: int) -> dict[str, 
     return {**edit, "add_exercise": exercise}
 
 
+def _review_muscle_key(muscle: Any) -> str:
+    return normalize_main_muscle(muscle) or str(muscle).strip().casefold()
+
+
 def _bounded_review_edits(inventory: dict, proposals: dict, credits: dict, bounds: dict) -> tuple[list, dict]:
     volumes = _inventory_volumes(inventory, credits)
     accepted = []
@@ -462,11 +467,19 @@ def _reconcile_review(
     bounds = _review_bounds(before, level, _review_focus_muscles(program, primaries))
     edits, after = _bounded_review_edits(inventory, proposals, credits, bounds)
     reconciled = [
-        {**muscle, "edits": [], "set_delta": after.get(muscle["muscle"], 0) - before.get(muscle["muscle"], 0)}
+        {
+            **muscle,
+            "edits": [],
+            "set_delta": after.get(_review_muscle_key(muscle["muscle"]), 0)
+            - before.get(_review_muscle_key(muscle["muscle"]), 0),
+        }
         for muscle in muscles
     ]
     for edit in edits:
-        affected = [muscle for muscle in reconciled if muscle["muscle"] in credits[_edit_key(edit)[2]]]
+        affected = [
+            muscle for muscle in reconciled
+            if _review_muscle_key(muscle["muscle"]) in credits[_edit_key(edit)[2]]
+        ]
         if not affected:
             raise ValueError("program_changed")
         owner = next((muscle for muscle in affected if muscle["set_delta"]), affected[0])
