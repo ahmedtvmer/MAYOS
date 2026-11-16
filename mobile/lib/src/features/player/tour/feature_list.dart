@@ -202,7 +202,7 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
         'افتح الأهداف بجانب التاريخ لتفعيل الوجبات أو إيقافها، واختر وجباتك ووقت تدريبك، وراجع الحصص العملية والملاحظات عندما لا يحقق اليوم أهدافك، وبدّل الأطعمة في خطتك أو اتبع مدربك، وسجّل الوجبة المخططة بلمسة واحدة.',
     target: 'meal_setup',
     location: TourShellTabLocation(tabIndex: 2),
-    release: 6,
+    release: 7,
     audience: 'lifter',
   ),
   FeatureEntry(
@@ -282,9 +282,9 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
   FeatureEntry(
     id: 'duration_check',
     titleEn: 'Workout duration check',
-    sentenceEn: 'Confirm an unusually short or long workout before saving.',
+    sentenceEn: 'Confirm or correct an unusually short or long workout duration before saving.',
     titleAr: 'تأكيد مدة الحصة',
-    sentenceAr: 'أكّد مدة الحصة إذا كانت قصيرة أو طويلة بشكل غير معتاد قبل حفظها.',
+    sentenceAr: 'أكّد مدة الحصة أو صححها إذا كانت أقصر أو أطول من المعتاد قبل حفظها.',
     target: 'home',
     location: TourShellTabLocation(tabIndex: 0),
     release: kReleaseDurationCheck,
