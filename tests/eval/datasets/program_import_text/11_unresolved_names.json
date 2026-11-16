@@ -13,7 +13,6 @@
   "expected_confirm_layout": false,
   "expected_unresolved_names": [
     "Romanian deadlfit",
-    "hammer curls",
     "plank",
     "shoulder press machine",
     "skull crushers",
@@ -107,9 +106,9 @@
       "week": null,
       "day": 1,
       "day_name": "Full Body A",
-      "exercise_name": "hammer curls",
-      "expected_resolution": "unresolved",
-      "expected_exercise_id": null,
+      "exercise_name": "Hammer Curl (Dumbbell)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "312",
       "sets": 3,
       "reps_min": 10,
       "reps_max": 12,
@@ -119,9 +118,7 @@
       "notes": "Keep your upper arms by your sides.",
       "original_text": "hammer curls 3x10-12 RPE 8 — 2 min rest — Keep your upper arms by your sides.",
       "input_exercise_name": "hammer curls",
-      "suggestion_search_terms": [
-        "hammer curl"
-      ],
+      "suggestion_search_terms": null,
       "approximation_codes": [],
       "approximation_reasons": {},
       "edge_cases": [],
