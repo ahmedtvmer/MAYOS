@@ -16,6 +16,7 @@ import 'package:mayos_mobile/src/core/app_mode.dart';
 import 'package:mayos_mobile/src/core/baselines.dart';
 import 'package:mayos_mobile/src/core/chat_storage.dart';
 import 'package:mayos_mobile/src/core/device_timezone.dart';
+import 'package:mayos_mobile/src/core/display_language/feature_copy_context.dart';
 import 'package:mayos_mobile/src/core/display_language/workout_copy.dart';
 import 'package:mayos_mobile/src/core/display_language/controller.dart';
 import 'package:mayos_mobile/src/core/models.dart';
@@ -26,6 +27,7 @@ import 'package:mayos_mobile/src/core/theme/mayos_theme.dart';
 import 'package:mayos_mobile/src/core/theme/mayos_typography.dart';
 import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
+import 'package:mayos_mobile/src/core/ui/mayos_button.dart';
 import 'package:mayos_mobile/src/core/ui/mayos_settings_tile.dart';
 import 'package:mayos_mobile/src/core/ui/mayos_stat.dart';
 import 'package:mayos_mobile/src/core/ui/mayos_player_column.dart';
@@ -640,6 +642,64 @@ Future<void> _tapFinishPastUntickedSets(WidgetTester tester) async {
     await tester.tap(discard);
     await tester.pumpAndSettle();
   }
+}
+
+Future<void> _openDurationCorrectionSummary(
+  WidgetTester tester,
+  FakeMayosApi fake,
+  String languageCode,
+) async {
+  final InMemoryWorkoutCacheStore cache = InMemoryWorkoutCacheStore();
+  await cache.writeLatestSession(
+    _account,
+    const LatestSession(
+      sessionId: 'previous',
+      sessionDate: '2026-09-27',
+      splitName: 'Upper',
+      durationSeconds: 1800,
+    ),
+  );
+  await _openLogger(
+    tester,
+    fakeApi: fake,
+    workoutCache: cache,
+    webDirectCommit: true,
+    languageCode: languageCode,
+    startedAt: '2026-09-28T08:00:00.000Z',
+    clock: () => DateTime.parse('2026-09-28T09:30:00.000Z'),
+  );
+  await tester.tap(_tick(0, 0));
+  await tester.pumpAndSettle();
+  final WorkoutCopy copy = workoutCopyOf(
+    tester.element(find.byType(WorkoutLoggerScreen)),
+  );
+  await tester.tap(find.widgetWithText(FilledButton, copy.finishWorkout));
+  await tester.pumpAndSettle();
+  final Finder discard = find.text(copy.discardUntickedAndFinish);
+  if (discard.evaluate().isNotEmpty) {
+    await tester.tap(discard);
+    await tester.pumpAndSettle();
+  }
+  await tester.tap(find.byKey(const ValueKey<String>('logger.duration.edit')));
+  await tester.pumpAndSettle();
+  await tester.tap(
+    find.byKey(const ValueKey<String>('logger.duration.confirm')),
+  );
+  await tester.pumpAndSettle();
+}
+
+Future<void> _pumpUntilWorkoutCommitRequest(
+  WidgetTester tester,
+  FakeMayosApi fake,
+) async {
+  bool hasCommitRequest() => fake.adapter.requests.any(
+        (FakeRequest request) =>
+            request.method == 'POST' && request.path == '/workouts/sessions',
+      );
+  for (int attempt = 0; attempt < 40 && !hasCommitRequest(); attempt++) {
+    await tester.pump(const Duration(milliseconds: 100));
+  }
+  expect(hasCommitRequest(), isTrue);
 }
 
 WorkoutDraft _summaryDraft(String id, String performedDate) => WorkoutDraft(
@@ -4058,6 +4118,92 @@ void main() {
     );
     expect(commit.body['duration_seconds'], 4200);
   });
+
+  for (final String languageCode in <String>['en', 'ar']) {
+    testWidgets(
+        'duration correction save locks and commits once in $languageCode (#736)',
+        (WidgetTester tester) async {
+      final FakeMayosApi fake = _signedInFake()..programVersion = 3;
+      await _openDurationCorrectionSummary(tester, fake, languageCode);
+
+      final Completer<void> response = Completer<void>();
+      fake.adapter.beforeRespond = (FakeRequest request) async {
+        if (request.method == 'POST' && request.path == '/workouts/sessions') {
+          await response.future;
+        }
+      };
+
+      final Finder saveFinder = find.byKey(
+        const ValueKey<String>('logger.save'),
+      );
+      final VoidCallback submit =
+          tester.widget<MayosButton>(saveFinder).onPressed!;
+      submit();
+      submit();
+      await _pumpUntilWorkoutCommitRequest(tester, fake);
+
+      final List<FakeRequest> commitRequests = fake.adapter.requests
+          .where((FakeRequest request) =>
+              request.method == 'POST' &&
+              request.path == '/workouts/sessions')
+          .toList();
+      expect(commitRequests, hasLength(1));
+      expect(tester.widget<MayosButton>(saveFinder).loading, isTrue);
+      expect(
+        tester
+            .widget<FilledButton>(find.descendant(
+              of: saveFinder,
+              matching: find.byType(FilledButton),
+            ))
+            .onPressed,
+        isNull,
+      );
+      expect(
+        find.descendant(
+          of: saveFinder,
+          matching: find.byType(CircularProgressIndicator),
+        ),
+        findsOneWidget,
+      );
+
+      response.complete();
+      await tester.pumpAndSettle();
+
+      final WorkoutCopy copy = workoutCopyOf(
+        tester.element(find.byType(WorkoutLoggerScreen)),
+      );
+      expect(fake.commitRequests, 1);
+      expect(fake.committedSessions, hasLength(1));
+      expect(commitRequests.single.body['duration_seconds'], 5400);
+      expect(tester.widget<MayosButton>(saveFinder).loading, isFalse);
+      expect(tester.widget<MayosButton>(saveFinder).label, copy.done);
+    });
+
+    testWidgets(
+        'duration correction save failure unlocks with a localized error in $languageCode (#736)',
+        (WidgetTester tester) async {
+      final FakeMayosApi fake = _signedInFake()
+        ..programVersion = 3
+        ..commitFails = true;
+      await _openDurationCorrectionSummary(tester, fake, languageCode);
+      final WorkoutCopy copy = workoutCopyOf(
+        tester.element(find.byType(WorkoutLoggerScreen)),
+      );
+
+      await tester.tap(find.byKey(const ValueKey<String>('logger.save')));
+      await tester.pumpAndSettle();
+
+      final Finder saveFinder = find.byKey(
+        const ValueKey<String>('logger.save'),
+      );
+      final MayosButton retry = tester.widget<MayosButton>(saveFinder);
+      expect(fake.commitRequests, 1);
+      expect(find.text(copy.mayosBusy), findsOneWidget);
+      expect(retry.loading, isFalse);
+      expect(retry.label, copy.retry);
+      expect(retry.onPressed, isNotNull);
+    });
+  }
 
   testWidgets('uncached duration uses three hour fallback at Finish',
       (WidgetTester tester) async {
