@@ -122,8 +122,8 @@ void main() {
     await tester.pump();
     await tester.tap(find.byKey(const Key('save_food_swap')));
     await tester.pumpAndSettle();
-    await _showSwapControl(tester, find.text('Could not save Food swap.'));
-    expect(find.text('Could not save Food swap.'), findsOneWidget);
+    await _showSwapControl(tester, find.text('MAYOS had a problem; try again.'));
+    expect(find.text('MAYOS had a problem; try again.'), findsOneWidget);
     expect(api.version, 2);
     api.failSave = false;
     await tester.tap(find.byKey(const Key('save_food_swap')));
