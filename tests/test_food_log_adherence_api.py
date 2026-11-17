@@ -8,7 +8,8 @@ import pytest
 
 from database.ledger.nutrition import NutritionPlanVersion
 from service.alert_sweep import run_sweep
-from tests.test_food_log_api import _add, food_api  # noqa: F401
+from service import nutrition, nutrition_alerts
+from tests.test_food_log_api import _add, _make_legacy_default_on_plan, food_api  # noqa: F401
 from tests.test_missed_day_alerts import _make_coach
 from tests.test_nutrition_api import _backdate_active_nutrition_plan, _seed_profile, api  # noqa: F401
 
@@ -97,6 +98,54 @@ def test_sweep_retries_leave_the_same_value_and_timestamp_and_emit_no_player_eve
     with db.open_ledger(ledger_id) as ledger:
         assert tuple(ledger.conn.execute("SELECT * FROM nutrition_adherence").fetchone()) == first
     assert not [event for event in recording_analytics.events if event["event"] == "nutrition_adherence_logged"]
+
+
+def test_adherence_target_reads_do_not_generate_meals(adherence_api):
+    client, db, headers, clock, ledger_id = adherence_api
+    logged_day = clock[0].date()
+    assert _add(client, headers, logged_day).status_code == 201
+    with db.open_ledger(ledger_id) as ledger:
+        cache_before = ledger.conn.execute(
+            "SELECT count(*) FROM nutrition_meal_generation_cache"
+        ).fetchone()[0]
+        assert nutrition.targets_for_day(ledger, logged_day) is not None
+        cache_after_target_read = ledger.conn.execute(
+            "SELECT count(*) FROM nutrition_meal_generation_cache"
+        ).fetchone()[0]
+    assert cache_after_target_read == cache_before
+
+    clock[0] += timedelta(days=1)
+    assert run_sweep(db, now=clock[0])["errors"] == 0
+    with db.open_ledger(ledger_id) as ledger:
+        cache_after_sweep = ledger.conn.execute(
+            "SELECT count(*) FROM nutrition_meal_generation_cache"
+        ).fetchone()[0]
+    assert cache_after_sweep == cache_before
+
+
+def test_legacy_default_on_alert_check_does_not_generate_meals_737(adherence_api, monkeypatch):
+    _client, db, _headers, clock, ledger_id = adherence_api
+    with db.open_ledger(ledger_id) as ledger:
+        _make_legacy_default_on_plan(ledger)
+        cache_before = ledger.conn.execute(
+            "SELECT count(*) FROM nutrition_meal_generation_cache"
+        ).fetchone()[0]
+
+    from database.ledger import nutrition_meals
+
+    def fail_if_generated(*_args, **_kwargs):
+        pytest.fail("Adherence target checks must not generate meals")
+
+    monkeypatch.setattr(nutrition_meals, "generate_meals_bounded", fail_if_generated)
+
+    adherence = nutrition_alerts._read_adherence(db, ledger_id, clock[0])
+
+    with db.open_ledger(ledger_id) as ledger:
+        cache_after = ledger.conn.execute(
+            "SELECT count(*) FROM nutrition_meal_generation_cache"
+        ).fetchone()[0]
+    assert adherence[3] is True
+    assert cache_after == cache_before
 
 
 def test_yesterday_add_edit_and_last_delete_recompute_without_waiting_for_sweep(adherence_api):

@@ -5,48 +5,67 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from uuid import uuid4
 
+from core.meal_generator import meals_with_food_macros
 from core.meal_setup import SLOT_MINUTES
-from database.ledger.nutrition import NutritionPlanVersion
-from database.ledger.nutrition_meals import cached_variants_for_plan, generate_variants, resolve_variant
+from database.ledger.nutrition_meals import (
+    cached_variants_for_plan,
+    generate_variants,
+    meal_switch_enabled,
+    resolve_variant,
+    save_meal_version,
+)
 from service import nutrition
 from service.food_log_adherence import recompute_day
+from service.weight_history import player_local_date
 
 
 def read(ledger, today):
     state = nutrition.read(ledger, today=today)
     if state["state"] != "ready":
-        return {"status": "unavailable", "reason": "targets", "meals": [], "enabled": False}
+        active = ledger.get_active_nutrition_plan()
+        payload = json.loads(active["meals_json"]) if active and active["meals_json"] else None
+        return {
+            "status": "unavailable", "reason": "targets", "meals": [],
+            "enabled": meal_switch_enabled(ledger, active, payload) if active else False,
+            "plan_version_id": active["id"] if active else None,
+            "author": active["author"] if active else None,
+        }
     active = ledger.get_active_nutrition_plan()
     payload = json.loads(active["meals_json"]) if active["meals_json"] else None
+    enabled = meal_switch_enabled(ledger, active, payload)
     context = {"date": today.isoformat(), "plan_version_id": active["id"], "author": active["author"],
-               "day_type": state["target_day_type"], "enabled": bool(payload and payload["enabled"]),
+               "day_type": state["target_day_type"], "enabled": enabled,
+               "targets": state["targets"],
                "can_swap": active["author"] == "Player"}
-    if not payload or not payload.get("enabled"):
+    if not enabled:
         if active["author"] == "Coach":
             return {**context, "status": "unavailable", "reason": "coach", "meals": []}
         available = cached_variants_for_plan(ledger, active, today, state["target_day_type"])
         variant = available["variants"][state["target_day_type"]]
         return {**variant, **context, "status": "disabled" if variant["status"] == "ready" else "unavailable", "meals": []}
-    variant = resolve_variant(ledger, active, payload, state["target_day_type"])
+    if payload and payload.get("enabled"):
+        variant = resolve_variant(ledger, active, payload, state["target_day_type"])
+    else:
+        available = cached_variants_for_plan(ledger, active, today, state["target_day_type"])
+        variant = available["variants"][state["target_day_type"]]
     if variant["status"] == "ready" and not state.get("meals"):
         variant = {"status": "unavailable", "reason": "staples", "meals": []}
-    return {**variant, **context, "targets_changed": payload.get("targets_changed", False)}
+    result = {**variant, **context, "targets_changed": bool(payload and payload.get("targets_changed", False))}
+    result["meals"] = meals_with_food_macros(result["meals"])
+    result["day_totals"] = variant.get("totals")
+    return result
 
 
 def _save_player_meals(ledger, active, payload):
-    snapshot = ledger.get_nutrition_goal_offer_snapshot(active["id"])
-    return ledger.save_nutrition_plan(NutritionPlanVersion(
-        goal=active["goal"], reason=json.loads(active["goal_reason_data_json"]),
-        intensity=active["intensity"], daily_activity=active["daily_activity"],
-        targets=json.loads(active["targets_json"]), author="Player", provenance="player_consented", meals=payload,
-        goal_source_snapshot=json.loads(snapshot[0]) if snapshot else None,
-    ))
+    return save_meal_version(ledger, {**dict(active), "provenance": "player_consented"}, payload)
 
 
 def enable(ledger, today):
     with ledger.ledger_transaction(immediate=True):
         state = read(ledger, today)
         if state.get("enabled"):
+            if ledger.get_nutrition_meal_preference() is None:
+                ledger.set_nutrition_meal_preference(True)
             return state
         if state["status"] != "disabled":
             raise ValueError("Meals aren't available yet. Reviewed Staple foods and practical portions are needed.")
@@ -58,6 +77,7 @@ def enable(ledger, today):
         payload = generate_variants(ledger, json.loads(active["targets_json"]), {})
         payload["variants"] = available["variants"]
         _save_player_meals(ledger, active, payload)
+        ledger.set_nutrition_meal_preference(True)
     return read(ledger, today)
 
 
@@ -68,19 +88,25 @@ def disable(ledger, today):
             raise ValueError("Your Coach sets your meals.")
         state = read(ledger, today)
         if not state.get("enabled"):
+            if ledger.get_nutrition_meal_preference() is None:
+                ledger.set_nutrition_meal_preference(False)
             return state
         _save_player_meals(ledger, active, {"enabled": False})
+        ledger.set_nutrition_meal_preference(False)
     return read(ledger, today)
 
 
 def refresh_setup(ledger):
     active = ledger.get_active_nutrition_plan()
-    if active is None or active["author"] != "Player" or not active["meals_json"]:
+    if active is None or active["author"] != "Player":
         return
-    previous = json.loads(active["meals_json"])
-    if not previous.get("enabled"):
+    previous = json.loads(active["meals_json"]) if active["meals_json"] else None
+    if not meal_switch_enabled(ledger, active, previous):
         return
-    payload = generate_variants(ledger, json.loads(active["targets_json"]), previous)
+    payload = generate_variants(ledger, json.loads(active["targets_json"]), previous or {})
+    today = player_local_date(ledger, str(ledger.ledger_id))
+    day_type = "training_day" if nutrition._is_training_day(ledger, today) else "rest_day"
+    payload["variants"][day_type] = resolve_variant(ledger, active, payload, day_type)
     _save_player_meals(ledger, active, payload)
 
 

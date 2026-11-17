@@ -221,10 +221,10 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
     id: 'meal_setup',
     titleEn: 'Meal setup and Food restrictions',
     sentenceEn:
-        'Open Targets beside the date to switch meals on or off, choose Meal slots and training time, see practical portions and notes when a day misses your targets, swap foods in your own plan or follow your coach, and log a planned meal with one tap.',
+        'Meals are on by default and shown in a day table with calories, protein, carbs and fat; choose Meal slots and training time, use Log beside meal names and Swap beside food names or request a Coach swap, and keep today’s meals in Food log history as soon as Meal setup is saved.',
     titleAr: 'إعداد الوجبات والقيود الغذائية',
     sentenceAr:
-        'افتح الأهداف بجانب التاريخ لتفعيل الوجبات أو إيقافها، واختر وجباتك ووقت تدريبك، وراجع الحصص العملية والملاحظات عندما لا يحقق اليوم أهدافك، وبدّل الأطعمة في خطتك أو اتبع مدربك، وسجّل الوجبة المخططة بلمسة واحدة.',
+        'تُفعَّل الوجبات افتراضيًا وتظهر في جدول اليوم مع السعرات والبروتين والكربوهيدرات والدهون؛ حدّد عدد الوجبات ووقت التدريب، واستخدم التسجيل بجوار اسم الوجبة والتبديل بجوار اسم الطعام أو اطلب من مدربك التبديل، وتُحفظ وجبات اليوم في سجل الطعام بمجرد حفظ إعداد الوجبات.',
     target: 'meal_setup',
     location: TourShellTabLocation(tabIndex: 2),
     release: 7,

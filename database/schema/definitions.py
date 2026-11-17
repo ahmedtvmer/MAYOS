@@ -21,7 +21,10 @@ from database.migration_manager import VOLUME_REVIEWS_DDL
 from database.migration_manager import EQUIPMENT_ACCESS_DDL
 from database.migration_manager import CHECKPOINT_REVIEWS_DDL
 from database.ledger.nutrition_drafts import NUTRITION_DRAFTS_DDL
-from database.ledger.nutrition import NUTRITION_MEAL_GENERATION_CACHE_DDL
+from database.ledger.nutrition import (
+    NUTRITION_MEAL_GENERATION_CACHE_DDL,
+    NUTRITION_MEAL_PREFERENCE_DDL,
+)
 from database.ledger.push import PUSH_INTENTS_DDL
 from database.migration_manager import DELOAD_CHOICES_DDL
 from database.migration_manager import INTAKE_DDL
@@ -450,6 +453,7 @@ class SchemaMixin:
                 NUTRITION_DRAFTS_DDL,
                 NUTRITION_MEAL_GENERATION_CACHE_DDL,
                 PUSH_INTENTS_DDL,
+                NUTRITION_MEAL_PREFERENCE_DDL,
                 *EQUIPMENT_ACCESS_DDL,
                 *ASSISTANT_PREFERENCES_DDL,
                 *ASSISTANT_GOAL_WEAK_POINT_PENDING_DDL,

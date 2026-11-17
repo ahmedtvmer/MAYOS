@@ -73,6 +73,19 @@ def _add(client, headers, day, food="egg", **changes):
     })
 
 
+def _make_legacy_default_on_plan(ledger, *, created_at=None):
+    active = ledger.get_active_nutrition_plan()
+    with ledger.ledger_transaction():
+        ledger.conn.execute(
+            "INSERT INTO nutrition_plan_versions(author,provenance,goal,goal_reason_data_json,"
+            "intensity,daily_activity,targets_json,authority_assignment_id,created_at,meals_json) "
+            "SELECT author,provenance,goal,goal_reason_data_json,intensity,daily_activity,targets_json,"
+            "authority_assignment_id,COALESCE(?,created_at),NULL FROM nutrition_plan_versions WHERE id=?",
+            (created_at, active["id"]),
+        )
+        ledger.conn.execute("DELETE FROM nutrition_meal_preference WHERE id=1")
+
+
 def test_search_orders_staples_reviewed_and_match_quality_and_excludes_hidden(food_api):
     client, _db, headers, _today = food_api
     response = client.get("/nutrition/foods", headers=headers, params={"q": "chicken"})
@@ -183,7 +196,7 @@ def test_day_check_in_returns_that_days_water_and_verdict(food_api, days_ago):
     assert response.json()["adherence"] == ("on_target", "roughly", "off")[days_ago]
 
 
-def test_past_day_meals_use_the_saved_version_instead_of_todays_plan(food_api):
+def test_past_day_meals_use_saved_switch_meals_and_totals(food_api):
     client, db, headers, today = food_api
     account = db.get_active_account_by_username("food-player")
     old_meals = [{"slot": "breakfast", "foods": [{"id": "egg", "name": "Egg",
@@ -191,26 +204,59 @@ def test_past_day_meals_use_the_saved_version_instead_of_todays_plan(food_api):
     old_targets = {"calories": 2000, "protein_g": 140, "carbs_g": 220, "fat_g": 60,
                    "fiber_g": 28, "water_ml": 2000}
     with db.open_ledger(account["ledger_id"]) as ledger:
-        ledger.save_nutrition_plan(NutritionPlanVersion(
-            "maintain", {"code": "default"}, None, "mostly_sitting", old_targets,
-            created_at=f"{today - timedelta(days=2)}T00:00:00+00:00",
-            meals={"enabled": True, "variants": {
+        with ledger.ledger_transaction():
+            ledger.save_nutrition_plan(NutritionPlanVersion(
+                "maintain", {"code": "default"}, None, "mostly_sitting", old_targets,
+                created_at=f"{today - timedelta(days=5)}T00:00:00+00:00",
+                meals={"enabled": False},
+            ))
+            ledger.save_nutrition_plan(NutritionPlanVersion(
+                "maintain", {"code": "default"}, None, "mostly_sitting", old_targets,
+                created_at=f"{today - timedelta(days=2)}T00:00:00+00:00",
+                meals={"enabled": True, "variants": {
                 day_type: {"status": "ready", "meals": old_meals}
                 for day_type in ("training_day", "rest_day")}},
-        ))
-        ledger.save_nutrition_plan(NutritionPlanVersion(
-            "gain", {"code": "default"}, "light", "mostly_sitting",
-            {**old_targets, "calories": 2400}, created_at=f"{today}T00:00:00+00:00",
-        ))
-    yesterday = client.get("/nutrition/food-log", headers=headers,
-                           params={"day": (today - timedelta(days=1)).isoformat()}).json()
-    assert yesterday["targets"] == old_targets
-    assert yesterday["planned_meals"]["meals"] == old_meals
-    assert yesterday["planned_meals"]["date"] == (today - timedelta(days=1)).isoformat()
+            ))
+            ledger.save_nutrition_plan(NutritionPlanVersion(
+                "gain", {"code": "default"}, "light", "mostly_sitting",
+                {**old_targets, "calories": 2400}, created_at=f"{today}T00:00:00+00:00",
+            ))
+
+    with db.open_ledger(account["ledger_id"]) as ledger:
+        cache_before = ledger.conn.execute(
+            "SELECT count(*) FROM nutrition_meal_generation_cache"
+        ).fetchone()[0]
+    for enabled_preference in (False, True):
+        with db.open_ledger(account["ledger_id"]) as ledger:
+            ledger.set_nutrition_meal_preference(enabled_preference)
+        yesterday = client.get("/nutrition/food-log", headers=headers,
+                              params={"day": (today - timedelta(days=1)).isoformat()}).json()
+        assert yesterday["targets"] == old_targets
+        response_meals = yesterday["planned_meals"]["meals"]
+        assert [{**meal, "foods": [
+            {key: value for key, value in food.items() if key != "macros"}
+            for food in meal["foods"]
+        ]} for meal in response_meals] == old_meals
+        assert response_meals[0]["foods"][0]["macros"] == {
+            "calories": None, "protein_g": None, "carbs_g": None, "fat_g": None,
+        }
+        assert yesterday["planned_meals"]["date"] == (today - timedelta(days=1)).isoformat()
+        assert yesterday["planned_meals"]["targets"] == old_targets
+        assert yesterday["planned_meals"]["day_totals"] == {"calories": 520}
+
+        saved_off_day = client.get("/nutrition/food-log", headers=headers,
+                                   params={"day": (today - timedelta(days=4)).isoformat()}).json()
+        assert saved_off_day["planned_meals"] is None
+    with db.open_ledger(account["ledger_id"]) as ledger:
+        cache_after = ledger.conn.execute(
+            "SELECT count(*) FROM nutrition_meal_generation_cache"
+        ).fetchone()[0]
+    assert cache_after == cache_before
+
     assert client.get("/nutrition/food-log", headers=headers).json()["planned_meals"] is None
     before_plan = client.get("/nutrition/food-log", headers=headers,
                              params={"day": (today - timedelta(days=3)).isoformat()}).json()
-    assert before_plan["targets"] is None
+    assert before_plan["targets"] == old_targets
     assert before_plan["planned_meals"] is None
 
 
