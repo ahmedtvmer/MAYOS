@@ -226,6 +226,10 @@ FakeMayosApi _signedInFake() {
 
 const Map<String, List<String>> _releaseSevenFeatureTitles =
     <String, List<String>>{
+  'isolation_first_order': <String>[
+    'A clearer exercise order',
+    'ترتيب أوضح للتمارين',
+  ],
   'assistant_exercise_lookup': <String>[
     'Search exercises by the name you know',
     'ابحث عن التمرين بالاسم الذي تعرفه',

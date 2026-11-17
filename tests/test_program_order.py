@@ -48,12 +48,12 @@ def _rationale(exercise):
     }
 
 
-def _order(exercises, rationales=None):
+def _order(exercises, rationales=None, *, experience="intermediate"):
     return order_program_exercises(
         exercises,
         rationales or [_rationale(exercise) for exercise in exercises],
         day_family="arms",
-        experience_level="intermediate",
+        experience_level=experience,
     )
 
 
@@ -72,6 +72,46 @@ def test_isolation_that_starts_after_compound_moves_before_it():
 
     assert [entry.exercise.exercise_id for entry in ordered] == ["row", "fly", "press"]
     assert ordered[1].rationale["position"]["code"] == "position.pre_exhaust"
+
+
+def test_issue_716_beginner_keeps_compounds_first_without_changing_prescriptions():
+    exercises = [
+        _exercise("calf", "calf"),
+        _exercise("row", "horizontal_row"),
+        _exercise("fly", "chest_fly"),
+        _exercise("press", "flat_press"),
+    ]
+
+    ordered = _order(exercises, experience="beginner")
+
+    assert [entry.exercise.exercise_id for entry in ordered] == [
+        "row", "press", "calf", "fly",
+    ]
+    assert [entry.exercise.working_sets for entry in ordered] == [2, 2, 2, 2]
+    assert ordered[1].rationale["position"]["code"] == "position.beginner_compound_first"
+    assert ordered[3].rationale["position"]["code"] == "position.isolation"
+
+
+def test_issue_716_beginner_main_lift_stays_first_when_template_starts_with_isolation():
+    ordered = _order(
+        [_exercise("side-delts", "side_delts"), _exercise("press", "incline_press")],
+        experience="beginner",
+    )
+
+    assert [entry.exercise.exercise_id for entry in ordered] == ["press", "side-delts"]
+    assert ordered[0].rationale["position"]["code"] == "position.main_progressed_lift"
+
+
+def test_issue_716_calf_does_not_open_a_day_with_larger_isolations():
+    ordered = _order([
+        _exercise("calf", "calf", equipment="Body Weight"),
+        _exercise("quads", "quad_iso", equipment="Body Weight"),
+        _exercise("abs", "abs", equipment="Body Weight"),
+    ])
+
+    assert [entry.exercise.exercise_id for entry in ordered] == [
+        "quads", "calf", "abs",
+    ]
 
 
 @pytest.mark.parametrize(
@@ -115,6 +155,7 @@ def test_focus_variants_keep_order_and_respect_aggregate_pre_exhaust_cap_on_seco
         _exercise("press", "flat_press"),
     ]
     rationales = [_rationale(exercise) for exercise in exercises]
+    rationales[0]["selection"] = {"code": "selection.focus_muscle_extra", "params": {}}
     rationales[0]["position"]["code"] = "position.focus_first"
 
     first = _order(exercises, rationales)
@@ -150,6 +191,95 @@ def test_focus_variants_keep_order_and_respect_aggregate_pre_exhaust_cap_on_seco
         if entry.exercise.slot_key == "chest_fly"
     ) == 2
     assert sum(entry.exercise.working_sets for entry in first) == 8
+
+
+def test_issue_716_separated_focus_extra_keeps_its_position_on_second_pass():
+    exercises = [
+        _exercise("row", "horizontal_row"),
+        _exercise("focus-fly", "chest_fly"),
+        _exercise("calf", "calf"),
+        _exercise("press", "flat_press"),
+    ]
+    rationales = [_rationale(exercise) for exercise in exercises]
+    rationales[1]["selection"] = {"code": "selection.focus_muscle_extra", "params": {}}
+    rationales[1]["position"]["code"] = "position.focus_first"
+
+    first = _order(exercises, rationales)
+    second = _order(
+        [entry.exercise for entry in first],
+        [entry.rationale for entry in first],
+    )
+
+    assert [entry.exercise.exercise_id for entry in first] == [
+        "row", "focus-fly", "calf", "press",
+    ]
+    assert [entry.exercise.exercise_id for entry in second] == [
+        entry.exercise.exercise_id for entry in first
+    ]
+
+
+def test_issue_716_focus_extra_follows_main_before_unrelated_pre_exhaust():
+    exercises = [
+        _exercise("quad-isolation", "quad_iso"),
+        _exercise("bench", "incline_press"),
+        _exercise("quad-compound", "quad_compound"),
+        _exercise("focus-fly", "chest_fly"),
+    ]
+    rationales = [_rationale(exercise) for exercise in exercises]
+    rationales[-1]["selection"] = {
+        "code": "selection.focus_muscle_extra",
+        "params": {},
+    }
+    rationales[-1]["position"]["code"] = "position.focus_first"
+
+    ordered = _order(exercises, rationales)
+
+    assert [entry.exercise.exercise_id for entry in ordered] == [
+        "bench", "focus-fly", "quad-isolation", "quad-compound",
+    ]
+    assert ordered[1].rationale["position"]["code"] == "position.focus_first"
+
+
+def test_issue_716_focus_extra_cannot_relocate_the_only_main_lift():
+    exercises = [
+        _exercise("fly", "chest_fly"),
+        _exercise("side-delts", "side_delts"),
+        _exercise("biceps_preacher", "biceps_preacher"),
+        _exercise("focus-row", "horizontal_row"),
+    ]
+    rationales = [_rationale(exercise) for exercise in exercises]
+    rationales[-1]["selection"] = {
+        "code": "selection.focus_muscle_extra",
+        "params": {},
+    }
+    rationales[-1]["position"]["code"] = "position.focus_first"
+
+    ordered = _order(exercises, rationales)
+
+    assert [entry.exercise.exercise_id for entry in ordered] == [
+        "focus-row", "fly", "side-delts", "biceps_preacher",
+    ]
+
+
+def test_issue_716_bodyweight_opener_keeps_focus_exercise_first():
+    exercises = [
+        _exercise("focus-adductors", "adductors", equipment="Body Weight"),
+        _exercise("quad-iso", "quad_iso", equipment="Body Weight"),
+        _exercise("calf", "calf", equipment="Body Weight"),
+        _exercise("ham-curl", "ham_curl", equipment="Body Weight"),
+    ]
+    rationales = [_rationale(exercise) for exercise in exercises]
+    rationales[0]["selection"] = {
+        "code": "selection.focus_muscle_extra",
+        "params": {},
+    }
+    rationales[0]["position"]["code"] = "position.focus_first"
+
+    ordered = _order(exercises, rationales)
+
+    assert [entry.exercise.exercise_id for entry in ordered] == [
+        "focus-adductors", "quad-iso", "calf", "ham-curl",
+    ]
 
 
 def test_sets_cut_from_pre_exhaust_isolation_are_reassigned():

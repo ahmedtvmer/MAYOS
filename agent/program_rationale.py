@@ -199,8 +199,8 @@ _POSITION_REASON_COPY = {
         "وتظل مجموعاته ضمن حجمك الأسبوعي.",
     ),
     POSITION_MAIN_PROGRESSED_LIFT: (
-        "This is the day's main progressed lift, so it stays ahead of other exercises for the same muscle.",
-        "هذا هو تمرين القوة الأساسي المتدرج في اليوم، لذلك يسبق التمارين الأخرى للعضلة نفسها.",
+        "This is the day's main progressed lift, so it stays first in the exercise order.",
+        "هذا هو تمرين القوة الأساسي المتدرج في اليوم، لذلك يظل أول تمرين في الحصة.",
     ),
     POSITION_BEGINNER_COMPOUND_FIRST: (
         "Compound lifts come first so you can practise them with fresh muscles.",

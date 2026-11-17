@@ -1006,13 +1006,24 @@ def _order_generated_program(program, day_families, profile):
     for day in program.days:
         rationale_day = rationale_days[day.day_order]
         exercise_reasons = rationale_day["exercises"]
+        if not exercise_reasons:
+            continue
+        reasons_by_id = {
+            reason.get("exercise_id"): reason for reason in exercise_reasons
+        }
+        exercise_ids = [exercise.exercise_id for exercise in day.exercises]
+        if (
+            len(reasons_by_id) != len(exercise_reasons)
+            or len(set(exercise_ids)) != len(exercise_ids)
+            or set(reasons_by_id) != set(exercise_ids)
+        ):
+            raise ValueError("Generated exercise rationales must align with exercises.")
         ordered = order_program_exercises(
             day.exercises,
-            [entry["rationale"] for entry in exercise_reasons],
+            [reasons_by_id[exercise_id]["rationale"] for exercise_id in exercise_ids],
             day_family=day_families.get(day.day_order),
             experience_level=experience_level,
         )
-        reasons_by_id = {entry["exercise_id"]: entry for entry in exercise_reasons}
         day.exercises = [entry.exercise for entry in ordered]
         rationale_day["exercises"] = [
             {

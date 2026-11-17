@@ -6,7 +6,8 @@ from copy import deepcopy
 from dataclasses import dataclass, replace
 from typing import Any
 
-from agent.program_blueprints import SLOT_SPECS
+from agent.program_blueprints import SLOT_SPECS, _SMALL_MUSCLE_OPENERS
+from agent.program_rationale import SELECTION_FOCUS_MUSCLE_EXTRA
 from agent.ProgramState import ProgramExerciseSchema, ProgramSetGroupSchema
 from core.muscle_volume import normalize_main_muscle
 
@@ -63,8 +64,9 @@ def order_program_exercises(
     entries = _program_order_entries(exercises, rationales)
     main_lift = _main_progressed_lift(entries)
     main_id = main_lift.exercise.exercise_id if main_lift else None
+    entries = _promote_primary_movement_without_compound(entries, main_lift)
     if experience_level == "beginner":
-        return _order_beginner_program(entries, main_id)
+        return _order_beginner_program(entries, main_lift, main_id)
     return _order_non_beginner_program(entries, main_lift, main_id, day_family)
 
 
@@ -78,14 +80,20 @@ def _program_order_entries(
 
 
 def _order_beginner_program(
-    entries: list[ProgramOrderEntry], main_id: str | None
+    entries: list[ProgramOrderEntry],
+    main_lift: ProgramOrderEntry | None,
+    main_id: str | None,
 ) -> list[ProgramOrderEntry]:
+    entries = _place_main_lift_first(entries, main_lift)
+    entries, safety_ids = _move_stabilizers_after_lifts(entries)
     entries.sort(key=lambda entry: not _is_compound(entry.exercise))
     beginner_reasons = {
         entry.exercise.exercise_id: "beginner_compound_first"
         for entry in entries
         if _is_compound(entry.exercise) and entry.exercise.exercise_id != main_id
     }
+    for exercise_id in safety_ids:
+        beginner_reasons.setdefault(exercise_id, "stabilizer_safety")
     return _refresh_position_reasons(entries, main_id, beginner_reasons)
 
 
@@ -95,21 +103,63 @@ def _order_non_beginner_program(
     main_id: str | None,
     day_family: str | None,
 ) -> list[ProgramOrderEntry]:
-    entries = _place_main_lift_before_its_muscle_work(entries, main_lift)
+    entries = _place_main_lift_first(entries, main_lift)
     entries, safety_ids = _move_stabilizers_after_lifts(entries)
     pre_exhaust = _place_isolation_before_later_compound(
         entries, main_id, allow_new=not _is_crowded_upper_day(entries, day_family)
     )
     entries = _cap_pre_exhaust_work(pre_exhaust)
     safety_ids.update(_recorded_safety_entries(entries))
+    entries = _place_focus_extras_after_main_lift(entries, main_id, safety_ids)
     reasons = _position_reason_by_id(safety_ids, pre_exhaust)
     return _refresh_position_reasons(entries, main_id, reasons)
+
+
+def _place_focus_extras_after_main_lift(
+    entries: list[ProgramOrderEntry], main_id: str | None, safety_ids: set[str]
+) -> list[ProgramOrderEntry]:
+    if main_id is None:
+        return entries
+    focus_extras = [
+        entry for entry in entries
+        if entry.exercise.exercise_id != main_id
+        and _is_movable_focus_extra(entry, safety_ids)
+    ]
+    if not focus_extras:
+        return entries
+    for entry in focus_extras:
+        entries.remove(entry)
+    main_index = next(
+        index
+        for index, entry in enumerate(entries)
+        if entry.exercise.exercise_id == main_id
+    )
+    entries[main_index + 1:main_index + 1] = focus_extras
+    return entries
+
+
+def _is_movable_focus_extra(entry: ProgramOrderEntry, safety_ids: set[str]) -> bool:
+    return _is_focus_extra(entry) and entry.exercise.exercise_id not in safety_ids
+
+
+def _is_focus_extra(entry: ProgramOrderEntry) -> bool:
+    return (
+        entry.rationale.get("selection", {}).get("code")
+        == SELECTION_FOCUS_MUSCLE_EXTRA
+    )
 
 
 def _position_reason_by_id(
     safety_ids: set[str], pre_exhaust: PreExhaustPlan
 ) -> dict[str, str]:
-    reasons = {exercise_id: "pre_exhaust" for exercise_id in pre_exhaust.isolation_ids}
+    entries_by_id = {
+        entry.exercise.exercise_id: entry for entry in pre_exhaust.entries
+    }
+    reasons = {
+        exercise_id: "pre_exhaust"
+        for exercise_id in pre_exhaust.isolation_ids
+        if not _is_focus_extra(entries_by_id[exercise_id])
+    }
     reasons.update({exercise_id: "follows_pre_exhaust" for exercise_id in pre_exhaust.compound_ids})
     reasons.update({exercise_id: "after_pre_exhaust_block" for exercise_id in pre_exhaust.after_block_ids})
     for exercise_id in safety_ids:
@@ -131,6 +181,52 @@ def _main_progressed_lift(entries: list[ProgramOrderEntry]) -> ProgramOrderEntry
     return recorded or next((entry for entry in entries if _is_compound(entry.exercise)), None)
 
 
+def _promote_primary_movement_without_compound(
+    entries: list[ProgramOrderEntry], main_lift: ProgramOrderEntry | None
+) -> list[ProgramOrderEntry]:
+    if main_lift is not None or not entries or not _is_bodyweight_day(entries):
+        return entries
+    if _is_focus_extra(entries[0]):
+        return entries
+    if entries[0].exercise.slot_key not in _SMALL_MUSCLE_OPENERS:
+        return entries
+    next_index = _first_non_small_movement_index(entries)
+    if next_index is None and entries[0].exercise.slot_key == "calf":
+        next_index = _first_non_calf_movement_index(entries)
+    if next_index is not None:
+        entries.insert(0, entries.pop(next_index))
+    return entries
+
+
+def _is_bodyweight_day(entries: list[ProgramOrderEntry]) -> bool:
+    return all(
+        (entry.exercise.equipment or "").casefold() in {"body weight", "bodyweight"}
+        for entry in entries
+    )
+
+
+def _first_non_small_movement_index(entries: list[ProgramOrderEntry]) -> int | None:
+    return next(
+        (
+            index
+            for index, entry in enumerate(entries[1:], start=1)
+            if entry.exercise.slot_key not in _SMALL_MUSCLE_OPENERS
+        ),
+        None,
+    )
+
+
+def _first_non_calf_movement_index(entries: list[ProgramOrderEntry]) -> int | None:
+    return next(
+        (
+            index
+            for index, entry in enumerate(entries[1:], start=1)
+            if entry.exercise.slot_key != "calf"
+        ),
+        None,
+    )
+
+
 def _is_compound(exercise: ProgramExerciseSchema) -> bool:
     spec = SLOT_SPECS.get(exercise.slot_key or "")
     return bool(spec and spec.archetype in COMPOUND_ARCHETYPES)
@@ -141,23 +237,14 @@ def _is_isolation(exercise: ProgramExerciseSchema) -> bool:
     return bool(spec and spec.archetype == "isolation")
 
 
-def _place_main_lift_before_its_muscle_work(
+def _place_main_lift_first(
     entries: list[ProgramOrderEntry], main_lift: ProgramOrderEntry | None
 ) -> list[ProgramOrderEntry]:
     if main_lift is None:
         return entries
     main_index = _entry_index(entries, main_lift)
-    muscle_groups = main_muscles_for_slot(main_lift.exercise.slot_key)
-    earlier_work = next(
-        (
-            index
-            for index, entry in enumerate(entries[:main_index])
-            if main_muscles_for_slot(entry.exercise.slot_key) & muscle_groups
-        ),
-        None,
-    )
-    if earlier_work is not None:
-        entries.insert(earlier_work, entries.pop(main_index))
+    if main_index:
+        entries.insert(0, entries.pop(main_index))
     return entries
 
 
@@ -324,6 +411,12 @@ def _place_pre_exhaust_block(
     extras: list[ProgramOrderEntry],
     compound: ProgramOrderEntry,
 ) -> list[ProgramOrderEntry]:
+    if _is_focus_extra(isolation):
+        for entry in extras:
+            entries.remove(entry)
+        compound_index = _entry_index(entries, compound)
+        entries[compound_index + 1:compound_index + 1] = extras
+        return entries
     for entry in [isolation, *extras]:
         entries.remove(entry)
     compound_index = _entry_index(entries, compound)
@@ -491,10 +584,13 @@ def _refresh_position_entry(
 
     rationale = entry.rationale
     current_position = rationale.get("position", {})
-    if order_reason is None and current_position.get("code") in {
-        POSITION_FOCUS_FIRST,
-        POSITION_AFTER_FOCUS_EXTRA,
-    }:
+    if order_reason is None and (
+        current_position.get("code") in {
+            POSITION_FOCUS_FIRST,
+            POSITION_AFTER_FOCUS_EXTRA,
+        }
+        or entry.exercise.slot_key not in SLOT_SPECS
+    ):
         position = current_position
         position.setdefault("params", {})["index"] = index
     else:

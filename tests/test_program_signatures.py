@@ -181,7 +181,9 @@ def test_coach_pattern_program_ids_are_stable_across_experience_levels(
                 for day in program.days
             ]
 
-            assert actual_ids == expected_ids, (frequency, training_age)
+            assert [sorted(day_ids) for day_ids in actual_ids] == [
+                sorted(day_ids) for day_ids in expected_ids
+            ], (frequency, training_age)
 
 
 def test_commercial_horizontal_row_exhaustion_keeps_master_candidates(fresh_store):

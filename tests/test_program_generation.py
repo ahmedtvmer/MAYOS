@@ -219,7 +219,7 @@ def test_generated_program_draft_carries_structured_rationale(monkeypatch):
                 exercise_id=f"ex-{index}", exercise_name="Squat", target_reps_min=8,
                 target_reps_max=12,
             )
-            for index in range(3)
+            for index in range(1, 4)
         ],
     ), [{"position": index, "exercise_id": f"ex-{index}", "rationale": {"selection": {"code": "selection.staple"}, "position": {"code": "position.heavy_compound"}, "prescription": {"sets": {"code": "sets.coach_dose"}}}} for index in range(1, 4)]))
     generated, _ = program_generator.generate_program_draft_pipeline(
