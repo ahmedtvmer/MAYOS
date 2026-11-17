@@ -778,7 +778,12 @@ void main() {
     ]);
     await tester.pump(const Duration(milliseconds: 1500));
     expect(find.text('1  Tap Share'), findsOneWidget);
-    expect(find.text('2  Add to Home Screen'), findsOneWidget);
+    expect(
+      find.text(
+        '2  Add to Home Screen. For notifications, open the app there on iOS 16.4 or later.',
+      ),
+      findsOneWidget,
+    );
     await tester.tap(find.text('Got it'));
     await tester.pumpAndSettle();
     expect(store.dismissed, isTrue);
@@ -868,7 +873,12 @@ void main() {
     ]);
     await tester.pump(const Duration(milliseconds: 1500));
     expect(find.text('١  اضغط على مشاركة'), findsOneWidget);
-    expect(find.text('٢  اختر إضافة إلى الشاشة الرئيسية'), findsOneWidget);
+    expect(
+      find.text(
+        '٢  اختر إضافة إلى الشاشة الرئيسية. تتطلب الإشعارات فتح التطبيق منها على iOS 16.4 أو أحدث.',
+      ),
+      findsOneWidget,
+    );
     expect(Directionality.of(tester.element(find.text('الرئيسية'))), TextDirection.rtl);
     store.fireInstalled();
     await tester.pump();
@@ -1559,6 +1569,8 @@ void main() {
           'meal_setup' => find.byKey(const Key('nutrition_targets')).evaluate().isNotEmpty
               ? find.byKey(const Key('nutrition_targets')) : find.byKey(const Key('food_log_entry_point')),
           'food_swap_requests' => find.byKey(const Key('food_swap_requests_history')),
+          'web_push' =>
+            find.text('Push notifications are available in the installed web app.'),
           'assistant_meals' => find.byTooltip('Assistant'),
           _ => find.text(entry.titleEn),
         };
@@ -1748,6 +1760,8 @@ void main() {
           'meal_setup' => find.byKey(const Key('nutrition_targets')).evaluate().isNotEmpty
               ? find.byKey(const Key('nutrition_targets')) : find.byKey(const Key('food_log_entry_point')),
           'food_swap_requests' => find.byKey(const Key('food_swap_requests_history')),
+          'web_push' =>
+            find.text('Push notifications are available in the installed web app.'),
           'assistant_meals' => find.byTooltip('Assistant'),
           _ => find.text(entry.titleEn),
         };

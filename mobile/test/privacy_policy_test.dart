@@ -152,6 +152,10 @@ void main() {
         matching: find.byType(Scrollable),
       ),
     );
+    // The push card (#742) adds a row above the account section, so the last
+    // drag's settle can leave the tile just below the fold; re-ensure it.
+    await tester.ensureVisible(find.text('Privacy policy'));
+    await tester.pumpAndSettle();
 
     await tester.tap(find.text('Privacy policy'));
     await tester.pumpAndSettle();

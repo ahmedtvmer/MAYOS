@@ -99,10 +99,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
     return MayosScaffold(
       title: copy.settings,
       showBack: true,
-      body: ListView(
+      body: SingleChildScrollView(
         key: const Key('settings_section_list'),
         padding: MayosSpacing.screen,
-        children: <Widget>[
+        // A non-lazy column (like Profile) keeps every TourTarget registered
+        // as soon as the screen builds: the tour can only spotlight targets
+        // that have been built, and a lazy list below the fold never is.
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
           MayosSectionHeader(
             title: ui.appearance,
             subtitle: ui.appearanceLead,
@@ -464,7 +469,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen>
           ),
           const SizedBox(height: MayosSpacing.xl),
           const SizedBox(height: MayosSpacing.xxl),
-        ],
+          ],
+        ),
       ),
     );
   }
