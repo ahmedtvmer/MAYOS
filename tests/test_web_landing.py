@@ -62,11 +62,15 @@ def _assembled(tmp_path):
     return output
 
 
-def _parse(output):
-    html = (output / "index.html").read_text(encoding="utf-8")
+def _parse_page(output, name="index.html"):
+    html = (output / name).read_text(encoding="utf-8")
     parser = LandingParser()
     parser.feed(html)
     return html, parser
+
+
+def _parse(output):
+    return _parse_page(output)
 
 
 def test_assembled_page_has_working_destinations(tmp_path):
@@ -92,6 +96,7 @@ def test_assembled_page_has_working_destinations(tmp_path):
     assert by_contact["tiktok"]["title"] == "TikTok @mayosapp"
     assert by_contact["email"]["href"] == "mailto:founders@mayos.online"
     assert by_id["privacy-link"]["href"] == "https://api.mayos.online/privacy"
+    assert by_id["deletion-link"]["href"] == "/account-deletion"
 
 
 def test_assembled_page_has_expected_copy_in_both_languages(tmp_path):
@@ -100,6 +105,11 @@ def test_assembled_page_has_expected_copy_in_both_languages(tmp_path):
     english = {slot["data-copy"]: slot.get("data-en", "") for slot in parser.copy}
     arabic = {slot["data-copy"]: slot.get("data-ar", "") for slot in parser.copy}
     expected_english = {
+        "page_title": "MAYOS — Your training. Engineered.",
+        "page_description": (
+            "MAYOS uses AI to build your training program around your goal, "
+            "schedule and equipment. Log every set and watch your strength grow."
+        ),
         "nav_lifters": "For lifters", "nav_coaches": "For coaches",
         "login": "Log in", "language_toggle": "العربية", "eyebrow": "AI-built training programs",
         "hero_title_1": "Your training.", "hero_title_2": "Engineered.",
@@ -120,8 +130,14 @@ def test_assembled_page_has_expected_copy_in_both_languages(tmp_path):
         "coach_action": "Request coach access", "coach_instagram": "or message us on Instagram",
         "cta_title": "Start your progress today.", "cta_line": "Free to start on the web. Built for lifters and coaches.",
         "contact_heading": "Contact", "privacy": "Privacy policy",
+        "deletion": "Delete account",
     }
     expected_arabic = {
+        "page_title": "MAYOS — تمرينك. مدروس.",
+        "page_description": (
+            "يبني ميوس برنامج تمرينك بالذكاء الاصطناعي حسب هدفك ووقتك والأدوات "
+            "المتاحة لك. سجّل كل مجموعة وتابع قوتك وهي تزيد."
+        ),
         "nav_lifters": "للاعبين", "nav_coaches": "للمدربين",
         "login": "تسجيل الدخول", "language_toggle": "English", "eyebrow": "برامج تمرين بالذكاء الاصطناعي",
         "hero_title_1": "تمرينك.", "hero_title_2": "مدروس.",
@@ -142,6 +158,7 @@ def test_assembled_page_has_expected_copy_in_both_languages(tmp_path):
         "coach_action": "اطلب حساب مدرب", "coach_instagram": "أو راسلنا على إنستغرام",
         "cta_title": "ابدأ تقدّمك اليوم.", "cta_line": "مجاني للبدء على الويب. مصمّم للاعبين والمدربين.",
         "contact_heading": "تواصل معنا", "privacy": "سياسة الخصوصية",
+        "deletion": "حذف الحساب",
     }
     assert english == expected_english
     assert arabic == expected_arabic
@@ -173,6 +190,7 @@ def test_page_shows_real_app_screens_with_localized_alt_text(tmp_path):
     assert all(icon.get("aria-hidden") == "true" for icon in parser.icons)
     footer = re.search(r'<footer\b.*?</footer>', html, re.S).group(0)
     assert 'id="privacy-link"' in footer
+    assert 'id="deletion-link"' in footer
 
 
 def test_page_is_dark_rtl_by_default_and_footer_links_meet_tap_target(tmp_path):
@@ -181,7 +199,7 @@ def test_page_is_dark_rtl_by_default_and_footer_links_meet_tap_target(tmp_path):
     assert '<html lang="ar" dir="rtl">' in html
     assert re.search(r':root\{color-scheme:dark;', html)
     assert re.search(r'\.social\{[^}]*width:44px;height:44px', html)
-    assert re.search(r'#privacy-link\{[^}]*min-height:44px', html)
+    assert re.search(r'\.footer-link\{[^}]*min-height:44px', html)
 
 
 def _run_landing_js(output, scenario):
@@ -196,7 +214,6 @@ def _run_landing_js(output, scenario):
         storage.getItem = key => Object.prototype.hasOwnProperty.call(storage, key) ? storage[key] : null;
         storage.setItem = (key, value) => { storage[key] = value; };
         const attributes = {};
-        const metadata = {content: '', media: ''};
         const nav = {setAttribute: (key, value) => { attributes[key] = value; }};
         const toggle = {setAttribute: () => {}, addEventListener: () => {}};
         global.localStorage = storage;
@@ -205,7 +222,8 @@ def _run_landing_js(output, scenario):
         global.document = {
           referrer: scenario.referrer || '', title: '',
           documentElement: {dataset: {}, removeAttribute: () => {}},
-          querySelector: selector => selector === 'nav' ? nav : metadata,
+          body: {dataset: {page: scenario.page || ''}},
+          querySelector: selector => selector === 'nav' ? nav : null,
           querySelectorAll: () => [],
           getElementById: () => toggle,
           addEventListener: () => {},
@@ -263,6 +281,131 @@ def test_signed_in_landing_redirects_to_app(tmp_path):
         "storage": {"FlutterSecureStorage.mayos.access_token": "token"},
     })
     assert result["replaced"] == "/app/"
+
+
+def test_signed_in_visitor_stays_on_the_deletion_page(tmp_path):
+    # Someone signed in on this browser may still need the public deletion
+    # form (another device, another account), so the page never redirects.
+    output = _assembled(tmp_path)
+    assert (output / "account-deletion.html").is_file()
+    result = _run_landing_js(output, {
+        "page": "account-deletion",
+        "storage": {"FlutterSecureStorage.mayos.access_token": "token"},
+    })
+    assert result["replaced"] is None
+
+
+def test_account_deletion_page_explains_deletion_and_reuses_the_api_form(tmp_path):
+    output = _assembled(tmp_path)
+    html, parser = _parse_page(output, "account-deletion.html")
+
+    # Stays reachable for signed-in visitors: the redirect guard reads this.
+    assert '<body data-page="account-deletion">' in html
+
+    english = {slot["data-copy"]: slot.get("data-en", "") for slot in parser.copy}
+    arabic = {slot["data-copy"]: slot.get("data-ar", "") for slot in parser.copy}
+    expected_english = {
+        "page_title": "Delete your MAYOS account",
+        "page_description": (
+            "How to delete your MAYOS account in the app, or request deletion "
+            "from this page without the app."
+        ),
+        "language_toggle": "العربية",
+        "heading": "Delete your MAYOS account.",
+        "lead": "Deletion is immediate and permanent, and you can do it yourself. You do not need to contact anyone.",
+        "in_app_title": "From the app",
+        "in_app_line": (
+            "Open Settings → Linked sign-in → Danger zone → Delete account, "
+            "then confirm with your password. If you signed in with Google, "
+            "confirm with Google instead."
+        ),
+        "web_title": "Without the app",
+        "web_line": (
+            "If you cannot open the app — for example on a lost device — use the "
+            "public deletion form on our server. It asks for your username and "
+            "password and one confirmation, and applies the same deletion as the app."
+        ),
+        "web_action": "Open the deletion form",
+        "email_action": "or write to us at founders@mayos.online",
+        "web_note": (
+            "The form never reveals whether a username exists: unknown usernames "
+            "and wrong passwords get the same answer. If you have lost your "
+            "password, request a reset first — the form page links to it. Write "
+            "to us by email only when the form cannot work for you (for example "
+            "a deleted recovery email); we will verify you are the account owner "
+            "before deleting anything."
+        ),
+        "removed_title": "What is deleted",
+        "removed_1": (
+            "Your training ledger: profile, Training program, workouts, schedule, "
+            "Nutrition setup and targets, Food log entries and Personal foods, and "
+            "your assistant chat."
+        ),
+        "removed_2": "Your recovery email and reset tokens, your invites, and every signed-in session.",
+        "removed_3": "Any active coaching assignment ends immediately; your coach loses access to your history.",
+        "kept_title": "What is kept, and for how long",
+        "kept_1": (
+            "A small deletion record (internal ids and the time) stays outside the "
+            "backups so a restore cannot bring the account back."
+        ),
+        "kept_2": "Model-usage rows keyed only by an opaque id stay for cost reconciliation.",
+        "kept_3": "Whole-catalog recovery snapshots may briefly retain deleted rows for up to 30 days.",
+        "back": "Back to mayos.online",
+        "privacy": "Privacy policy",
+    }
+    expected_arabic = {
+        "page_title": "حذف حسابك في ميوس",
+        "page_description": "كيفية حذف حسابك في ميوس من التطبيق، أو طلب الحذف من هذه الصفحة بدون التطبيق.",
+        "language_toggle": "English",
+        "heading": "احذف حسابك في ميوس.",
+        "lead": "الحذف فوري ونهائي، ويمكنك القيام به بنفسك. لا تحتاج إلى مراسلة أحد.",
+        "in_app_title": "من التطبيق",
+        "in_app_line": (
+            "افتح الإعدادات ← تسجيل الدخول المرتبط ← منطقة الخطر ← حذف الحساب، "
+            "ثم أكّد بكلمة المرور. إذا سجّلت الدخول بحساب Google، فأكّد بحساب "
+            "Google بدلًا منها."
+        ),
+        "web_title": "بدون التطبيق",
+        "web_line": (
+            "إذا تعذّر فتح التطبيق — مثلًا على جهاز مفقود — استخدم نموذج الحذف العام "
+            "على خادمنا. يطلب اسم المستخدم وكلمة المرور وتأكيدًا واحدًا، ويطبّق الحذف "
+            "نفسه كما في التطبيق."
+        ),
+        "web_action": "افتح نموذج الحذف",
+        "email_action": "أو راسلنا على founders@mayos.online",
+        "web_note": (
+            "لا يكشف النموذج أبدًا عن وجود اسم مستخدم: الأسماء غير المسجلة وكلمات "
+            "المرور الخاطئة تحصل على الرد نفسه. إذا فقدت كلمة المرور، فاطلب إعادة "
+            "التعيين أولًا — صفحة النموذج تربط بها. راسلنا بالبريد فقط عندما يعجز "
+            "النموذج (مثلًا بعد حذف بريد الاسترداد)؛ سنتحقق أنك مالك الحساب قبل أي حذف."
+        ),
+        "removed_title": "ما الذي يُحذف",
+        "removed_1": (
+            "سجل تدريبك: الملف التدريبي، البرنامج التدريبي، الحصص التدريبية، جدول "
+            "التدريب، إعداد التغذية وأهدافها، سجل الطعام والأطعمة الخاصة، ومحادثتك "
+            "مع المساعد."
+        ),
+        "removed_2": "بريد الاسترداد ورموز إعادة التعيين، ودعواتك، وكل جلسات تسجيل الدخول.",
+        "removed_3": "تنتهي فورًا أي علاقة تدريب نشطة؛ ويفقد المدرب الوصول إلى سجلك.",
+        "kept_title": "ما الذي نحتفظ به ومدة الاحتفاظ",
+        "kept_1": "يبقى سجل حذف صغير (معرّفات داخلية ووقت الحذف) خارج النسخ الاحتياطية حتى لا تُعيد نسخة مستعادة الحساب.",
+        "kept_2": "تبقى صفوف استخدام النماذج، المرتبطة بمعرّف مجهول فقط، لمطابقة التكاليف.",
+        "kept_3": "قد تحتفظ لقطات استعادة الكتالوج بالكامل بصفوف محذوفة لمدة تصل إلى 30 يومًا.",
+        "back": "العودة إلى mayos.online",
+        "privacy": "سياسة الخصوصية",
+    }
+    assert english == expected_english
+    assert arabic == expected_arabic
+
+    by_id = {link.get("id"): link for link in parser.links if link.get("id")}
+    # The public form is the existing rate-limited API endpoint: no second
+    # deletion implementation on the landing host.
+    assert by_id["delete-request-link"]["href"] == "https://api.mayos.online/account/delete-request"
+    assert by_id["deletion-email-link"]["href"] == (
+        "mailto:founders@mayos.online?subject=MAYOS%20account%20deletion%20request"
+    )
+    assert by_id["privacy-link"]["href"] == "https://api.mayos.online/privacy"
+    assert by_id["back-link"]["href"] == "/"
 
 
 def test_first_paint_resources_stay_under_300_kib(tmp_path):

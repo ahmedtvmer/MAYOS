@@ -11,7 +11,7 @@ step is one command or one Play Console screen.
 | Purpose | URL |
 | :--- | :--- |
 | Privacy policy (also linked in-app: login, register, Settings → About) | `https://api.mayos.online/privacy` |
-| Account deletion request (also in-app: Settings → Profile → Delete account) | `https://api.mayos.online/account/delete-request` |
+| Account deletion request (also in-app: Settings → Linked sign-in → Danger zone → Delete account) | `https://api.mayos.online/account/delete-request` |
 
 ---
 
@@ -202,7 +202,7 @@ referrer once per install and sends only parsed UTM labels during registration.
 | Data collected | The types in the table above: username, recovery email, health/fitness data, user content, logs, pseudonymous app interactions, and internal Account ids. No contacts, no location, no device identifiers, no advertising IDs |
 | Data shared | **No data sold, no data shared for advertising, no tracking.** Data *is* processed by service providers: the hosted model provider (AI features), the SMTP provider (emails), and PostHog EU (product analytics) |
 | Data processed securely | Yes — encrypted **in transit** (https/TLS) |
-| Data deletion available | **Yes**, both in-app (Settings → Profile → Delete account) and on the website (`https://api.mayos.online/account/delete-request`) |
+| Data deletion available | **Yes**, both in-app (Settings → Linked sign-in → Danger zone → Delete account) and on the website (`https://api.mayos.online/account/delete-request`) |
 | Required or optional | **Username and recovery email are required**; training, health, and AI content are optional; logs and analytics are collected automatically (existing analytics opt-outs remain off permanently) |
 | Purpose | App functionality, account management, security, AI features, and product analytics (PostHog EU); no advertising or third-party product improvement |
 | Independent verification | No |
@@ -218,7 +218,8 @@ safety form that contradicts the published policy.
       consent row.
 - [ ] Register, add a recovery email, complete onboarding.
 - [ ] Settings → About → **Privacy policy** opens the same URL.
-- [ ] Settings → Profile → **Delete account** works in-app.
+- [ ] Settings → Linked sign-in → Danger zone → **Delete account** works
+      in-app.
 - [ ] In a browser (no app), open `https://api.mayos.online/account/delete-request`,
       enter wrong credentials → generic refusal; then delete a throwaway
       account with the right credentials → success, and the username no longer

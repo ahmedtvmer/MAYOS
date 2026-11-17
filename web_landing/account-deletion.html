@@ -1,0 +1,132 @@
+﻿<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title data-copy="page_title" data-en="Delete your MAYOS account" data-ar="حذف حسابك في ميوس">حذف حسابك في ميوس</title>
+  <meta name="description" data-copy="page_description" data-en="How to delete your MAYOS account in the app, or request deletion from this page without the app." data-ar="كيفية حذف حسابك في ميوس من التطبيق، أو طلب الحذف من هذه الصفحة بدون التطبيق.">
+  <meta name="theme-color" content="#070E19">
+  <link rel="preload" as="font" href="/IBMPlexSansArabic-Regular.woff2" type="font/woff2" crossorigin>
+  <style>
+    @font-face{font-family:Inter;src:url('/Inter-Variable.woff2') format('woff2');font-weight:400 800;font-display:swap}
+    @font-face{font-family:Arabic;src:url('/IBMPlexSansArabic-Regular.woff2') format('woff2');font-weight:400;font-display:swap}
+    @font-face{font-family:Arabic;src:url('/IBMPlexSansArabic-SemiBold.woff2') format('woff2');font-weight:600 800;font-display:swap}
+    :root{color-scheme:dark;--ink:#070E19;--canvas:#0A1422;--surface:#101D2E;--raised:#14243A;--line:#1E3150;--line-hot:rgba(47,107,255,.5);--text:#F3F6FB;--secondary:#A7B6CB;--muted:#6F8199;--accent:#2F6BFF;--accent-hi:#6B95FF;--pressed:#2257DE;--focus:#8FB3FF;--gutter:20px;--wide:760px}
+    *{box-sizing:border-box}
+    html{background:var(--ink)}
+    body{margin:0;background:var(--ink);color:var(--text);font:400 16px/1.6 Inter,Arabic,system-ui,sans-serif;text-align:start;-webkit-font-smoothing:antialiased}
+    html[lang="ar"] body{font-family:Arabic,Inter,system-ui,sans-serif}
+    img{display:block;max-width:100%}
+    a,button{font:inherit;color:inherit}
+    a:focus-visible,button:focus-visible{outline:3px solid var(--focus);outline-offset:3px;border-radius:8px}
+    .shell{width:min(100% - 2*var(--gutter),var(--wide));margin-inline:auto}
+    .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+    .display{font-family:Inter,Arabic,sans-serif;font-weight:800;letter-spacing:-.03em}
+    html[lang="ar"] .display{font-family:Arabic,Inter,sans-serif;letter-spacing:0}
+
+    .topbar{position:absolute;inset-inline:0;top:0;z-index:5}
+    .topbar .shell{height:76px;display:flex;align-items:center;gap:20px}
+    .brand{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:44px;text-decoration:none}
+    .brand img{width:32px;height:32px;object-fit:contain;filter:invert(1)}
+    .brand-word{font:600 11px/1 Inter,Arabic,sans-serif;letter-spacing:.24em;margin-inline-start:.24em}
+    .nav-actions{margin-inline-start:auto}
+    .language{min-height:44px;padding:0 14px;border:1px solid var(--line);background:rgba(16,29,46,.6);color:var(--text);border-radius:10px;cursor:pointer;transition:border-color .15s}
+    .language:hover{border-color:var(--line-hot)}
+
+    main{padding-block:110px 48px}
+    h1{margin:0 0 10px;font-size:clamp(30px,4vw,44px);line-height:1.15}
+    .lead{margin:0;color:var(--secondary);font-size:17px}
+    .card{margin-block-start:26px;padding:26px 30px;border:1px solid var(--line);border-radius:22px;background:linear-gradient(180deg,var(--surface),var(--canvas))}
+    .card h2{margin:0 0 10px;font-size:19px;font-weight:700}
+    .card p{margin:8px 0;color:var(--secondary)}
+    .card strong{color:var(--text);font-weight:600}
+    .steps{margin:10px 0 0;padding:0;list-style:none}
+    .steps li{display:flex;gap:12px;align-items:flex-start;padding-block:5px;color:var(--secondary)}
+    .steps svg{flex:none;width:20px;height:20px;margin-block-start:2px;fill:none;stroke:var(--accent-hi);stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+    .actions{display:flex;flex-wrap:wrap;align-items:center;gap:10px 18px;margin-block-start:14px}
+    .btn{display:inline-flex;align-items:center;justify-content:center;min-height:50px;padding:0 26px;border-radius:12px;font-weight:600;text-decoration:none;transition:background .15s,transform .15s}
+    .btn-primary{background:var(--accent);color:#fff;box-shadow:0 10px 30px -12px rgba(47,107,255,.9)}
+    .btn-primary:hover{background:var(--pressed);transform:translateY(-1px)}
+    .btn-small{min-height:44px;padding:0 18px;border-radius:10px}
+    .text-link{display:inline-flex;align-items:center;min-height:44px;color:var(--secondary);font-size:15px;text-decoration:none}
+    .text-link:hover{color:var(--text)}
+    .note{margin-block-start:20px;padding:14px 18px;border:1px solid var(--line);border-radius:14px;background:rgba(47,107,255,.08);color:var(--secondary);font-size:15px}
+    .footer{border-block-start:1px solid var(--line);padding-block:20px 28px;color:var(--muted);font-size:14px}
+    .footer .shell{display:flex;align-items:center;gap:8px 18px;flex-wrap:wrap}
+    .footer .brand img{width:24px;height:24px}
+    .footer .brand-word{font-size:9px;color:var(--text)}
+    .footer-links{display:flex;align-items:center;gap:4px 20px;flex-wrap:wrap;margin-inline-start:auto}
+    .footer-link{min-height:44px;display:inline-flex;align-items:center;color:var(--secondary);text-decoration:none}
+    .footer-link:hover{color:var(--text)}
+    .copyright{width:100%;margin:4px 0 0}
+
+    @media(max-width:760px){
+      .card{padding:22px}
+      main{padding-block:100px 36px}
+    }
+  </style>
+  <script src="/landing-config.js" defer></script>
+  <script src="/landing.js" defer></script>
+</head>
+<body data-page="account-deletion">
+  <header class="topbar">
+    <nav class="shell" aria-label="التنقل الرئيسي">
+      <a class="brand" href="/" aria-label="MAYOS"><img src="/mayos-mark.webp" alt=""><span class="brand-word">MAYOS</span></a>
+      <div class="nav-actions">
+        <button class="language" id="language-toggle" type="button" aria-label="Change language to English" data-copy="language_toggle" data-en="العربية" data-ar="English">English</button>
+      </div>
+    </nav>
+  </header>
+
+  <main>
+    <div class="shell">
+      <h1 id="deletion-title" class="display" data-copy="heading" data-en="Delete your MAYOS account." data-ar="احذف حسابك في ميوس.">احذف حسابك في ميوس.</h1>
+      <p class="lead" data-copy="lead" data-en="Deletion is immediate and permanent, and you can do it yourself. You do not need to contact anyone." data-ar="الحذف فوري ونهائي، ويمكنك القيام به بنفسك. لا تحتاج إلى مراسلة أحد.">الحذف فوري ونهائي، ويمكنك القيام به بنفسك. لا تحتاج إلى مراسلة أحد.</p>
+
+      <section class="card" aria-labelledby="in-app-title">
+        <h2 id="in-app-title" data-copy="in_app_title" data-en="From the app" data-ar="من التطبيق">من التطبيق</h2>
+        <p data-copy="in_app_line" data-en="Open Settings → Linked sign-in → Danger zone → Delete account, then confirm with your password. If you signed in with Google, confirm with Google instead." data-ar="افتح الإعدادات ← تسجيل الدخول المرتبط ← منطقة الخطر ← حذف الحساب، ثم أكّد بكلمة المرور. إذا سجّلت الدخول بحساب Google، فأكّد بحساب Google بدلًا منها.">افتح الإعدادات ← تسجيل الدخول المرتبط ← منطقة الخطر ← حذف الحساب، ثم أكّد بكلمة المرور. إذا سجّلت الدخول بحساب Google، فأكّد بحساب Google بدلًا منها.</p>
+      </section>
+
+      <section class="card" aria-labelledby="web-title">
+        <h2 id="web-title" data-copy="web_title" data-en="Without the app" data-ar="بدون التطبيق">بدون التطبيق</h2>
+        <p data-copy="web_line" data-en="If you cannot open the app — for example on a lost device — use the public deletion form on our server. It asks for your username and password and one confirmation, and applies the same deletion as the app." data-ar="إذا تعذّر فتح التطبيق — مثلًا على جهاز مفقود — استخدم نموذج الحذف العام على خادمنا. يطلب اسم المستخدم وكلمة المرور وتأكيدًا واحدًا، ويطبّق الحذف نفسه كما في التطبيق.">إذا تعذّر فتح التطبيق — مثلًا على جهاز مفقود — استخدم نموذج الحذف العام على خادمنا. يطلب اسم المستخدم وكلمة المرور وتأكيدًا واحدًا، ويطبّق الحذف نفسه كما في التطبيق.</p>
+        <div class="actions">
+          <a id="delete-request-link" class="btn btn-primary btn-small" href="@@API_BASE_URL@@/account/delete-request" data-copy="web_action" data-en="Open the deletion form" data-ar="افتح نموذج الحذف">افتح نموذج الحذف</a>
+          <a id="deletion-email-link" class="text-link" href="mailto:@@BUSINESS_EMAIL@@?subject=MAYOS%20account%20deletion%20request" data-copy="email_action" data-en="or write to us at @@BUSINESS_EMAIL@@" data-ar="أو راسلنا على @@BUSINESS_EMAIL@@">أو راسلنا على @@BUSINESS_EMAIL@@</a>
+        </div>
+        <p class="note" data-copy="web_note" data-en="The form never reveals whether a username exists: unknown usernames and wrong passwords get the same answer. If you have lost your password, request a reset first — the form page links to it. Write to us by email only when the form cannot work for you (for example a deleted recovery email); we will verify you are the account owner before deleting anything." data-ar="لا يكشف النموذج أبدًا عن وجود اسم مستخدم: الأسماء غير المسجلة وكلمات المرور الخاطئة تحصل على الرد نفسه. إذا فقدت كلمة المرور، فاطلب إعادة التعيين أولًا — صفحة النموذج تربط بها. راسلنا بالبريد فقط عندما يعجز النموذج (مثلًا بعد حذف بريد الاسترداد)؛ سنتحقق أنك مالك الحساب قبل أي حذف.">لا يكشف النموذج أبدًا عن وجود اسم مستخدم: الأسماء غير المسجلة وكلمات المرور الخاطئة تحصل على الرد نفسه. إذا فقدت كلمة المرور، فاطلب إعادة التعيين أولًا — صفحة النموذج تربط بها. راسلنا بالبريد فقط عندما يعجز النموذج (مثلًا بعد حذف بريد الاسترداد)؛ سنتحقق أنك مالك الحساب قبل أي حذف.</p>
+      </section>
+
+      <section class="card" aria-labelledby="removed-title">
+        <h2 id="removed-title" data-copy="removed_title" data-en="What is deleted" data-ar="ما الذي يُحذف">ما الذي يُحذف</h2>
+        <ul class="steps">
+          <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg><span data-copy="removed_1" data-en="Your training ledger: profile, Training program, workouts, schedule, Nutrition setup and targets, Food log entries and Personal foods, and your assistant chat." data-ar="سجل تدريبك: الملف التدريبي، البرنامج التدريبي، الحصص التدريبية، جدول التدريب، إعداد التغذية وأهدافها، سجل الطعام والأطعمة الخاصة، ومحادثتك مع المساعد.">سجل تدريبك: الملف التدريبي، البرنامج التدريبي، الحصص التدريبية، جدول التدريب، إعداد التغذية وأهدافها، سجل الطعام والأطعمة الخاصة، ومحادثتك مع المساعد.</span></li>
+          <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg><span data-copy="removed_2" data-en="Your recovery email and reset tokens, your invites, and every signed-in session." data-ar="بريد الاسترداد ورموز إعادة التعيين، ودعواتك، وكل جلسات تسجيل الدخول.">بريد الاسترداد ورموز إعادة التعيين، ودعواتك، وكل جلسات تسجيل الدخول.</span></li>
+          <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg><span data-copy="removed_3" data-en="Any active coaching assignment ends immediately; your coach loses access to your history." data-ar="تنتهي فورًا أي علاقة تدريب نشطة؛ ويفقد المدرب الوصول إلى سجلك.">تنتهي فورًا أي علاقة تدريب نشطة؛ ويفقد المدرب الوصول إلى سجلك.</span></li>
+        </ul>
+      </section>
+
+      <section class="card" aria-labelledby="kept-title">
+        <h2 id="kept-title" data-copy="kept_title" data-en="What is kept, and for how long" data-ar="ما الذي نحتفظ به ومدة الاحتفاظ">ما الذي نحتفظ به ومدة الاحتفاظ</h2>
+        <ul class="steps">
+          <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg><span data-copy="kept_1" data-en="A small deletion record (internal ids and the time) stays outside the backups so a restore cannot bring the account back." data-ar="يبقى سجل حذف صغير (معرّفات داخلية ووقت الحذف) خارج النسخ الاحتياطية حتى لا تُعيد نسخة مستعادة الحساب.">يبقى سجل حذف صغير (معرّفات داخلية ووقت الحذف) خارج النسخ الاحتياطية حتى لا تُعيد نسخة مستعادة الحساب.</span></li>
+          <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg><span data-copy="kept_2" data-en="Model-usage rows keyed only by an opaque id stay for cost reconciliation." data-ar="تبقى صفوف استخدام النماذج، المرتبطة بمعرّف مجهول فقط، لمطابقة التكاليف.">تبقى صفوف استخدام النماذج، المرتبطة بمعرّف مجهول فقط، لمطابقة التكاليف.</span></li>
+          <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg><span data-copy="kept_3" data-en="Whole-catalog recovery snapshots may briefly retain deleted rows for up to 30 days." data-ar="قد تحتفظ لقطات استعادة الكتالوج بالكامل بصفوف محذوفة لمدة تصل إلى 30 يومًا.">قد تحتفظ لقطات استعادة الكتالوج بالكامل بصفوف محذوفة لمدة تصل إلى 30 يومًا.</span></li>
+        </ul>
+      </section>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="shell">
+      <a class="brand" href="/" aria-label="MAYOS"><img src="/mayos-mark.webp" alt=""><span class="brand-word">MAYOS</span></a>
+      <div class="footer-links">
+        <a id="back-link" class="footer-link" href="/" data-copy="back" data-en="Back to mayos.online" data-ar="العودة إلى mayos.online">العودة إلى mayos.online</a>
+        <a id="privacy-link" class="footer-link" href="@@API_BASE_URL@@/privacy" data-copy="privacy" data-en="Privacy policy" data-ar="سياسة الخصوصية">سياسة الخصوصية</a>
+      </div>
+      <p class="copyright">© <span id="year">2026</span> MAYOS · ميوس</p>
+    </div>
+  </footer>
+</body>
+</html>
