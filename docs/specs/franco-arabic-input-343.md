@@ -124,6 +124,13 @@ never decides safety, never detects Franco, and never mutates the program.**
 Detection and clinical screening stay in code; a model may only classify intent
 once Stage C is enabled.
 
+**Amendment (#738, 2026-11-16):** Before general Stage C is enabled, one narrow
+exception recognizes a fully named exercise-swap command whose target resolves
+against the Exercise library and routes it through the English substitution
+path when Franco clinical screening is clear. Non-catalog targets remain advice
+requests. It does not enable general Franco chat; other detected Franco-Arabic
+turns keep the fixed input-language refusal. See ADR 083.
+
 ### 4.1 Franco detection (Stage B prerequisite)
 
 Proposal:

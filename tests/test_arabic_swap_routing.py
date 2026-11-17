@@ -1,8 +1,9 @@
 import pytest
 from langchain_core.messages import HumanMessage
 
+from agent import clinical_guard
 from agent.ProgramState import GeneratedProgramSchema, ProgramDaySchema, ProgramExerciseSchema
-from agent.assistant_graph import stream_assistant_turn
+from agent.assistant_graph import router_node, stream_assistant_turn
 from tests.fakes.chat_model import ScriptedChatModel
 
 ARABIC_SWAP_CLARIFICATION = "أنهي تمرين عايز تغيّره؟"
@@ -10,33 +11,237 @@ ARABIC_ONE_AT_A_TIME_NOTE = "هبدّل التمرين ده الأول، وبع�
 COACHING_REPLY = "خد راحة كفاية حسب إحساسك، وخلّي مجهودك مناسب لحالتك."
 
 
-def _seed_program(store, *, duplicate_bench=False):
-    ledger = store.ledger
-    ledger.upsert_player_profile({"weekly_frequency": 3, "equipment_access": "Commercial gym"})
-    names = ["barbell bench press", "barbell squat", "barbell row"]
+def _seed_program(store, *, duplicate_bench=False, exercise_names=None, day_name="Full Body A"):
+    names = exercise_names or ["barbell bench press", "barbell squat", "barbell row"]
     if duplicate_bench:
         names.append("dumbbell bench press")
-    exercises = []
-    for name in names:
-        matches = store.find_exercises_by_name(name, limit=1)
-        assert matches
-        entry = store.get_exercise_library_entry(str(matches[0]["id"]))
-        exercises.append(
-            ProgramExerciseSchema(
-                exercise_id=str(entry["id"]),
-                exercise_name=entry["name"],
-                target_reps_min=6,
-                target_reps_max=10,
+    return _seed_program_days(store, {day_name: names})
+
+
+def _seed_program_days(store, day_exercise_names):
+    ledger = store.ledger
+    ledger.upsert_player_profile({"weekly_frequency": 3, "equipment_access": "Commercial gym"})
+    days = []
+    for day_order, (day_name, names) in enumerate(day_exercise_names.items(), start=1):
+        exercises = []
+        for name in names:
+            matches = store.find_exercises_by_name(name, limit=1)
+            assert matches
+            entry = store.get_exercise_library_entry(str(matches[0]["id"]))
+            exercises.append(
+                ProgramExerciseSchema(
+                    exercise_id=str(entry["id"]),
+                    exercise_name=entry["name"],
+                    target_reps_min=6,
+                    target_reps_max=10,
+                )
             )
+        days.append(
+            ProgramDaySchema(day_name=day_name, day_order=day_order, exercises=exercises)
         )
     program = GeneratedProgramSchema(
-        program_name="Arabic swap test program",
+        program_name="Arabic swap day test program",
         split_type="Full Body",
         weekly_frequency=3,
-        days=[ProgramDaySchema(day_name="Full A", day_order=1, exercises=exercises)],
+        days=days,
     )
     ledger.save_training_program(program.model_dump())
     return ledger.get_active_program()
+
+
+def test_issue_738_explicit_arabic_curl_swap_uses_the_substitution_path(fresh_store, monkeypatch):
+    before = _seed_program(
+        fresh_store,
+        exercise_names=["Preacher Curl (Barbell)", "barbell bench press", "barbell row"],
+    )
+    monkeypatch.setattr("agent.assistant_graph.llm", ScriptedChatModel([{"intent": "coaching_qa"}]))
+    state = _turn("بدل Preacher Curl (Barbell) بـ Incline Curl (Dumbbell)")
+
+    response = "".join(stream_assistant_turn(state, ledger=fresh_store.ledger, store=fresh_store))
+
+    after = fresh_store.ledger.get_active_program()
+    names = [exercise.exercise_name for exercise in after.days[0].exercises]
+    assert state["intent"] == "exercise_substitution"
+    assert state["program_updated"] is True
+    assert after.version == before.version + 1
+    assert "Incline Curl (Dumbbell)" in names
+    assert "Preacher Curl (Barbell)" not in names
+    assert "Program tab" not in response
+
+
+def test_issue_738_english_curl_swap_uses_the_substitution_path(fresh_store, monkeypatch):
+    before = _seed_program(
+        fresh_store,
+        exercise_names=["Preacher Curl (Barbell)", "barbell bench press", "barbell row"],
+    )
+
+    class ClinicalEmbedder:
+        def embed_query(self, _text):
+            return clinical_guard.CLINICAL_ANCHOR_VECTORS[0]
+
+    monkeypatch.setattr(clinical_guard, "EMBED_MODEL", ClinicalEmbedder())
+    monkeypatch.setattr("agent.assistant_graph.llm", ScriptedChatModel())
+    state = _turn("swap Preacher Curl (Barbell) for Incline Curl (Dumbbell)")
+
+    response = "".join(stream_assistant_turn(state, ledger=fresh_store.ledger, store=fresh_store))
+
+    after = fresh_store.ledger.get_active_program()
+    names = [exercise.exercise_name for exercise in after.days[0].exercises]
+    assert state["intent"] == "exercise_substitution"
+    assert state["program_updated"] is True
+    assert after.version == before.version + 1
+    assert "Incline Curl (Dumbbell)" in names
+    assert "Preacher Curl (Barbell)" not in names
+    assert "Program tab" not in response
+
+
+def test_issue_738_franco_curl_swap_uses_the_substitution_path(fresh_store, monkeypatch):
+    before = _seed_program(
+        fresh_store,
+        exercise_names=["Preacher Curl (Barbell)", "barbell bench press", "barbell row"],
+    )
+    monkeypatch.setattr("agent.assistant_graph.llm", ScriptedChatModel())
+    state = _turn("3ayez abadel Preacher Curl (Barbell) bel Incline Curl (Dumbbell)")
+
+    response = "".join(stream_assistant_turn(state, ledger=fresh_store.ledger, store=fresh_store))
+
+    after = fresh_store.ledger.get_active_program()
+    names = [exercise.exercise_name for exercise in after.days[0].exercises]
+    assert state["intent"] == "exercise_substitution"
+    assert state["program_updated"] is True
+    assert after.version == before.version + 1
+    assert "Incline Curl (Dumbbell)" in names
+    assert "Preacher Curl (Barbell)" not in names
+    assert "Program tab" not in response
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "swap Preacher Curl (Barbell) for Incline Curl (Dumbbell) on Pull day",
+        "بدل Preacher Curl (Barbell) بـ Incline Curl (Dumbbell) يوم Pull",
+    ],
+)
+def test_issue_738_day_qualified_swap_validates_target_and_updates_program(
+    fresh_store, monkeypatch, query
+):
+    before = _seed_program(
+        fresh_store,
+        exercise_names=["Preacher Curl (Barbell)", "barbell bench press", "barbell row"],
+        day_name="Pull",
+    )
+    monkeypatch.setattr("agent.assistant_graph.llm", ScriptedChatModel())
+    state = _turn(query)
+
+    response = "".join(
+        stream_assistant_turn(state, ledger=fresh_store.ledger, store=fresh_store)
+    )
+
+    after = fresh_store.ledger.get_active_program()
+    names = [exercise.exercise_name for exercise in after.days[0].exercises]
+    assert state["intent"] == "exercise_substitution"
+    assert state["program_updated"] is True
+    assert after.version == before.version + 1
+    assert "Incline Curl (Dumbbell)" in names
+    assert "Preacher Curl (Barbell)" not in names
+    assert "Pull" in response
+
+
+def test_issue_738_arabic_day_swap_does_not_find_source_on_another_day(
+    fresh_store, monkeypatch
+):
+    before = _seed_program_days(
+        fresh_store,
+        {
+            "Pull": ["barbell bench press", "barbell row", "barbell squat"],
+            "Push": ["Preacher Curl (Barbell)", "barbell squat", "barbell row"],
+        },
+    )
+    monkeypatch.setattr("agent.assistant_graph.llm", ScriptedChatModel())
+    state = _turn(
+        "\u0628\u062f\u0644 Preacher Curl (Barbell) \u0628\u0640 Incline Curl (Dumbbell) \u064a\u0648\u0645 Pull"
+    )
+
+    list(stream_assistant_turn(state, ledger=fresh_store.ledger, store=fresh_store))
+
+    after = fresh_store.ledger.get_active_program()
+    assert state["intent"] == "arabic_swap_clarification"
+    assert state["program_updated"] is False
+    assert after.version == before.version
+    assert any(ex.exercise_name == "Preacher Curl (Barbell)" for ex in after.days[1].exercises)
+    assert "Incline Curl (Dumbbell)" not in {
+        ex.exercise_name for day in after.days for ex in day.exercises
+    }
+
+
+def test_issue_738_arabic_day_swap_selects_the_named_pull_day(
+    fresh_store, monkeypatch
+):
+    before = _seed_program_days(
+        fresh_store,
+        {
+            "Pull A": [
+                "Preacher Curl (Barbell)",
+                "Incline Curl (Dumbbell)",
+                "barbell row",
+            ],
+            "Pull B": [
+                "Preacher Curl (Barbell)",
+                "barbell bench press",
+                "barbell squat",
+            ],
+        },
+    )
+    monkeypatch.setattr("agent.assistant_graph.llm", ScriptedChatModel())
+    state = _turn(
+        "\u0628\u062f\u0644 Preacher Curl (Barbell) \u0628\u0640 Incline Curl (Dumbbell) \u064a\u0648\u0645 Pull B"
+    )
+
+    list(stream_assistant_turn(state, ledger=fresh_store.ledger, store=fresh_store))
+
+    after = fresh_store.ledger.get_active_program()
+    pull_a_names = {ex.exercise_name for ex in after.days[0].exercises}
+    pull_b_names = {ex.exercise_name for ex in after.days[1].exercises}
+    assert state["intent"] == "exercise_substitution"
+    assert state["program_updated"] is True
+    assert after.version == before.version + 1
+    assert "Preacher Curl (Barbell)" in pull_a_names
+    assert "Incline Curl (Dumbbell)" in pull_a_names
+    assert "Preacher Curl (Barbell)" not in pull_b_names
+    assert "Incline Curl (Dumbbell)" in pull_b_names
+
+
+def test_issue_738_day_name_does_not_hide_following_injury_prose(
+    fresh_store, monkeypatch
+):
+    _seed_program(
+        fresh_store,
+        exercise_names=["Preacher Curl (Barbell)", "barbell bench press", "barbell row"],
+        day_name="Pull",
+    )
+
+    class ClinicalEmbedder:
+        def embed_query(self, _text):
+            return clinical_guard.CLINICAL_ANCHOR_VECTORS[0]
+
+    monkeypatch.setattr(clinical_guard, "EMBED_MODEL", ClinicalEmbedder())
+    result = router_node(
+        {
+            "messages": [
+                HumanMessage(
+                    content=(
+                        "\u0628\u062f\u0644 Preacher Curl (Barbell) "
+                        "\u0628\u0640 Incline Curl (Dumbbell) \u064a\u0648\u0645 Pull "
+                        "because my knee is killing me"
+                    )
+                )
+            ],
+            "telemetry_context": "",
+        },
+        {"configurable": {"ledger": fresh_store.ledger, "store": fresh_store}},
+    )
+
+    assert result["intent"] == "clinical_intercept"
 
 
 def _turn(message):
