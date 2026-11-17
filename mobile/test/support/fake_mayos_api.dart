@@ -5466,6 +5466,26 @@ class FakeMayosApi {
       'image_path': 'images/cable_fly.jpg',
       'gif_path': 'videos/cable_fly.gif',
     },
+    'mayos:3': <String, dynamic>{
+      'id': 'mayos:3',
+      'name': 'Cable Y-Raise',
+      'category': 'shoulders',
+      'body_part': 'shoulders',
+      'equipment': 'cable',
+      'equipment_category': 'Cable',
+      'load_type': null,
+      'primary_muscle': 'Traps',
+      'primary_action': 'Shoulder Flexion',
+      'secondary_actions': <String>['Scapular Elevation'],
+      'primary_muscles': <String>['delts'],
+      'secondary_muscles': <String>['traps'],
+      'instructions': '1. Set two low cables with handles crossed in front of you.\n'
+          '2. Raise your straight arms outward and forward into a comfortable Y shape, '
+          'keeping your ribs settled and shoulders away from your ears.\n'
+          '3. Lower the handles slowly to the starting position.',
+      'image_path': 'images/mayos-3-cable-y-raise.jpg',
+      'gif_path': 'videos/mayos-3-cable-y-raise.gif',
+    },
     'machine_row': <String, dynamic>{
       'id': 'machine_row',
       'name': 'Machine Row',
@@ -5487,7 +5507,9 @@ class FakeMayosApi {
       return const FakeResponse(
           401, <String, dynamic>{'detail': 'Token has been revoked.'});
     }
-    final String id = request.path.replaceFirst('/workouts/exercises/', '');
+    final String id = Uri.decodeComponent(
+      request.path.replaceFirst('/workouts/exercises/', ''),
+    );
     final Map<String, dynamic>? detail = _exerciseDetails[id];
     if (detail == null) {
       return const FakeResponse(

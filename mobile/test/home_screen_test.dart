@@ -34,6 +34,7 @@ import 'package:mayos_mobile/src/router.dart';
 import 'support/fake_mayos_api.dart';
 import 'support/fake_api_adapter.dart';
 import 'support/fake_analytics_client.dart';
+import 'support/fake_media_http.dart';
 import 'support/fake_tour_seen_retry_store.dart';
 import 'support/fake_whats_new_seen_retry_store.dart';
 
@@ -226,6 +227,10 @@ FakeMayosApi _signedInFake() {
 
 const Map<String, List<String>> _releaseSevenFeatureTitles =
     <String, List<String>>{
+  'cable_y_raise_demo': <String>[
+    'Cable Y-Raise demo',
+    'عرض Cable Y-Raise',
+  ],
   'assistant_exercise_lookup': <String>[
     'Search exercises by the name you know',
     'ابحث عن التمرين بالاسم الذي تعرفه',
@@ -1496,6 +1501,10 @@ void main() {
   testWidgets("What's new Show me lands and spotlights each release entry", (tester) async {
     final FakeMayosApi fake = _signedInFake();
     final FakeAnalyticsClient analytics = FakeAnalyticsClient();
+    final FakeMediaCatalog media = FakeMediaCatalog()
+      ..serve('videos/mayos-3-cable-y-raise.gif');
+    media.install();
+    addTearDown(FakeMediaCatalog.uninstall);
     final List<FeatureEntry> entries = featureList
         .where((FeatureEntry entry) => entry.release == currentFeatureRelease)
         .toList(growable: false);
@@ -1534,6 +1543,9 @@ void main() {
       }
       if (entry.release == currentFeatureRelease) {
         final Finder realControl = switch (entry.id) {
+          'cable_y_raise_demo' => find.byKey(
+              container.read(tourTargetRegistryProvider)['exercise_demo_media']!.key,
+            ),
           'weak_points' => find.byKey(const Key('profile_weak_points_section')),
           'assistant_why' || 'assistant_volume' || 'assistant_exercise_lookup' =>
             find.byKey(const Key('chat_composer')),
@@ -1561,10 +1573,91 @@ void main() {
     }
   });
 
+  testWidgets(
+      'PR #728 finding 2: Show me waits for demo media before spotlighting',
+      (tester) async {
+    const String gifPath = 'videos/mayos-3-cable-y-raise.gif';
+    final FakeMediaCatalog media = FakeMediaCatalog()
+      ..serve(gifPath)
+      ..delayResponse(gifPath);
+    media.install();
+    addTearDown(() {
+      media.releaseResponse(gifPath);
+      FakeMediaCatalog.uninstall();
+    });
+    await _pumpHome(tester, _signedInFake());
+
+    final ProviderContainer container =
+        ProviderScope.containerOf(tester.element(find.byType(MayosApp)));
+    final Future<void> showing = container
+        .read(tourControllerProvider.notifier)
+        .showMe('cable_y_raise_demo');
+    for (int i = 0; i < 40 && media.requestCount(gifPath) == 0; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(media.requestCount(gifPath), 1);
+
+    await tester.pump(const Duration(seconds: 3));
+    expect(find.byKey(const ValueKey<String>('tour_next')), findsNothing);
+    expect(find.byKey(const ValueKey<String>('tour_spotlight_cutout')), findsNothing);
+
+    media.releaseResponse(gifPath);
+    await _pumpUntilFound(
+      tester,
+      find.byKey(const ValueKey<String>('tour_next')),
+    );
+    await showing;
+    final TourTargetHandle target =
+        container.read(tourTargetRegistryProvider)['exercise_demo_media']!;
+    final Rect cutout = tester.getRect(
+      find.byKey(const ValueKey<String>('tour_spotlight_cutout')),
+    );
+    final Finder targetedImage = find.descendant(
+      of: find.byKey(target.key),
+      matching: find.byType(RawImage),
+    );
+    expect(targetedImage, findsOneWidget);
+    expect(cutout.contains(tester.getRect(targetedImage).center), isTrue);
+  });
+
+  testWidgets(
+      'PR #728 finding 2: Show me skips spotlight when demo media fails',
+      (tester) async {
+    final FakeMediaCatalog media = FakeMediaCatalog();
+    media.install();
+    addTearDown(FakeMediaCatalog.uninstall);
+    await _pumpHome(tester, _signedInFake());
+
+    final ProviderContainer container =
+        ProviderScope.containerOf(tester.element(find.byType(MayosApp)));
+    final Future<void> showing = container
+        .read(tourControllerProvider.notifier)
+        .showMe('cable_y_raise_demo');
+    for (int i = 0; i < 40 && media.totalRequests < 2; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(media.totalRequests, 2);
+    for (int i = 0;
+        i < 40 && container.read(tourControllerProvider) != null;
+        i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    await showing;
+
+    expect(find.text('Cable Y-Raise'), findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('tour_next')), findsNothing);
+    expect(find.byKey(const ValueKey<String>('tour_spotlight_cutout')), findsNothing);
+    expect(container.read(tourControllerProvider), isNull);
+  });
+
   testWidgets('Feature guide Show me lands and spotlights every lifter feature',
       (tester) async {
     final FakeMayosApi fake = _signedInFake();
     final FakeAnalyticsClient analytics = FakeAnalyticsClient();
+    final FakeMediaCatalog media = FakeMediaCatalog()
+      ..serve('videos/mayos-3-cable-y-raise.gif');
+    media.install();
+    addTearDown(FakeMediaCatalog.uninstall);
     const FeatureEntry unsupported = FeatureEntry(
       id: 'future_feature',
       titleEn: 'Future feature',
@@ -1626,6 +1719,9 @@ void main() {
       }
       if (entry.release == currentFeatureRelease) {
         final Finder realControl = switch (entry.id) {
+          'cable_y_raise_demo' => find.byKey(
+              container.read(tourTargetRegistryProvider)['exercise_demo_media']!.key,
+            ),
           'weak_points' => find.byKey(const Key('profile_weak_points_section')),
           'assistant_why' || 'assistant_volume' || 'assistant_exercise_lookup' =>
             find.byKey(const Key('chat_composer')),

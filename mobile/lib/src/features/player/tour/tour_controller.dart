@@ -17,7 +17,7 @@ import 'tour_targets.dart';
 import 'feature_list.dart';
 
 const Duration _targetRegistrationWait = Duration(seconds: 2);
-// Profile API calls time out after 30 seconds; leave room for the route to build.
+// Profile and media reads can outlast the initial target registration window.
 const Duration _loadingDestinationWait = Duration(seconds: 35);
 
 class TourSession {
@@ -447,6 +447,7 @@ class TourController extends StateNotifier<TourSession?> {
   ) async {
     bool waitExpired = false;
     bool extendedForLoading = false;
+    bool loadingResolved = false;
     Timer targetWaitTimer = Timer(_targetRegistrationWait, () {
       waitExpired = true;
     });
@@ -461,15 +462,26 @@ class TourController extends StateNotifier<TourSession?> {
             _ref.read(tourTargetRegistryProvider)[entry.target];
         final BuildContext? targetContext = target?.key.currentContext;
         if (targetContext != null && targetContext.mounted) return target;
-        if (!extendedForLoading &&
-            loadingDestination != null &&
+        final bool destinationLoading = loadingDestination != null &&
             _ref.read(tourLoadingDestinationsProvider)
-                .contains(loadingDestination)) {
+                .contains(loadingDestination);
+        final bool targetLoading =
+            _ref.read(tourLoadingTargetsProvider).contains(entry.target);
+        if (!extendedForLoading && (destinationLoading || targetLoading)) {
           targetWaitTimer.cancel();
           targetWaitTimer = Timer(_loadingDestinationWait, () {
             waitExpired = true;
           });
           extendedForLoading = true;
+        } else if (extendedForLoading &&
+            !loadingResolved &&
+            !destinationLoading &&
+            !targetLoading) {
+          targetWaitTimer.cancel();
+          targetWaitTimer = Timer(_targetRegistrationWait, () {
+            waitExpired = true;
+          });
+          loadingResolved = true;
         }
       }
       return null;
