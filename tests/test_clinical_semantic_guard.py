@@ -1,12 +1,39 @@
 # tests/test_clinical_semantic_guard.py
 import pytest
 from langchain_core.messages import HumanMessage
+from agent import clinical_guard
 from agent.assistant_graph import router_node
 from agent.clinical_guard import (
     CLINICAL_ANCHOR_VECTORS,
     EMBED_MODEL,
     cosine_similarity,
+    evaluate_clinical_semantic_guard,
 )
+
+
+class FixedEmbedder:
+    def __init__(self, vector):
+        self.vector = vector
+
+    def embed_query(self, _text):
+        return self.vector
+
+
+def _force_clinical_similarity(monkeypatch, *, arabic):
+    if arabic:
+        monkeypatch.setattr(
+            clinical_guard,
+            "get_arabic_embedding_model",
+            lambda: FixedEmbedder([1.0, 0.0]),
+        )
+        monkeypatch.setattr(clinical_guard, "_ARABIC_ANCHOR_VECTORS", [[1.0, 0.0]])
+    else:
+        monkeypatch.setattr(
+            clinical_guard,
+            "EMBED_MODEL",
+            FixedEmbedder(clinical_guard.CLINICAL_ANCHOR_VECTORS[0]),
+        )
+
 
 @pytest.mark.parametrize(
     "query",
@@ -55,7 +82,221 @@ def test_safe_biomechanics_do_not_trigger_false_positives(query: str):
     assert result["intent"] != "clinical_intercept", f"False positive clinical intercept for '{query}'"
 
 
-from agent.clinical_guard import evaluate_clinical_semantic_guard
+@pytest.mark.parametrize(
+    ("query", "arabic_embedding", "expected_intent"),
+    [
+        (
+            "swap Preacher Curl (Barbell) for Incline Curl (Dumbbell)",
+            False,
+            "exercise_substitution",
+        ),
+        (
+            "بدل Preacher Curl (Barbell) بـ Incline Curl (Dumbbell)",
+            True,
+            "arabic_swap_clarification",
+        ),
+        (
+            "3ayez abadel Preacher Curl (Barbell) bel Incline Curl (Dumbbell)",
+            False,
+            "exercise_substitution",
+        ),
+    ],
+)
+def test_issue_738_validated_catalog_swaps_bypass_false_positive_semantic_match(
+    query, arabic_embedding, expected_intent, fresh_store, monkeypatch
+):
+    _force_clinical_similarity(monkeypatch, arabic=arabic_embedding)
+
+    assert clinical_guard.evaluate_clinical_semantic_guard(query)[0] is True
+
+    result = router_node(
+        {"messages": [HumanMessage(content=query)], "telemetry_context": ""},
+        {"configurable": {"ledger": fresh_store.ledger, "store": fresh_store}},
+    )
+
+    assert result["intent"] == expected_intent
+
+
+@pytest.mark.parametrize(
+    ("query", "arabic_embedding"),
+    [
+        ("swap Preacher Curl (Barbell) for Not A Catalog Exercise", False),
+        ("swap Not A Catalog Exercise for Incline Curl (Dumbbell)", False),
+        (
+            "swap Preacher Curl (Barbell) for Incline Curl (Dumbbell) because my knee is killing me",
+            False,
+        ),
+        (
+            "بدل Preacher Curl (Barbell) بـ Incline Curl (Dumbbell) بس my knee is killing me",
+            True,
+        ),
+        (
+            "3ayez abadel Preacher Curl (Barbell) bel Incline Curl (Dumbbell) because my knee is killing me",
+            False,
+        ),
+    ],
+)
+def test_issue_738_unvalidated_swap_still_runs_semantic_guard(
+    query, arabic_embedding, fresh_store, monkeypatch
+):
+    _force_clinical_similarity(monkeypatch, arabic=arabic_embedding)
+
+    result = router_node(
+        {"messages": [HumanMessage(content=query)], "telemetry_context": ""},
+        {"configurable": {"ledger": fresh_store.ledger, "store": fresh_store}},
+    )
+
+    assert result["intent"] == "clinical_intercept"
+
+
+def test_issue_738_composite_message_cannot_exempt_its_named_swap_clause(
+    fresh_store, monkeypatch
+):
+    class ClauseSensitiveEmbedder:
+        def embed_query(self, text):
+            return [1.0, 0.0] if "and also" not in text.casefold() else [0.0, 1.0]
+
+    monkeypatch.setattr(clinical_guard, "EMBED_MODEL", ClauseSensitiveEmbedder())
+    monkeypatch.setattr(clinical_guard, "CLINICAL_ANCHOR_VECTORS", [[1.0, 0.0]])
+    result = router_node(
+        {
+            "messages": [
+                HumanMessage(
+                    content=(
+                        "swap Preacher Curl (Barbell) for Incline Curl (Dumbbell) "
+                        "and also what rep range should I use?"
+                    )
+                )
+            ],
+            "telemetry_context": "",
+        },
+        {"configurable": {"ledger": fresh_store.ledger, "store": fresh_store}},
+    )
+
+    assert result["intent"] == "clinical_intercept"
+
+
+@pytest.mark.parametrize("query", ["ache", "aches", "aching", "headache", "backache"])
+def test_issue_738_ache_inflections_remain_clinical_signals(query):
+    assert clinical_guard.has_deterministic_clinical_signal(query)
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "Preacher Curl (Barbell)",
+        "بدل Preacher Curl (Barbell) بـ Incline Curl (Dumbbell)",
+        "3ayez abadel Preacher Curl (Barbell) bel Incline Curl (Dumbbell)",
+    ],
+)
+def test_issue_738_preacher_name_is_not_an_ache_signal(query):
+    assert not clinical_guard.has_deterministic_clinical_signal(query)
+
+
+@pytest.mark.parametrize(
+    "query",
+    ["بache", "بheadache", "وجعpain", "painوجع", "ظهرbackache", "backacheوجع"],
+)
+def test_issue_738_arabic_and_latin_glued_symptoms_still_match(query):
+    assert clinical_guard.has_deterministic_clinical_signal(query)
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "ركبتي hurtsجامد", "ركبتي hurtingجامد", "ركبتي painfulجامد",
+        "ركبتي achesجامد", "ركبتي achingجامد",
+    ],
+)
+def test_issue_738_glued_symptom_inflections_intercept_below_semantic_threshold(
+    query, fresh_store, monkeypatch
+):
+    assert clinical_guard.has_deterministic_clinical_signal(query)
+    monkeypatch.setattr(
+        clinical_guard,
+        "get_arabic_embedding_model",
+        lambda: FixedEmbedder([0.85, 0.526782687642637]),
+    )
+    monkeypatch.setattr(clinical_guard, "_ARABIC_ANCHOR_VECTORS", [[1.0, 0.0]])
+    result = router_node(
+        {"messages": [HumanMessage(content=query)], "telemetry_context": ""},
+        {"configurable": {"ledger": fresh_store.ledger, "store": fresh_store}},
+    )
+
+    assert result["intent"] == "clinical_intercept"
+
+
+@pytest.mark.parametrize(
+    "target",
+    [
+        "alternative", "an alternative", "what", "eh", "eih", "eh tani",
+        "something better", "a better one",
+    ],
+)
+def test_issue_738_english_non_exercise_swap_target_is_an_advice_request(
+    target, fresh_store, monkeypatch
+):
+    monkeypatch.setattr(clinical_guard, "EMBED_MODEL", FixedEmbedder([1.0, 0.0]))
+    monkeypatch.setattr(clinical_guard, "CLINICAL_ANCHOR_VECTORS", [[0.0, 1.0]])
+    result = router_node(
+        {
+            "messages": [
+                HumanMessage(content=f"swap Preacher Curl (Barbell) for {target}")
+            ],
+            "telemetry_context": "",
+        },
+        {"configurable": {"ledger": fresh_store.ledger, "store": fresh_store}},
+    )
+
+    assert result["intent"] == "coaching_qa"
+    assert result["intent_metadata"]["advice_request"] is True
+
+
+@pytest.mark.parametrize(
+    "target",
+    [
+        "alternative", "an alternative", "eh", "what", "eih", "eh tani",
+        "something better", "a better one",
+    ],
+)
+def test_issue_738_franco_placeholder_target_routes_to_advice_request(
+    target, fresh_store, monkeypatch
+):
+    monkeypatch.setattr(clinical_guard, "EMBED_MODEL", FixedEmbedder([1.0, 0.0]))
+    monkeypatch.setattr(clinical_guard, "CLINICAL_ANCHOR_VECTORS", [[0.0, 1.0]])
+    result = router_node(
+        {
+            "messages": [
+                HumanMessage(content=f"3ayez abadel Preacher Curl (Barbell) bel {target}")
+            ],
+            "telemetry_context": "",
+        },
+        {"configurable": {"ledger": fresh_store.ledger, "store": fresh_store}},
+    )
+
+    assert result["intent"] == "coaching_qa"
+    assert result["intent_metadata"]["advice_request"] is True
+
+
+def test_issue_738_whole_word_catalog_target_keeps_a_direct_swap(
+    fresh_store, monkeypatch
+):
+    assert fresh_store.find_unique_exercise_id_by_exact_name("Incline Curl") is None
+    monkeypatch.setattr(clinical_guard, "EMBED_MODEL", FixedEmbedder([1.0, 0.0]))
+    monkeypatch.setattr(clinical_guard, "CLINICAL_ANCHOR_VECTORS", [[0.0, 1.0]])
+
+    result = router_node(
+        {
+            "messages": [
+                HumanMessage(content="swap Preacher Curl (Barbell) for Incline Curl")
+            ],
+            "telemetry_context": "",
+        },
+        {"configurable": {"ledger": fresh_store.ledger, "store": fresh_store}},
+    )
+
+    assert result["intent"] == "exercise_substitution"
+    assert result["intent_metadata"]["mode"] == "direct_swap"
 
 
 @pytest.mark.parametrize(

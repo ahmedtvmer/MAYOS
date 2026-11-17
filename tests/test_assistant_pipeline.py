@@ -96,10 +96,19 @@ def test_phase1_tier1_explicit_swaps():
         ("substitute pull-ups to lat pulldown", "pull-ups", "lat pulldown"),
         ("switch out seated cable row instead of chest supported row", "seated cable row", "chest supported row"),
     ]
+    catalog_names = {
+        name.casefold()
+        for _, source, target in queries
+        for name in (source, target)
+    }
+    store = MagicMock()
+    store.find_unique_exercise_id_by_exact_name.side_effect = lambda name: (
+        name.casefold() if name.casefold() in catalog_names else None
+    )
 
     for q, expected_src, expected_tgt in queries:
         state = {"messages": [HumanMessage(content=q)]}
-        res = router_node(state)  # type: ignore
+        res = router_node(state, {"configurable": {"store": store}})  # type: ignore
 
         assert res["intent"] == "exercise_substitution", f"Failed intent for: {q}"
         meta = res["intent_metadata"]

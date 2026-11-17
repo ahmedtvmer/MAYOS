@@ -41,6 +41,7 @@ from agent.clinical_guard import (
     ARABIC_SCRIPT_RE,
     EMBED_MODEL,
     evaluate_clinical_semantic_guard,
+    has_deterministic_clinical_signal,
     has_franco_digit_evidence,
     is_franco_clinical,
     is_franco_clinical_franco_message,
@@ -219,7 +220,10 @@ _TRAUMA_STRUCTURES = (
 )
 
 # Tier-0c: directly intensified joint pain during an explicit movement.
-_PAIN_WORDS = r"(?:pain(?:ful)?|hurt(?:s|ing)?|ache(?:s|ing)?)"
+_PAIN_WORDS = (
+    r"(?:pain(?:ful)?|hurt(?:s|ing)?|"
+    r"(?<![A-Za-z])(?:(?:head|back|tooth)?ache(?:s)?|ach(?:ing))(?![A-Za-z]))"
+)
 _PREPAIN_INTENSITY = r"(?:strong|bad|sharp|severe|intense|awful|terrible|excruciating|really\s+bad|a\s+lot(?:\s+of)?)"
 _POSTPAIN_INTENSITY = r"(?:really\s+bad|bad|strong|sharp|severe|intense|awful|terrible|excruciating|a\s+lot)"
 RE_INTENSIFIED_JOINT_PAIN = re.compile(
@@ -307,6 +311,7 @@ RE_DIAGNOSIS = re.compile(
     r"\b(diagnos(?:e|is|ing)|what(?:'s|\s+is)\s+wrong\s+with|why\s+does\s+my\s+\w+\s+(?:hurt|ache))\b",
     re.IGNORECASE,
 )
+RE_ARABIC_DIACRITICS = re.compile(r"[\u064b-\u065f\u0670\u0640]")
 RE_ARABIC_DIAGNOSIS = re.compile(
     r"(?:تشخيص|شخّ?ص|ما\s+(?:الذي\s+)?يسبب\s+(?:ألم|وجع|إصابة)|ما\s+سبب\s+(?:ألم|وجع|إصابة))"
 )
@@ -319,11 +324,190 @@ RE_EXPLICIT_SWAP = re.compile(
     r"\b(?:swap|replace|substitute|switch(?:\s+out)?|change)\b\s+(?P<source>.+?)\s+\b(?:for|with|instead of|to)\b\s+(?P<target>.+)",
     re.IGNORECASE,
 )
+_GENERIC_EXERCISE_TARGET_WORDS = frozenset(
+    {"a", "an", "the", "one", "two", "three", "first", "second", "third"}
+)
+ARABIC_SWAP_VERBS = r"(?:أ?بدل|أ?غير|استبدل)"
 RE_ARABIC_SWAP_REQUEST = re.compile(
     r"(?:^|[.!?؟;؛]\s*)(?:من فضلك\s+|لو سمحت\s+)?"
     r"(?:(?:عايز|عاوز|عايزة|عاوزة|محتاج|محتاجة)\s+)?"
-    r"(?:أ?بدل|أ?غير|استبدل)(?:\s+لي)?(?:\s|$)"
+    rf"{ARABIC_SWAP_VERBS}(?:\s+لي)?(?:\s|$)"
 )
+RE_ARABIC_NAMED_SWAP = re.compile(
+    r"^\s*(?:(?:من\s+فضلك|لو\s+سمحت)\s+)?"
+    r"(?:(?:عايز|عاوز|عايزة|عاوزة|محتاج|محتاجة)\s+)?"
+    rf"{ARABIC_SWAP_VERBS}(?:\s+لي)?\s+(?P<source>.+?)\s+"
+    r"(?:ب(?:ـ|ال)?|\b(?:for|with|instead\s+of|to)\b)\s*"
+    r"(?P<target>.+?)\s*[.!?؟]*\s*$",
+    re.IGNORECASE,
+)
+RE_FRANCO_NAMED_SWAP = re.compile(
+    r"^\s*(?:(?:3ayez|3awz|3ayza|3awza)\s+)?(?:a\s+)?"
+    r"(?P<command>abadel|badel|badal|a8ayar|aghyar|aghayar|ghayar|swap|replace|substitute)\s+"
+    r"(?:(?:el|il)\s+)?(?P<source>.+?)\s+"
+    r"(?:bel|bil|\bwith\b|\bfor\b|instead\s+of|\bto\b|\bb\b)\s+"
+    r"(?:(?:el|il)\s+)?(?P<target>.+?)\s*[.!?؟]*\s*$",
+    re.IGNORECASE,
+)
+
+
+def _single_clause_swap_text(query: str) -> str | None:
+    cleaned = query.strip(" ,;.!?؟")
+    if RE_TIER0_CLAUSE_SPLIT.search(cleaned) or RE_CLAUSE_SPLIT.search(cleaned):
+        return None
+    return cleaned
+
+
+@dataclass(frozen=True)
+class _SwapRoutingContext:
+    store: Any
+    program: Any
+    allow_catalog_swap_exemption: bool = True
+
+
+def _swap_target_and_day(target_name: str, program: Any) -> tuple[str, str | None]:
+    cleaned = target_name.strip(" .!?؟")
+    if program is None:
+        return cleaned, None
+
+    day_names = {day.day_name.strip() for day in program.days if day.day_name.strip()}
+    for day_name in sorted(day_names, key=len, reverse=True):
+        base_name = re.sub(r"\s+day$", "", day_name, flags=re.IGNORECASE)
+        for reference in dict.fromkeys((day_name, base_name)):
+            if not reference:
+                continue
+            suffixes = (
+                rf"\s+(?:on|in|for)\s+{re.escape(reference)}(?:\s+day)?$",
+                rf"\s+(?:\u0641\u064a\s+)?\u064a\u0648\u0645\s+{re.escape(reference)}$",
+            )
+            for suffix in suffixes:
+                match = re.search(suffix, cleaned, re.IGNORECASE)
+                if match:
+                    return cleaned[:match.start()].strip(), day_name
+    return cleaned, None
+
+
+def _explicit_named_swap_parts(
+    query: str, routing_context: _SwapRoutingContext | None = None
+) -> tuple[str, str] | None:
+    cleaned = _single_clause_swap_text(query)
+    if cleaned is None:
+        return None
+    for pattern, text in (
+        (RE_EXPLICIT_SWAP, cleaned),
+        (RE_ARABIC_NAMED_SWAP, RE_ARABIC_DIACRITICS.sub("", cleaned)),
+    ):
+        match = pattern.fullmatch(text)
+        if match is not None:
+            target_name, _ = _swap_target_and_day(
+                match.group("target"),
+                routing_context.program if routing_context else None,
+            )
+            return match.group("source").strip(), target_name
+    return None
+
+
+def _unique_catalog_exercise_id(name: str, store: Any) -> str | None:
+    resolver = getattr(store, "find_unique_exercise_id_by_exact_name", None)
+    if not name or not callable(resolver):
+        return None
+    try:
+        exercise_id = resolver(name)
+    except sqlite3.Error:
+        return None
+    return str(exercise_id) if exercise_id else None
+
+
+def _target_words_match_catalog(target_name: str, store: Any) -> bool:
+    searcher = getattr(store, "find_exercises_by_name", None)
+    if not callable(searcher):
+        return False
+    expanded_target = expand_fitness_abbreviations(target_name)
+    target_words = _meaningful_exercise_words(expanded_target)
+    # A single movement word can match many exercises without naming a target.
+    if len(target_words) < 2:
+        return False
+    try:
+        return any(
+            _catalog_candidate_matches_target_words(target_words, candidate)
+            for search_name in dict.fromkeys((target_name, expanded_target))
+            for candidate in searcher(search_name, limit=3)
+        )
+    except sqlite3.Error:
+        return False
+
+
+def _resolved_catalog_target(
+    target_name: str, routing_context: _SwapRoutingContext
+) -> str | None:
+    """Return the swap target that names one catalog exercise, else ``None``.
+
+    Players append free text after a named swap ("... for dumbbell press details
+    ..."). The captured target routes only when it, or a trailing-prose prefix of
+    it, resolves against the catalog; the resolved name replaces the captured
+    text so the substitution metadata keeps the clean exercise name. Trimming
+    accepts only exact catalog names so polite fragments never ride along, while
+    the full target keeps the established fuzzy word match.
+    """
+    target_name, _ = _swap_target_and_day(target_name, routing_context.program)
+    store = routing_context.store
+    if _unique_catalog_exercise_id(target_name, store) is not None:
+        return target_name
+    if _target_words_match_catalog(target_name, store):
+        return target_name
+    words = target_name.split()
+    for count in range(len(words) - 1, 1, -1):
+        prefix = " ".join(words[:count])
+        if _unique_catalog_exercise_id(prefix, store) is not None:
+            return prefix
+    return None
+
+
+def _catalog_candidate_matches_target_words(
+    target_words: set[str], candidate: dict[str, Any]
+) -> bool:
+    candidate_words = set().union(*(
+        _meaningful_exercise_words(candidate.get(field) or "")
+        for field in ("name", "source_name")
+    ))
+    matched_words = target_words & candidate_words
+    return len(matched_words) >= 2 and len(matched_words) / len(target_words) >= 0.6
+
+
+def _meaningful_exercise_words(name: str) -> set[str]:
+    return {
+        word
+        for word in re.findall(r"[a-z0-9]+", name.casefold())
+        if len(word) > 2 and word not in _GENERIC_EXERCISE_TARGET_WORDS
+    }
+
+
+def _is_validated_catalog_swap(
+    query: str, routing_context: _SwapRoutingContext
+) -> bool:
+    parts = _explicit_named_swap_parts(query, routing_context)
+    if parts is None:
+        return False
+    source_id = _unique_catalog_exercise_id(parts[0], routing_context.store)
+    target_id = _unique_catalog_exercise_id(parts[1], routing_context.store)
+    return source_id is not None and target_id is not None and source_id != target_id
+
+
+def _franco_explicit_swap_query(query: str) -> str | None:
+    cleaned = _single_clause_swap_text(query)
+    if cleaned is None:
+        return None
+    match = RE_FRANCO_NAMED_SWAP.fullmatch(cleaned)
+    if match is None:
+        return None
+    if (
+        match.group("command").casefold() in {"swap", "replace", "substitute"}
+        and not is_franco_arabic(query)
+    ):
+        return None
+    return f"swap {match.group('source').strip()} for {match.group('target').strip()}"
+
+
 # Unicode \w treats Arabic letters as word characters; diacritics are removed first.
 RE_ARABIC_PROGRAM_COMMAND = re.compile(
     r"(?:(?<!\w)(?:ظبط|غير|عدل|بدل|خلي|اعمل|زود|قلل)(?:لي)?(?!\w)|"
@@ -404,7 +588,6 @@ RE_DELOAD_ENGLISH_CHOICE = re.compile(
     r"(?:\s+please)?\s*[.!?؟]*\s*$",
     re.IGNORECASE,
 )
-RE_ARABIC_DIACRITICS = re.compile(r"[\u064b-\u065f\u0670\u0640]")
 ARABIC_DELOAD_UNDO_VERBS = (
     "ألغ", "ألغي", "الغ", "الغي", "الغى", "إلغاء", "الغاء", "لغي", "لغى",
     "تراجع عن", "أوقف", "اوقف", "وقف", "شيل", "شيلي",
@@ -944,7 +1127,10 @@ def _action_command(query: str) -> str:
     return "" if RE_INQUISITIVE_PREFIX.search(command) else command
 
 
-def _clinical_candidate_metadata(candidate: str) -> dict[str, Any] | None:
+def _clinical_candidate_metadata(
+    candidate: str,
+    routing_context: _SwapRoutingContext | None = None,
+) -> dict[str, Any] | None:
     if is_franco_arabic(candidate):
         return {"franco": True}
     if _acute_injury_hit(candidate):
@@ -953,6 +1139,15 @@ def _clinical_candidate_metadata(candidate: str) -> dict[str, Any] | None:
         ARABIC_SCRIPT_RE.search(candidate) and RE_ARABIC_DIAGNOSIS.search(candidate)
     ):
         return {"mode": "diagnosis"}
+    # Tier-1 embeddings can mistake exercise names for symptoms; exempt only a
+    # clean swap whose two names uniquely identify different catalog exercises.
+    if (
+        routing_context is not None
+        and routing_context.allow_catalog_swap_exemption
+        and _is_validated_catalog_swap(candidate, routing_context)
+        and not has_deterministic_clinical_signal(candidate)
+    ):
+        return None
     is_clinical, clinical_score = evaluate_clinical_semantic_guard(candidate, threshold=0.70)
     if is_clinical:
         return {"semantic_score": round(clinical_score, 3)}
@@ -995,12 +1190,17 @@ def _authorized_action(query: str, intent: str) -> bool:
     return bool(RE_EXPLICIT_SWAP.match(command) or RE_SINGLE_SWAP.match(command)) and not bool(RE_PROGRAM_MUTATION.match(command))
 
 
-def _classify_single_clause(clause: str, telemetry: str = "", messages: Sequence[BaseMessage] = ()) -> dict[str, Any] | None:
+def _classify_single_clause(
+    clause: str,
+    telemetry: str = "",
+    messages: Sequence[BaseMessage] = (),
+    routing_context: _SwapRoutingContext | None = None,
+) -> dict[str, Any] | None:
     c = clause.strip(" ,;?!.")
     if not c:
         return None
 
-    clinical_metadata = _clinical_candidate_metadata(c)
+    clinical_metadata = _clinical_candidate_metadata(c, routing_context)
     if clinical_metadata is not None:
         return {
             "intent": "clinical_intercept",
@@ -1053,11 +1253,28 @@ def _classify_single_clause(clause: str, telemetry: str = "", messages: Sequence
     explicit_match = RE_EXPLICIT_SWAP.match(command)
     if explicit_match:
         data = explicit_match.groupdict()
-        src, tgt = data["source"].strip(), data["target"].strip().rstrip(".!?")
+        src = data["source"].strip()
+        tgt, target_day = _swap_target_and_day(
+            data["target"], routing_context.program if routing_context else None
+        )
         if src.lower() not in ["split", "routine", "program", "schedule"] and not RE_FREQ_DIGIT.search(tgt):
+            resolved_target = None
+            if routing_context is not None and routing_context.store is not None:
+                resolved_target = _resolved_catalog_target(tgt, routing_context)
+                if resolved_target is None:
+                    return {
+                        "intent": "coaching_qa",
+                        "intent_metadata": {"advice_request": True},
+                        "query": c,
+                    }
             return {
                 "intent": "exercise_substitution",
-                "intent_metadata": {"mode": "direct_swap", "source_exercise": src, "target_exercise": tgt},
+                "intent_metadata": {
+                    "mode": "direct_swap",
+                    "source_exercise": src,
+                    "target_exercise": resolved_target or tgt,
+                    **({"target_day": target_day} if target_day else {}),
+                },
                 "query": c,
             }
 
@@ -1638,11 +1855,35 @@ def _classify_arabic_swap(
     return _arabic_swap_route(classification, metadata)
 
 
+def _classify_explicit_latin_named_arabic_swap(
+    query: str, program: Any, store: Any
+) -> dict[str, Any] | None:
+    match = RE_ARABIC_NAMED_SWAP.fullmatch(
+        RE_ARABIC_DIACRITICS.sub("", query).strip()
+    )
+    if match is None:
+        return None
+    source_name = match.group("source").strip()
+    target_name, target_day = _swap_target_and_day(match.group("target"), program)
+    if ARABIC_SCRIPT_RE.search(source_name + target_name):
+        return None
+    classification = ArabicIntentClassification(
+        intent="exercise_substitution",
+        source_exercise=source_name,
+        target_exercise=target_name,
+        target_day=target_day,
+    )
+    return _classify_arabic_swap(query, classification, program, store)
+
+
 def _classify_arabic_intent(query: str, config: dict[str, Any] | None) -> dict[str, Any]:
     if _is_food_log_query(query):
         return {"intent": "coaching_qa", "intent_metadata": {}}
     ledger, store = _graph_context(config)
     program = ledger.get_active_program() if ledger is not None else None
+    explicit_swap = _classify_explicit_latin_named_arabic_swap(query, program, store)
+    if explicit_swap is not None:
+        return explicit_swap
     try:
         classification = _classify_arabic_intent_with_llm(query, program)
     except Exception:
@@ -1678,25 +1919,46 @@ def arabic_swap_clarification_node(
     return _response(response)
 
 
-def _clinical_turn_metadata(query: str, sub_intents=()) -> dict[str, Any] | None:
+def _clinical_turn_metadata(
+    query: str,
+    sub_intents=(),
+    routing_context: _SwapRoutingContext | None = None,
+) -> dict[str, Any] | None:
     # Offer IDs are opaque: UUID groups can resemble Franco-Arabic words.
     if RE_MOVEMENT_RESTRICTION_DECISION.fullmatch(query):
         return None
+    franco_swap_query = _franco_explicit_swap_query(query)
     franco_detected = is_franco_arabic(query)
     franco_clinical_check = (
         is_franco_clinical_franco_message if franco_detected else is_franco_clinical
     )
+    if franco_swap_query is not None:
+        franco_clinical_check = is_franco_clinical_franco_message
     franco_clinical = franco_clinical_check(query)
-    if franco_detected or franco_clinical:
+    if franco_clinical or (franco_detected and franco_swap_query is None):
         return {"raw_query": query, "franco": True}
-    queries = [query] + [part.strip() for part in RE_CLAUSE_SPLIT.split(query) if part.strip() != query]
+    query_for_clinical_screen = franco_swap_query or query
+    queries = [query_for_clinical_screen] + [
+        part.strip()
+        for part in RE_CLAUSE_SPLIT.split(query_for_clinical_screen)
+        if part.strip() != query_for_clinical_screen
+    ]
     for sub in sub_intents:
         if sub.get("intent") == "clinical_intercept":
             return {**(sub.get("intent_metadata") or {}), "raw_query": query}
         if sub.get("query"):
             queries.append(sub["query"])
-    for candidate in queries:
-        clinical_metadata = _clinical_candidate_metadata(candidate)
+    for index, candidate in enumerate(queries):
+        candidate_context = routing_context
+        if index and routing_context is not None:
+            candidate_context = _SwapRoutingContext(
+                routing_context.store,
+                routing_context.program,
+                allow_catalog_swap_exemption=False,
+            )
+        clinical_metadata = _clinical_candidate_metadata(
+            candidate, candidate_context
+        )
         if clinical_metadata is not None:
             return {"raw_query": query, **clinical_metadata}
     return None
@@ -2345,15 +2607,21 @@ def router_node(state: AssistantState, config: dict[str, Any] | None = None) -> 
     query = _get_message_text(messages[-1])
     telemetry = state.get("telemetry_context") or ""
     arabic_dominant = _is_arabic_dominant(query)
+    allow_catalog_swap_exemption = _single_clause_swap_text(query) is not None
+    franco_swap_query = _franco_explicit_swap_query(query)
 
     ledger, _store = _graph_context(config)
+    active_program = ledger.get_active_program() if ledger is not None else None
+    routing_context = _SwapRoutingContext(
+        _store, active_program, allow_catalog_swap_exemption
+    )
     pending = None
     if ledger is not None:
         from service import injuries as injuries_service
 
         pending = injuries_service.pending_clarification(ledger)
 
-    clinical = _clinical_turn_metadata(query)
+    clinical = _clinical_turn_metadata(query, routing_context=routing_context)
     if clinical is not None:
         if ledger is not None:
             ledger.clear_pending_assistant_preference_deletion()
@@ -2369,8 +2637,28 @@ def router_node(state: AssistantState, config: dict[str, Any] | None = None) -> 
             injuries_service.consume_pending_clarification(ledger, pending["id"])
         return {"intent": "clinical_intercept", "intent_metadata": clinical, "active_intents": []}
 
+    if franco_swap_query:
+        classified = _classify_single_clause(
+            franco_swap_query, telemetry, messages, routing_context
+        )
+        if classified and classified["intent"] == "exercise_substitution":
+            return {
+                "intent": "exercise_substitution",
+                "intent_metadata": {
+                    **classified["intent_metadata"],
+                    "authorization_query": franco_swap_query,
+                },
+            }
+        if classified and classified["intent_metadata"].get("advice_request"):
+            return {key: value for key, value in classified.items() if key != "query"}
+
     safety_classification = next((classified for clause in RE_CLAUSE_SPLIT.split(query)
-        if (classified := _classify_single_clause(clause, telemetry, messages)) is not None
+        if (classified := _classify_single_clause(
+            clause,
+            telemetry,
+            messages,
+            routing_context,
+        )) is not None
         and classified.get("intent") in {"banned_movement", "telemetry_intercept"}), None)
     has_program_change = bool(
         RE_PROGRAM_DAY_EDIT.search(query)
@@ -2561,7 +2849,12 @@ def router_node(state: AssistantState, config: dict[str, Any] | None = None) -> 
         return {"intent": "telemetry_intercept", "intent_metadata": {"response_content": name_response}, "preferred_name": state.get("preferred_name")}
 
     if arabic_dominant:
-        deterministic = _classify_single_clause(query, telemetry, messages)
+        deterministic = _classify_single_clause(
+            query,
+            telemetry,
+            messages,
+            routing_context,
+        )
         if deterministic and deterministic["intent"] in {
             "banned_movement",
             "telemetry_intercept",
@@ -2575,7 +2868,17 @@ def router_node(state: AssistantState, config: dict[str, Any] | None = None) -> 
     # Clause Splitting for Compound / Multi-Intent Queries
     clauses = [p.strip(" ,;?!.") for p in RE_CLAUSE_SPLIT.split(query) if p.strip(" ,;?!.")]
     if len(clauses) > 1:
-        sub_results = [_classify_single_clause(c, telemetry, messages[:-1] + [HumanMessage(content=c)]) for c in clauses]
+        sub_results = [
+            _classify_single_clause(
+                c,
+                telemetry,
+                messages[:-1] + [HumanMessage(content=c)],
+                _SwapRoutingContext(
+                    _store, active_program, allow_catalog_swap_exemption=False
+                ),
+            )
+            for c in clauses
+        ]
         sub_results = [r for r in sub_results if r is not None]
         clinical_sub = next((r for r in sub_results if r["intent"] == "clinical_intercept"), None)
         if clinical_sub:
@@ -2592,8 +2895,17 @@ def router_node(state: AssistantState, config: dict[str, Any] | None = None) -> 
                 "active_intents": sub_results,
             }
 
-    classified = _classify_single_clause(query, telemetry, messages)
-    if classified and (classified["intent"] != "coaching_qa" or classified["intent_metadata"].get("clarification")):
+    classified = _classify_single_clause(
+        query,
+        telemetry,
+        messages,
+        routing_context,
+    )
+    if classified and (
+        classified["intent"] != "coaching_qa"
+        or classified["intent_metadata"].get("clarification")
+        or classified["intent_metadata"].get("advice_request")
+    ):
         return {k: v for k, v in classified.items() if k != "query"}
     if not RE_ACTION_HINT.search(query) or not _action_command(query):
         return {"intent": "coaching_qa", "intent_metadata": {}}
@@ -3777,7 +4089,9 @@ def _substitution_request_suggestion(
         "day_order": day_order,
         "exercise_id": exercise_id,
         "replacement_exercise_id": replacement_id,
-        "reason": _request_suggestion_reason(query),
+        # Prefilled reasons are edited by the player in the request form, so
+        # surrounding whitespace from a long trailing reason is trimmed.
+        "reason": _request_suggestion_reason(query).strip(),
     }
 
 
@@ -3919,7 +4233,8 @@ def _apply_validated_swap(
     ledger, store = _graph_context(config)
     query = _get_message_text(state["messages"][-1])
     if not programs_service.player_controls_program(store, ledger, state.get("player_account_id")):
-        return _response(_coach_program_refusal(query))
+        suggestion = _substitution_request_suggestion(store, ledger, query, metadata)
+        return _response(_coach_program_refusal(query), request_suggestion=suggestion)
     active_program = ledger.get_active_program()
     if active_program is None:
         return _response(ARABIC_SWAP_CLARIFICATION_RESPONSE)
@@ -3939,7 +4254,8 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
     target_desc = (meta.get("target_exercise") or "").strip()
     query = _get_message_text(state["messages"][-1])
 
-    if not _authorized_action(query, "exercise_substitution"):
+    authorization_query = meta.get("authorization_query", query)
+    if not _authorized_action(authorization_query, "exercise_substitution"):
         return _response(AUTHORIZATION_RESPONSE)
 
     if not programs_service.player_controls_program(store, ledger, state.get("player_account_id")):
@@ -3962,7 +4278,7 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
     ]
     if not current_week_days:
         current_week_days = active_program.days
-    requested_day_name = _requested_substitution_day(
+    requested_day_name = meta.get("target_day") or _requested_substitution_day(
         active_program, query, current_week_days
     )
     raw_source = source_name
@@ -4002,11 +4318,15 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
     )
     if requested_day_name:
         requested_day = next(
-            day for day in current_week_days if day.day_name == requested_day_name
+            (day for day in current_week_days if day.day_name == requested_day_name),
+            None,
         )
-        requested_match = _match_substitution_source([requested_day], source_name)
-        if requested_match[0] and requested_match[2] >= SUBSTITUTION_SOURCE_SIMILARITY_THRESHOLD:
-            matched_ex, target_day, best_similarity = requested_match
+        requested_match = (
+            _match_substitution_source([requested_day], source_name)
+            if requested_day is not None
+            else (None, None, 0.0)
+        )
+        matched_ex, target_day, best_similarity = requested_match
 
     if (
         requested_day_name is None
@@ -5382,7 +5702,14 @@ def composite_intent_node(state: AssistantState, config: dict[str, Any] | None =
         sub_intents.insert(first_edit_index, combined_edit)
     original_msgs = list(state.get("messages", []))
     original_query = meta.get("raw_query") or (_get_message_text(original_msgs[-1]) if original_msgs else "")
-    clinical = _clinical_turn_metadata(original_query, sub_intents)
+    ledger, store = _graph_context(config)
+    routing_context = _SwapRoutingContext(
+        store,
+        ledger.get_active_program() if ledger is not None else None,
+    )
+    clinical = _clinical_turn_metadata(
+        original_query, sub_intents, routing_context=routing_context
+    )
     if clinical is not None:
         return clinical_intercept_node({**state, "intent_metadata": clinical}, config)
     if not sub_intents:

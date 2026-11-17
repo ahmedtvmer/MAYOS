@@ -387,9 +387,10 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
   FeatureEntry(
     id: 'edit_program_chat',
     titleEn: 'Edit your program from chat',
-    sentenceEn: 'Tell the assistant how you want to change your Training program.',
+    sentenceEn:
+        'Tell the assistant to swap an exercise by name or make another supported change to your Training program.',
     titleAr: 'عدّل برنامجك عبر المحادثة',
-    sentenceAr: 'أخبر المساعد بالتغييرات التي تريدها في برنامجك التدريبي.',
+    sentenceAr: 'اطلب من المساعد تبديل تمرين بالاسم أو إجراء تغيير آخر يدعمه في برنامجك التدريبي.',
     target: 'whats_new_edit_program_chat',
     location: TourRouteLocation(chatPath),
     release: 1,
