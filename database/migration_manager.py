@@ -20,7 +20,7 @@ from utils.equipment_access import (
 logger = MayosLogger().get_logger(__name__)
 
 # Current target schema version for all user ledgers
-CURRENT_LEDGER_SCHEMA_VERSION: int = 62
+CURRENT_LEDGER_SCHEMA_VERSION: int = 63
 
 MEAL_SETUP_DDL: tuple[str, ...] = (
     "CREATE TABLE IF NOT EXISTS meal_setup ("
@@ -32,6 +32,24 @@ MEAL_SETUP_DDL: tuple[str, ...] = (
 CHAT_HISTORY_FTS_DDL: tuple[str, ...] = (
     "CREATE VIRTUAL TABLE IF NOT EXISTS chat_history_fts USING fts5("
     "message_id UNINDEXED, search_text, tokenize='unicode61 remove_diacritics 2')",
+)
+#: Full current shape of ``chat_history`` (issue #748). Migrations that touch
+#: the table must not assume it exists: ledgers provisioned before chat search
+#: create it lazily with the baseline schema.
+CHAT_HISTORY_DDL: str = (
+    "CREATE TABLE IF NOT EXISTS chat_history ("
+    " id TEXT PRIMARY KEY,"
+    " role TEXT CHECK(role IN ('user', 'assistant', 'system')) NOT NULL,"
+    " content TEXT NOT NULL,"
+    " created_at TEXT NOT NULL,"
+    " reply_language TEXT,"
+    " assistant_route TEXT,"
+    " assistant_model TEXT,"
+    " assistant_prompt_version TEXT)"
+)
+CHAT_HISTORY_LEDGER_DDL: tuple[str, ...] = (
+    CHAT_HISTORY_DDL,
+    "CREATE INDEX IF NOT EXISTS idx_chat_created ON chat_history(created_at)",
 )
 
 PERSONAL_FOODS_DDL: tuple[str, ...] = (
@@ -1386,6 +1404,33 @@ def _migrate_v61_to_v62(conn: sqlite3.Connection) -> None:
     conn.execute(NUTRITION_MEAL_GENERATION_CACHE_DDL)
 
 
+def _migrate_v62_to_v63(conn: sqlite3.Connection) -> None:
+    """Adds assistant reply feedback storage (issue #748).
+
+    Ledgers may predate ``chat_history`` entirely (it is provisioned with the
+    baseline schema), so the table is created when missing and only altered
+    when it already exists — the same absent-table tolerance as v56's FTS
+    migration.
+    """
+    from database.ledger.assistant_feedback import ASSISTANT_FEEDBACK_DDL
+
+    for statement in CHAT_HISTORY_LEDGER_DDL:
+        conn.execute(statement)
+    columns = {
+        str(row[1]) for row in conn.execute("PRAGMA table_info(chat_history)").fetchall()
+    }
+    for column, declaration in (
+        ("reply_language", "TEXT"),
+        ("assistant_route", "TEXT"),
+        ("assistant_model", "TEXT"),
+        ("assistant_prompt_version", "TEXT"),
+    ):
+        if column not in columns:
+            conn.execute(f"ALTER TABLE chat_history ADD COLUMN {column} {declaration}")
+    for statement in ASSISTANT_FEEDBACK_DDL:
+        conn.execute(statement)
+
+
 def get_ledger_schema_version(conn: sqlite3.Connection) -> int:
     """Reads the current user_version PRAGMA from the SQLite connection."""
     cursor = conn.cursor()
@@ -1544,6 +1589,7 @@ MIGRATION_REGISTRY: dict[int, MigrationCallable] = {
     59: _migrate_v59_to_v60,
     60: _migrate_v60_to_v61,
     61: _migrate_v61_to_v62,
+    62: _migrate_v62_to_v63,
 }
 
 

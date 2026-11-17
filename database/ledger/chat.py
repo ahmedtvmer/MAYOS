@@ -295,13 +295,27 @@ class LedgerChatMixin:
         self.conn.execute("DELETE FROM assistant_preference_pending WHERE id = 'forget'")
         self._commit_ledger()
 
-    def add_chat_message(self, role: str, content: str) -> str:
+    def add_chat_message(
+        self,
+        role: str,
+        content: str,
+        *,
+        feedback_metadata: dict[str, Any] | None = None,
+    ) -> str:
         msg_id = str(uuid.uuid4())
         created_at = datetime.now(UTC).isoformat()
         with self.ledger_transaction():
             self.conn.execute(
-                "INSERT INTO chat_history (id, role, content, created_at) VALUES (?, ?, ?, ?)",
-                (msg_id, role, content, created_at),
+                "INSERT INTO chat_history "
+                "(id, role, content, created_at, reply_language, assistant_route, assistant_model, "
+                "assistant_prompt_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    msg_id, role, content, created_at,
+                    (feedback_metadata or {}).get("language"),
+                    (feedback_metadata or {}).get("route"),
+                    (feedback_metadata or {}).get("model"),
+                    (feedback_metadata or {}).get("prompt_version"),
+                ),
             )
             search_text = _chat_search_text(role, content)
             if search_text is not None:
@@ -316,10 +330,14 @@ class LedgerChatMixin:
         cursor = self.conn.cursor()
         if limit:
             cursor.execute(
-                "SELECT id, role, content, created_at FROM chat_history ORDER BY created_at DESC LIMIT ?", (limit,)
+                "SELECT id, role, content, created_at, reply_language, assistant_route, assistant_model, "
+                "assistant_prompt_version FROM chat_history ORDER BY created_at DESC LIMIT ?", (limit,)
             )
             return [dict(r) for r in reversed(cursor.fetchall())]
-        cursor.execute("SELECT id, role, content, created_at FROM chat_history ORDER BY created_at ASC")
+        cursor.execute(
+            "SELECT id, role, content, created_at, reply_language, assistant_route, assistant_model, "
+            "assistant_prompt_version FROM chat_history ORDER BY created_at ASC"
+        )
         return [dict(r) for r in cursor.fetchall()]
 
     def search_chat_history(
@@ -347,4 +365,12 @@ class LedgerChatMixin:
             self.conn.execute("DELETE FROM chat_history_fts")
             self.conn.execute("DELETE FROM assistant_preference_pending")
             self.conn.execute("DELETE FROM assistant_goal_weak_point_pending")
+            # Votes and delivered reports hang off individual replies, so they
+            # cascade with the replies. Undelivered reports survive: the owner
+            # must still receive them, and the retry pass removes each row
+            # once its report is delivered and its message is gone (#748).
+            self.conn.execute(
+                "DELETE FROM assistant_reply_feedback "
+                "WHERE reported_at IS NULL OR report_delivered_at IS NOT NULL"
+            )
             self._commit_ledger()

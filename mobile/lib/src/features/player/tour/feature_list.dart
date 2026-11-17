@@ -64,6 +64,23 @@ List<String> validateFeatureEntries(
 
 const List<FeatureEntry> featureList = <FeatureEntry>[
   FeatureEntry(
+    id: 'assistant_feedback',
+    titleEn: 'Rate assistant replies',
+    sentenceEn:
+        'Tap 👍 or 👎 under an assistant reply, add what went wrong from the '
+        'menu, or report a reply so the team reviews it; your vote or report '
+        'is private and hides a reported reply until you show it again.',
+    titleAr: 'قيّم إجابات المساعد',
+    sentenceAr:
+        'اضغط 👍 أو 👎 تحت إجابة المساعد، وبيّن الخطأ من القائمة، أو أبلغ عن '
+        'إجابة ليراجعها الفريق؛ تقييمك وإبلاغك خاصان، وتُخفى الإجابة المُبلّغ '
+        'عنها حتى تعرضها مجددًا.',
+    target: 'assistant_feedback_vote_buttons',
+    location: TourRouteLocation(chatPath),
+    release: 7,
+    audience: 'lifter',
+  ),
+  FeatureEntry(
     id: 'assistant_exercise_lookup',
     titleEn: 'Search exercises by the name you know',
     sentenceEn:

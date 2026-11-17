@@ -23,6 +23,7 @@ import '../../../core/ui/mayos_card.dart';
 import '../../../core/ui/mayos_markdown.dart';
 import '../../../core/ui/mayos_scaffold.dart';
 import '../../../core/ui/mayos_text_field.dart';
+import '../../../core/ui/assistant_feedback.dart';
 import '../../../core/ui/first_strong_direction.dart';
 import '../../../core/workout_storage.dart';
 import '../../../providers.dart';
@@ -226,6 +227,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   String? _failedContent;
   bool _retryAddsBubble = true;
   final Set<String> _resolvedProgramEditPreviews = <String>{};
+  final Set<String> _revealedReported = <String>{};
   late StateController<bool> _playerChatStreaming;
 
   String? get _accountId =>
@@ -412,7 +414,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
               :final String outcome,
               :final AiAllowance? lifterAllowance,
               :final ProgramRequestDraft? requestSuggestion,
-              :final Map<String, dynamic>? programEditPreview
+              :final Map<String, dynamic>? programEditPreview,
+              :final AssistantFeedbackContext? feedbackContext
             ):
             if (outcome == 'truncated') {
               finished = true;
@@ -442,6 +445,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                   content: reply,
                   requestSuggestion: requestSuggestion,
                   programEditPreview: programEditPreview,
+                  feedbackContext: feedbackContext,
                 ),
               ];
               _streamingText = null;
@@ -853,6 +857,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       if (found != null) { newestOfferId = found; break; }
     }
     final bool supersededOffer = offerId != null && newestOfferId != offerId;
+    final bool reported =
+        message.feedback?.reported == true && !_revealedReported.contains(message.id);
+    if (reported) {
+      return AssistantReportedCard(
+        onShowAnyway: () =>
+            _setStateIfMounted(() => _revealedReported.add(message.id)),
+      );
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
@@ -895,7 +907,100 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
             onDecision: (bool confirm, List<String> selected) =>
                 _decideProgramEdit(editPreview, confirm, selected),
           ),
+        if (message.feedback != null || message.feedbackContext != null)
+          TourTarget(
+            id: 'assistant_feedback_vote_buttons',
+            child: AssistantFeedbackBar(
+              replyText: message.content,
+              vote: message.feedback?.vote,
+              onVote: (String? vote,
+                      {List<String> reasons = const <String>[], String? note}) =>
+                  _voteOnReply(message, vote, reasons: reasons, note: note),
+              onReport: (List<String> reasons, String? note) =>
+                  _reportReply(message, reasons, note),
+            ),
+          ),
       ],
+    );
+  }
+
+  /// Applies one feedback state to a stored message and re-caches the history,
+  /// so a restart restores the vote/report bar exactly as left.
+  void _applyFeedbackState(String messageId, ChatFeedbackState feedback) {
+    _setStateIfMounted(() {
+      _messages = <ChatMessage>[
+        for (final ChatMessage item in _messages)
+          if (item.id == messageId) item.copyWith(feedback: feedback) else item,
+      ];
+    });
+    final String? accountId = _accountId;
+    if (accountId != null) {
+      unawaited(_store.writeHistory(accountId, _messages));
+    }
+  }
+
+  Future<void> _voteOnReply(
+    ChatMessage message,
+    String? vote, {
+    List<String> reasons = const <String>[],
+    String? note,
+  }) async {
+    try {
+      await ref.read(apiClientProvider).voteChatFeedback(
+            context: message.feedbackContext,
+            messageId: message.feedbackContext == null ? message.id : null,
+            vote: vote,
+            reasons: reasons,
+            note: note,
+          );
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(
+          displayCopyOf(context).failureMessage(apiFailureMessage(error)),
+        ),
+      ));
+      return;
+    }
+    _applyFeedbackState(
+      message.id,
+      ChatFeedbackState(
+        feedbackId: message.feedback?.feedbackId ?? message.id,
+        vote: vote,
+        reported: message.feedback?.reported ?? false,
+      ),
+    );
+  }
+
+  Future<void> _reportReply(ChatMessage message, List<String> reasons, String? note) async {
+    try {
+      await ref.read(apiClientProvider).reportChatFeedback(
+            context: message.feedbackContext,
+            messageId: message.feedbackContext == null ? message.id : null,
+            reasons: reasons,
+            note: note,
+          );
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(
+          displayCopyOf(context).failureMessage(apiFailureMessage(error)),
+        ),
+      ));
+      return;
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      key: const Key('chat_report_sent'),
+      content: Text(displayCopyOf(context).assistantFeedbackReportSent),
+    ));
+    _applyFeedbackState(
+      message.id,
+      ChatFeedbackState(
+        feedbackId: message.feedback?.feedbackId ?? message.id,
+        vote: message.feedback?.vote,
+        reported: true,
+      ),
     );
   }
 

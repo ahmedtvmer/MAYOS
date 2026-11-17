@@ -21,6 +21,21 @@ def get_history(
             message["kind"] = chat_message_kind(
                 str(message.get("role", "")), str(message.get("content", ""))
             )
+        # Attach the account's own vote/report state to every assistant reply
+        # so the client can restore the 👍/👎 bar and the reported-hidden card.
+        # A reply never voted on gets its server message id as the feedback id.
+        assistant_ids = [
+            str(message["id"]) for message in history if message.get("role") == "assistant"
+        ]
+        if assistant_ids and player_account_id:
+            feedback = ledger.get_assistant_feedback_for_messages(player_account_id, assistant_ids)
+            for message in history:
+                if message.get("role") != "assistant":
+                    continue
+                state = feedback.get(str(message["id"]))
+                message["feedback"] = state or {
+                    "feedback_id": str(message["id"]), "vote": None, "reported": False,
+                }
         pending = ledger.get_pending_chat_program_edit()
         if pending is not None:
             active = ledger.get_active_program_view()
@@ -103,6 +118,9 @@ def build_turn_state(
     }
 
 
-def persist_assistant_message(ledger: Any, response: str | None) -> None:
+def persist_assistant_message(
+    ledger: Any, response: str | None, metadata: dict[str, Any] | None = None
+) -> str | None:
     if response:
-        ledger.add_chat_message("assistant", response)
+        return ledger.add_chat_message("assistant", response, feedback_metadata=metadata)
+    return None

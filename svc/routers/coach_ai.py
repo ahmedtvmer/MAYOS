@@ -16,7 +16,7 @@ import threading
 from dataclasses import dataclass, field
 from typing import Annotated, Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 
 from service import analytics
@@ -33,8 +33,8 @@ from svc.llm import (
     inference_turn,
     register_ai_analytics_background_tasks,
 )
-from svc.rate_limit import COACH_ASSISTANT_LIMIT, limiter
-from svc.schemas import CoachAssistantIn
+from svc.rate_limit import COACH_ASSISTANT_LIMIT, FEEDBACK_LIMIT, limiter
+from svc.schemas import AssistantFeedbackReportIn, AssistantFeedbackVoteIn, CoachAssistantIn
 from utils.text_scrubber import PIPELINE_ERROR_RESPONSE
 
 router = APIRouter(prefix="/coach/assignments", tags=["coach"])
@@ -56,6 +56,8 @@ class _CoachAssistantStream:
     background_tasks: BackgroundTasks
     messages: list[Any]
     scope: InferenceScope
+    question: str = ""
+    feedback_context: dict[str, Any] | None = None
     turn: InferenceTurnState = field(init=False)
     events: "queue.Queue[tuple[str, Any]]" = field(default_factory=queue.Queue)
     disconnected: threading.Event = field(default_factory=threading.Event)
@@ -85,7 +87,8 @@ async def _prepare_stream(endpoint: _CoachAssistantRequest) -> _CoachAssistantSt
         endpoint.db, account_id, client, purpose="coach_assistant"
     )
     stream = _CoachAssistantStream(
-        endpoint.request, endpoint.background_tasks, messages, scope
+        endpoint.request, endpoint.background_tasks, messages, scope,
+        question=endpoint.body.question,
     )
     admit_coach_turn(stream.turn)
     return stream
@@ -183,6 +186,12 @@ def _consume_model_stream(stream: _CoachAssistantStream) -> str:
 def _run_stream_turn(stream: _CoachAssistantStream) -> None:
     try:
         answer = _consume_model_stream(stream)
+        # The exchange is never persisted, so the client carries the signed
+        # feedback context; a signing failure just means no vote/report bar.
+        try:
+            stream.feedback_context = _coach_feedback_context(stream, answer)
+        except Exception:
+            stream.feedback_context = None
         stream.events.put(("done", _coach_done_payload(stream, answer)))
     except Exception:
         if stream.disconnected.is_set():
@@ -199,11 +208,37 @@ def _coach_done_payload(
     from service.ai_allowance import launch_allowances_enabled
 
     payload: dict[str, Any] = {"answer": answer}
+    if stream.feedback_context is not None:
+        payload["feedback_context"] = stream.feedback_context
     if not launch_allowances_enabled():
         return payload
     payload["outcome"] = stream.turn.answer_outcome
     payload["coach_allowance"] = _coach_allowance_snapshot(stream)
     return payload
+
+
+def _coach_feedback_context(stream: _CoachAssistantStream, answer: str) -> dict[str, Any] | None:
+    from core.reply_language import resolve_reply_language
+    from service.assistant_feedback import (
+        coach_feedback_redact_terms,
+        new_feedback_message_id,
+        resolve_coach_feedback_context,
+    )
+
+    db = stream.scope.store
+    account_id = str(stream.scope.account_id)
+    account_row = db.get_account(account_id) or {}
+    return resolve_coach_feedback_context(
+        account_id,
+        message_id=new_feedback_message_id(),
+        question_text=stream.question,
+        reply_text=answer,
+        language=resolve_reply_language(
+            stream.question, account_row.get("display_language", "en")
+        ),
+        route="coach_assistant",
+        redact_terms=coach_feedback_redact_terms(db, account_id),
+    )
 
 
 def _coach_allowance_snapshot(stream: _CoachAssistantStream) -> dict[str, Any]:
@@ -281,3 +316,79 @@ async def coach_assistant(
         request, background_tasks, assignment_id, body, coach, db
     )
     return _start_stream(await _prepare_stream(endpoint))
+
+
+def _require_active_assignment(db: Any, coach_account_id: str, assignment_id: str) -> None:
+    assignment = db.get_active_assignment_for_coach(coach_account_id, assignment_id)
+    if assignment is None:
+        raise message_http_exception(
+            status.HTTP_403_FORBIDDEN,
+            coach_history_service.DENIED_ERROR,
+            MessageMetadata("assignment.none_active.v1"),
+        )
+
+
+def _coach_feedback(
+    db: Any, coach: VerifiedPlayer, assignment_id: str, action: str, body: Any, context: Any
+) -> Any:
+    """Runs one coach feedback write on the coach's own ledger handle."""
+    from service.assistant_feedback import record_report, record_vote
+
+    account_id = account_id_of(coach)
+    _require_active_assignment(db, account_id, assignment_id)
+    with db.open_ledger(str(coach)) as ledger:
+        if action == "vote":
+            return record_vote(ledger, account_id, context, body)
+        return record_report(ledger, account_id, context, body)
+
+
+@router.post("/{assignment_id}/assistant/feedback/vote")
+@limiter.limit(FEEDBACK_LIMIT)
+async def coach_vote_reply(
+    request: Request,
+    assignment_id: str,
+    body: AssistantFeedbackVoteIn,
+    coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    """Stores or clears one 👍/👎 on a coach assistant reply."""
+    if body.context is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The reply to give feedback on could not be found.",
+        )
+    from service.assistant_feedback import validate_feedback_context
+
+    try:
+        context = validate_feedback_context(account_id_of(coach), body.context.model_dump())
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from None
+    return await asyncio.to_thread(
+        _coach_feedback, db, coach, assignment_id, "vote", body, context
+    )
+
+
+@router.post("/{assignment_id}/assistant/feedback/report")
+@limiter.limit(FEEDBACK_LIMIT)
+async def coach_report_reply(
+    request: Request,
+    assignment_id: str,
+    body: AssistantFeedbackReportIn,
+    coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    """Records one report of a coach assistant reply and forwards it."""
+    if body.context is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The reply to give feedback on could not be found.",
+        )
+    from service.assistant_feedback import validate_feedback_context
+
+    try:
+        context = validate_feedback_context(account_id_of(coach), body.context.model_dump())
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from None
+    return await asyncio.to_thread(
+        _coach_feedback, db, coach, assignment_id, "report", body, context
+    )

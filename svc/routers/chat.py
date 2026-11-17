@@ -15,8 +15,16 @@ from fastapi.responses import StreamingResponse
 
 from agent.assistant_graph import stream_assistant_turn
 from agent.prompts import DEFAULT_ASSISTANT_STYLE
+from core.reply_language import resolve_reply_language
 from service import analytics, programs as programs_service
 from service import chat as chat_service
+from service.assistant_feedback import (
+    record_report,
+    record_vote,
+    report_context_redact_terms,
+    resolve_feedback_context,
+    resolve_player_feedback_context,
+)
 from service.program_analytics import ProgramAnalyticsActor
 from service.messages import chat_error_message
 from service.model_limits import ModelAdmissionContext, admit_model_request
@@ -28,10 +36,12 @@ from svc.llm import (
     inference_turn,
     register_ai_analytics_background_tasks,
 )
-from svc.rate_limit import CHAT_LIMIT, limiter
+from svc.rate_limit import CHAT_LIMIT, FEEDBACK_LIMIT, limiter
 from svc.schemas import (
     AssistantPreferenceOut,
     AssistantPreferenceUpdateIn,
+    AssistantFeedbackReportIn,
+    AssistantFeedbackVoteIn,
     ChatMessageIn,
     ChatProgramEditDecisionIn,
 )
@@ -82,6 +92,49 @@ async def clear_history(
 ):
     await asyncio.to_thread(chat_service.clear_history, db, str(player), ledger)
     return None
+
+
+@router.post("/feedback/vote")
+@limiter.limit(FEEDBACK_LIMIT)
+async def vote_reply(
+    request: Request,
+    body: AssistantFeedbackVoteIn,
+    player: Annotated[Any, Depends(get_verified_player)],
+    ledger: Annotated[Any, Depends(get_ledger)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    """Stores or clears one 👍/👎 on an assistant reply; owner-visible only."""
+    account_id = account_id_of(player)
+    context, error = await asyncio.to_thread(
+        resolve_feedback_context, account_id, ledger, db,
+        client_context=body.context.model_dump() if body.context else None,
+        message_id=body.context.message_id if body.context else body.message_id,
+    )
+    if error or context is None:
+        raise HTTPException(status_code=400, detail=error or "Invalid feedback context.")
+    return await asyncio.to_thread(record_vote, ledger, account_id, context, body)
+
+
+@router.post("/feedback/report")
+@limiter.limit(FEEDBACK_LIMIT)
+async def report_reply(
+    request: Request,
+    body: AssistantFeedbackReportIn,
+    player: Annotated[Any, Depends(get_verified_player)],
+    ledger: Annotated[Any, Depends(get_ledger)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    """Records one report of an assistant reply and forwards it to the owner."""
+    account_id = account_id_of(player)
+    context, error = await asyncio.to_thread(
+        resolve_feedback_context, account_id, ledger, db,
+        client_context=body.context.model_dump() if body.context else None,
+        message_id=body.context.message_id if body.context else body.message_id,
+        with_redact_terms=True,
+    )
+    if error or context is None:
+        raise HTTPException(status_code=400, detail=error or "Invalid feedback context.")
+    return await asyncio.to_thread(record_report, ledger, account_id, context, body)
 
 
 @router.get("/preferences", response_model=list[AssistantPreferenceOut])
@@ -168,7 +221,43 @@ def _run_turn(
                     while not delivered.wait(timeout=0.1):
                         if disconnected.is_set():
                             break
-                chat_service.persist_assistant_message(ledger, state.get("response_content"))
+                reply = state.get("response_content")
+                # Persist the reply exactly once, with the metadata feedback
+                # re-derivation needs. Metadata and redaction terms are best
+                # effort: a failure never breaks the turn and never re-persists.
+                feedback_language = "en"
+                feedback_route = "assistant"
+                feedback_message_id = None
+                redact_terms: list[str] = []
+                metadata = None
+                if reply:
+                    try:
+                        from service.assistant_feedback import (
+                            assistant_reply_metadata,
+                            configured_reply_model,
+                            player_prompt_version,
+                        )
+
+                        account_row = db.get_account(account_id) or {}
+                        feedback_language = resolve_reply_language(
+                            content, account_row.get("display_language", "en")
+                        )
+                        feedback_route = str(state.get("intent") or "assistant")
+                        metadata = assistant_reply_metadata(
+                            language=feedback_language,
+                            route=feedback_route,
+                            model=configured_reply_model("production"),
+                            prompt_version=player_prompt_version(),
+                        )
+                    except Exception:
+                        metadata = None
+                    feedback_message_id = chat_service.persist_assistant_message(
+                        ledger, reply, metadata=metadata
+                    )
+                    try:
+                        redact_terms = report_context_redact_terms(db, account_id, ledger)
+                    except Exception:
+                        redact_terms = []
                 if disconnected.is_set():
                     turn.mark_interrupted()
                 else:
@@ -203,6 +292,23 @@ def _run_turn(
             done_payload["request_suggestion"] = state["request_suggestion"]
         if state.get("program_edit_preview") is not None:
             done_payload["program_edit_preview"] = state["program_edit_preview"]
+        # Feedback context rides the done frame so the client can vote or report
+        # without another round trip. A signing failure never breaks the turn.
+        context = (
+            resolve_player_feedback_context(
+                account_id,
+                message_id=feedback_message_id or "",
+                question_text=content,
+                reply_text=reply or "",
+                language=feedback_language,
+                route=feedback_route,
+                redact_terms=redact_terms,
+            )
+            if feedback_message_id
+            else None
+        )
+        if context is not None:
+            done_payload["feedback_context"] = context
         out.put(("done", done_payload))
     except Exception:
         if disconnected.is_set():
