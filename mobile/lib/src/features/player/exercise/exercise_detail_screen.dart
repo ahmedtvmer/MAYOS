@@ -82,12 +82,16 @@ class _ExerciseDetailScreenState extends ConsumerState<ExerciseDetailScreen>
   late Future<_DetailData> _future;
   late String _tab;
   late final StateController<Set<String>> _tourLoadingTargets;
+  // Captured in initState: after dispose the `widget` getter is no longer
+  // readable, but the post-frame cleanup below still runs.
+  late final bool _demoTargetApplies;
   bool _demoTargetLoading = false;
 
   @override
   void initState() {
     super.initState();
     _tourLoadingTargets = ref.read(tourLoadingTargetsProvider.notifier);
+    _demoTargetApplies = widget.exerciseId == _cableYRaiseDemoExerciseId;
     _tab = !widget.showHistory && widget.initialTab == 'history'
         ? 'overview'
         : widget.initialTab;
@@ -139,7 +143,7 @@ class _ExerciseDetailScreenState extends ConsumerState<ExerciseDetailScreen>
   }
 
   void _setDemoTargetLoading(bool isLoading) {
-    if (widget.exerciseId != _cableYRaiseDemoExerciseId ||
+    if (!_demoTargetApplies ||
         _demoTargetLoading == isLoading ||
         !_tourLoadingTargets.mounted) {
       return;
@@ -211,13 +215,9 @@ class _ExerciseDetailScreenState extends ConsumerState<ExerciseDetailScreen>
               data: data,
               tab: _tab,
               showHistory: widget.showHistory,
-              demoTargetId: widget.exerciseId == _cableYRaiseDemoExerciseId
-                  ? _exerciseDemoTargetId
-                  : null,
+              demoTargetId: _demoTargetApplies ? _exerciseDemoTargetId : null,
               onDemoMediaSettled:
-                  widget.exerciseId == _cableYRaiseDemoExerciseId
-                      ? () => _setDemoTargetLoading(false)
-                      : null,
+                  _demoTargetApplies ? () => _setDemoTargetLoading(false) : null,
               onTab: (String tab) => setState(() => _tab = tab));
         },
       ),
@@ -226,7 +226,14 @@ class _ExerciseDetailScreenState extends ConsumerState<ExerciseDetailScreen>
 
   @override
   void dispose() {
-    _setDemoTargetLoading(false);
+    // Like Profile, the tour loading-provider cleanup is scheduled after the
+    // frame instead of mutating a Riverpod provider while the tree tears
+    // down; the provider's own `mounted` guard makes it safe when the app is
+    // shutting down.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted || !_tourLoadingTargets.mounted) return;
+      _setDemoTargetLoading(false);
+    });
     super.dispose();
   }
 }
@@ -530,7 +537,19 @@ class _CatalogMedia extends StatelessWidget {
 
   Widget _target(Widget child) {
     final String? id = targetId;
-    return id == null ? child : TourTarget(id: id, child: child);
+    assert(id == null || id == 'exercise_demo_media');
+    return id == null
+        ? child
+        : TourTarget(
+            // The feature-list validator discovers target ids by scanning the
+            // source for a TourTarget registration whose id parameter is a
+            // string literal before the child parameter, so this literal must
+            // stay inline — do not swap it back for the
+            // [_exerciseDemoTargetId] constant. `targetId` is only non-null
+            // for the Cable Y-Raise demo, whose target is exercise_demo_media.
+            id: 'exercise_demo_media',
+            child: child,
+          );
   }
 
   Widget _frameBuilder(

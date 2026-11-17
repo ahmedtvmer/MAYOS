@@ -152,6 +152,27 @@ Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
   fail('Timed out after $attempts attempts waiting for $finder');
 }
 
+/// `_pumpUntilFound` for the demo-media Tour stop. The target only mounts on
+/// the decoded image, and image decode is a real engine callback that a plain
+/// `pump` never runs inside the test's fake-async zone, so every attempt first
+/// yields real time (the settle pattern from workout_logger_pictures_test).
+Future<void> _pumpUntilTourSpotlight(WidgetTester tester) async {
+  final Finder tourNext = find.byKey(const ValueKey<String>('tour_next'));
+  for (int i = 0; i < 40; i++) {
+    if (tourNext.evaluate().isNotEmpty) {
+      for (int j = 0; j < 4; j++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      return;
+    }
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 60)),
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+  }
+  fail('Timed out after 40 attempts waiting for $tourNext');
+}
+
 Future<void> _pumpHome(
   WidgetTester tester,
   FakeMayosApi fake, {
@@ -238,6 +259,10 @@ const Map<String, List<String>> _releaseSevenFeatureTitles =
   'offline_start': <String>[
     'Open your saved training offline',
     'افتح بيانات تدريبك المحفوظة دون اتصال',
+  ],
+  'meal_setup': <String>[
+    'Meal setup and Food restrictions',
+    'إعداد الوجبات والقيود الغذائية',
   ],
   'weak_points': <String>[
     'Weak points',
@@ -1527,7 +1552,7 @@ void main() {
       await tester.ensureVisible(showMe);
       await tester.pumpAndSettle();
       await tester.tap(showMe);
-      await _pumpUntilFound(tester, find.byKey(const ValueKey<String>('tour_next')));
+      await _pumpUntilTourSpotlight(tester);
       await tester.pumpAndSettle();
 
       final ProviderContainer container = ProviderScope.containerOf(tester.element(find.byType(MayosApp)));
@@ -1575,6 +1600,10 @@ void main() {
       expect(fake.whatsNewSeenWriteCount, writesBefore + 1, reason: entry.id);
       await tester.pumpWidget(const SizedBox.shrink());
     }
+    // Reset the image HTTP hook inside the body: the framework's painting
+    // variable invariant check runs before addTearDown does (see mediaTest in
+    // workout_logger_pictures_test.dart).
+    FakeMediaCatalog.uninstall();
   });
 
   testWidgets(
@@ -1606,10 +1635,7 @@ void main() {
     expect(find.byKey(const ValueKey<String>('tour_spotlight_cutout')), findsNothing);
 
     media.releaseResponse(gifPath);
-    await _pumpUntilFound(
-      tester,
-      find.byKey(const ValueKey<String>('tour_next')),
-    );
+    await _pumpUntilTourSpotlight(tester);
     await showing;
     final TourTargetHandle target =
         container.read(tourTargetRegistryProvider)['exercise_demo_media']!;
@@ -1622,6 +1648,10 @@ void main() {
     );
     expect(targetedImage, findsOneWidget);
     expect(cutout.contains(tester.getRect(targetedImage).center), isTrue);
+    // Reset the image HTTP hook inside the body: the framework's painting
+    // variable invariant check runs before addTearDown does (see mediaTest in
+    // workout_logger_pictures_test.dart).
+    FakeMediaCatalog.uninstall();
   });
 
   testWidgets(
@@ -1652,6 +1682,10 @@ void main() {
     expect(find.byKey(const ValueKey<String>('tour_next')), findsNothing);
     expect(find.byKey(const ValueKey<String>('tour_spotlight_cutout')), findsNothing);
     expect(container.read(tourControllerProvider), isNull);
+    // Reset the image HTTP hook inside the body: the framework's painting
+    // variable invariant check runs before addTearDown does (see mediaTest in
+    // workout_logger_pictures_test.dart).
+    FakeMediaCatalog.uninstall();
   });
 
   testWidgets('Feature guide Show me lands and spotlights every lifter feature',
@@ -1692,7 +1726,7 @@ void main() {
       final Finder button = find.text('Show me').at(entries.indexOf(entry));
       await tester.ensureVisible(button);
       await tester.tap(button);
-      await _pumpUntilFound(tester, find.byKey(const ValueKey<String>('tour_next')));
+      await _pumpUntilTourSpotlight(tester);
       await tester.pumpAndSettle();
 
       final int shellTab = container.read(playerShellTabProvider);
@@ -1759,6 +1793,10 @@ void main() {
           .toList(),
       entries.map((FeatureEntry entry) => entry.id).toList(),
     );
+    // Reset the image HTTP hook inside the body: the framework's painting
+    // variable invariant check runs before addTearDown does (see mediaTest in
+    // workout_logger_pictures_test.dart).
+    FakeMediaCatalog.uninstall();
   });
 
   testWidgets('Show me to Profile preserves the guide as the Back destination',
@@ -1792,6 +1830,12 @@ void main() {
   testWidgets('Show me leaves tour seen version unchanged and is blocked by workout',
       (tester) async {
     final FakeMayosApi fake = _signedInFake()..tourSeenVersion = 1;
+    // `Show me`.first is the Cable Y-Raise demo, whose spotlight target only
+    // mounts on the decoded demo image.
+    final FakeMediaCatalog media = FakeMediaCatalog()
+      ..serve('videos/mayos-3-cable-y-raise.gif');
+    media.install();
+    addTearDown(FakeMediaCatalog.uninstall);
     await _pumpHome(tester, fake, size: const Size(390, 844));
     final ProviderContainer container =
         ProviderScope.containerOf(tester.element(find.byType(MayosApp)));
@@ -1837,6 +1881,11 @@ void main() {
         attempt < 40 &&
             find.byKey(const ValueKey<String>('tour_next')).evaluate().isEmpty;
         attempt++) {
+      // Yield real time so the demo image decode can complete inside the
+      // fake-async zone (see _pumpUntilTourSpotlight).
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 60)),
+      );
       await tester.pump(const Duration(milliseconds: 100));
     }
     expect(
@@ -1850,12 +1899,22 @@ void main() {
     expect(find.byKey(const ValueKey<String>('tour_next')), findsOneWidget);
     await tester.pumpAndSettle();
     expect(fake.tourSeenVersion, 1);
+    // Reset the image HTTP hook inside the body: the framework's painting
+    // variable invariant check runs before addTearDown does (see mediaTest in
+    // workout_logger_pictures_test.dart).
+    FakeMediaCatalog.uninstall();
   });
 
   testWidgets('Feature guide Show me analytics honors the account opt-out',
       (tester) async {
     final FakeMayosApi fake = _signedInFake()..analyticsAllowed = false;
     final FakeAnalyticsClient analytics = FakeAnalyticsClient();
+    // `Show me`.first is the Cable Y-Raise demo, whose spotlight target only
+    // mounts on the decoded demo image.
+    final FakeMediaCatalog media = FakeMediaCatalog()
+      ..serve('videos/mayos-3-cable-y-raise.gif');
+    media.install();
+    addTearDown(FakeMediaCatalog.uninstall);
     await _pumpHome(tester, fake, size: const Size(390, 844),
         extraOverrides: <Override>[
       analyticsClientProvider.overrideWithValue(analytics),
@@ -1865,11 +1924,15 @@ void main() {
     container.read(routerProvider).go(featureGuidePath);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Show me').first);
-    await _pumpUntilFound(tester, find.byKey(const ValueKey<String>('tour_next')));
+    await _pumpUntilTourSpotlight(tester);
     expect(
       analytics.events.where((event) => event['event'] == 'show_me_tapped'),
       isEmpty,
     );
+    // Reset the image HTTP hook inside the body: the framework's painting
+    // variable invariant check runs before addTearDown does (see mediaTest in
+    // workout_logger_pictures_test.dart).
+    FakeMediaCatalog.uninstall();
   });
 
   testWidgets('Tour version 2 only reaches accounts created at version 2',
