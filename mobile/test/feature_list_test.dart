@@ -147,6 +147,21 @@ void main() {
     }
   });
 
+  test('Cardio and Nutrition logs are discoverable in release 7', () {
+    final FeatureEntry entry = featureList.singleWhere(
+      (FeatureEntry entry) => entry.id == 'assistant_personal_logs',
+    );
+    expect(entry.release, 7);
+    expect(entry.titleEn, 'Ask about your Cardio and Nutrition logs');
+    expect(entry.titleAr, isNotEmpty);
+    expect(entry.sentenceEn, contains('what you ate'));
+    expect(entry.sentenceAr, isNotEmpty);
+    expect(entry.target, 'assistant');
+    expect(entry.location, const TourShellTabLocation(tabIndex: 0));
+    expect(currentFeatureRelease, 7);
+    expect(entry.audience, 'lifter');
+  });
+
   test('Feature list copy, targets, and Tour stop ids are valid', () {
     final Set<String> targetIds = _registeredTargetIds();
     final Set<String> ids = featureList.map((FeatureEntry entry) => entry.id).toSet();
