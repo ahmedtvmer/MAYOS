@@ -22,6 +22,7 @@ DELIVERY_COLUMN_MAPPING = {
     "event_id": "d.event_id",
     "subscription_id": "d.subscription_id",
     "attempts": "d.attempts",
+    "next_attempt": "d.next_attempt",
     "account_id": "e.account_id",
     "notification_type": "e.notification_type",
     "payload_json": "e.payload_json",

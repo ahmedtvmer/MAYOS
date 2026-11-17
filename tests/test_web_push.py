@@ -154,9 +154,11 @@ def test_catalog_facts_enqueue_coach_alerts_and_player_updates_once(push_store):
         db.catalog_conn.execute("INSERT INTO assignments (assignment_id, coach_account_id, player_account_id, started_at) "
                                 "VALUES (?, ?, ?, ?)", ("push-assignment", coach_id, player["account_id"], NOW.isoformat()))
     storage.subscribe(db, coach_id, "coach-phone", "https://fcm.googleapis.com/coach", KEYS, NOW.isoformat())
-    for alert_id in ("alert-one", "retry-with-other-id"):
+    alerts = [
         db.insert_coach_alert(alert_id, "push-assignment", coach_id, player["account_id"],
                               "missed_expected_days", "same-streak", {}, NOW.isoformat())
+        for alert_id in ("alert-one", "retry-with-other-id")
+    ]
     publication = AssignmentNoticeRecord(player["account_id"], "push-assignment", "program_published",
                                          "Published", NOW.isoformat(), message_params={"version": 2})
     db.create_assignment_notice_record(publication)
@@ -167,12 +169,14 @@ def test_catalog_facts_enqueue_coach_alerts_and_player_updates_once(push_store):
         coach_id, "push-assignment", "program_request", "Player requested", NOW.isoformat()))
     with db.catalog_locked() as conn:
         events = list(conn.execute("SELECT account_id, notification_type, payload_json FROM push_events"))
-    # Request pushes are written with request changes, not by this best-effort notice hook.
-    assert len(events) == 3
+    # The retry uses the same alert fact, so it creates no second alert or push.
+    # Request pushes are written with request changes, not by this notice hook.
+    assert [alert["created"] for alert in alerts] == [True, False]
+    assert len(events) == 2
     assert sorted((row[0], row[1]) for row in events) == sorted([
-        (coach_id, "alerts"), (coach_id, "alerts"),
+        (coach_id, "alerts"),
         (player["account_id"], "coach_updates")])
-    assert len({json.loads(row[2])["tag"] for row in events}) == 3
+    assert len({json.loads(row[2])["tag"] for row in events}) == 2
 
 
 def test_transient_failure_retries_after_backoff_without_duplicate_success(push_store):

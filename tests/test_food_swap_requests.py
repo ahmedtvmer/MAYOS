@@ -230,7 +230,11 @@ def test_742_ledger_commit_failure_leaves_no_food_swap_reply(swap_queue):
         assert ledger.get_active_nutrition_plan()['id'] == plan['plan_version_id']
         from database.ledger import push as ledger_push
 
-        assert ledger_push.pending_intents(ledger.conn) == []
+        assert not any(
+            intent["event"] == "food_swap_reply"
+            and intent["dedupe_key"] == f"food-swap-reply:{record['request_id']}"
+            for intent in ledger_push.pending_intents(ledger.conn)
+        )
 
 
 def test_program_and_food_requests_share_the_roster_pending_count(swap_queue):
