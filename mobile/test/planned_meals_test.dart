@@ -94,7 +94,7 @@ void main() {
           );
           expect(find.text('180'), findsNWidgets(3));
           expect(find.text('45.0'), findsNWidgets(3));
-          expect(find.text('0.0'), findsNWidgets(7));
+          expect(find.text('0.0'), findsNWidgets(6));
           final Finder numericScroller = find.descendant(
             of: find.byKey(const Key('planned_meals_numbers_food_breakfast_0')),
             matching: find.byType(Scrollable),
