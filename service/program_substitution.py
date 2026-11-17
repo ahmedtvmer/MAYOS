@@ -166,7 +166,7 @@ def substitute_program_exercise(
                 published_by_coach_account_id=request.published_by_coach_account_id,
                 starting_position=current_position,
             )
-            ledger_push.record_intent(ledger.conn, push_intent)
+            ledger.record_push_intent(push_intent)
     return {
         "ok": True,
         "replacement": replacement,

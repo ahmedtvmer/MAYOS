@@ -923,7 +923,7 @@ def generate_program_pipeline(
                 published_by_coach_account_id=published_by_coach_account_id,
                 starting_position=None,
             )
-            ledger_push.record_intent(ledger.conn, push_intent)
+            ledger.record_push_intent(push_intent)
     return program, markdown
 
 

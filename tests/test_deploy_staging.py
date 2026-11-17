@@ -374,7 +374,9 @@ def test_staging_compose_isolates_data_secrets_and_runtime_settings():
         "JWT_SECRET": "${JWT_SECRET:?set JWT_SECRET in /opt/mayos/staging.env}",
         "ANONYMOUS_ID_SECRET": "${ANONYMOUS_ID_SECRET:?set ANONYMOUS_ID_SECRET in /opt/mayos/staging.env}",
         "MAYOS_ENV": "staging", "SENTRY_ENVIRONMENT": "staging", "MAYOS_LITESTREAM": "false",
-        "DISCORD_ALERT_WEBHOOK_URL": "", "SMTP_HOST": "", "MAYOS_DATA_DIR": "/data",
+        "DISCORD_ALERT_WEBHOOK_URL": "", "SMTP_HOST": "",
+        "VAPID_PUBLIC_KEY": "", "VAPID_PRIVATE_KEY": "", "VAPID_SUBJECT": "",
+        "MAYOS_DATA_DIR": "/data",
         "MAYOS_REQUIRE_PERSISTENT_DATA": "true", "MAYOS_CLIENT_IP_HEADER": "cf-connecting-ip",
         "RESET_LINK_BASE_URL": "https://${MAYOS_STAGING_HOSTNAME:?set MAYOS_STAGING_HOSTNAME in /opt/mayos/staging.env}",
     }

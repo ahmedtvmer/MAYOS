@@ -204,8 +204,7 @@ def _resolve(db, ledger, command, claimed_ids):
     _require_assignment(db, command.coach_id, command.assignment_id)
     resolved_request = queue.get(db, command.coach_id, command.assignment_id, command.request_id)
     if command.applies:
-        ledger_push.record_intent(
-            ledger.conn,
+        ledger.record_push_intent(
             ledger_push.PushIntent(
                 resolved_request["player_account_id"], "food_swap_reply",
                 f"food-swap-reply:{command.request_id}", resolved_request["resolved_at"],

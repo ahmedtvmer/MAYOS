@@ -124,8 +124,7 @@ def run(db, coach_id, assignment_id, operation):
             _require_active(db, coach_id, assignment_id)
             if response is not None and "plan_version_id" in response:
                 plan_version_id = response["plan_version_id"]
-                ledger_push.record_intent(
-                    ledger.conn,
+                ledger.record_push_intent(
                     ledger_push.PushIntent(
                         player_account_id, "nutrition_published",
                         f"nutrition-published:{assignment_id}:{plan_version_id}",

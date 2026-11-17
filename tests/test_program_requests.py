@@ -1124,14 +1124,12 @@ def test_742_program_request_and_decline_pushes_survive_notice_failures(api, mon
     assert declined.status_code == 200, declined.text
 
     with db.catalog_locked() as connection:
-        events = {
-            row["dedupe_key"]: (row["account_id"], row["notification_type"])
-            for row in connection.execute(
-                "SELECT dedupe_key, account_id, notification_type FROM push_events "
-                "WHERE dedupe_key IN (?, ?)",
-                (f"program-request:{request_id}", f"program-request-reply:{request_id}"),
-            )
-        }
+        cursor = connection.execute(
+            "SELECT dedupe_key, account_id, notification_type FROM push_events "
+            "WHERE dedupe_key IN (?, ?)",
+            (f"program-request:{request_id}", f"program-request-reply:{request_id}"),
+        )
+        events = {row[0]: (row[1], row[2]) for row in cursor}
     assert events == {
         f"program-request:{request_id}": (coach_account_id, "alerts"),
         f"program-request-reply:{request_id}": (player_account_id, "coach_updates"),

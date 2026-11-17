@@ -9,7 +9,6 @@ from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from database import push as storage
-from database.ledger import push as ledger_push
 from service.push_messages import EVENT_COPY, ROUTES, choose_reminder
 from service.schedule import timezone_for_versions
 from service.attendance import is_expected_day
@@ -284,13 +283,13 @@ def _delivery_failed(db, claim, now, status):
 
 def drain_push_intents(db, ledger):
     """Transfer committed ledger intents into the catalog outbox idempotently."""
-    intents = ledger_push.pending_intents(ledger.conn)
+    intents = ledger.pending_push_intents()
     for intent in intents:
         with db.catalog_transaction(immediate=True):
             queue_event(db.catalog_conn, intent["account_id"], intent["event"],
                         intent["dedupe_key"], intent["created_at"])
         with ledger.ledger_transaction(immediate=True):
-            ledger_push.delete_intent(ledger.conn, intent["intent_id"])
+            ledger.delete_push_intent(intent["intent_id"])
 
 
 def _finish(db, claim, state, next_attempt):

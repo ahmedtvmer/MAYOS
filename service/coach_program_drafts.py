@@ -977,8 +977,7 @@ def _publish_program(
                 ledger.discard_program_draft(assignment_id)
             published = ledger.get_active_program()
             if published is not None:
-                ledger_push.record_intent(
-                    ledger.conn,
+                ledger.record_push_intent(
                     ledger_push.PushIntent(
                         assignment_context["player"]["account_id"], "program_published",
                         f"program-published:{assignment_id}:{published.version}", published.created_at,
