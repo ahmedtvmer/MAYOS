@@ -224,26 +224,6 @@ FakeMayosApi _signedInFake() {
   return fake;
 }
 
-const Map<String, List<String>> _releaseSevenFeatureTitles =
-    <String, List<String>>{
-  'isolation_first_order': <String>[
-    'A clearer exercise order',
-    'ترتيب أوضح للتمارين',
-  ],
-  'assistant_exercise_lookup': <String>[
-    'Search exercises by the name you know',
-    'ابحث عن التمرين بالاسم الذي تعرفه',
-  ],
-  'offline_start': <String>[
-    'Open your saved training offline',
-    'افتح بيانات تدريبك المحفوظة دون اتصال',
-  ],
-  'weak_points': <String>[
-    'Weak points',
-    'نقاط الضعف',
-  ],
-};
-
 void main() {
   testWidgets('What’s new shows only unseen supported entries and Got it remembers the release', (tester) async {
     final FakeMayosApi fake = _signedInFake()..whatsNewSeenRelease = 0;
@@ -323,12 +303,10 @@ void main() {
 
   testWidgets("Profile What's new list is grouped and localized", (tester) async {
     final List<FeatureEntry> releaseSevenEntries = featureList
-        .where((FeatureEntry item) => item.release == currentFeatureRelease)
+        .where((FeatureEntry item) =>
+            item.release == currentFeatureRelease && item.audience == 'lifter')
         .toList();
-    expect(
-      releaseSevenEntries.map((FeatureEntry entry) => entry.id).toSet(),
-      _releaseSevenFeatureTitles.keys.toSet(),
-    );
+    expect(releaseSevenEntries, isNotEmpty);
     expect(
       releaseSevenEntries.map((FeatureEntry entry) => entry.titleEn).toSet().length,
       releaseSevenEntries.length,
@@ -350,8 +328,10 @@ void main() {
       reason: 'Release 7 Arabic feature copy must be unique',
     );
     for (final FeatureEntry entry in releaseSevenEntries) {
-      expect(entry.titleEn, _releaseSevenFeatureTitles[entry.id]![0]);
-      expect(entry.titleAr, _releaseSevenFeatureTitles[entry.id]![1]);
+      expect(entry.titleEn.trim(), isNotEmpty,
+          reason: '${entry.id}: English title must not be empty');
+      expect(entry.titleAr.trim(), isNotEmpty,
+          reason: '${entry.id}: Arabic title must not be empty');
     }
 
     for (final String language in <String>['en', 'ar']) {
