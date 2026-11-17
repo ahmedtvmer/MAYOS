@@ -1091,67 +1091,89 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     final String? helperText =
         helperLines.isEmpty ? null : helperLines.join('\n');
     final MayosThemeExtension c = MayosTheme.of(context);
+    // The "Rate assistant replies" spotlight targets the vote bar, which only
+    // exists under an assistant reply. With no rateable reply yet (an empty
+    // chat), the composer carries the same TourTarget id so Show me still
+    // lands here — where the first rated reply's bar will appear.
+    final bool hasRateableReply = _messages.any(
+      (ChatMessage message) =>
+          message.role == 'assistant' &&
+          !message.isDebriefPointer &&
+          (message.feedback != null || message.feedbackContext != null),
+    );
+    final Widget composerRow = Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: <Widget>[
+        Expanded(
+          child: TourTarget(
+            id: 'whats_new_assistant_why',
+            child: MayosTextField(
+              fieldKey: const Key('chat_composer'),
+              controller: _controller,
+              enabled: _composerEnabled,
+              minLines: 1,
+              maxLines: 4,
+              maxLength: chatMessageMaxChars,
+              maxLengthEnforcement: MaxLengthEnforcement.enforced,
+              inputFormatters: const <TextInputFormatter>[
+                ChatMessageCodePointLengthFormatter(),
+              ],
+              hideCounter: true,
+              textInputAction: TextInputAction.newline,
+              hint: _offline ? copy.offline : copy.messageAssistant,
+              helperText: helperText,
+              onChanged: (_) => _setStateIfMounted(() {}),
+              onSubmitted: (_) => _send(),
+            ),
+          ),
+        ),
+        const SizedBox(width: MayosSpacing.xs),
+        Semantics(
+          label: copy.send,
+          button: true,
+          child: IconButton.filled(
+            key: const Key('chat_send'),
+            tooltip: copy.send,
+            style: IconButton.styleFrom(
+              backgroundColor: c.accent,
+              foregroundColor: c.onAccent,
+              disabledBackgroundColor: c.surfaceSunken,
+              disabledForegroundColor: c.textDisabled,
+              minimumSize: const Size(kMayosMinTapTarget, kMayosMinTapTarget),
+            ),
+            onPressed: _composerEnabled ? _send : null,
+            icon: _sending
+                ? SizedBox(
+                    height: 18,
+                    width: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: c.onAccent,
+                    ),
+                  )
+                : const Icon(Icons.send),
+          ),
+        ),
+      ],
+    );
     return SafeArea(
       key: const Key('chat_composer_bar'),
       top: false,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(MayosSpacing.sm, MayosSpacing.xxs,
             MayosSpacing.sm, MayosSpacing.xs),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: <Widget>[
-            Expanded(
-              child: TourTarget(
-                id: 'whats_new_assistant_why',
-                child: MayosTextField(
-                  fieldKey: const Key('chat_composer'),
-                  controller: _controller,
-                  enabled: _composerEnabled,
-                  minLines: 1,
-                  maxLines: 4,
-                  maxLength: chatMessageMaxChars,
-                  maxLengthEnforcement: MaxLengthEnforcement.enforced,
-                  inputFormatters: const <TextInputFormatter>[
-                    ChatMessageCodePointLengthFormatter(),
-                  ],
-                  hideCounter: true,
-                  textInputAction: TextInputAction.newline,
-                  hint: _offline ? copy.offline : copy.messageAssistant,
-                  helperText: helperText,
-                  onChanged: (_) => _setStateIfMounted(() {}),
-                  onSubmitted: (_) => _send(),
-                ),
-              ),
-            ),
-            const SizedBox(width: MayosSpacing.xs),
-            Semantics(
-              label: copy.send,
-              button: true,
-              child: IconButton.filled(
-                key: const Key('chat_send'),
-                tooltip: copy.send,
-                style: IconButton.styleFrom(
-                  backgroundColor: c.accent,
-                  foregroundColor: c.onAccent,
-                  disabledBackgroundColor: c.surfaceSunken,
-                  disabledForegroundColor: c.textDisabled,
-                  minimumSize:
-                      const Size(kMayosMinTapTarget, kMayosMinTapTarget),
-                ),
-                onPressed: _composerEnabled ? _send : null,
-                icon: _sending
-                    ? SizedBox(
-                        height: 18,
-                        width: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: c.onAccent,
-                        ),
-                      )
-                    : const Icon(Icons.send),
-              ),
-            ),
-          ],
+        // One TourTarget whose id switches (TourTarget unregisters the old id
+        // and registers the new one in didUpdateWidget, keeping this subtree
+        // mounted): while no rateable reply exists it carries the feedback
+        // entry's target id so Show me lands here; once a reply's vote bar
+        // exists, the bar takes the id over and the composer falls back to a
+        // stable unused id — so the composer never remounts and never loses
+        // focus or text when the first rateable reply arrives (#748).
+        child: TourTarget(
+          id: hasRateableReply
+              ? 'chat_composer'
+              : 'assistant_feedback_vote_buttons',
+          child: composerRow,
         ),
       ),
     );

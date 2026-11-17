@@ -15,6 +15,7 @@ import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/core/ui/mayos_button.dart';
 import 'package:mayos_mobile/src/core/workout_storage.dart';
+import 'package:mayos_mobile/src/core/refetch_on_reconnect.dart';
 import 'package:mayos_mobile/src/providers.dart';
 
 import 'support/fake_mayos_api.dart';
@@ -25,6 +26,18 @@ import 'support/fake_mayos_api.dart';
 
 /// What the mocked platform clipboard last received from ⋯ → Copy.
 String? clipboardData;
+
+/// True when the keyboard is attached to the chat composer's EditableText.
+bool _composerHasFocus(WidgetTester tester) {
+  if (!tester.testTextInput.hasAnyClients) return false;
+  final EditableTextState editable = tester.state<EditableTextState>(
+    find.descendant(
+      of: find.byKey(const Key('chat_composer')),
+      matching: find.byType(EditableText),
+    ),
+  );
+  return editable.widget.focusNode!.hasFocus;
+}
 
 final Map<String, dynamic> _signedContext = <String, dynamic>{
   'message_id': 'srv-reply-1',
@@ -311,5 +324,51 @@ void main() {
     expect(find.text('مسيء'), findsOneWidget);
     expect(find.text('نصيحة غير آمنة'), findsOneWidget);
     expect(find.text('ما الخطأ في هذه الإجابة؟'), findsOneWidget);
+  });
+
+  testWidgets('a reply arriving while the composer has focus keeps focus and text',
+      (tester) async {
+    final FakeMayosApi fake = _fakePlayer('alice');
+    await _pumpChat(tester, fake, store: InMemoryChatCacheStore(), seedHistory: const []);
+
+    await tester.enterText(find.byKey(const Key('chat_composer')), 'draft while reading');
+    await tester.pump();
+    expect(_composerHasFocus(tester), isTrue);
+    final Element composerBefore =
+        find.byKey(const Key('chat_composer')).evaluate().single;
+
+    // A reconnect reload restores a rateable reply while the composer keeps
+    // focus and text — the rebuild must not remount the composer's subtree.
+    fake.chatHistory.add(<String, dynamic>{
+      'id': 'srv-reply-1',
+      'role': 'assistant',
+      'content': 'Keep three working sets and two reps in reserve.',
+      'created_at': '2026-11-01T10:00:00Z',
+    });
+    fake.chatFeedback['srv-reply-1'] = <String, dynamic>{
+      'feedback_id': 'fb-1',
+      'vote': null,
+      'reported': false,
+    };
+    final ProviderContainer container =
+        ProviderScope.containerOf(tester.element(find.byType(MayosApp)));
+    container.read(reconnectProvider.notifier).state += 1;
+    await _pumpUntilFound(tester, find.byKey(const Key('assistant_feedback_up')));
+    await tester.pumpAndSettle();
+
+    // The reply's vote bar took the TourTarget id over...
+    expect(find.byKey(const Key('assistant_feedback_up')), findsOneWidget);
+    // ...and the composer kept its element (no remount), its text, and focus.
+    final Element composerAfter =
+        find.byKey(const Key('chat_composer')).evaluate().single;
+    expect(composerAfter, same(composerBefore));
+    expect(_composerHasFocus(tester), isTrue);
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const Key('chat_composer')))
+          .controller!
+          .text,
+      'draft while reading',
+    );
   });
 }
