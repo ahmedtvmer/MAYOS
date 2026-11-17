@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -364,7 +366,7 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
     observers: <NavigatorObserver>[SentryScreenObserver()],
     initialLocation: splashPath,
     refreshListenable: refresh,
-    redirect: (BuildContext context, GoRouterState state) async {
+    redirect: (BuildContext context, GoRouterState state) {
       // The root-relative location (query included) carries a cold deep link
       // across the splash hold; the rules themselves only ever read its path
       // (#127). A platform-reported absolute URL (an app link) keeps only its
@@ -389,12 +391,23 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       final desired = notificationModeFor(requested, account);
       if (account != null && mode.isResolvedFor(account.accountId) &&
           desired != null && desired != mode.mode) {
-        await ref.read(appModeControllerProvider.notifier).setMode(
-          desired, accountId: account.accountId, isCoach: account.isCoach,
-        );
-        if (ref.read(authControllerProvider).session?.account.accountId != account.accountId) {
-          return splashPath;
-        }
+        // A notification click lands on the other role's destination. The
+        // switch applies synchronously and the mode listener re-runs the
+        // redirect with the switched mode, so this evaluation must not await:
+        // an async redirect turns every route commit into a multi-microtask
+        // chain, and an auth/mode refresh that lands mid-chain re-parses the
+        // stale provider location with the new state — dropping carried deep
+        // links (#127) and racing roster starts in widget tests.
+        unawaited(() async {
+          try {
+            await ref.read(appModeControllerProvider.notifier).setMode(
+              desired, accountId: account.accountId, isCoach: account.isCoach,
+            );
+          } on Object {
+            // Persistence failed; the in-memory mode is already applied and
+            // Settings' push entry can retry on the next visit.
+          }
+        }());
       }
       return redirectFor(ref.read(authControllerProvider), location,
           ref.read(appModeControllerProvider),
