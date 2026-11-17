@@ -339,6 +339,10 @@ class AccountDeletionMixin:
                 "DELETE FROM program_templates WHERE coach_account_id = ?",
                 (account_id,),
             )
+            cursor.execute(
+                "DELETE FROM nutrition_templates WHERE coach_account_id = ?",
+                (account_id,),
+            )
             cursor.execute("DELETE FROM account_plans WHERE account_id = ?", (account_id,))
             cursor.execute(
                 "DELETE FROM assignment_invites"

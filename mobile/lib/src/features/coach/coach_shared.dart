@@ -211,7 +211,7 @@ class CoachRequestCard extends StatelessWidget {
           Row(
             children: <Widget>[
               Icon(
-                request.isExerciseSubstitution
+                request.isExerciseSubstitution || request.isFoodSwap
                     ? Icons.swap_horiz
                     : Icons.calendar_view_week,
                 size: 20,
@@ -232,14 +232,7 @@ class CoachRequestCard extends StatelessWidget {
           ),
           const SizedBox(height: MayosSpacing.xs),
           Text(
-            copy.programRequestTitle(
-              isSubstitution: request.isExerciseSubstitution,
-              exerciseName: request.exerciseName,
-              day: request.dayName,
-              replacementName: request.replacementExerciseName,
-              frequency: request.desiredWeeklyFrequency,
-              preference: request.desiredSplitPreference,
-            ),
+            coachRequestTitle(context, request),
             style: MayosTypography.of(context).exerciseTitle.copyWith(color: c.textPrimary),
           ),
           const SizedBox(height: MayosSpacing.xxs),

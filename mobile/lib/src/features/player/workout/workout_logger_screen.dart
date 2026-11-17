@@ -208,6 +208,7 @@ class _WorkoutDurationConfirmationState
             child: Text(isArabic ? 'رجوع' : 'Back'),
           ),
           FilledButton(
+            key: const ValueKey<String>('logger.duration.confirm'),
             onPressed: _hours == 0 && _minutes == 0 ||
                     _hours > 24 ||
                     _minutes > 59 ||
@@ -221,6 +222,7 @@ class _WorkoutDurationConfirmationState
         ]
       : <Widget>[
           TextButton(
+            key: const ValueKey<String>('logger.duration.edit'),
             onPressed: () => setState(() => _editing = true),
             child: Text(isArabic ? 'تعديل' : 'Edit'),
           ),
@@ -1366,6 +1368,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
   }
 
   Future<void> _save() async {
+    if (_saving) return;
     if (ref.read(webDirectWorkoutCommitEnabledProvider)) {
       await _saveWebWorkout();
       return;

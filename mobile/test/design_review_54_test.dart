@@ -28,6 +28,23 @@ import 'package:mayos_mobile/src/router.dart';
 
 import 'support/fake_mayos_api.dart';
 
+File? _findDesignReviewReadme() {
+  Directory directory = Directory.current.absolute;
+  while (true) {
+    final File candidate = File(
+      '${directory.path}${Platform.pathSeparator}docs${Platform.pathSeparator}'
+      'design-review${Platform.pathSeparator}54${Platform.pathSeparator}README.md',
+    );
+    if (candidate.existsSync()) return candidate;
+
+    final Directory parent = directory.parent;
+    if (parent.path == directory.path) return null;
+    directory = parent;
+  }
+}
+
+final File? _designReviewReadme = _findDesignReviewReadme();
+
 /// Visual-verification tests for #54: the offline-Home fallback, the chart's
 /// rounded ticks and edge padding, and a text-scale 2.0 / both-theme sweep of
 /// every captured screen at 360x640.
@@ -357,24 +374,33 @@ void main() {
     });
   });
 
-  test('docs/design-review/54/README.md links all resolve', () {
-    final File readme = File(
-        '${Directory.current.parent.path}/docs/design-review/54/README.md');
-    expect(readme.existsSync(), isTrue, reason: 'review artifact missing');
-    final RegExp link = RegExp(r'\]\(([^)]+)\)');
-    int checked = 0;
-    for (final RegExpMatch match in link.allMatches(readme.readAsStringSync())) {
-      final String target = match.group(1)!;
-      if (target.startsWith('http')) {
-        continue;
+  test(
+    'docs/design-review/54/README.md links all resolve',
+    () {
+      final File? readme = _designReviewReadme;
+      expect(
+        readme,
+        isNotNull,
+        reason: 'The tracked design-review README should be present in the checkout copy.',
+      );
+      if (readme == null) return;
+      // The server runs tests from a checkout copy without .git; the files in
+      // that copy are the tracked-file view, so resolve the README links there.
+      final RegExp link = RegExp(r'\]\(([^)]+)\)');
+      int checked = 0;
+      for (final RegExpMatch match in link.allMatches(readme.readAsStringSync())) {
+        final String target = match.group(1)!;
+        if (target.startsWith('http')) {
+          continue;
+        }
+        checked++;
+        final File resolved = File('${readme.parent.path}/$target');
+        expect(resolved.existsSync(), isTrue, reason: 'missing file: $target');
       }
-      checked++;
-      final File resolved = File('${readme.parent.path}/$target');
-      expect(resolved.existsSync(), isTrue, reason: 'missing file: $target');
-    }
-    expect(checked, greaterThan(30),
-        reason: 'expected the index to link to the captured screens');
-  });
+      expect(checked, greaterThan(30),
+          reason: 'expected the index to link to the captured screens');
+    },
+  );
 
   // -------------------------------------------------------------------------
   // Text-scale 2.0 sweep of every captured screen at 360x640, both themes.

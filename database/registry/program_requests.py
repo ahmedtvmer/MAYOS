@@ -135,7 +135,8 @@ class RegistryProgramRequestsMixin:
             cursor = self.catalog_conn.cursor()
             cursor.execute(
                 "SELECT pr.assignment_id, COUNT(*)"
-                " FROM program_requests pr"
+                " FROM (SELECT assignment_id, status FROM program_requests UNION ALL"
+                " SELECT assignment_id, status FROM food_swap_requests) pr"
                 " JOIN assignments a ON a.assignment_id = pr.assignment_id"
                 " WHERE a.coach_account_id = ? AND a.status = 'active' AND pr.status = 'pending'"
                 " GROUP BY pr.assignment_id",

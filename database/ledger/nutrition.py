@@ -1,8 +1,28 @@
 """Nutrition plan and private screening operations for a Training ledger."""
 
 import json
-from datetime import UTC, datetime
 from dataclasses import dataclass
+from datetime import UTC, date, datetime, timedelta
+
+
+@dataclass(frozen=True)
+class NutritionMealGenerationCacheKey:
+    entry_date: str
+    plan_version_id: int
+    fingerprint: str
+    variant: str
+
+NUTRITION_MEAL_GENERATION_CACHE_DDL = """
+CREATE TABLE IF NOT EXISTS nutrition_meal_generation_cache (
+    entry_date TEXT NOT NULL,
+    plan_version_id INTEGER NOT NULL REFERENCES nutrition_plan_versions(id) ON DELETE CASCADE,
+    fingerprint TEXT NOT NULL,
+    variant TEXT NOT NULL CHECK (variant IN ('training_day', 'rest_day')),
+    payload_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (entry_date, plan_version_id, fingerprint, variant)
+)
+"""
 
 
 @dataclass(frozen=True)
@@ -17,6 +37,7 @@ class NutritionPlanVersion:
     author: str = "Player"
     provenance: str = "automatic"
     authority_assignment_id: str | None = None
+    meals: dict | None = None
 
 
 @dataclass(frozen=True)
@@ -28,6 +49,35 @@ class NutritionSetup:
 
 
 class LedgerNutritionMixin:
+    def get_nutrition_meal_generation_cache(self, key: NutritionMealGenerationCacheKey):
+        row = self.conn.execute(
+            "SELECT payload_json FROM nutrition_meal_generation_cache "
+            "WHERE entry_date=? AND plan_version_id=? AND fingerprint=? AND variant=?",
+            (key.entry_date, key.plan_version_id, key.fingerprint, key.variant),
+        ).fetchone()
+        return json.loads(row[0]) if row else None
+
+    def save_nutrition_meal_generation_cache(self, key: NutritionMealGenerationCacheKey, payload):
+        day = date.fromisoformat(key.entry_date)
+        self.conn.execute(
+            "DELETE FROM nutrition_meal_generation_cache "
+            "WHERE entry_date=? AND plan_version_id=? AND variant=? AND fingerprint<>?",
+            (day.isoformat(), key.plan_version_id, key.variant, key.fingerprint),
+        )
+        self.conn.execute(
+            "DELETE FROM nutrition_meal_generation_cache WHERE entry_date<?",
+            ((day - timedelta(days=30)).isoformat(),),
+        )
+        self.conn.execute(
+            "INSERT INTO nutrition_meal_generation_cache "
+            "(entry_date,plan_version_id,fingerprint,variant,payload_json,created_at) "
+            "VALUES(?,?,?,?,?,?) ON CONFLICT(entry_date,plan_version_id,fingerprint,variant) "
+            "DO UPDATE SET payload_json=excluded.payload_json, created_at=excluded.created_at",
+            (day.isoformat(), key.plan_version_id, key.fingerprint, key.variant, json.dumps(payload),
+             datetime.now(UTC).isoformat(timespec="microseconds")),
+        )
+        self._commit_ledger()
+
     def change_water_glasses(self, entry_date, change):
         now = datetime.now(UTC).isoformat(timespec="microseconds")
         if change > 0:
@@ -210,17 +260,21 @@ class LedgerNutritionMixin:
                 goal_source_snapshot=setup.plan.goal_source_snapshot,
                 author=setup.plan.author, provenance=setup.plan.provenance,
                 authority_assignment_id=setup.plan.authority_assignment_id,
+                meals=setup.plan.meals,
             ))
 
     def save_nutrition_plan(self, plan: NutritionPlanVersion):
+        from database.ledger.nutrition_meals import meals_for_version
+
+        meals = meals_for_version(self, plan)
         self.conn.execute("UPDATE nutrition_pace_proposals SET status='stale' "
                           "WHERE status='pending'")
         cursor = self.conn.execute(
-            "INSERT INTO nutrition_plan_versions(author, provenance, goal, goal_reason_data_json, intensity, daily_activity, targets_json, authority_assignment_id, created_at) "
-            "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO nutrition_plan_versions(author, provenance, goal, goal_reason_data_json, intensity, daily_activity, targets_json, authority_assignment_id, created_at, meals_json) "
+            "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (plan.author, plan.provenance, plan.goal, json.dumps(plan.reason), plan.intensity, plan.daily_activity,
              json.dumps(plan.targets), plan.authority_assignment_id,
-             plan.created_at or datetime.now(UTC).isoformat()),
+             plan.created_at or datetime.now(UTC).isoformat(), json.dumps(meals) if meals is not None else None),
         )
         if plan.goal_source_snapshot is not None:
             self.conn.execute(
