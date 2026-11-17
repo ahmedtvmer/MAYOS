@@ -7,11 +7,12 @@ visibility contract for the two progression kinds.
 
 import sqlite3
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
 
-from agent.ProgramState import ProgramDaySchema, ProgramExerciseSchema
+from agent.ProgramState import GeneratedProgramSchema, ProgramDaySchema, ProgramExerciseSchema
 from database.database_manager import DatabaseManager
 from service import coach as coach_service
 from service import progression_alerts as progression
@@ -180,8 +181,16 @@ def test_deload_signal_from_fatigue_verdict():
 
 
 def test_regression_signal_on_overshoot_deload_action():
+    position_transition = {
+        "reason_code": "position.follows_pre_exhaust",
+        "from_program_version": 1,
+        "to_program_version": 2,
+    }
     signals = progression.signals_from_commit(
-        [_summary("bp", action="deload", status_badge="OVERSHOOT", e1rm_delta=-3.0, current_e1rm=97.0)],
+        [_summary(
+            "bp", action="deload", status_badge="OVERSHOOT", e1rm_delta=-3.0,
+            current_e1rm=97.0, position_transition=position_transition,
+        )],
         _recovered(),
         session_id="s1",
         session_date="2026-09-20",
@@ -190,6 +199,103 @@ def test_regression_signal_on_overshoot_deload_action():
     assert signals[0].subject == "bp"
     assert signals[0].details["status_badge"] == "OVERSHOOT"
     assert signals[0].details["exercise_name"] == "Bench Press"
+    assert signals[0].details["position_transition"] == position_transition
+
+
+def test_pre_exhaust_version_transition_suppresses_e1rm_drop_alert():
+    signals = progression.signals_from_commit(
+        [_summary(
+            "bp",
+            e1rm_delta=-8.0,
+            current_e1rm=92.0,
+            position_transition={
+                "reason_code": "position.follows_pre_exhaust",
+                "from_program_version": 1,
+                "to_program_version": 2,
+            },
+        )],
+        _recovered(),
+        session_id="s1",
+        session_date="2026-09-20",
+    )
+
+    assert signals == []
+
+
+@pytest.mark.parametrize(
+    ("previous_slots", "expected_transition"),
+    [
+        (["horizontal_row", "flat_press", "chest_fly"], True),
+        (["horizontal_row", "chest_fly", "flat_press"], False),
+    ],
+)
+def test_workout_records_pre_exhaust_transition_only_when_order_changed(
+    previous_slots, expected_transition
+):
+    from service.workouts import _pre_exhaust_position_transition
+
+    def versioned_program(version, slots, *, transitioned):
+        exercises = [
+            ProgramExerciseSchema(
+                exercise_id=slot,
+                exercise_name=slot,
+                slot_key=slot,
+                target_reps_min=6,
+                target_reps_max=8,
+            )
+            for slot in slots
+        ]
+        exercise_reasons = [
+            {
+                "exercise_id": slot,
+                "rationale": {
+                    "position": {
+                        "code": (
+                            "position.follows_pre_exhaust"
+                            if slot == "flat_press" and transitioned
+                            else "position.heavy_compound"
+                        ),
+                        "params": {
+                            "reason_en": "This compound follows same-muscle isolation work.",
+                            "reason_ar": "يأتي هذا التمرين المركب بعد تمرين عزل للعضلة نفسها.",
+                        },
+                    }
+                },
+            }
+            for slot in slots
+        ]
+        return GeneratedProgramSchema(
+            program_name="Pre-exhaust transition",
+            split_type="custom",
+            weekly_frequency=1,
+            version=version,
+            days=[ProgramDaySchema(
+                day_name="Upper",
+                day_order=1,
+                exercises=exercises,
+            )],
+            program_rationale={
+                "days": [{"day_order": 1, "exercises": exercise_reasons}]
+            },
+        )
+
+    current = versioned_program(
+        2, ["horizontal_row", "chest_fly", "flat_press"], transitioned=True
+    )
+    previous = versioned_program(1, previous_slots, transitioned=False)
+    ledger = MagicMock()
+    ledger.get_last_performance_program_version.return_value = 1
+    ledger.get_program_by_version.return_value = previous
+
+    transition = _pre_exhaust_position_transition(current, ledger, 1, "flat_press")
+
+    assert (transition is not None) is expected_transition
+    if expected_transition:
+        assert transition["reason_code"] == "position.follows_pre_exhaust"
+        assert transition["from_program_version"] == 1
+        assert transition["to_program_version"] == 2
+        assert transition["reason_en"]
+        assert transition["reason_ar"]
 
 
 def test_regression_signal_on_five_percent_e1rm_drop():

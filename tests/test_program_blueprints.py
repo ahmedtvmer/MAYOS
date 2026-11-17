@@ -699,15 +699,18 @@ def test_five_day_ppl_upper_lower_has_balanced_volume():
         for day in program.days
     }
     assert slots_by_day["Push"] == [
-        "side_delts", "incline_press", "shoulder_press", "chest_fly",
+        "incline_press", "side_delts", "shoulder_press", "chest_fly",
         "triceps_overhead",
     ]
     assert slots_by_day["Upper"] == [
-        "forearm_wrist", "flat_press", "vertical_pull", "horizontal_row", "biceps_preacher",
-        "triceps_pushdown",
+        "flat_press", "vertical_pull", "horizontal_row", "forearm_wrist",
+        "biceps_preacher", "triceps_pushdown",
+    ]
+    assert slots_by_day["Lower"] == [
+        "quad_compound", "adductors", "ham_curl", "glute_thrust", "calf", "abs",
     ]
     assert slots_by_day["Pull"] == [
-        "rear_delts", "vertical_pull", "shrug", "biceps_alt", "forearm_reverse",
+        "vertical_pull", "rear_delts", "shrug", "biceps_alt", "forearm_reverse",
     ]
     assert {
         day.day_name for day in program.days

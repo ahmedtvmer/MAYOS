@@ -75,6 +75,20 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
     audience: 'lifter',
   ),
   FeatureEntry(
+    id: 'isolation_first_order',
+    titleEn: 'A clearer exercise order',
+    sentenceEn:
+        'When a day allows, up to two isolation sets may come before a later compound for the same muscle; the main lift stays first in the day.',
+    titleAr: 'ترتيب أوضح للتمارين',
+    sentenceAr:
+        'عندما يسمح اليوم، قد تسبق مجموعتا عزل على الأكثر تمرينًا مركبًا لاحقًا للعضلة نفسها؛ ويظل تمرين القوة الأساسي أولًا في اليوم.',
+    target: 'program',
+    location: TourShellTabLocation(tabIndex: 1),
+    release: 7,
+    audience: 'lifter',
+    requiresProgramControl: true,
+  ),
+  FeatureEntry(
     id: 'assistant_exercise_lookup',
     titleEn: 'Search exercises by the name you know',
     sentenceEn:
