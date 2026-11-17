@@ -472,8 +472,16 @@ void main() {
     await _expectVisible(tester, 'Password');
     expect(find.text('Coach profile'), findsNothing);
     expect(find.text('Coach plan'), findsNothing);
-    expect(find.byKey(const Key('player_notifications_entry')), findsNothing);
-    expect(find.text('Notifications'), findsNothing);
+    // #333: Player-mode Settings shows the Notifications entry (only Coach
+    // mode hides it), so the tile is present and reachable here.
+    final Finder notificationsEntry =
+        find.byKey(const Key('player_notifications_entry'));
+    await tester.scrollUntilVisible(
+      notificationsEntry,
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(notificationsEntry, findsOneWidget);
   });
 
   testWidgets('Player Settings opens the Player notifications surface',
