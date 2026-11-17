@@ -24,11 +24,12 @@ from core.muscle_volume import (
     normalize_main_muscle,
 )
 from service.injuries import render_public_injury_record
-from service.nutrition import assistant_projection
+from service.nutrition import assistant_projection, targets_for_day as nutrition_targets_for_day
 from service.nutrition_assistant_meals import meal_page
 from service.food_log import NUTRIENT_KEYS
 from service.food_log_context import nutrient_totals
 from service.player_weight_context import render_player_weight_context
+from service.training_status import saturday_week_start
 from service.weight_history import WeightTrendQuery, get_weight_trend, player_local_date
 from agent.player_prompt import (
     HOSTED_PROMPT_MAX_BYTES,
@@ -42,6 +43,10 @@ MAX_TOOL_RESULT_BYTES = 4 * 1024
 MAX_PLAYER_TOOL_ROUNDS = 3
 CHAT_SEARCH_MATCH_MAX_CHARS = 300
 TOOL_TIMEOUT_SECONDS = 5.0
+CARDIO_HISTORY_FIELDS = (
+    "machine", "minutes", "speed_kmh", "incline_pct", "level", "watts", "distance_m",
+    "calories_kcal", "calories_are_estimate",
+)
 _TRUNCATED_PROMPT_RESULT = '{"status":"truncated"}'
 _INJURY_CLEARANCE_TOOL_FIELDS = (
     "exercise_name",
@@ -80,9 +85,31 @@ class FoodLogArgs(BaseModel):
 
 
 class PlayerNutritionArgs(BaseModel):
-    """Continue the selected day's saved meals within the hosted result cap."""
+    """Read the active plan, or only saved targets for a recent day/window."""
 
     offset: int = Field(default=0, ge=0)
+    day: str | None = None
+    days: int | None = Field(default=None, ge=1, le=14)
+
+    @model_validator(mode="after")
+    def require_one_period(self):
+        if self.day is not None and self.days is not None:
+            raise ValueError("Choose day or days, not both")
+        return self
+
+
+class NutritionTrendArgs(BaseModel):
+    """A short recent Player-local daily Food log and target trend."""
+
+    days: int = Field(default=14, ge=1, le=14)
+
+
+class CardioArgs(BaseModel):
+    """Continue recent logged Cardio sessions within the hosted result cap."""
+
+    offset: int = Field(default=0, ge=0)
+    days: int = Field(default=14, ge=1, le=14)
+    day: str | None = Field(default=None, description="today, yesterday or YYYY-MM-DD; overrides days")
 
 
 class ChatHistorySearchArgs(BaseModel):
@@ -315,9 +342,172 @@ def _read_chat_history_search(
 
 
 def _read_player_nutrition(ledger: Any, args: PlayerNutritionArgs) -> dict[str, Any]:
-    """Returns active targets, saved meals and adherence without changing the plan."""
+    """An explicit period returns only saved daily targets; unscoped reads use the active plan."""
     today = player_local_date(ledger, ledger.ledger_id)
+    if args.day is not None or args.days is not None:
+        return _read_saved_nutrition_targets(ledger, args, today)
     return meal_page(assistant_projection(ledger, today), args.offset, MAX_TOOL_RESULT_BYTES)
+
+
+def _recent_player_day(requested: str, today: date) -> date:
+    # Inclusive recent window: oldest allowed day, today; reject older/future/invalid dates.
+    day = {"today": today, "yesterday": today - timedelta(days=1)}.get(requested)
+    if day is None:
+        day = date.fromisoformat(requested)
+    if not today - timedelta(days=13) <= day <= today:
+        raise ValueError("Outside the recent Player-local window")
+    return day
+
+
+def _invalid_recent_date(today: date) -> dict[str, Any]:
+    return {"status": "invalid_date", "earliest_date": (today - timedelta(days=13)).isoformat(),
+            "today": today.isoformat()}
+
+
+def _read_saved_nutrition_targets(ledger: Any, args: PlayerNutritionArgs, today: date) -> dict[str, Any]:
+    try:
+        end = _recent_player_day(args.day, today) if args.day is not None else today
+    except ValueError:
+        return _invalid_recent_date(today)
+    start = end - timedelta(days=(args.days or 1) - 1)
+    days = [{"date": (start + timedelta(days=offset)).isoformat(),
+             "targets": _nutrition_target_values(nutrition_targets_for_day(
+                 ledger, start + timedelta(days=offset)))}
+            for offset in range((end - start).days + 1)]
+    return {"status": "ok" if any(day["targets"] is not None for day in days) else "no_data",
+            "start_date": start.isoformat(), "end_date": end.isoformat(), "days": days}
+
+
+def _nutrition_target_values(targets: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not targets:
+        return None
+    return {key: targets.get(key) for key in ("calories", "protein_g", "carbs_g", "fat_g")}
+
+
+def _nutrition_trend_day(ledger: Any, day: date) -> dict[str, Any]:
+    nutrients = ledger.list_food_log_nutrients(day)
+    targets = _nutrition_target_values(nutrition_targets_for_day(ledger, day))
+    return {
+        "date": day.isoformat(),
+        "totals": nutrient_totals(nutrients, NUTRIENT_KEYS) if nutrients else None,
+        "targets": targets,
+    }
+
+
+def _read_player_nutrition_trend(ledger: Any, args: NutritionTrendArgs) -> dict[str, Any]:
+    today = player_local_date(ledger, ledger.ledger_id)
+    start = today - timedelta(days=args.days - 1)
+    days = [_nutrition_trend_day(ledger, today - timedelta(days=offset))
+            for offset in range(args.days - 1, -1, -1)]
+    response = {
+        "status": "ok" if any(day["totals"] is not None for day in days) else "no_data",
+        "start_date": start.isoformat(), "end_date": today.isoformat(), "days": days,
+    }
+    encoded = json.dumps(response, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    return response if len(encoded) <= MAX_TOOL_RESULT_BYTES else {
+        "status": "truncated", "start_date": start.isoformat(), "end_date": today.isoformat(),
+    }
+
+
+def _recent_cardio_sessions(ledger: Any, today: date, days: int) -> list[dict[str, Any]]:
+    sessions = []
+    for offset in range(days - 1, -1, -1):
+        day = today - timedelta(days=offset)
+        day_sessions, _logged_calories = ledger.get_cardio_day_records(day.isoformat())
+        for session in sorted(day_sessions, key=lambda row: str(row["id"])):
+            entries = [_cardio_history_entry(entry)
+                       for entry in ledger.get_session_cardio(str(session["id"])) or []]
+            if entries:
+                sessions.append(_cardio_session_record(day, entries))
+    sessions.sort(key=lambda session: session["date"], reverse=True)
+    return sessions
+
+
+def _cardio_session_record(day: date, entries: list[dict[str, Any]]) -> dict[str, Any]:
+    calories = [entry.get("calories_kcal") for entry in entries]
+    complete_total = all(kcal is not None for kcal in calories)
+    return {
+        "date": day.isoformat(), "entries": entries,
+        "calories_kcal": sum(calories) if complete_total else None,
+        "calories_are_estimate": (
+            any(entry.get("calories_are_estimate", False) for entry in entries)
+            if complete_total else None
+        ),
+    }
+
+
+def _cardio_history_entry(entry: dict[str, Any]) -> dict[str, Any]:
+    """Keep the recorded Cardio details and saved calorie estimate."""
+    history = {field: entry[field] for field in CARDIO_HISTORY_FIELDS
+               if field in entry and entry[field] is not None}
+    if "calories_are_estimate" in history:
+        history["calories_are_estimate"] = bool(history["calories_are_estimate"])
+    return history
+
+
+def _cardio_session_minutes(session: dict[str, Any]) -> int:
+    return sum(int(entry.get("minutes") or 0) for entry in session["entries"])
+
+
+def _cardio_period_totals(
+    sessions: list[dict[str, Any]], start: date, end: date,
+) -> dict[str, int]:
+    selected = [session for session in sessions
+                if start <= date.fromisoformat(session["date"]) <= end]
+    return {"minutes": sum(_cardio_session_minutes(session) for session in selected),
+            "sessions": len(selected)}
+
+
+def _cardio_summary(today: date, sessions: list[dict[str, Any]], days: int) -> dict[str, Any]:
+    start = today - timedelta(days=days - 1)
+    periods = {
+        "this_week": saturday_week_start(today),
+        "last_7_days": today - timedelta(days=6),
+        "last_14_days": today - timedelta(days=13),
+    }
+    return {
+        "status": "ok" if sessions else "no_data", "today": today.isoformat(),
+        "window": {"start_date": start.isoformat(), "end_date": today.isoformat(),
+                   **_cardio_period_totals(sessions, start, today)},
+        **{name: {"start_date": period_start.isoformat(),
+                  **_cardio_period_totals(sessions, period_start, today)}
+           for name, period_start in periods.items() if period_start >= start},
+        "session_count": len(sessions),
+    }
+
+
+def _cardio_session_page(
+    sessions: list[dict[str, Any]], summary: dict[str, Any], offset: int,
+) -> dict[str, Any]:
+    # Empty/one/many/oversized sessions: every continuation must advance.
+    response = {**summary, "sessions": []}
+    for index in range(offset, len(sessions)):
+        response["sessions"].append(sessions[index])
+        encoded = json.dumps(response, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+        if len(encoded.encode("utf-8")) > MAX_TOOL_RESULT_BYTES - 128:
+            response["sessions"].pop()
+            if index == offset:
+                return {**response, "status": "truncated", "next_offset": None,
+                        "truncation_reason": "cardio_session_exceeds_result_limit"}
+            response["next_offset"] = index
+            return response
+    response["next_offset"] = None
+    return response
+
+
+def _read_player_cardio(ledger: Any, args: CardioArgs) -> dict[str, Any]:
+    today = player_local_date(ledger, ledger.ledger_id)
+    try:
+        end = _recent_player_day(args.day, today) if args.day is not None else today
+    except ValueError:
+        return {**_invalid_recent_date(today), "next_offset": None}
+    days = 1 if args.day is not None else args.days
+    sessions = _recent_cardio_sessions(ledger, end, days)
+    summary = _cardio_summary(end, sessions, days)
+    summary["today"] = today.isoformat()
+    if args.day is not None:
+        summary.pop("this_week", None)
+    return _cardio_session_page(sessions, summary, args.offset)
 
 
 def _food_log_entry(entry: dict[str, Any]) -> dict[str, Any]:
@@ -351,21 +541,16 @@ def _food_log_page(entries, summary, offset):
 
 def _read_player_food_log(ledger: Any, args: FoodLogArgs) -> dict[str, Any]:
     today = player_local_date(ledger, ledger.ledger_id)
-    start = today - timedelta(days=13)
-    requested = args.day or "today"
     try:
-        day = {"today": today, "yesterday": today - timedelta(days=1)}.get(requested)
-        if day is None:
-            day = date.fromisoformat(requested)
-        if not start <= day <= today:
-            raise ValueError("Outside the recent Food log window")
+        day = _recent_player_day(args.day or "today", today)
     except ValueError:
-        return {"status": "invalid_date", "earliest_date": start.isoformat(),
-                "today": today.isoformat()}
+        return _invalid_recent_date(today)
     entries = ledger.list_food_log_entries(day)
+    targets = _nutrition_target_values(nutrition_targets_for_day(ledger, day))
     response = {
         "status": "ok", "date": day.isoformat(), "today": today.isoformat(),
         "totals": nutrient_totals([entry["nutrients"] for entry in entries], NUTRIENT_KEYS),
+        "targets": targets,
         "entry_count": len(entries),
     }
     return _food_log_page(entries, response, args.offset)
@@ -735,11 +920,52 @@ PLAYER_READ_TOOL_REGISTRY: tuple[PlayerReadTool, ...] = (
         status_ar="ببص على تغيّر وزنك…",
     ),
     PlayerReadTool(
+        name="get_player_nutrition_trend",
+        description=(
+            "Read the current player's recent Player-local daily Food log totals and the "
+            "matching saved calorie and Macro targets, up to the last 14 days. Unlogged "
+            "days have null totals; status no_data means no foods are logged in the range. "
+            "Days without saved targets have null targets. No food names or entry details "
+            "are returned. Read-only."
+        ),
+        args_schema=NutritionTrendArgs,
+        reader=lambda ledger: _read_player_nutrition_trend(ledger, NutritionTrendArgs()),
+        args_reader=_read_player_nutrition_trend,
+        status_en="Checking your recent Nutrition trend…",
+        status_ar="ببص على اتجاه التغذية بتاعك مؤخرًا…",
+    ),
+    PlayerReadTool(
+        name="get_player_cardio",
+        description=(
+            "Read the current player's own logged Cardio sessions from the requested 1–14 "
+            "Player-local days (default 14). Set day to today, yesterday or YYYY-MM-DD "
+            "for only that recent day; day overrides days. Includes machine, minutes, recorded settings, saved "
+            "per-entry kcal estimates and per-session kcal totals. "
+            "A session total is null if any Cardio entry has no saved kcal value. "
+            "Returns exact minutes and session totals for the requested window, plus "
+            "this Saturday-to-Friday week and rolling 7/14-day totals when fully covered. "
+            "status no_data means no Cardio was logged in that window. If next_offset "
+            "is set, repeat with the same day/days and that offset. status truncated with "
+            "next_offset null is terminal: a session exceeds the result cap; never claim "
+            "its omitted entries were returned. Window totals remain complete. Read-only."
+        ),
+        args_schema=CardioArgs,
+        reader=lambda ledger: _read_player_cardio(ledger, CardioArgs()),
+        args_reader=_read_player_cardio,
+        status_en="Checking your recent Cardio log…",
+        status_ar="ببص على سجل الكارديو بتاعك مؤخرًا…",
+    ),
+    PlayerReadTool(
         name="get_player_nutrition",
         description=(
+            "With day (today, yesterday or YYYY-MM-DD) or days (1–14 inclusive through today), "
+            "read only that recent period's saved daily Nutrition targets; absent targets are null. "
+            "Choose day or days, not both. Without either period argument: "
             "Read the current player's active Nutrition targets, author, Nutrition goal, pace, "
             "last-14-day adherence counts, and today's Cardio calories and calorie adjustment. "
-            "Includes today's planned meals for the current day_type, not a Food log. "
+            "Includes today's planned meals for the current day_type, not a Food log. Use "
+            "get_player_food_log for logged foods and get_player_nutrition_trend for recent "
+            "daily intake against targets. "
             "If next_offset is set, call again with that food offset for the remaining meals. "
             "For meal questions, use only the returned foods and grams; never invent a Coach's reason "
             "or claim allergy safety without restriction data. "
@@ -757,10 +983,13 @@ PLAYER_READ_TOOL_REGISTRY: tuple[PlayerReadTool, ...] = (
         name="get_player_food_log",
         description=(
             "Read what the current player ate on one Player-local day and its whole-day "
-            "calorie and Macro totals. day defaults to today; accepts today, yesterday, "
-            "or YYYY-MM-DD within the last 14 days including today. Personal food names "
+            "calorie and Macro totals and saved targets for that day. day defaults to today; "
+            "accepts today, yesterday, or YYYY-MM-DD within the last 14 days including today. "
+            "Personal food names "
             "are the player's own data. Null nutrients are unknown and count as zero in "
-            "totals. Names longer than 200 characters are marked truncated. "
+            "totals. entry_count 0 means no foods are logged for that day; null targets "
+            "mean no saved Nutrition target is available for that date. Names longer "
+            "than 200 characters are marked truncated. "
             "If next_offset is set, call again with that offset and the returned "
             "date to read remaining entries; totals always cover the whole day. Read-only."
         ),

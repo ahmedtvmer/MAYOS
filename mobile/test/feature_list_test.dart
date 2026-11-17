@@ -117,7 +117,7 @@ void main() {
   test('Meal setup has bilingual discovery copy in release 6', () {
     final FeatureEntry entry = featureList.singleWhere((FeatureEntry entry) => entry.id == 'meal_setup');
     expect(entry.release, 6);
-    expect(currentFeatureRelease, 6);
+    expect(currentFeatureRelease, 7);
     expect(entry.titleEn, 'Meal setup and Food restrictions');
     expect(entry.titleAr, 'إعداد الوجبات والقيود الغذائية');
     expect(entry.sentenceEn, isNotEmpty);
@@ -145,6 +145,21 @@ void main() {
         ? const TourShellTabLocation(tabIndex: 0) : const TourRouteLocation(foodSwapRequestsPath));
       expect(entry.audience, 'lifter');
     }
+  });
+
+  test('Cardio and Nutrition logs are discoverable in release 7', () {
+    final FeatureEntry entry = featureList.singleWhere(
+      (FeatureEntry entry) => entry.id == 'assistant_personal_logs',
+    );
+    expect(entry.release, 7);
+    expect(entry.titleEn, 'Ask about your Cardio and Nutrition logs');
+    expect(entry.titleAr, isNotEmpty);
+    expect(entry.sentenceEn, contains('what you ate'));
+    expect(entry.sentenceAr, isNotEmpty);
+    expect(entry.target, 'assistant');
+    expect(entry.location, const TourShellTabLocation(tabIndex: 0));
+    expect(currentFeatureRelease, 7);
+    expect(entry.audience, 'lifter');
   });
 
   test('Feature list copy, targets, and Tour stop ids are valid', () {

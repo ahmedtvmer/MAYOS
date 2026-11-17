@@ -219,6 +219,19 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
     audience: 'lifter',
   ),
   FeatureEntry(
+    id: 'assistant_personal_logs',
+    titleEn: 'Ask about your Cardio and Nutrition logs',
+    sentenceEn:
+        'Ask about saved Cardio and Nutrition records for a day or recent period, including what you ate and the Nutrition targets saved for those days.',
+    titleAr: 'اسأل عن سجل الكارديو والتغذية',
+    sentenceAr:
+        'اسأل عن سجل الكارديو والتغذية ليوم أو فترة قريبة، وأكلك، وأهداف التغذية المحفوظة لتلك الأيام.',
+    target: 'assistant',
+    location: TourShellTabLocation(tabIndex: 0),
+    release: 7,
+    audience: 'lifter',
+  ),
+  FeatureEntry(
     id: 'progress',
     titleEn: 'Progress',
     sentenceEn:
