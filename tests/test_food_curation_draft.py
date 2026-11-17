@@ -15,7 +15,10 @@ def test_owner_food_draft_has_required_arabic_aliases_and_unreviewed_recipes():
     with RECIPE_PATH.open(encoding='utf-8') as stream:
         recipes = list(csv.DictReader(stream))
     assert 200 <= len([row for row in curated if row['arabic_name']]) <= 300
-    assert all(row['reviewed'].lower() == 'false' for row in curated)
+    assert all(
+        not row['staple_roles'] or row['reviewed'].lower() == 'true'
+        for row in curated
+    )
     curated_by_id = {row['id']: row for row in curated}
     assert curated_by_id['2709196']['arabic_name'] == 'تفاح مجفف'
     assert curated_by_id['168877']['arabic_name'] == 'أرز أبيض نيء'
@@ -47,4 +50,5 @@ def test_owner_food_draft_has_required_arabic_aliases_and_unreviewed_recipes():
     roles = {role for row in curated for role in row['staple_roles'].split('|') if role}
     assert {'breakfast_protein', 'main_protein', 'carb', 'vegetable_fat', 'snack'} <= roles
     assert 'breakfast_protein' in foods['173798']['staple_roles']
-    assert 'main_protein' in foods['2707152']['staple_roles']
+    assert 'main_protein' in foods['2707154']['staple_roles']
+    assert not foods['2707152']['staple_roles']

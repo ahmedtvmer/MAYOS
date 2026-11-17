@@ -12,9 +12,13 @@ logger = logging.getLogger(__name__)
 
 def _food(row):
     food = dict(row)
-    for field in ("nutrients", "portions", "aliases_en", "aliases_ar", "staple_roles", "ingredients"):
+    for field in ("nutrients", "portions", "aliases_en", "aliases_ar", "staple_roles", "ingredients", "allergens"):
         food[field] = json.loads(food.pop(f"{field}_json") or "[]")
     food["reviewed"] = bool(food["reviewed"])
+    food["vegetarian"] = bool(food["vegetarian"])
+    food["allergens_reviewed"] = bool(food["allergens_reviewed"])
+    if not food["allergens_reviewed"]:
+        food["allergens"] = []
     if not food["reviewed"]:
         food["name"] = food["source_name"]
         food["arabic_name"] = None
