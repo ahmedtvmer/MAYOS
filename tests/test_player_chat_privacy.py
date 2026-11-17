@@ -797,6 +797,8 @@ def test_tool_bound_chat_fetches_profile_and_program_only_after_parallel_calls(
         "get_active_program",
         "get_program_rationale",
         "get_player_weight_trend",
+        "get_player_nutrition_trend",
+        "get_player_cardio",
         "get_player_nutrition",
         "get_player_food_log",
         "get_assistant_preferences",
@@ -1112,6 +1114,8 @@ def test_turn_without_tool_call_sends_no_profile_telemetry_or_program_data(api, 
         "get_active_program",
         "get_program_rationale",
         "get_player_weight_trend",
+        "get_player_nutrition_trend",
+        "get_player_cardio",
         "get_player_nutrition",
         "get_player_food_log",
         "get_assistant_preferences",
@@ -4298,12 +4302,22 @@ def test_player_nutrition_tool_omits_targets_after_positive_rescreen(api, monkey
         for message in model_call["messages"]
         if getattr(message, "type", "") == "tool"
     ]
-    assert len(tool_messages) == 1
-    result = json.loads(tool_messages[0].content)
-    assert result["status"] == "blocked"
-    assert result["targets"] is None
-    assert "screening" not in result
-    assert "medical_condition" not in tool_messages[0].content
+    # #735 routes this question to get_player_nutrition before the first answer,
+    # so the turn pre-reads it (the router's 'context-1' call) and the model may
+    # still call the tool itself ('blocked-nutrition'); the pre-read result also
+    # reappears carried forward in the second model call's message history.
+    # Deduplicating by tool_call_id gives the turn's distinct nutrition lookups;
+    # every one of them must stay blocked without targets or screening data.
+    distinct_results = {
+        message.tool_call_id: message.content for message in tool_messages
+    }
+    assert set(distinct_results) == {"context-1", "blocked-nutrition"}
+    for content in distinct_results.values():
+        result = json.loads(content)
+        assert result["status"] == "blocked"
+        assert result["targets"] is None
+        assert "screening" not in result
+        assert "medical_condition" not in content
 
 
 def test_player_nutrition_tool_returns_ready_payload_for_player_local_window(api, monkeypatch):
