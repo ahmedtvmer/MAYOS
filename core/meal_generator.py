@@ -95,6 +95,20 @@ def meal_totals(foods):
             for target, nutrient in zip(TARGET_KEYS, NUTRIENT_KEYS)}
 
 
+def meal_food_macros(food):
+    nutrients = food.get("nutrients_per_100g", {})
+    grams = float(food["grams"])
+    return {target: (None if nutrients.get(nutrient) is None
+                     else float(nutrients[nutrient]) * grams / 100)
+            for target, nutrient in zip(TARGET_KEYS, NUTRIENT_KEYS)}
+
+
+def meals_with_food_macros(meals):
+    return [{**meal, "foods": [{**food, "macros": meal_food_macros(food)}
+                                for food in meal["foods"]]}
+            for meal in meals]
+
+
 def meal_target_deviation(totals, targets):
     return {key: totals[key] - target for key, target in targets.items()}
 

@@ -37,7 +37,7 @@ class _NutritionMealSettingsRowsState
   bool get _canToggle =>
       _meals != null &&
       !_coachControls &&
-      _meals!.status != 'unavailable' &&
+      (_meals!.status != 'unavailable' || _meals!.enabled) &&
       !_loading &&
       !_loadFailed &&
       !_changing;
@@ -49,8 +49,9 @@ class _NutritionMealSettingsRowsState
       _loadFailed = false;
     });
     try {
-      final PlannedMeals meals =
-          await ref.read(apiClientProvider).plannedMeals();
+      final PlannedMeals meals = await ref
+          .read(apiClientProvider)
+          .plannedMeals();
       if (mounted && request == _request) setState(() => _meals = meals);
     } on ApiException catch (error) {
       if (mounted && request == _request) {
@@ -85,8 +86,9 @@ class _NutritionMealSettingsRowsState
     }
   }
 
-  void _showError(ApiException error) => ScaffoldMessenger.of(context)
-      .showSnackBar(SnackBar(content: Text(error.message)));
+  void _showError(ApiException error) =>
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(error.message)));
 
   Future<void> _openSetup() async {
     await widget.onOpenSetup();
@@ -104,11 +106,13 @@ class _NutritionMealSettingsRowsState
 
   @override
   Widget build(BuildContext context) {
-    final NutritionCopy copy =
-        NutritionCopy(ref.watch(displayLanguageProvider));
+    final NutritionCopy copy = NutritionCopy(
+      ref.watch(displayLanguageProvider),
+    );
     return PopScope(
-        canPop: !_changing,
-        child: Column(children: <Widget>[
+      canPop: !_changing,
+      child: Column(
+        children: <Widget>[
           ListTile(
             key: const Key('meal_setup_entry'),
             contentPadding: EdgeInsets.zero,
@@ -118,24 +122,33 @@ class _NutritionMealSettingsRowsState
                 ? TextButton(onPressed: _load, child: Text(copy.retry))
                 : Text(_status(copy)),
             onTap: _changing ? null : _openSetup,
-            trailing: Row(mainAxisSize: MainAxisSize.min, children: <Widget>[
-              const FoodSwapRequestsEntry(),
-              Semantics(
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                const FoodSwapRequestsEntry(),
+                Semantics(
                   label: copy.meals,
                   child: Switch(
-                      key: const Key('meals_switch'),
-                      value: _pendingEnabled ?? _meals?.enabled ?? false,
-                      onChanged: _canToggle ? _changeEnabled : null)),
-            ]),
+                    key: const Key('meals_switch'),
+                    value: _pendingEnabled ?? _meals?.enabled ?? false,
+                    onChanged: _canToggle ? _changeEnabled : null,
+                  ),
+                ),
+              ],
+            ),
           ),
           const Divider(),
           ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.no_food_outlined),
-              title: Text(copy.foodRestrictions),
-              onTap: _changing ? null : _openSetup,
-              trailing: Icon(
-                  copy.isArabic ? Icons.chevron_left : Icons.chevron_right)),
-        ]));
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.no_food_outlined),
+            title: Text(copy.foodRestrictions),
+            onTap: _changing ? null : _openSetup,
+            trailing: Icon(
+              copy.isArabic ? Icons.chevron_left : Icons.chevron_right,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

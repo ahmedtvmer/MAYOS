@@ -135,7 +135,12 @@ class FakeMayosApi {
   Map<String, dynamic> plannedMealsState = <String, dynamic>{
     'status': 'unavailable', 'reason': 'staples', 'enabled': false, 'meals': <dynamic>[],
   };
+  Map<String, dynamic> foodSwapCandidatesState = <String, dynamic>{
+    'staples': <dynamic>[],
+    'search': <dynamic>[],
+  };
   List<Map<String, dynamic>> generatedMeals = <Map<String, dynamic>>[];
+  Map<String, dynamic>? lastFoodSwapRequest;
   Map<String, dynamic>? lastPlannedMealLog;
   Map<String, dynamic> mealSetupState = <String, dynamic>{
     'meal_count': 3, 'training_time': 'evening',
@@ -1031,6 +1036,11 @@ class FakeMayosApi {
         return FakeResponse(200, mealSetupState);
       case '/nutrition/meals':
         return FakeResponse(200, <String, dynamic>{'date': foodLogToday, ...plannedMealsState});
+      case '/nutrition/meals/swap-candidates':
+        return FakeResponse(200, foodSwapCandidatesState);
+      case '/nutrition/meals/swap':
+        lastFoodSwapRequest = Map<String, dynamic>.from(request.body);
+        return FakeResponse(201, <String, dynamic>{'plan_version_id': 3});
       case '/nutrition/meals/enable':
         if (foodWriteFails) return const FakeResponse(503, <String, dynamic>{'detail': 'Could not update meals.'});
         if (plannedMealsState['author'] == 'Coach') return const FakeResponse(403,

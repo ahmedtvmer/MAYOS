@@ -25,7 +25,7 @@ class PaceCheckContext:
 
 
 def evaluate(ledger: Any, today: date) -> dict[str, Any] | None:
-    plan = ledger.get_active_nutrition_plan()
+    plan = ledger.get_active_nutrition_target_plan()
     if plan is None:
         return None
     last_checked = ledger.get_last_nutrition_pace_check_date()
@@ -54,7 +54,7 @@ def _pending_proposal(ledger: Any, plan_version_id: int) -> dict[str, Any] | Non
     proposal = ledger.get_nutrition_pace_proposal()
     return proposal if proposal and proposal["status"] == "pending" and int(
         proposal["plan_version_id"]
-    ) == plan_version_id else None
+    ) >= plan_version_id else None
 
 
 def _eligible_weight_points(ledger: Any, plan: Any, today: date) -> list[Any] | None:
@@ -133,10 +133,9 @@ def _proposal_for_points(ledger: Any, plan: Any, points: list[Any]) -> dict[str,
 
 
 def _cardio_adjustment_for_pace(ledger: Any, today: date) -> int:
-    from service.nutrition import read
+    from service.nutrition import cardio_adjustment_for_day
 
-    state = read(ledger, today=today)
-    return int(state.get("cardio_adjustment_kcal", 0))
+    return cardio_adjustment_for_day(ledger, today)
 
 
 def _maintain_proposal(ledger: Any, context: PaceCheckContext) -> dict[str, Any]:

@@ -20,7 +20,7 @@ from utils.equipment_access import (
 logger = MayosLogger().get_logger(__name__)
 
 # Current target schema version for all user ledgers
-CURRENT_LEDGER_SCHEMA_VERSION: int = 62
+CURRENT_LEDGER_SCHEMA_VERSION: int = 63
 
 MEAL_SETUP_DDL: tuple[str, ...] = (
     "CREATE TABLE IF NOT EXISTS meal_setup ("
@@ -1386,6 +1386,26 @@ def _migrate_v61_to_v62(conn: sqlite3.Connection) -> None:
     conn.execute(NUTRITION_MEAL_GENERATION_CACHE_DDL)
 
 
+def _migrate_v62_to_v63(conn: sqlite3.Connection) -> None:
+    from database.ledger.nutrition import NUTRITION_MEAL_PREFERENCE_DDL
+
+    conn.execute(NUTRITION_MEAL_PREFERENCE_DDL)
+    if not _ledger_table_exists(conn, "nutrition_plan_versions"):
+        return
+    for row in conn.execute(
+        "SELECT meals_json FROM nutrition_plan_versions "
+        "WHERE author='Player' AND meals_json IS NOT NULL ORDER BY id DESC"
+    ):
+        payload = json.loads(row[0])
+        enabled = payload.get("enabled")
+        if isinstance(enabled, bool):
+            conn.execute(
+                "INSERT OR IGNORE INTO nutrition_meal_preference(id,enabled,updated_at) VALUES(1,?,?)",
+                (int(enabled), datetime.now(UTC).isoformat(timespec="microseconds")),
+            )
+            break
+
+
 def get_ledger_schema_version(conn: sqlite3.Connection) -> int:
     """Reads the current user_version PRAGMA from the SQLite connection."""
     cursor = conn.cursor()
@@ -1544,6 +1564,7 @@ MIGRATION_REGISTRY: dict[int, MigrationCallable] = {
     59: _migrate_v59_to_v60,
     60: _migrate_v60_to_v61,
     61: _migrate_v61_to_v62,
+    62: _migrate_v62_to_v63,
 }
 
 

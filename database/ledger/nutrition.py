@@ -24,6 +24,14 @@ CREATE TABLE IF NOT EXISTS nutrition_meal_generation_cache (
 )
 """
 
+NUTRITION_MEAL_PREFERENCE_DDL = """
+CREATE TABLE IF NOT EXISTS nutrition_meal_preference (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    enabled INTEGER NOT NULL CHECK (enabled IN (0, 1)),
+    updated_at TEXT NOT NULL
+)
+"""
+
 
 @dataclass(frozen=True)
 class NutritionPlanVersion:
@@ -48,7 +56,27 @@ class NutritionSetup:
     plan: NutritionPlanVersion | None
 
 
+def _target_identity(plan):
+    return tuple(plan[key] for key in (
+        "goal", "intensity", "daily_activity", "author", "authority_assignment_id",
+    )) + (json.loads(plan["targets_json"]),)
+
+
 class LedgerNutritionMixin:
+    def get_nutrition_meal_preference(self):
+        row = self.conn.execute(
+            "SELECT enabled FROM nutrition_meal_preference WHERE id=1"
+        ).fetchone()
+        return bool(row[0]) if row is not None else None
+
+    def set_nutrition_meal_preference(self, enabled):
+        self.conn.execute(
+            "INSERT INTO nutrition_meal_preference(id,enabled,updated_at) VALUES(1,?,?) "
+            "ON CONFLICT(id) DO UPDATE SET enabled=excluded.enabled, updated_at=excluded.updated_at",
+            (int(enabled), datetime.now(UTC).isoformat(timespec="microseconds")),
+        )
+        self._commit_ledger()
+
     def get_nutrition_meal_generation_cache(self, key: NutritionMealGenerationCacheKey):
         row = self.conn.execute(
             "SELECT payload_json FROM nutrition_meal_generation_cache "
@@ -162,6 +190,15 @@ class LedgerNutritionMixin:
             "SELECT * FROM nutrition_plan_versions ORDER BY id DESC LIMIT 1"
         ).fetchone()
 
+    def get_active_nutrition_target_plan(self):
+        # Meal snapshots must not restart the weigh-in window or proposal identity.
+        baseline = None
+        for plan in self.conn.execute("SELECT * FROM nutrition_plan_versions ORDER BY id DESC"):
+            if baseline is not None and _target_identity(plan) != _target_identity(baseline):
+                break
+            baseline = plan
+        return baseline
+
     def get_nutrition_plan_before(self, ends_at):
         # Parse instants so offsets and microseconds at local midnight stay exact.
         eligible = []
@@ -267,8 +304,6 @@ class LedgerNutritionMixin:
         from database.ledger.nutrition_meals import meals_for_version
 
         meals = meals_for_version(self, plan)
-        self.conn.execute("UPDATE nutrition_pace_proposals SET status='stale' "
-                          "WHERE status='pending'")
         cursor = self.conn.execute(
             "INSERT INTO nutrition_plan_versions(author, provenance, goal, goal_reason_data_json, intensity, daily_activity, targets_json, authority_assignment_id, created_at, meals_json) "
             "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -276,6 +311,9 @@ class LedgerNutritionMixin:
              json.dumps(plan.targets), plan.authority_assignment_id,
              plan.created_at or datetime.now(UTC).isoformat(), json.dumps(meals) if meals is not None else None),
         )
+        baseline = self.get_active_nutrition_target_plan()
+        self.conn.execute("UPDATE nutrition_pace_proposals SET status='stale' "
+                          "WHERE status='pending' AND plan_version_id<?", (baseline["id"],))
         if plan.goal_source_snapshot is not None:
             self.conn.execute(
                 "INSERT INTO nutrition_goal_offer_snapshots(plan_version_id, profile_json) VALUES(?, ?)",

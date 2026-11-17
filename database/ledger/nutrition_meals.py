@@ -12,7 +12,7 @@ from core.meal_generator import MealGenerationInput
 from core.meal_setup import restriction_reasons
 from core.meal_execution import generate_meals_bounded
 from database.food_library.lookup import _food
-from database.ledger.nutrition import NutritionMealGenerationCacheKey
+from database.ledger.nutrition import NutritionMealGenerationCacheKey, NutritionPlanVersion
 from database.ledger.nutrition_swap_foods import library_food, swap_allowed
 
 MEAL_GENERATION_CACHE_VERSION = 2
@@ -65,6 +65,15 @@ def _variant_targets(targets):
             for day_type in ("training_day", "rest_day")}
 
 
+def meal_switch_enabled(ledger, plan, payload):
+    if plan["author"] == "Coach":
+        return bool(payload and payload.get("enabled"))
+    preference = ledger.get_nutrition_meal_preference()
+    if preference is not None:
+        return preference
+    return bool(payload.get("enabled")) if payload and "enabled" in payload else True
+
+
 def _variant_requests(ledger, targets, previous):
     setup = ledger.get_meal_setup()
     staples = reviewed_staples(ledger)
@@ -99,6 +108,11 @@ def _ledger_database_identity(ledger):
 def _variant_generation_key(ledger, entry_date, day_type, fingerprint):
     identity = _ledger_database_identity(ledger)
     return f"{ledger.ledger_id}:{identity}:{entry_date}:{day_type}:{fingerprint}"
+
+
+def _save_generation_cache_if_writable(ledger, cache_key, variant):
+    if not ledger.conn.execute("PRAGMA query_only").fetchone()[0]:
+        ledger.save_nutrition_meal_generation_cache(cache_key, variant)
 
 
 def _food_cache_identity(ledger):
@@ -151,7 +165,7 @@ class _VariantCache:
         )
         generation_key = _variant_generation_key(self.ledger, self.entry_date, day_type, fingerprint)
         variant = generate_meals_bounded(request, generation_key)
-        self.ledger.save_nutrition_meal_generation_cache(cache_key, variant)
+        _save_generation_cache_if_writable(self.ledger, cache_key, variant)
         return variant
 
 
@@ -166,15 +180,60 @@ def resolve_variant(ledger, plan, payload, day_type):
     saved = payload.get("variants", {}).get(day_type)
     if saved is not None:
         return saved
+    pinned_request = _pinned_variant_cache_request(plan, payload, day_type)
+    if pinned_request is None:
+        return {"status": "unavailable", "reason": "staples", "meals": []}
+    cache_key, request, replacements = pinned_request
+    return _resolved_generation(ledger, cache_key, request, replacements)
+
+
+def save_meal_version(ledger, active, payload):
+    snapshot = ledger.get_nutrition_goal_offer_snapshot(active["id"])
+    return ledger.save_nutrition_plan(NutritionPlanVersion(
+        goal=active["goal"], reason=json.loads(active["goal_reason_data_json"]),
+        intensity=active["intensity"], daily_activity=active["daily_activity"],
+        targets=json.loads(active["targets_json"]), author=active["author"],
+        provenance=active["provenance"], authority_assignment_id=active["authority_assignment_id"],
+        meals=payload, goal_source_snapshot=json.loads(snapshot[0]) if snapshot else None,
+    ))
+
+
+def _needs_meal_materialization(ledger, plan, day_type):
+    payload = json.loads(plan["meals_json"]) if plan["meals_json"] else None
+    return (plan["author"] == "Player" and meal_switch_enabled(ledger, plan, payload)
+            and (not payload or not payload.get("enabled") or day_type not in payload.get("variants", {})))
+
+
+def materialize_plan_meals(ledger, plan, day_type):
+    # Query-only callers resolve frozen inputs in memory; the next writable read saves them.
+    if ledger.conn.execute("PRAGMA query_only").fetchone()[0] \
+            or not _needs_meal_materialization(ledger, plan, day_type):
+        return plan
+    with ledger.ledger_transaction(immediate=True):
+        plan = ledger.get_active_nutrition_plan()
+        if _needs_meal_materialization(ledger, plan, day_type):
+            payload = json.loads(plan["meals_json"]) if plan["meals_json"] else None
+            if not payload or not payload.get("enabled"):
+                payload = generate_variants(ledger, json.loads(plan["targets_json"]), payload or {})
+            variant = resolve_variant(ledger, plan, payload, day_type)
+            if variant["status"] == "ready":
+                payload.setdefault("variants", {})[day_type] = variant
+                save_meal_version(ledger, plan, payload)
+        return ledger.get_active_nutrition_plan()
+
+
+def _pinned_variant_cache_request(plan, payload, day_type):
     frozen = payload.get("generation_requests", {}).get(day_type)
     if not payload.get("enabled") or frozen is None:
-        return {"status": "unavailable", "reason": "staples", "meals": []}
+        return None
     request = MealGenerationInput(**frozen)
     replacements = payload.get("deferred_swaps", {}).get(day_type, [])
     fingerprint = _variant_fingerprint(request, replacements)
     # Pinned inputs belong to the immutable version, not the date of a later read.
-    cache_key = NutritionMealGenerationCacheKey(plan["created_at"][:10], plan["id"], fingerprint, day_type)
-    return _resolved_generation(ledger, cache_key, request, replacements)
+    cache_key = NutritionMealGenerationCacheKey(
+        plan["created_at"][:10], plan["id"], fingerprint, day_type,
+    )
+    return cache_key, request, replacements
 
 
 def _resolved_generation(ledger, cache_key, request, replacements):
@@ -183,8 +242,7 @@ def _resolved_generation(ledger, cache_key, request, replacements):
         key = _variant_generation_key(ledger, cache_key.entry_date, cache_key.variant, cache_key.fingerprint)
         variant = generate_meals_bounded(request, key)
         variant = swap_day(variant, replacements)
-        if not ledger.conn.execute("PRAGMA query_only").fetchone()[0]:
-            ledger.save_nutrition_meal_generation_cache(cache_key, variant)
+        _save_generation_cache_if_writable(ledger, cache_key, variant)
     return variant
 
 
@@ -201,10 +259,15 @@ def meals_for_version(ledger, plan):
     if plan.meals is not None:
         return plan.meals
     active = ledger.get_active_nutrition_plan()
-    previous = json.loads(active["meals_json"]) if active is not None and active["meals_json"] else None
-    if not previous or not previous.get("enabled"):
-        return None
+    if active is None:
+        return generate_variants(ledger, plan.targets, {}) if plan.author == "Player" \
+            and ledger.get_nutrition_meal_preference() is not False else None
+    previous = json.loads(active["meals_json"]) if active["meals_json"] else None
     if active["author"] == "Coach":
+        if not previous or not previous.get("enabled"):
+            return None
         return {**previous, "targets_changed": previous.get("targets_changed", False)
                 or json.loads(active["targets_json"]) != plan.targets}
-    return generate_variants(ledger, plan.targets, previous)
+    if not meal_switch_enabled(ledger, active, previous):
+        return None
+    return generate_variants(ledger, plan.targets, previous or {})
