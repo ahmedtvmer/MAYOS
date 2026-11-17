@@ -94,7 +94,7 @@ void main() {
     await tester.tap(find.byKey(const Key('save_meal_setup')));
     await tester.pumpAndSettle();
     expect(find.byType(MealSetupScreen), findsOneWidget);
-    expect(find.text('Could not save Meal setup.'), findsOneWidget);
+    expect(find.text('MAYOS had a problem; try again.'), findsOneWidget);
     fake.mealSetupSaveFails = false;
     await scrollToControl(tester, find.byKey(const Key('save_meal_setup')));
     await tester.tap(find.byKey(const Key('save_meal_setup')));
