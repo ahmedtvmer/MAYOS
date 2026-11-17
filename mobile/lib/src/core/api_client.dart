@@ -150,6 +150,30 @@ final class GoogleAuthSignupTicket extends GoogleAuthStart {
 /// token. A 401 on an authenticated request invokes [onUnauthorized] so the app
 /// can clear the session and route back to login.
 class ApiClient {
+  Future<Map<String, dynamic>> pushStatus(String deviceId) async {
+    final response = await _send(
+      () => _dio.get<dynamic>(
+        '/push',
+        queryParameters: <String, dynamic>{'device_id': deviceId},
+      ),
+    );
+    return Map<String, dynamic>.from(response.data as Map);
+  }
+
+  Future<void> savePushPreferences(Map<String, dynamic> values) async {
+    await _send(() => _dio.put<dynamic>('/push/preferences', data: values));
+  }
+
+  Future<void> savePushSubscription(Map<String, dynamic> subscription) async {
+    await _send(
+      () => _dio.put<dynamic>('/push/subscriptions', data: subscription),
+    );
+  }
+
+  Future<void> deletePushSubscription(String deviceId) async {
+    await _send(() => _dio.delete<dynamic>('/push/subscriptions/$deviceId'));
+  }
+
   ApiClient({
     required TokenStore tokens,
     required String baseUrl,

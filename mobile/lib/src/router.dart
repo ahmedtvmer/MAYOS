@@ -364,7 +364,7 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
     observers: <NavigatorObserver>[SentryScreenObserver()],
     initialLocation: splashPath,
     refreshListenable: refresh,
-    redirect: (BuildContext context, GoRouterState state) {
+    redirect: (BuildContext context, GoRouterState state) async {
       // The root-relative location (query included) carries a cold deep link
       // across the splash hold; the rules themselves only ever read its path
       // (#127). A platform-reported absolute URL (an app link) keeps only its
@@ -380,6 +380,22 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       if (uri.path == appUpdateRequiredPath) return splashPath;
       final String location =
           uri.hasQuery ? '${uri.path}?${uri.query}' : uri.path;
+      final account = ref.read(authControllerProvider).session?.account;
+      final mode = ref.read(appModeControllerProvider);
+      final carrying = const <String>{splashPath, loginPath, registerPath,
+        googleSignupPath, recoveryEmailPath}.contains(uri.path);
+      final requested = carrying
+          ? _carriedTarget(uri.queryParameters['from']) ?? location : location;
+      final desired = notificationModeFor(requested, account);
+      if (account != null && mode.isResolvedFor(account.accountId) &&
+          desired != null && desired != mode.mode) {
+        await ref.read(appModeControllerProvider.notifier).setMode(
+          desired, accountId: account.accountId, isCoach: account.isCoach,
+        );
+        if (ref.read(authControllerProvider).session?.account.accountId != account.accountId) {
+          return splashPath;
+        }
+      }
       return redirectFor(ref.read(authControllerProvider), location,
           ref.read(appModeControllerProvider),
           from: uri.queryParameters['from']);
@@ -445,7 +461,8 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: homePath,
         builder: (BuildContext context, GoRouterState state) =>
-            _withRecoveryEmailReminder(state, const PlayerShell()),
+            _withRecoveryEmailReminder(
+              state, PlayerShell(pushTab: state.uri.queryParameters['push'])),
       ),
       GoRoute(
         path: settingsPath,
@@ -743,3 +760,16 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
     ],
   );
 });
+
+/// Only explicit notification destinations can change the account's mode.
+AppMode? notificationModeFor(String location, Account? account) {
+  if (account == null) return null;
+  if (account.isCoach && const <String>{
+    '/coach/alerts?push=coach', '/coach/requests?push=coach',
+  }.contains(location)) return AppMode.coach;
+  if (account.capabilities.player && const <String>{
+    '/home?push=player', '/home?push=program', '/home?push=nutrition',
+    '/player-notifications?push=player', '/food-swap-requests?push=player',
+  }.contains(location)) return AppMode.player;
+  return null;
+}

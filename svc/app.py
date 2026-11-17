@@ -35,6 +35,7 @@ from service.model_limits import ModelLimitExceeded
 from service.model_metering import record_model_usage
 from service.periodic_status import (
     ALERT_SWEEP_JOB,
+    PUSH_SWEEP_JOB,
     DAILY_BACKUP_JOB,
     configured_interval_seconds,
     record_run,
@@ -49,6 +50,7 @@ from svc.routers import (
     admin,
     admin_monitoring,
     alerts,
+    push,
     assignments,
     auth,
     chat,
@@ -284,6 +286,7 @@ async def lifespan(app: FastAPI):
 
     _ready.update(model=False, catalog=False, storage=False, draining=False)
     sweep_task: asyncio.Task[None] | None = None
+    push_task: asyncio.Task[None] | None = None
     backup_task: asyncio.Task[None] | None = None
     food_search_task: asyncio.Task[None] | None = None
     metrics_task: asyncio.Task[None] | None = None
@@ -386,6 +389,12 @@ async def lifespan(app: FastAPI):
         sweep_task = asyncio.create_task(_periodic_loop(app.state.db, sweep_interval, run_sweep, ALERT_SWEEP_JOB))
         logger.info("Alert sweep loop started (every %ss).", sweep_interval)
 
+    push_interval = configured_interval_seconds(PUSH_SWEEP_JOB)
+    if loops_enabled and push_interval > 0:
+        from service.web_push import run_sweep as run_push_sweep
+
+        push_task = asyncio.create_task(_periodic_loop(app.state.db, push_interval, run_push_sweep, PUSH_SWEEP_JOB))
+
     # Daily online backups run in this same always-on API Machine, because a
     # detached Machine cannot mount /data (#41). The job creates at most one
     # snapshot per UTC day, so the default hourly cadence just retries a failed
@@ -414,6 +423,7 @@ async def lifespan(app: FastAPI):
     yield
     _ready["draining"] = True
     await _cancel_loop(sweep_task, ALERT_SWEEP_JOB)
+    await _cancel_loop(push_task, PUSH_SWEEP_JOB)
     await _cancel_loop(backup_task, DAILY_BACKUP_JOB)
     await _cancel_loop(food_search_task, "Food search")
     await _cancel_loop(metrics_task, "request metrics summary")
@@ -590,6 +600,7 @@ def create_app(*, sentry_transport=None) -> FastAPI:
     app.include_router(assignments.coach_roster_router)
     app.include_router(assignments.player_router)
     app.include_router(alerts.router)
+    app.include_router(push.router)
     app.include_router(media.router)
     app.include_router(profile.router)
     app.include_router(nutrition.router)

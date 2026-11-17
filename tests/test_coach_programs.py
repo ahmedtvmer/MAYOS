@@ -24,6 +24,7 @@ from agent.ProgramState import (
     PersistedProgramSchema,
 )
 from database.database_manager import DatabaseManager
+from database.ledger import push as ledger_push
 from database.registry.assignments import AssignmentNoticeRecord
 from database.registry.coach_exercises import CoachExerciseCreate
 from service import coach as coach_service
@@ -326,7 +327,7 @@ def _publish(client, coach_headers, assignment_id, **body):
 
 def test_publish_activates_immediately_with_provenance_and_notice(api, monkeypatch):
     client, db, _ = api
-    coach_headers, player_headers, assignment_id, coach_account_id, _ = _assigned_player(api)
+    coach_headers, player_headers, assignment_id, coach_account_id, player_account_id = _assigned_player(api)
     _coach_generation(monkeypatch)
 
     published = _publish(
@@ -371,6 +372,12 @@ def test_publish_activates_immediately_with_provenance_and_notice(api, monkeypat
             {"type": "exercise_added", "day": "Full 3", "exercise": "Row"},
         ],
     }
+    player = db.get_account(player_account_id)
+    with db.open_ledger(player["ledger_id"]) as ledger:
+        intent = ledger_push.pending_intents(ledger.conn)[0]
+        assert (intent["event"], intent["dedupe_key"]) == (
+            "program_published", f"program-published:{assignment_id}:1"
+        )
 
     marked = client.post("/assignments/notices/read", headers=player_headers)
     assert marked.status_code == 200
@@ -1470,6 +1477,17 @@ def test_publish_resolves_selected_requests_with_player_language_notice_and_anal
         and row["message_fallback"] == "Addressed in your new program (version 2)"
         for row in notices
     )
+    with db.catalog_locked() as connection:
+        reply_events = list(connection.execute(
+            "SELECT account_id, dedupe_key, notification_type FROM push_events "
+            "WHERE dedupe_key IN (?, ?)",
+            (f"program-request-reply:{first['request_id']}",
+             f"program-request-reply:{second['request_id']}"),
+        ))
+    assert {(row[0], row[1], row[2]) for row in reply_events} == {
+        (player_account_id, f"program-request-reply:{first['request_id']}", "coach_updates"),
+        (player_account_id, f"program-request-reply:{second['request_id']}", "coach_updates"),
+    }
     new_events = recording_analytics.events[events_before:]
     assert len([row for row in new_events if row["event"] == "program_request_resolved"]) == 2
     assert all(

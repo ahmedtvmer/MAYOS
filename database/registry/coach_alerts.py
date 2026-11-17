@@ -77,6 +77,11 @@ class RegistryCoachAlertsMixin:
                 ),
             )
             created = cursor.rowcount == 1
+            if created:
+                from service.web_push import queue_event
+
+                queue_event(self.catalog_conn, str(coach_account_id), "coach_alert",
+                            f"coach-alert:{alert_id}", now_iso)
             self._commit_catalog()
             cursor.execute(
                 f"SELECT {self._COACH_ALERT_COLUMNS} FROM coach_alerts"

@@ -7,6 +7,8 @@ from typing import Any, Callable
 
 from dotenv import load_dotenv
 
+from database.ledger import push as ledger_push
+
 from core.effort import min_rir_from_rpe
 from core.movement_restrictions import restriction_for_candidate
 from agent.program_blueprints import (
@@ -889,6 +891,7 @@ def generate_program_pipeline(
     published_by_coach_account_id: str | None = None,
     *,
     ledger: Any,
+    push_intent: ledger_push.PushIntent | None = None,
 ) -> tuple[GeneratedProgramSchema, str]:
     """Generates and persists a new active Program version."""
     profile = _generation_profile(ledger)
@@ -907,11 +910,20 @@ def generate_program_pipeline(
     persisted_program = program.model_dump()
     if published_by_coach_account_id is None:
         persisted_program["design_version"] = PROGRAM_DESIGN_VERSION
-    ledger.save_training_program(
-        persisted_program,
-        published_by_coach_account_id=published_by_coach_account_id,
-        starting_position=None,
-    )
+    if push_intent is None:
+        ledger.save_training_program(
+            persisted_program,
+            published_by_coach_account_id=published_by_coach_account_id,
+            starting_position=None,
+        )
+    else:
+        with ledger.ledger_transaction(immediate=True):
+            ledger.save_training_program(
+                persisted_program,
+                published_by_coach_account_id=published_by_coach_account_id,
+                starting_position=None,
+            )
+            ledger.record_push_intent(push_intent)
     return program, markdown
 
 

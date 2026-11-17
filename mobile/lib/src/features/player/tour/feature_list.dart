@@ -64,6 +64,17 @@ List<String> validateFeatureEntries(
 
 const List<FeatureEntry> featureList = <FeatureEntry>[
   FeatureEntry(
+    id: 'web_push',
+    titleEn: 'Encouragement when it suits you',
+    sentenceEn: 'Turn on training reminders, alerts and coach updates in the installed web app, with quiet hours you choose.',
+    titleAr: 'تشجيع في الوقت المناسب لك',
+    sentenceAr: 'شغّل تذكيرات التدريب والتنبيهات وتحديثات المدرب في تطبيق الويب المثبّت، مع ساعات هدوء تختارها.',
+    target: 'push_notifications',
+    location: TourRouteLocation(settingsPath),
+    release: 7,
+    audience: 'lifter',
+  ),
+  FeatureEntry(
     id: 'assistant_exercise_lookup',
     titleEn: 'Search exercises by the name you know',
     sentenceEn:

@@ -42,6 +42,15 @@ String? _hold(String requested) =>
     redirectFor(const AuthState.loading(), requested, _mode(AppMode.player));
 
 void main() {
+  test('notification mode intent cannot grant the coach capability', () {
+    const coachAlert = '/coach/alerts?push=coach';
+    expect(notificationModeFor(coachAlert, _account(coach: false)), isNull);
+    expect(notificationModeFor(coachAlert, _account(coach: true)), AppMode.coach);
+    expect(notificationModeFor('/home?push=nutrition', _account(coach: true)), AppMode.player);
+    expect(notificationModeFor('/settings?push=coach', _account(coach: true)), isNull);
+    final held = _hold('/home?push=program')!;
+    expect(_carried(held), '/home?push=program');
+  });
   test('shared program waits neutrally while authentication loads', () {
     final String held =
         redirectFor(const AuthState.loading(), sharedProgramPath,

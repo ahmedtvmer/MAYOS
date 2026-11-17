@@ -38,6 +38,7 @@ from agent.program_prescription import (
     MIN_WARMUP_MOVEMENT_SETS,
 )
 from database.exercise_resolution import resolve_exercise_display_row
+from database.ledger import push as ledger_push
 from service import analytics
 from service import program_requests as program_requests_service
 from service.assignments import authorized_player_ledger
@@ -975,6 +976,13 @@ def _publish_program(
             if publishes_draft:
                 ledger.discard_program_draft(assignment_id)
             published = ledger.get_active_program()
+            if published is not None:
+                ledger.record_push_intent(
+                    ledger_push.PushIntent(
+                        assignment_context["player"]["account_id"], "program_published",
+                        f"program-published:{assignment_id}:{published.version}", published.created_at,
+                    ),
+                )
     if published is None:
         raise RuntimeError("Published program is missing from the player ledger after save.")
     record_program_publication(
