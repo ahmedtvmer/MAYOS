@@ -114,6 +114,23 @@ void main() {
     expect(entry.audience, 'lifter');
   });
 
+  test('Cable Y-Raise demo is a bilingual exercise detail target in release 7', () {
+    final FeatureEntry entry = featureList.singleWhere(
+      (FeatureEntry entry) => entry.id == 'cable_y_raise_demo',
+    );
+    expect(entry.titleEn, 'Cable Y-Raise demo');
+    expect(entry.sentenceEn,
+        'See a still image and animated demo of the Cable Y-Raise.');
+    expect(entry.titleAr, 'عرض Cable Y-Raise');
+    expect(entry.sentenceAr,
+        'شاهد صورة ثابتة وصورة متحركة توضّحان تمرين Cable Y-Raise.');
+    expect(entry.target, 'exercise_demo_media');
+    expect(entry.location, const TourRouteLocation('/exercise/mayos:3'));
+    expect(entry.release, 7);
+    expect(currentFeatureRelease, 7);
+    expect(entry.audience, 'lifter');
+  });
+
   test('Meal setup has bilingual discovery copy in release 7', () {
     final FeatureEntry entry = featureList.singleWhere((FeatureEntry entry) => entry.id == 'meal_setup');
     expect(entry.release, 7);

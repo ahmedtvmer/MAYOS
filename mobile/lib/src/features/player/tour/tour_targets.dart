@@ -164,3 +164,6 @@ class _TourTargetState extends ConsumerState<TourTarget> {
 
 final StateProvider<Set<String>> tourLoadingDestinationsProvider =
     StateProvider<Set<String>>((ref) => const <String>{});
+
+final StateProvider<Set<String>> tourLoadingTargetsProvider =
+    StateProvider<Set<String>>((ref) => const <String>{});

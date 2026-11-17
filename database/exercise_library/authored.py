@@ -59,6 +59,8 @@ MAYOS_AUTHORED_EXERCISES: tuple[AuthoredExercise, ...] = (
             "2. Raise your straight arms outward and forward into a comfortable Y shape, keeping your ribs settled and shoulders away from your ears.\n"
             "3. Lower the handles slowly to the starting position."
         ),
+        "image_path": "images/mayos-3-cable-y-raise.jpg",
+        "gif_path": "videos/mayos-3-cable-y-raise.gif",
     },
     {
         "id": "mayos:4",

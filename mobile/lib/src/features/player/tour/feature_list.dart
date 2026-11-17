@@ -75,6 +75,17 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
     audience: 'lifter',
   ),
   FeatureEntry(
+    id: 'cable_y_raise_demo',
+    titleEn: 'Cable Y-Raise demo',
+    sentenceEn: 'See a still image and animated demo of the Cable Y-Raise.',
+    titleAr: 'عرض Cable Y-Raise',
+    sentenceAr: 'شاهد صورة ثابتة وصورة متحركة توضّحان تمرين Cable Y-Raise.',
+    target: 'exercise_demo_media',
+    location: TourRouteLocation('$exerciseDetailPath/mayos:3'),
+    release: 7,
+    audience: 'lifter',
+  ),
+  FeatureEntry(
     id: 'isolation_first_order',
     titleEn: 'A clearer exercise order',
     sentenceEn:

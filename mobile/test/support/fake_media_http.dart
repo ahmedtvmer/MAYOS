@@ -33,10 +33,23 @@ class FakeMediaCatalog {
 
   /// Every request the image pipeline issued, in order.
   final List<FakeMediaRequest> requests = <FakeMediaRequest>[];
+  final Map<String, Completer<void>> _responseReleases =
+      <String, Completer<void>>{};
 
   /// Registers a catalog picture that will load successfully.
   void serve(String imagePath, {Uint8List? bytes}) {
     images[imagePath] = bytes ?? fakeCatalogPng();
+  }
+
+  /// Holds a response until [releaseResponse] is called.
+  void delayResponse(String imagePath) {
+    _responseReleases[imagePath] = Completer<void>();
+  }
+
+  /// Releases a response previously held by [delayResponse].
+  void releaseResponse(String imagePath) {
+    final Completer<void>? release = _responseReleases[imagePath];
+    if (release != null && !release.isCompleted) release.complete();
   }
 
   /// How many times [imagePath] was fetched — a rebuild that refetches would
@@ -44,6 +57,9 @@ class FakeMediaCatalog {
   int requestCount(String imagePath) => requests
       .where((FakeMediaRequest r) => r.uri.path.endsWith('/$imagePath'))
       .length;
+
+  Future<void>? responseDelayFor(String imagePath) =>
+      _responseReleases[imagePath]?.future;
 
   /// Total requests, for asserting nothing else was fetched.
   int get totalRequests => requests.length;
@@ -115,6 +131,8 @@ class _FakeMediaRequest implements HttpClientRequest {
     final String path = uri.path.startsWith('/media/')
         ? uri.path.substring('/media/'.length)
         : '';
+    final Future<void>? responseDelay = _catalog.responseDelayFor(path);
+    if (responseDelay != null) await responseDelay;
     final Uint8List? body = _catalog.images[path];
     if (body == null) {
       return _FakeMediaResponse(HttpStatus.notFound, Uint8List(0));
