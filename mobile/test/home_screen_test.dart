@@ -1571,8 +1571,8 @@ void main() {
           'food_swap_requests' => find.byKey(const Key('food_swap_requests_history')),
           'web_push' =>
             find.text('Push notifications are available in the installed web app.'),
-          'assistant_meals' | 'assistant_personal_logs' =>
-            find.byTooltip('Assistant'),
+          'assistant_meals' => find.byTooltip('Assistant'),
+          'assistant_personal_logs' => find.byTooltip('Assistant'),
           _ => find.text(entry.titleEn),
         };
         expect(realControl, findsOneWidget, reason: entry.id);
@@ -1763,8 +1763,8 @@ void main() {
           'food_swap_requests' => find.byKey(const Key('food_swap_requests_history')),
           'web_push' =>
             find.text('Push notifications are available in the installed web app.'),
-          'assistant_meals' | 'assistant_personal_logs' =>
-            find.byTooltip('Assistant'),
+          'assistant_meals' => find.byTooltip('Assistant'),
+          'assistant_personal_logs' => find.byTooltip('Assistant'),
           _ => find.text(entry.titleEn),
         };
         expect(realControl, findsOneWidget, reason: entry.id);
