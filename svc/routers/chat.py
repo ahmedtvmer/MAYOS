@@ -103,12 +103,17 @@ async def vote_reply(
     ledger: Annotated[Any, Depends(get_ledger)],
     db: Annotated[Any, Depends(get_db)],
 ):
-    """Stores or clears one 👍/👎 on an assistant reply; owner-visible only."""
+    """Stores or clears one 👍/👎 on an assistant reply; owner-visible only.
+
+    Redaction terms ride along because a 👎 with a reason or a note is sent to
+    the owner's Discord like a report (#764).
+    """
     account_id = account_id_of(player)
     context, error = await asyncio.to_thread(
         resolve_feedback_context, account_id, ledger, db,
         client_context=body.context.model_dump() if body.context else None,
         message_id=body.context.message_id if body.context else body.message_id,
+        with_redact_terms=True,
     )
     if error or context is None:
         raise HTTPException(status_code=400, detail=error or "Invalid feedback context.")

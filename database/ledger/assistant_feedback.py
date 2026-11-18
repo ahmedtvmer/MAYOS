@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 
@@ -23,11 +23,14 @@ ASSISTANT_FEEDBACK_DDL = (
     " vote_reasons_json TEXT NOT NULL DEFAULT '[]',"
     " vote_note TEXT CHECK(vote_note IS NULL OR length(vote_note) <= 500),"
     " vote_updated_at TEXT,"
+    " vote_notified_at TEXT,"
+    " vote_redact_terms_json TEXT,"
     " report_reasons_json TEXT,"
     " report_note TEXT CHECK(report_note IS NULL OR length(report_note) <= 500),"
     " report_redact_terms_json TEXT,"
     " reported_at TEXT,"
     " report_delivered_at TEXT,"
+    " delivery_claimed_at TEXT,"
     " created_at TEXT NOT NULL,"
     " updated_at TEXT NOT NULL,"
     " UNIQUE(account_id, message_id),"
@@ -38,6 +41,30 @@ ASSISTANT_FEEDBACK_DDL = (
     "CREATE INDEX IF NOT EXISTS idx_assistant_feedback_report_time "
     "ON assistant_reply_feedback(reported_at)",
 )
+
+
+# A 👎 owes its owner a Discord send exactly when it carries at least one
+# reason or a note and has never been sent (issue #764).
+_VOTE_PENDING_PREDICATE = (
+    "vote = 'down' AND vote_updated_at IS NOT NULL AND vote_notified_at IS NULL "
+    "AND ((vote_reasons_json IS NOT NULL AND vote_reasons_json != '[]') "
+    "OR vote_note IS NOT NULL)"
+)
+_VOTE_PENDING_PREDICATE_WHERE = "WHERE " + _VOTE_PENDING_PREDICATE + " "
+
+# A report is still owed when it exists but has never been delivered (issue #748).
+_REPORT_PENDING_PREDICATE = "reported_at IS NOT NULL AND report_delivered_at IS NULL"
+
+# One row holds both a reply's report and its 👎, so a row may be dropped only
+# when nothing on it is still owed: the report is absent or delivered AND the
+# 👎 send is not owed. Both cleanup queries use this one predicate (#764).
+ASSISTANT_FEEDBACK_ROW_DISPOSABLE_PREDICATE = (
+    f"NOT ({_REPORT_PENDING_PREDICATE}) AND NOT ({_VOTE_PENDING_PREDICATE})"
+)
+
+# A send claim is a short-lived lease: a holder that crashed without marking
+# or releasing loses it after this many minutes (issue #764).
+DELIVERY_CLAIM_STALE_MINUTES = 10
 
 
 class LedgerAssistantFeedbackMixin:
@@ -114,6 +141,9 @@ class LedgerAssistantFeedbackMixin:
         now = datetime.now(UTC).isoformat()
         message_id = str(context["message_id"])
         encoded_reasons = json.dumps(reasons, ensure_ascii=False, separators=(",", ":"))
+        encoded_terms = json.dumps(
+            context.get("redact_terms", []), ensure_ascii=False
+        )
         with self.ledger_transaction(immediate=True):
             row = self.conn.execute(
                 "SELECT feedback_id, vote, vote_reasons_json, vote_note "
@@ -126,7 +156,8 @@ class LedgerAssistantFeedbackMixin:
                     return None
                 self.conn.execute(
                     "UPDATE assistant_reply_feedback SET vote = NULL, vote_reasons_json = '[]', "
-                    "vote_note = NULL, vote_updated_at = NULL, updated_at = ? "
+                    "vote_note = NULL, vote_redact_terms_json = NULL, vote_updated_at = NULL, "
+                    "updated_at = ? "
                     "WHERE account_id = ? AND message_id = ?",
                     (now, str(account_id), message_id),
                 )
@@ -137,12 +168,13 @@ class LedgerAssistantFeedbackMixin:
                     "INSERT INTO assistant_reply_feedback "
                     "(feedback_id, account_id, message_id, reply_text, question_text, reply_language, "
                     "route, model, prompt_version, vote, vote_reasons_json, vote_note, vote_updated_at, "
-                    "created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "vote_redact_terms_json, "
+                    "created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         feedback_id, str(account_id), message_id, context["reply_text"],
                         context["question_text"], context["language"], context["route"],
                         context.get("model"), context.get("prompt_version"), vote,
-                        encoded_reasons, note, now, now, now,
+                        encoded_reasons, note, now, encoded_terms, now, now,
                     ),
                 )
                 result = {"feedback_id": feedback_id, "vote": vote}
@@ -160,12 +192,13 @@ class LedgerAssistantFeedbackMixin:
                 self.conn.execute(
                     "UPDATE assistant_reply_feedback SET vote = ?, vote_reasons_json = ?, vote_note = ?, "
                     "vote_updated_at = CASE WHEN ? THEN ? ELSE vote_updated_at END, "
+                    "vote_redact_terms_json = ?, "
                     "updated_at = ? WHERE account_id = ? AND message_id = ?",
                     (
                         vote,
                         encoded_reasons,
                         note,
-                        int(changed), now, now, str(account_id), message_id,
+                        int(changed), now, encoded_terms, now, str(account_id), message_id,
                     ),
                 )
                 result = {"feedback_id": feedback_id, "vote": vote}
@@ -225,10 +258,126 @@ class LedgerAssistantFeedbackMixin:
         return {"feedback_id": feedback_id, "created": True}
 
     def mark_assistant_feedback_report_delivered(self, feedback_id: str) -> None:
+        now = datetime.now(UTC).isoformat()
         self.conn.execute(
-            "UPDATE assistant_reply_feedback SET report_delivered_at = ?, updated_at = ? "
+            "UPDATE assistant_reply_feedback SET report_delivered_at = ?, "
+            "delivery_claimed_at = NULL, updated_at = ? "
             "WHERE feedback_id = ? AND reported_at IS NOT NULL",
-            (datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat(), feedback_id),
+            (now, now, feedback_id),
+        )
+        self._commit_ledger()
+
+    def claim_assistant_feedback_report_delivery(self, feedback_id: str) -> bool:
+        """Atomically claims one pending report send for this process.
+
+        Returns True only when this call took the claim; a concurrent retry or
+        immediate send that loses the race gets False and must not post, so the
+        same pending report is never posted twice. A claim older than
+        ``DELIVERY_CLAIM_STALE_MINUTES`` is taken over: its holder crashed
+        without marking or releasing. The claim is per row and covers both
+        owed sends (report and 👎), so two sends on one row serialize instead
+        of posting concurrently.
+        """
+        return self._claim_assistant_feedback_delivery(
+            str(feedback_id), _REPORT_PENDING_PREDICATE
+        )
+
+    def claim_assistant_feedback_vote_delivery(self, feedback_id: str) -> bool:
+        """Atomically claims one pending 👎 send; see the report claim."""
+        return self._claim_assistant_feedback_delivery(
+            str(feedback_id), _VOTE_PENDING_PREDICATE
+        )
+
+    def _claim_assistant_feedback_delivery(
+        self, feedback_id: str, pending_predicate: str
+    ) -> bool:
+        # One claim per row serializes the row's two sends: a report and a 👎
+        # on the same reply never post concurrently — the second waits for the
+        # first. A holder that crashes after a successful post but before
+        # marking leaves its claim to age out, which can cause one duplicate
+        # post after the stale window; that trade-off is accepted (#764).
+        now = datetime.now(UTC)
+        stale_before = (
+            now - timedelta(minutes=DELIVERY_CLAIM_STALE_MINUTES)
+        ).isoformat()
+        cursor = self.conn.execute(
+            "UPDATE assistant_reply_feedback SET delivery_claimed_at = ?, updated_at = ? "
+            f"WHERE feedback_id = ? AND {pending_predicate} "
+            "AND (delivery_claimed_at IS NULL OR delivery_claimed_at < ?)",
+            (now.isoformat(), now.isoformat(), feedback_id, stale_before),
+        )
+        self._commit_ledger()
+        return cursor.rowcount == 1
+
+    def release_assistant_feedback_delivery_claim(self, feedback_id: str) -> None:
+        """Clears the send claim so the next retry pass can pick the row up."""
+        now = datetime.now(UTC).isoformat()
+        self.conn.execute(
+            "UPDATE assistant_reply_feedback SET delivery_claimed_at = NULL, updated_at = ? "
+            "WHERE feedback_id = ? AND delivery_claimed_at IS NOT NULL",
+            (now, feedback_id),
+        )
+        self._commit_ledger()
+
+    def pending_assistant_feedback_vote(self, feedback_id: str) -> dict[str, Any] | None:
+        """Returns one 👎 row that still owes its owner Discord send, else None.
+
+        Pending means: the current vote is 👎 with at least one reason or a
+        note, and it has never been sent (``vote_notified_at`` is NULL). A 👍,
+        an undo, a bare 👎, or an already-sent 👎 is never pending, so a flip
+        back to 👍 cancels the send and a later edit is saved but not re-sent.
+        """
+        return self._pending_vote_row(
+            "WHERE feedback_id = ? AND " + _VOTE_PENDING_PREDICATE, (str(feedback_id),)
+        )
+
+    def pending_assistant_feedback_votes(self, limit: int = 20) -> list[dict[str, Any]]:
+        """Lists 👎 rows still owing their owner Discord send, oldest first."""
+        rows = self.conn.execute(
+            "SELECT feedback_id, question_text, reply_text, reply_language, route, "
+            "vote_reasons_json, vote_note, vote_redact_terms_json, vote_updated_at "
+            "FROM assistant_reply_feedback "
+            f"{_VOTE_PENDING_PREDICATE_WHERE}ORDER BY vote_updated_at LIMIT ?",
+            (min(max(int(limit), 1), 100),),
+        ).fetchall()
+        return [self._pending_vote_dict(row) for row in rows]
+
+    def _pending_vote_row(
+        self, clause: str, params: tuple[Any, ...]
+    ) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            "SELECT feedback_id, question_text, reply_text, reply_language, route, "
+            "vote_reasons_json, vote_note, vote_redact_terms_json, vote_updated_at "
+            "FROM assistant_reply_feedback "
+            + clause,
+            params,
+        ).fetchone()
+        return self._pending_vote_dict(row) if row is not None else None
+
+    @staticmethod
+    def _pending_vote_dict(row: Any) -> dict[str, Any]:
+        return {
+            "feedback_id": str(row[0]),
+            "question_text": str(row[1]),
+            "reply_text": str(row[2]),
+            "language": str(row[3]),
+            "route": str(row[4]),
+            "reasons": json.loads(row[5]) if row[5] else [],
+            "note": row[6],
+            "redact_terms": json.loads(row[7]) if row[7] else [],
+            "vote_updated_at": str(row[8]),
+        }
+
+    def mark_assistant_feedback_vote_sent(self, feedback_id: str) -> None:
+        now = datetime.now(UTC).isoformat()
+        # Only a still-standing 👎 can be marked: if the vote flipped away
+        # during the send, the pending send is cancelled instead. Delivering
+        # also clears the claim so the row's other owed send can claim.
+        self.conn.execute(
+            "UPDATE assistant_reply_feedback SET vote_notified_at = ?, "
+            "delivery_claimed_at = NULL, updated_at = ? "
+            "WHERE feedback_id = ? AND vote = 'down'",
+            (now, now, feedback_id),
         )
         self._commit_ledger()
 
@@ -255,7 +404,7 @@ class LedgerAssistantFeedbackMixin:
             "SELECT feedback_id, reply_text, question_text, reply_language, route, "
                 "report_reasons_json, report_note, reported_at, report_redact_terms_json "
                 "FROM assistant_reply_feedback "
-            "WHERE reported_at IS NOT NULL AND report_delivered_at IS NULL "
+            f"WHERE {_REPORT_PENDING_PREDICATE} "
             "ORDER BY reported_at LIMIT ?",
             (min(max(int(limit), 1), 100),),
         ).fetchall()
@@ -275,20 +424,28 @@ class LedgerAssistantFeedbackMixin:
         ]
 
     def delete_delivered_feedback_without_message(self) -> int:
-        """Removes delivered feedback rows whose chat message no longer exists.
+        """Removes rows whose chat message no longer exists and that owe nothing.
 
-        Clearing the chat history keeps undelivered reports so the owner still
-        receives them; once the retry pass delivers one, the reply it belonged
-        to is already gone and the row has no remaining surface (#748).
+        Clearing the chat history keeps undelivered reports and undelivered 👎
+        feedback so the owner still receives them. A row holds both a reply's
+        report and its 👎, so it is removed only when both are absent or done
+        (``ASSISTANT_FEEDBACK_ROW_DISPOSABLE_PREDICATE``) and the reply it
+        belonged to is already gone (#748, #764). Coach-side feedback rows
+        carry a synthetic message id that never has a chat message, so a fully
+        delivered one is removed here too.
         """
         with self.ledger_transaction():
             cursor = self.conn.execute(
                 "DELETE FROM assistant_reply_feedback "
-                "WHERE reported_at IS NOT NULL AND report_delivered_at IS NOT NULL "
+                f"WHERE {ASSISTANT_FEEDBACK_ROW_DISPOSABLE_PREDICATE} "
                 "AND NOT EXISTS (SELECT 1 FROM chat_history WHERE id = message_id)"
             )
             self._commit_ledger()
         return int(cursor.rowcount)
 
 
-__all__ = ["ASSISTANT_FEEDBACK_DDL", "LedgerAssistantFeedbackMixin"]
+__all__ = [
+    "ASSISTANT_FEEDBACK_DDL",
+    "ASSISTANT_FEEDBACK_ROW_DISPOSABLE_PREDICATE",
+    "LedgerAssistantFeedbackMixin",
+]

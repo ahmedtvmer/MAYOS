@@ -396,11 +396,15 @@ your vote, the reason codes you chose (for example "Wrong information" or
 "Unsafe advice"), and an optional note you write, bounded in length. The
 feedback is not used to train anything automatically.
 
-A report notifies the owner immediately through the owner's **Discord**
-webhook, carrying the reason, the language, the route and a short excerpt of
-the reply, redacted so the post never includes your username, recovery email
-or account id — only a feedback id the owner can look up. Votes also feed a
-weekly counts summary to the owner. Nobody else ever sees this data: a coach
+A report — or a 👎 vote with a reason or a comment — notifies the owner
+through the owner's **Discord** webhook, carrying the reason, the language,
+the route, the exchange you rated (your message and the assistant's reply),
+and your comment when you wrote one, redacted so the post never includes your
+username, recovery email or account id — only a feedback id the owner can
+look up. Long messages are split across several Discord messages so nothing
+is silently cut. A 👎 without a reason or a comment stays a quiet vote. Votes
+also feed a weekly counts summary to the owner. Nobody else ever sees this
+data: a coach
 never sees their players' votes or reports, and there is no in-app review
 screen. Submissions are rate-limited. Deleting your account removes the
 feedback and reports.

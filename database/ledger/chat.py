@@ -8,6 +8,10 @@ from datetime import UTC, date, datetime, timedelta
 from difflib import SequenceMatcher
 from typing import Any
 
+from database.ledger.assistant_feedback import (
+    ASSISTANT_FEEDBACK_ROW_DISPOSABLE_PREDICATE,
+)
+
 from agent.chat_markers import is_session_pointer_text
 from core.arabic import normalize_arabic_text
 
@@ -365,12 +369,13 @@ class LedgerChatMixin:
             self.conn.execute("DELETE FROM chat_history_fts")
             self.conn.execute("DELETE FROM assistant_preference_pending")
             self.conn.execute("DELETE FROM assistant_goal_weak_point_pending")
-            # Votes and delivered reports hang off individual replies, so they
-            # cascade with the replies. Undelivered reports survive: the owner
-            # must still receive them, and the retry pass removes each row
-            # once its report is delivered and its message is gone (#748).
+            # A row may go only when nothing on it is still owed — no report
+            # pending AND no 👎 send pending — so Clear chat cascades the
+            # replies while undelivered reports and undelivered 👎 feedback
+            # survive for the owner (#748, #764). The predicate is shared with
+            # the retry cleanup so the two can never drift.
             self.conn.execute(
                 "DELETE FROM assistant_reply_feedback "
-                "WHERE reported_at IS NULL OR report_delivered_at IS NOT NULL"
+                f"WHERE {ASSISTANT_FEEDBACK_ROW_DISPOSABLE_PREDICATE}"
             )
             self._commit_ledger()
