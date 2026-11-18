@@ -86,6 +86,7 @@ def _tool(ledger):
     ("what did I eat yesterday", "yesterday", 250),
     ("أنا أكلت إيه النهارده؟", "today", 1000),
     ("أنا أكلت إيه امبارح؟", "yesterday", 250),
+    ("كلت ايه بعد الجيم امبارح؟", "yesterday", 250),
     ("ماذا أكلت اليوم؟", "today", 1000),
     ("ماذا تناولت أمس؟", "yesterday", 250),
 ])

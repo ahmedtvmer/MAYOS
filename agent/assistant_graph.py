@@ -24,6 +24,7 @@ from typing_extensions import NotRequired, TypedDict
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(BASE_DIR))
 
+from core.arabic import normalize_arabic_text
 from core.effort import rir_label
 from core.weak_point_suggestions import suggest_weak_points
 from core.weak_points import WEAK_POINT_MUSCLES
@@ -1538,13 +1539,15 @@ def _arabic_history_program_match(program: Any, requested_name: str) -> tuple[st
 
 
 def _arabic_history_library_match(store: Any, requested_name: str) -> tuple[str, str] | None:
+    if store is None:
+        return None
     requested = expand_fitness_abbreviations(requested_name.strip())
-    matches = [
-        entry
-        for entry in _arabic_name_search_candidates(store, requested)
+    matches, _near_miss_ids, _exact_ids = _arabic_target_name_matches(store, requested)
+    by_id = {
+        str(entry["id"]): entry
+        for entry in matches
         if store.is_exercise_library_exercise_visible(str(entry["id"]))
-    ]
-    by_id = {str(entry["id"]): entry for entry in matches}
+    }
     if len(by_id) != 1:
         return None
     exercise_id, entry = next(iter(by_id.items()))
@@ -1604,6 +1607,405 @@ def _classify_arabic_history(
     if resolved is None:
         return _arabic_clarification_route("history")
     return _arabic_history_route(*resolved)
+
+
+# --- Deterministic Arabic workout-history routing (#766) ---------------------
+# Vocabulary groups combined by a rule, not whole sentences. Matching runs on a
+# normalized form: NFKC, hamza forms (آ/أ/إ/ٱ→ا), ة→ه, ى→ي, diacritics and
+# tatweel folded via core.arabic.normalize_arabic_text, and elongated ا/ي runs
+# collapsed («ازااااي»→ازاي). Nouns take the optional prefixes و/ف/ب/ال/لل and
+# attached pronouns ي/ك/نا/هم via the shared clinical-guard affix style.
+
+ARABIC_EXERCISE_TERM_TRANSLATIONS = {
+    "بنش": "bench press",
+    "بنش برس": "bench press",
+    "ضغط صدر": "bench press",
+    "ضغط بنش": "bench press",
+    "ضغط مائل": "incline bench press",
+    "سكوات": "squat",
+    "قرفصاء": "squat",
+    "ديدليفت": "deadlift",
+    "ديد ليف": "deadlift",
+    "رفعه ميت": "deadlift",
+    "عقله": "pull up",
+    "سحب": "row",
+    "ليج برس": "leg press",
+    "ضغط رجل": "leg press",
+    "رفرفة": "fly",
+    "دامبل": "dumbbell",
+    "دامبيل": "dumbbell",
+    "بار": "barbell",
+    "لانجز": "lunge",
+    "ديبس": "dip",
+    "كرنش": "crunch",
+}
+_ARABIC_HISTORY_LETTERS = "\u0621-\u064a"
+# Same noun affixes the clinical guard matches: optional و/ف/ب/ال/لل prefixes
+# and attached pronoun suffixes (ي/ك/نا/هم...), with the ة/ه→ت possessive
+# connector («جلستي», «حصتي»).
+_ARABIC_HISTORY_AFFIX_PREFIX = r"(?:[وف]?(?:[بل])?(?:ال)?|ل{1,2}|)"
+_ARABIC_HISTORY_PRONOUN_SUFFIXES = ("ني", "كم", "كن", "هم", "هن", "ها", "نا", "ك", "ه", "ي")
+
+
+def _arabic_history_stem_pattern(stems) -> re.Pattern[str]:
+    expanded = {stem for stem in stems}
+    expanded.update(stem[:-1] + "ت" for stem in stems if stem.endswith(("ة", "ه")))
+    ordered = sorted(expanded, key=len, reverse=True)
+    suffixes = "|".join(_ARABIC_HISTORY_PRONOUN_SUFFIXES)
+    return re.compile(
+        rf"(?<![{_ARABIC_HISTORY_LETTERS}]){_ARABIC_HISTORY_AFFIX_PREFIX}"
+        rf"(?:{'|'.join(re.escape(stem) for stem in ordered)})"
+        rf"(?:{suffixes})?(?![{_ARABIC_HISTORY_LETTERS}])"
+    )
+
+
+_ARABIC_HISTORY_WORKOUT_STEMS = (
+    "تمرين", "تمرينه", "تمرينات", "تمارين", "تدريب", "جلسه", "حصه", "سيشن",
+    "سشن", "ترينينج", "تريننج", "ورك اوت", "وورك اوت", "وركوت",
+    "الجيم", "جيم", "اليوم التدريبي", "يوم التمرين",
+    "يوم الصدر", "يوم الرجل", "يوم الظهر", "يوم الضهر", "يوم الارجل",
+    "يوم الرجل الخلفي", "يوم الكتف", "يوم الدراع", "يوم الباي", "يوم التراي",
+    "يوم الكواد", "يوم الهامسترنج", "يوم الجزء العلوي", "يوم الجزء السفلي",
+    "يوم العلوي", "يوم السفلي",
+)
+_ARABIC_HISTORY_LAST_STEMS = (
+    "اخر", "الاخير", "الاخيره", "السابق", "السابقه", "الماضي", "الماضيه",
+    "امبارح", "امس", "البارحه", "اول امبارح",
+    "الاسبوع اللي فات", "الاسبوع الماضي", "الاسبوع الفايت",
+)
+# Weekdays are weak markers like «النهارده/اليوم»: «تمارين التلات ايه؟» asks
+# for a day's plan, so a weekday only counts next to a HOW/PERFORMANCE word.
+_ARABIC_HISTORY_WEEKDAY_STEMS = (
+    "السبت", "الجمعه", "الخميس", "الاربع", "الاربعاء", "التلات", "التلاتاء",
+    "الثلاثاء", "الاثنين", "الاتنين", "الاحد",
+)
+_ARABIC_HISTORY_WORKOUT_STEM_VARIANTS = sorted(
+    {
+        *_ARABIC_HISTORY_WORKOUT_STEMS,
+        *(stem[:-1] + "ت" for stem in _ARABIC_HISTORY_WORKOUT_STEMS if stem.endswith(("ة", "ه"))),
+    },
+    key=len,
+    reverse=True,
+)
+RE_ARABIC_HISTORY_WORKOUT = _arabic_history_stem_pattern(_ARABIC_HISTORY_WORKOUT_STEMS)
+# WORKOUT with an attached pronoun (تمريني/جلستي/حصتي/تدريبي...) is the
+# possessive marker the #766 rule accepts instead of a LAST/PAST word.
+_RE_ARABIC_HISTORY_WORKOUT_POSSESSIVE = re.compile(
+    rf"(?<![{_ARABIC_HISTORY_LETTERS}]){_ARABIC_HISTORY_AFFIX_PREFIX}"
+    rf"(?:{'|'.join(re.escape(stem) for stem in _ARABIC_HISTORY_WORKOUT_STEM_VARIANTS)})"
+    rf"(?:ي|ك|نا|هم)(?![{_ARABIC_HISTORY_LETTERS}])"
+)
+RE_ARABIC_HISTORY_LAST = _arabic_history_stem_pattern(_ARABIC_HISTORY_LAST_STEMS)
+RE_ARABIC_HISTORY_LAST_PHRASES = re.compile(
+    r"(?<!\w)(?:اللي|الي)\s+فات(?:ت)?\b"
+    r"|قبل\s+كده\b"
+    r"|من\s+(?:يومين|كام\s+يوم)\b"
+    r"|(?:ال)?مره\s+(?:ال)?(?:لي\s+)?فاتت?\b"
+)
+# «آخر/اخر مرة» + a past training verb (+ optional «فيها») is exercise history
+# even without a WORKOUT noun or a HOW word (#766 review): «اخر مرة سجلت فيها بنش».
+RE_ARABIC_HISTORY_LAST_TIME_VERB = re.compile(
+    r"(?<!\w)(?:(?:ال)?(?:اخر|اخيره?|الماضيه?)\s+(?:ال)?مره"
+    r"|(?:ال)?مره\s+(?:ال)?(?:اخيره?|الماضيه?|(?:لي\s+)?فاتت?))\s+"
+    r"(?:قدرت\s+ارفع|لعبت|العبت|عملت|سجلت|نزلت|حملت|رفعت|شلت)\b"
+)
+# TODAY and weekdays are weak markers: the #766 rule only counts them next to a
+# HOW/PERFORMANCE word, so «تمرين النهارده ايه» and «تمارين التلات ايه»
+# (day-plan questions) stay out.
+RE_ARABIC_HISTORY_TODAY = re.compile(r"(?<!\w)(?:ال)?(?:النهارده|اليوم)\b")
+RE_ARABIC_HISTORY_WEEKDAY = _arabic_history_stem_pattern(_ARABIC_HISTORY_WEEKDAY_STEMS)
+_ARABIC_HISTORY_HOW_PATTERN = re.compile(
+    r"(?<!\w)(?:"
+    r"(?:كان|كانت)\s*عامل(?:ه)?(?:\s+(?:ازاي|ايه|ايش|كيف|كام))?"
+    r"|(?:كان|كانت)\s+(?:ازاي|كيف|كويس|وحش|جامد|تقيل|صعب|خفيف|حلو)\b"
+    r"|عامل(?:ه)?\s+(?:ايه|ايش)\b"
+    r"|كيف\s+(?:كان|كانت)\b"
+    r"|ايه\s+اخبار(?:ها|ه)?\b"
+    r"|(?:اداء|ادائي)\b"
+    r"|مستوايا\b|نتيجتي\b"
+    r"|(?:عملت|رفعت|لعبت|شلت)\s+(?:كام|كم)\b"
+    r"|(?:عملت|خلصت)\s+(?:ايه|ايش)\b"
+    r"|(?:سجلت|عدت)\s+(?:كام|كم)\b"
+    r"|اتقدمت\b|اتحسنت\b"
+    r"|تقييم\b|تقيم\b"
+    r"|ماذا\s+(?:فعلت|عملت|رفعت|سجلت)\b"
+    r"|كم\s+(?:رفعت|سجلت|عملت)\b"
+    r")"
+)
+_ARABIC_HISTORY_REQUEST_PATTERN = re.compile(
+    r"(?<!\w)(?:لخصلي|لخص\s+لي|لخص|ملخص|راجع(?:لي)?|قولي|قوللي|قلي|"
+    r"وريني|ورني|شوف(?:لي)?|اعرضي?|عايز\s+اعرف|عاوز\s+اعرف|ممكن\s+تقولي)\b"
+)
+# Program, prescription, technique and food-log phrasings never count as history (#766).
+RE_ARABIC_HISTORY_EXCLUSION = re.compile(
+    r"(?:برنامج|تقسيم|تمارين يوم|اعمل تمرين|اعملي تمرين|"
+    r"عايز تمرين|عاوز تمرين|عايزه تمرين|عاوزه تمرين|محتاج تمرين|محتاجه تمرين|"
+    r"الاكل|اكلت|وجبه|وجباتي|طعامي|"
+    r"(?:ايزاي|ازاي|كيف)\s+(?:اعمل|اعملي)\b)"
+)
+# Lifestyle questions (drinks, food, supplements, sleep, calories, weight) where
+# the workout word is only a time reference («قبل/بعد التمرين/الجيم») are not
+# workout history (#766 review): the history rule fires on the workout noun
+# inside the time phrase, so strip those phrases and re-check for a workout.
+RE_ARABIC_HISTORY_TIME_REFERENCE = re.compile(
+    r"(?:قبل|بعد)\s+(?:ال)?(?:وقت\s+)?"
+    r"(?:تمارين|تمرين(?:ه|ي|ها|ك|نا|هم)?|جيم|حصت?(?:ي|ها|نا|هم|ه)?|"
+    r"جلس(?:ه|ت?ي|ت?نا|ت?هم)?|سيشن|تدريب|ورك اوت|"
+    r"التمرين|التمارين|الجيم|الحصه|الجلسه|السيشن|التدريب)"
+)
+# Topic stems go through the shared affix pattern so «السعرات»، «المكملات»،
+# «الوزن» match with the definite article and attached prefixes.
+_ARABIC_HISTORY_LIFESTYLE_STEMS = (
+    "اكلت", "كلت", "تناولت", "اكل", "الاكل", "وجبه", "وجبات", "فطرت",
+    "شربت", "شرب", "مشروب", "مشروبات", "عصير", "قهوه", "شاي",
+    "ميه", "مياه", "مويه", "لتر",
+    "مكمل", "مكملات", "بروتين", "كرياتين", "واي", "فيتامين",
+    "سعرات", "كالوري", "كالوريز",
+    "نمت", "نوم", "سهرت", "سهر",
+    "وزني", "الوزن",
+)
+RE_ARABIC_HISTORY_LIFESTYLE_TOPIC = _arabic_history_stem_pattern(
+    _ARABIC_HISTORY_LIFESTYLE_STEMS
+)
+RE_ARABIC_HISTORY_EXERCISE_PATTERNS = (
+    # «اخر مرة لعبت بنش عملت كام», «اخر مرة سجلت فيها بنش»,
+    # «اخر مرة قدرت ارفع فيها البنش», «المره اللي فاتت سجلت سكوات رفعت كام»
+    re.compile(
+        r"(?<!\w)(?:(?:ال)?(?:اخيره?|الماضيه?|اخر)\s+(?:ال)?مره|(?:ال)?مره\s+(?:ال)?(?:اخيره?|الماضيه?)"
+        r"|(?:ال)?مره\s+(?:ال)?(?:لي\s+)?فاتت?)\s+"
+        r"(?:قدرت\s+ارفع|لعبت|العبت|عملت|سجلت|نزلت|حملت|رفعت|شلت|استخدمت|دخلت)\s+"
+        r"(?:(?:فيها|فيه)\s+)?"
+        r"(?P<exercise>[^؟?!.،]+)"
+    ),
+    # «عملت ايه في السكوات اخر مرة», «شلت كام بنش امبارح», «رفعت كام بنش»
+    re.compile(
+        r"(?<!\w)(?:عملت|سجلت|رفعت|حملت|نزلت|عدت|شلت|لعبت)\s+(?:كام|كم|ايه|ايش)\s+"
+        r"(?:(?:في|على|مع)\s+)?(?P<exercise>[^؟?!.،]+)"
+    ),
+    # «عملت كام تكرار في آخر تمرين للقرفصاء»
+    re.compile(
+        r"(?<!\w)(?:ال)?(?:اخر|اخير)\s+(?:ال)?(?:تمرين|تمرينه|جلسه|حصه|سيشن|ترينينج)\s+"
+        r"(?:لـ|ل)(?!لعبت|عملت|سجلت|نزلت|حملت|رفعت|شلت|العبت)(?P<exercise>[^؟?!.،]+)"
+    ),
+    # «اخر تمرين بنش كان عامل ازاي»
+    re.compile(
+        r"(?<!\w)(?:ال)?(?:اخر|اخير)\s+(?:ال)?(?:تمرين|تمرينه|جلسه|حصه|سيشن|ترينينج)\s+"
+        r"(?P<exercise>[^؟?!.،]+?)\s+(?:كان|كانت)\s+(?:عامل(?:ه)?|عامله|شغال(?:ه)?|شغاله)\b"
+    ),
+    # «آخر حصة عملت فيها بنش», «اخر تمرين سجلت فيه سكوات»
+    re.compile(
+        r"(?<!\w)(?:ال)?(?:اخر|اخير)\s+(?:ال)?(?:تمرين|تمرينه|جلسه|حصه|سيشن|ترينينج)\s+"
+        r"(?:عملت|سجلت|لعبت|شلت|رفعت|نزلت)\s+(?:فيها|فيه)\s+"
+        r"(?P<exercise>[^؟?!.،]+)"
+    ),
+    # «اخر تمرين عملته للبنش», «اخر جلسه عملتها للسكوات»
+    re.compile(
+        r"(?<!\w)(?:ال)?(?:اخر|اخير)\s+(?:ال)?(?:تمرين|تمرينه|جلسه|حصه|سيشن|ترينينج)\s+"
+        r"(?:عملت|سجلت|لعبت|عدت)(?:ها|ه)?\s+(?:لـ|ل)(?P<exercise>[^؟?!.،]+)"
+    ),
+    # «عملت ايه في تمرين squat خلال آخر جلسة», «في جلسة البنش»
+    re.compile(
+        r"(?<!\w)(?:في|على)\s+(?:ال)?(?:تمرين|تمرينه|جلسه|حصه|سيشن|ترينينج|تدريب)\s+"
+        r"(?P<exercise>[^؟?!.،]+)\s*[؟?!.]*\s*$"
+    ),
+    # «لعبت بنش كام»
+    re.compile(
+        r"(?<!\w)(?:لعبت|عملت|شلت|رفعت|سجلت|نزلت|حملت)\s+"
+        r"(?P<exercise>\S+(?:\s+\S+)*?)\s+(?:كام|كم|ايه|ايش|امبارح|امس|البارحه|قبل كده)\b"
+    ),
+)
+# A captured span naming the session itself is not an exercise (#766 rule).
+RE_ARABIC_HISTORY_SESSION_NOUN_TEXT = re.compile(
+    r"(?:ال)?(?:تمرين|تمرينه|ترينينج|جلسه|حصه|سيشن|تدريب)\b"
+)
+_ARABIC_HISTORY_TAIL_WORDS = frozenset({
+    "كام", "كم", "ايه", "ايش", "بول",
+    "تكرار", "تكرارات", "سيت", "سيتات", "مجموعه", "مجموعات", "عدات", "عده",
+    "كيلو", "كيلوجرام", "وزن", "بوزن", "مره", "اخر", "اخير", "اخيره",
+    "الفايت", "فايت", "اللي", "في", "على", "مع",
+    "عملت", "سجلت", "رفعت", "حملت", "نزلت", "عدت", "اخدت", "لعبت", "العبت", "شلت",
+    "امبارح", "امس", "البارحه", "النهارده", "اليوم", "قبل", "كده", "فات", "فاتت",
+    "خلال", "جلسه", "حصه", "تمرين", "تمرينه", "سيشن", "تدريب", "تمارين",
+    "يومين", "الاسبوع", "من", "الي", "فيها", "فيه",
+})
+
+
+def _normalized_arabic_history_text(query: str) -> str:
+    """Fold hamza forms (incl. ٱ), ة/ه, ى/ي, diacritics, tatweel and NFKC forms;
+    collapse elongated ا/ي runs («ازااااي»→ازاي)."""
+    text = unicodedata.normalize("NFKC", query.casefold())
+    text = normalize_arabic_text(text).translate(str.maketrans({"ٱ": "ا"}))
+    text = re.sub(r"([اي])\1+", r"\1", text)
+    return " ".join(text.split())
+
+
+def _arabic_history_tail_word(word: str) -> bool:
+    candidates = [word]
+    if word.startswith("و") and len(word) > 2:
+        candidates.append(word[1:])
+    if word.startswith("ال") and len(word) > 3:
+        candidates.append(word[2:])
+    return any(candidate in _ARABIC_HISTORY_TAIL_WORDS for candidate in candidates)
+
+
+def _clean_arabic_history_exercise(raw: str) -> str | None:
+    words = raw.split()
+    while words and _arabic_history_tail_word(words[-1]):
+        words.pop()
+    name = " ".join(words).strip(" ،,.!?؟؛:«»\"'-")
+    if not name or not re.search(r"[\u0600-\u06ffA-Za-z]", name):
+        return None
+    if RE_ARABIC_HISTORY_SESSION_NOUN_TEXT.search(name):
+        return None
+    return name
+
+
+def _arabic_history_exercise_name(normalized: str) -> str | None:
+    for pattern in RE_ARABIC_HISTORY_EXERCISE_PATTERNS:
+        match = pattern.search(normalized)
+        if not match:
+            continue
+        name = _clean_arabic_history_exercise(match.group("exercise"))
+        if name:
+            return name
+    return None
+
+
+def _substitute_arabic_exercise_terms(text: str) -> str:
+    for arabic, english in sorted(
+        ARABIC_EXERCISE_TERM_TRANSLATIONS.items(),
+        key=lambda entry: len(entry[0].split()),
+        reverse=True,
+    ):
+        text = re.sub(
+            rf"(?<![\u0600-\u06ff]){re.escape(arabic)}(?![\u0600-\u06ff])",
+            f" {english} ", text,
+        )
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _translate_arabic_exercise_name(name: str) -> str:
+    """Map Arabic gym terms onto the English names the exercise resolver expects."""
+    text = _normalized_arabic_history_text(name)
+    # Attached article/particle prefixes: «البنش», «بالبار», «للبنش».
+    text = re.sub(r"(?<![\u0600-\u06ff])(?:وال|بال|لل|ال)(?=[\u0600-\u06ff])", " ", text)
+    text = _substitute_arabic_exercise_terms(text)
+    words = []
+    for word in text.split():
+        if word in ARABIC_EXERCISE_TERM_TRANSLATIONS:
+            words.append(ARABIC_EXERCISE_TERM_TRANSLATIONS[word])
+            continue
+        # An attached prefix the word-initial strip missed — e.g. the capture
+        # «لقرفصاء» keeps the ل of «للقرفصاء» — strips only when the remainder
+        # is a known gym term, so «ليج برس» survives.
+        replacement = next(
+            (
+                ARABIC_EXERCISE_TERM_TRANSLATIONS[word[len(prefix) :]]
+                for prefix in ("وال", "بال", "لل", "ال", "ل", "ب", "و", "ف")
+                if word.startswith(prefix)
+                and len(word) > len(prefix) + 1
+                and word[len(prefix) :] in ARABIC_EXERCISE_TERM_TRANSLATIONS
+            ),
+            None,
+        )
+        words.append(replacement or word)
+    return " ".join(words).strip()
+
+
+def _arabic_history_groups(normalized: str) -> dict[str, bool]:
+    """Vocabulary-group hits for the #766 history rule."""
+    return {
+        "workout": bool(RE_ARABIC_HISTORY_WORKOUT.search(normalized)),
+        "workout_possessive": bool(_RE_ARABIC_HISTORY_WORKOUT_POSSESSIVE.search(normalized)),
+        "last": bool(
+            RE_ARABIC_HISTORY_LAST.search(normalized)
+            or RE_ARABIC_HISTORY_LAST_PHRASES.search(normalized)
+        ),
+        "weak": bool(
+            RE_ARABIC_HISTORY_TODAY.search(normalized)
+            or RE_ARABIC_HISTORY_WEEKDAY.search(normalized)
+        ),
+        "how": bool(_ARABIC_HISTORY_HOW_PATTERN.search(normalized)),
+        "request": bool(_ARABIC_HISTORY_REQUEST_PATTERN.search(normalized)),
+        "last_time_verb": bool(RE_ARABIC_HISTORY_LAST_TIME_VERB.search(normalized)),
+    }
+
+
+def _is_arabic_history_question(groups: dict[str, bool]) -> bool:
+    """The #766 rule: (a) a WORKOUT word with a LAST/PAST word or a
+    past-tense/possessive marker, or (b) a HOW/PERFORMANCE word with a
+    LAST/PAST word. «النهارده/اليوم» and weekday names are weak markers that
+    only count next to a HOW word, so day-plan questions («تمرين النهارده
+    ايه», «تمارين التلات ايه») stay out. «اخر مرة» + a past training verb
+    (+ «فيها» + exercise) is exercise history on its own. REQUEST words ride
+    along but never fire on their own."""
+    return (
+        (groups["workout"] and groups["last"])
+        or (groups["workout"] and groups["weak"] and groups["how"])
+        or (groups["workout_possessive"] and (groups["last"] or groups["how"]))
+        or (groups["how"] and (groups["last"] or groups["weak"]))
+        or groups["last_time_verb"]
+    )
+
+
+def _arabic_history_lexical_route(
+    query: str, config: dict[str, Any] | None
+) -> dict[str, Any] | None:
+    """Deterministic Arabic workout-history routing (#766).
+
+    Returns the exercise_history route, or None so the existing flow keeps the
+    message (composite swaps, program changes, coaching, logging, unknown forms).
+    """
+    if _is_food_log_query(query):
+        return None
+    if not ARABIC_SCRIPT_RE.search(query):
+        return None
+    normalized = _normalized_arabic_history_text(query)
+    if RE_ARABIC_HISTORY_EXCLUSION.search(normalized):
+        return None
+    # Lifestyle questions (drinks, food, supplements, sleep, calories, weight)
+    # where the workout word is only a time reference («قبل/بعد التمرين/الجيم»)
+    # are not workout history — leave them to the food log or coaching (#766).
+    without_time_refs = RE_ARABIC_HISTORY_TIME_REFERENCE.sub(" ", normalized)
+    if (
+        RE_ARABIC_HISTORY_LIFESTYLE_TOPIC.search(without_time_refs)
+        and not RE_ARABIC_HISTORY_WORKOUT.search(without_time_refs)
+    ):
+        return None
+    if RE_ARABIC_TRAIN_REST_QUESTION.search(RE_ARABIC_DIACRITICS.sub("", query)):
+        return None
+    if (
+        RE_EXPLICIT_SWAP.search(query)
+        or RE_ARABIC_SWAP_REQUEST.search(normalized)
+        # A mid-sentence بدل/غير/استبدل or program command defers to the
+        # Arabic classifier, which composes the history answer with the action.
+        or re.search(r"(?<!\w)(?:بدل|غير|استبدل|ابدل|اغير)(?!\w)", normalized)
+        or RE_ARABIC_PROGRAM_COMMAND.search(normalized)
+    ):
+        return None
+    if not _is_arabic_history_question(_arabic_history_groups(normalized)):
+        return None
+    raw_exercise = _arabic_history_exercise_name(normalized)
+    if raw_exercise:
+        ledger, store = _graph_context(config)
+        program = ledger.get_active_program() if ledger is not None else None
+        resolved = _resolve_arabic_history_exercise(
+            program, store, _translate_arabic_exercise_name(raw_exercise)
+        )
+        if resolved is not None:
+            return _arabic_history_route(*resolved)
+        if not re.search(r"(?:عملت|سجلت|لعبت|عدت)(?:ها|ه)?\s+(?:لـ|ل)", normalized):
+            return _arabic_clarification_route("history")
+        # «اخر تمرين عملته للصدر» — the لل phrase names the workout's focus;
+        # when it is not a resolvable exercise the question is still about the
+        # last session, so answer that instead of asking which exercise.
+    return {
+        "intent": "exercise_history",
+        "intent_metadata": {
+            "raw_query": "how did I do last session",
+            "arabic_history": True,
+        },
+    }
 
 
 def _arabic_swap_route(
@@ -2570,6 +2972,9 @@ def router_node(state: AssistantState, config: dict[str, Any] | None = None) -> 
             "program_edit",
         }:
             return {k: v for k, v in deterministic.items() if k != "query"}
+        history_route = _arabic_history_lexical_route(query, config)
+        if history_route is not None:
+            return history_route
         return _classify_arabic_intent(query, config)
 
     # Clause Splitting for Compound / Multi-Intent Queries
@@ -3227,20 +3632,195 @@ def _arabic_history_fallback(
 ) -> dict[str, Any]:
     metadata = dict(state.get("intent_metadata", {}))
     metadata.pop("arabic_history", None)
-    resolved = exercise_history_node({**state, "intent_metadata": metadata}, config)
-    facts = (
-        resolved.get("model_context_content")
-        or resolved.get("response_content")
-        or resolved.get("telemetry_context")
-        or "No matching Training ledger history was found."
+    ledger, store = _graph_context(config)
+    return _arabic_history_ledger_reply(metadata or {}, ledger, store)
+
+
+def _arabic_history_ledger_reply(
+    metadata: dict[str, Any], ledger: Any, store: Any
+) -> dict[str, Any]:
+    """The deterministic history figures in polite Egyptian Arabic (#766).
+
+    Mirrors the English exercise_history branches with the same figures —
+    Western digits and kg per the chat glossary rule — never the English
+    template: the hosted fixed prompt (#269) has no figure channel, so the
+    ledger read itself must carry the answer.
+    """
+    comparison = _session_comparison_context(ledger) if ledger is not None else None
+    exercise_id = metadata.get("history_exercise_id")
+    if exercise_id:
+        if comparison is None:
+            return _response(ARABIC_HISTORY_COMPARISONS_UNAVAILABLE)
+        entries = comparison.get("exercises") or []
+        exercise_name = str(metadata.get("history_exercise_name") or "").strip()
+        matches = [
+            entry for entry in entries
+            if str(entry.get("exercise_id")) == str(exercise_id)
+        ]
+        if not matches and exercise_name:
+            matches = _history_exercise_matches(exercise_name, entries)
+        if len(matches) > 1:
+            return _response(
+                ARABIC_HISTORY_VARIANTS
+                + ", ".join(f"{entry['name']} [{entry['exercise_id']}]" for entry in matches)
+            )
+        if not matches:
+            date = (comparison.get("session") or {}).get("session_date") or "مش معروف"
+            return _response(
+                ARABIC_HISTORY_NO_SETS.format(name=exercise_name or "التمرين", date=date)
+            )
+        return _response(_comparison_text_ar(comparison, exercises=matches, store=store))
+    if comparison is not None:
+        return _response(_comparison_text_ar(comparison, store=store))
+    getter = getattr(ledger, "get_latest_session_summary", None) if ledger is not None else None
+    summary = getter() if callable(getter) else None
+    if not isinstance(summary, dict) or not summary:
+        return _response(ARABIC_HISTORY_NO_SUMMARY)
+    return _response(_session_summary_text_ar(summary, store=store))
+
+
+_ARABIC_HISTORY_STATUS = {
+    "improvement": "تحسن",
+    "decline": "تراجع",
+    "unchanged": "ثابت",
+    "mixed": "مختلط",
+    "insufficient_data": "بيانات مش كافية",
+}
+ARABIC_HISTORY_COMPARISONS_UNAVAILABLE = (
+    "مقارنات آخر جلسة مش متاحة دلوقتي. "
+    "اطلب آخر مرة اتسجل فيها التمرين عشان أدور في السجل الأقدم."
+)
+ARABIC_HISTORY_NO_SUMMARY = "مفيش ملخص جلسة مسجل لسه. سجل جلسة وأنا أراجعهالك."
+ARABIC_HISTORY_NO_SETS = (
+    "مفيش سيتات شغل لـ {name} في آخر جلسة ({date}). "
+    "ده مش معناه إنه مش مسجل خالص؛ اطلب آخر مرة اتسجل فيها التمرين."
+)
+ARABIC_HISTORY_VARIANTS = "انهي نسخة من التمرين تقصد؟ "
+
+
+def _arabic_metric(value: Any, signed: bool = False) -> str:
+    if type(value) not in (int, float) or not math.isfinite(value):
+        return "مش متسجل"
+    return f"{value:+g}" if signed else f"{value:g}"
+
+
+def _arabic_rir(rpe: Any) -> str:
+    label = rir_label(rpe)
+    return "مش متقيّم" if label == "not rated" else label
+
+
+def _arabic_set_text(value: dict[str, Any] | None) -> str:
+    value = value or {}
+    return (
+        f"{_arabic_metric(value.get('weight_kg'))} kg × {_arabic_metric(value.get('reps'))} عدّات"
+        f" @ RIR {_arabic_rir(value.get('rpe'))}"
     )
-    return {
-        "intent": "exercise_history_fallback",
-        "telemetry_context": (
-            "Verified Training ledger history for this request. Use only these "
-            "figures and answer in the latest message's language:\n" + str(facts)
-        ),
-    }
+
+
+def _arabic_status(status: Any) -> str:
+    return _ARABIC_HISTORY_STATUS.get(str(status), str(status))
+
+
+def _exercise_comparison_text_ar(
+    exercise: dict[str, Any], description: str | None = None
+) -> str:
+    current = exercise.get("current") or {}
+    previous = exercise.get("previous")
+    best = current.get("best_set") or {}
+    description = description or exercise["name"]
+    content = (
+        f"{description} [{exercise['exercise_id']}]: أحسن سيت {_arabic_set_text(best)}؛ "
+        f"{_arabic_metric(current.get('sets_count'))} سيتات، {_arabic_metric(current.get('total_reps'))} عدّات إجمالي، "
+        f"{_arabic_metric(current.get('volume_kg'))} kg حجم."
+    )
+    for logged_set in current.get("sets", []):
+        content += f"\n  سيت {logged_set['set_index']}: {_arabic_set_text(logged_set)}"
+    if not previous:
+        return content + " خط الأساس: مفيش آخر مرة مسجلة؛ الحالة: بيانات مش كافية. مفيش تقييم تقدم متاح."
+    content += (
+        f" خط الأساس: {previous['session']['session_date']} (آخر مرة مسجلة"
+        f")؛ أحسن سيت {_arabic_set_text(previous.get('best_set'))}."
+    )
+    deltas = exercise.get("deltas") or {}
+    content += " التغييرات الملحوظة: " + ", ".join(
+        f"{label} {_arabic_metric(deltas.get(key), signed=True)}{unit}"
+        for key, label, unit in (
+            ("load_kg", "أحسن وزن", " kg"), ("reps", "عدّات", ""),
+            ("sets", "سيتات", ""), ("volume_kg", "حجم", " kg"), ("e1rm", "e1RM", " kg"),
+        )
+    ) + "."
+    content += (
+        f" الحالة: {_arabic_status(exercise.get('status', 'insufficient_data'))}"
+        " (ملحوظة مش اتجاه طويل المدى)."
+    )
+    return content
+
+
+def _comparison_text_ar(
+    context: dict[str, Any], exercises=None, store: Any = None
+) -> str:
+    session = context.get("session") or {}
+    entries = context.get("exercises") or []
+    sets_count = sum((ex.get("current") or {}).get("sets_count", 0) for ex in entries)
+    volume = sum((ex.get("current") or {}).get("volume_kg", 0) for ex in entries)
+    content = (
+        f"ده آخر جلسة سجلتها: {session.get('split_name') or 'جلسة'} يوم {session.get('session_date') or 'مش معروف'}؛ "
+        f"{sets_count} سيتات شغل، {_arabic_metric(volume)} kg إجمالي الوزن المرفوع. "
+        f"الجاهزية: {_arabic_metric(session.get('readiness_score'))}/5.\n"
+        "أحسن سيت: أثقل وزن الأول، وبعدين أكتر عدّات، وبعدين أقدم سيت. "
+        "كل خط أساس هو آخر مرة اتسجل فيها التمرين، مش شرط تكون آخر جلسة."
+    )
+    selected = entries if exercises is None else exercises
+    descriptions = (
+        describe_exercises(
+            store,
+            ((exercise["exercise_id"], exercise["name"]) for exercise in selected),
+        )
+        if store is not None
+        else [exercise["name"] for exercise in selected]
+    )
+    for exercise, description in zip(selected, descriptions):
+        content += "\n- " + _exercise_comparison_text_ar(exercise, description)
+    if not entries:
+        content += "\nمفيش سيتات شغل مسجلة في الجلسة دي؛ مفيش تقييم تقدم متاح."
+    return content
+
+
+def _session_summary_text_ar(summary: dict[str, Any], store: Any = None) -> str:
+    date = summary.get("session_date")
+    split = summary.get("split_name")
+    label = split[:80] if isinstance(split, str) and split else "جلسة"
+    when = f" يوم {date[:32]}" if isinstance(date, str) and date else ""
+    content = (
+        f"ده آخر جلسة سجلتها ({label}){when}: "
+        f"{_arabic_metric(summary.get('sets_count'))} سيتات شغل، "
+        f"{_arabic_metric(summary.get('total_volume_kg'))} kg إجمالي الوزن المرفوع. "
+        f"الجاهزية: {_arabic_metric(summary.get('readiness_score'))}/5."
+    )
+    exercises = summary.get("exercises")
+    if isinstance(exercises, list):
+        valid_exercises = [
+            exercise for exercise in exercises
+            if isinstance(exercise, dict) and isinstance(exercise.get("name"), str)
+        ]
+        described = (
+            describe_exercises(
+                store,
+                (
+                    (str(exercise.get("exercise_id") or ""), exercise["name"])
+                    for exercise in valid_exercises
+                ),
+            )
+            if store is not None
+            else [exercise["name"] for exercise in valid_exercises]
+        )
+        for exercise, description in zip(valid_exercises, described):
+            content += (
+                f"\n- {str(description)[:100]}: {_arabic_metric(exercise.get('sets'))} سيتات، "
+                f"{_arabic_metric(exercise.get('reps'))} عدّات إجمالي، "
+                f"{_arabic_metric(exercise.get('volume_kg'))} kg حجم."
+            )
+    return content + "\n\nده ملخص جلسة؛ محتاج مقارنة عشان أقيّم التقدم."
 
 
 def _history_name(name: str) -> str:

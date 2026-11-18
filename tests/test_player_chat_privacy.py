@@ -3167,12 +3167,7 @@ def test_arabic_history_fallback_does_not_inject_ledger_figures(api, monkeypatch
     headers = _authed(_register(client, player)["access_token"])
     _seed_chat_program(db, player)
     _seed_session(db, player, "2026-09-24T10:00:00+00:00")
-    model = ScriptedChatModel(
-        [
-            {"intent": "exercise_history", "history_exercise": "Squat"},
-            "مش ظاهر في الرسالة دي رقم موثّق لآخر مرة.",
-        ]
-    )
+    model = ScriptedChatModel(default_turn="MODEL GOT LEDGER FIGURES.")
     monkeypatch.setattr(assistant_graph, "llm", model)
     monkeypatch.setattr(assistant_graph, "_prompt_budget", lambda: 100_000)
 
@@ -3183,12 +3178,19 @@ def test_arabic_history_fallback_does_not_inject_ledger_figures(api, monkeypatch
         body = response.read().decode("utf-8")
         assert response.status_code == 200
 
-    assert _done_content(body) == "مش ظاهر في الرسالة دي رقم موثّق لآخر مرة."
-    grounded_context = _last_rendered(model)
-    assert "عملت كام في السكوات آخر مرة؟" in grounded_context
-    assert "Squat" not in grounded_context
-    assert "100 kg × 5 reps" not in grounded_context
-    assert "500 kg volume" not in grounded_context
+    # #766: the Arabic history question routes deterministically and is answered
+    # from the ledger figures path in Egyptian Arabic, exactly like the English
+    # route's figures. The model is never called, so no ledger figure can reach
+    # a model prompt.
+    assert model.calls == []
+    assert "MODEL GOT LEDGER FIGURES." not in body
+    reply = _done_content(body)
+    assert any("\u0600" <= character <= "\u06ff" for character in reply)
+    assert "Your last logged session" not in reply
+    assert "Squat" in reply
+    assert "100 kg × 5" in reply
+    assert "500" in reply
+    assert "عدّات" in reply
 
 
 @pytest.mark.parametrize(
