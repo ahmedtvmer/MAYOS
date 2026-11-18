@@ -527,6 +527,16 @@ class FakeMayosApi {
   Map<String, dynamic>? chatDoneAllowance;
   List<String> chatStatuses = <String>[];
   List<String> chatReplyChunks = <String>['Keep your ', 'elbows tucked.'];
+  // Assistant reply feedback (#748): the signed context rides the done frame;
+  // votes and reports mutate rows keyed by message id.
+  Map<String, dynamic>? chatFeedbackContext;
+  final Map<String, Map<String, dynamic>> chatFeedback =
+      <String, Map<String, dynamic>>{};
+  bool chatFeedbackOffline = false;
+  int chatFeedbackVoteCount = 0;
+  int chatFeedbackReportCount = 0;
+  // Signed context the fake puts on the coach assistant done frame (#748).
+  Map<String, dynamic>? coachFeedbackContext;
 
   // Exact method+path pairs that fail as a dropped connection (offline
   // program-changing action, spec AC3). Add via ``failOffline('POST', path)``.
@@ -729,11 +739,22 @@ class FakeMayosApi {
     if (path == '/chat/history') {
       return _chatHistoryResponse(request);
     }
+    if (path == '/chat/feedback/vote' || path == '/chat/feedback/report') {
+      return _chatFeedback(request);
+    }
     if (path.startsWith('/profile/injuries')) {
       return _injuries(request);
     }
     if (path == '/chat/messages') {
       return _chatMessage(request);
+    }
+    if (path.startsWith('/coach/assignments/') &&
+        path.endsWith('/assistant/feedback/vote')) {
+      return _coachFeedback(request, isReport: false);
+    }
+    if (path.startsWith('/coach/assignments/') &&
+        path.endsWith('/assistant/feedback/report')) {
+      return _coachFeedback(request, isReport: true);
     }
     if (path.startsWith('/coach/assignments/') && path.endsWith('/assistant')) {
       return _coachAssistant(request);
@@ -2136,6 +2157,8 @@ class FakeMayosApi {
           'outcome': coachAssistantOutcome,
         if ((coachAssistantAllowance ?? coachAiAllowance) != null)
           'coach_allowance': coachAssistantAllowance ?? coachAiAllowance,
+        if (coachFeedbackContext != null)
+          'feedback_context': coachFeedbackContext,
       })}\n\n',
     ]);
   }
@@ -2407,6 +2430,7 @@ class FakeMayosApi {
     }
     if (request.method == 'DELETE') {
       chatHistory.clear();
+      chatFeedback.clear();
       return const FakeResponse(204);
     }
     // The service annotates each message with its `kind` (ADR 036), so the
@@ -2421,9 +2445,98 @@ class FakeMayosApi {
               row['role'] as String? ?? '',
               row['content'] as String? ?? '',
             ),
+            if (row['role'] == 'assistant')
+              'feedback': chatFeedback[row['id']] ??
+                  <String, dynamic>{
+                    'feedback_id': row['id'],
+                    'vote': null,
+                    'reported': false,
+                  },
           },
       ],
     );
+  }
+
+  FakeResponse _chatFeedback(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    if (chatFeedbackOffline) {
+      return const FakeResponse.networkFailure();
+    }
+    final String path = request.path;
+    final dynamic context = request.body['context'];
+    final String? messageId =
+        context is Map<String, dynamic> && context['message_id'] is String
+            ? context['message_id'] as String
+            : request.body['message_id'] as String?;
+    if (messageId == null || messageId.isEmpty) {
+      return const FakeResponse(
+          400, <String, dynamic>{'detail': 'Invalid feedback context.'});
+    }
+    if (path.endsWith('/vote')) {
+      chatFeedbackVoteCount += 1;
+      final String? vote = request.body['vote'] as String?;
+      final Map<String, dynamic> row = chatFeedback[messageId] ??
+          <String, dynamic>{'feedback_id': messageId, 'vote': null, 'reported': false};
+      row['vote'] = vote;
+      chatFeedback[messageId] = row;
+      return FakeResponse(200, <String, dynamic>{
+        'feedback_id': row['feedback_id'],
+        'vote': vote,
+      });
+    }
+    final List<dynamic> reasons = request.body['reasons'] as List<dynamic>? ?? <dynamic>[];
+    if (reasons.isEmpty) {
+      return const FakeResponse(
+          422, <String, dynamic>{'detail': 'A reason is required.'});
+    }
+    chatFeedbackReportCount += 1;
+    final Map<String, dynamic> row = chatFeedback[messageId] ??
+        <String, dynamic>{'feedback_id': messageId, 'vote': null, 'reported': false};
+    row['reported'] = true;
+    chatFeedback[messageId] = row;
+    return FakeResponse(200, <String, dynamic>{
+      'feedback_id': row['feedback_id'],
+      'created': true,
+      'delivery_pending': false,
+    });
+  }
+
+  FakeResponse _coachFeedback(FakeRequest request, {required bool isReport}) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    if (chatFeedbackOffline) {
+      return const FakeResponse.networkFailure();
+    }
+    final dynamic context = request.body['context'];
+    if (context is! Map<String, dynamic> ||
+        context['message_id'] is! String ||
+        (context['message_id'] as String).isEmpty) {
+      return const FakeResponse(
+          400, <String, dynamic>{'detail': 'Invalid feedback context.'});
+    }
+    if (isReport) {
+      final List<dynamic> reasons = request.body['reasons'] as List<dynamic>? ?? <dynamic>[];
+      if (reasons.isEmpty) {
+        return const FakeResponse(
+            422, <String, dynamic>{'detail': 'A reason is required.'});
+      }
+      chatFeedbackReportCount += 1;
+      return FakeResponse(200, <String, dynamic>{
+        'feedback_id': context['message_id'],
+        'created': true,
+        'delivery_pending': false,
+      });
+    }
+    chatFeedbackVoteCount += 1;
+    return FakeResponse(200, <String, dynamic>{
+      'feedback_id': context['message_id'],
+      'vote': request.body['vote'],
+    });
   }
 
   static String _chatKind(String role, String content) {
@@ -2498,6 +2611,9 @@ class FakeMayosApi {
       'content': reply,
       'created_at': '2026-09-26T12:00:01Z',
     });
+    final String feedbackJson = chatFeedbackContext == null
+        ? ''
+        : ', "feedback_context": ${jsonEncode(chatFeedbackContext)}';
     return FakeResponse(200, null, <String>[
       for (final String status in chatStatuses)
         'event: status\ndata: {"status": ${jsonEncode(status)}}\n\n',
@@ -2505,7 +2621,7 @@ class FakeMayosApi {
         'data: {"token": ${jsonEncode(chunk)}}\n\n',
       'data: {"done": true, "response_content": ${jsonEncode(reply)}, '
           '"program_updated": ${chatProgramUpdated ? 'true' : 'false'}, '
-          '"outcome": "completed"$suggestionJson$allowanceJson$programEditJson}\n\n',
+          '"outcome": "completed"$suggestionJson$allowanceJson$programEditJson$feedbackJson}\n\n',
     ]);
   }
 

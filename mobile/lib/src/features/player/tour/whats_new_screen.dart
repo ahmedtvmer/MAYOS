@@ -29,6 +29,7 @@ class WhatsNewFeatureRow extends StatelessWidget {
         'add_exercises' => Icons.add_circle_outline,
         'edit_program_chat' => Icons.edit_note,
         'movements_to_avoid' => Icons.block_outlined,
+        'assistant_feedback' => Icons.thumbs_up_down,
         _ => Icons.auto_awesome_outlined,
       };
 

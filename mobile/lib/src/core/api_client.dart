@@ -2188,8 +2188,60 @@ class ApiClient {
                   frame['coach_allowance'] as Map<String, dynamic>,
                 )
               : null,
+          feedbackContext:
+              frame['feedback_context'] is Map<String, dynamic>
+                  ? AssistantFeedbackContext.fromJson(
+                      frame['feedback_context'] as Map<String, dynamic>,
+                    )
+                  : null,
         ),
       );
+
+  /// Stores or clears the coach's own 👍/👎 on one assistant reply for
+  /// [assignmentId] (`POST /coach/assignments/{id}/assistant/feedback/vote`,
+  /// #748). The exchange is never persisted server-side, so the context is
+  /// always required.
+  Future<Map<String, dynamic>> coachVoteAssistantFeedback({
+    required String assignmentId,
+    required AssistantFeedbackContext context,
+    required String? vote,
+    List<String> reasons = const <String>[],
+    String? note,
+  }) async {
+    final httpResponse = await _send(
+      () => _dio.post<dynamic>(
+        '/coach/assignments/$assignmentId/assistant/feedback/vote',
+        data: <String, dynamic>{
+          'context': context.toJson(),
+          'vote': vote,
+          'reasons': reasons,
+          if (note != null) 'note': note,
+        },
+      ),
+    );
+    return _feedbackMutationBody(httpResponse.data);
+  }
+
+  /// Reports one assistant reply to the owner with a required reason (`POST
+  /// /coach/assignments/{id}/assistant/feedback/report`, #748).
+  Future<Map<String, dynamic>> coachReportAssistantFeedback({
+    required String assignmentId,
+    required AssistantFeedbackContext context,
+    required List<String> reasons,
+    String? note,
+  }) async {
+    final httpResponse = await _send(
+      () => _dio.post<dynamic>(
+        '/coach/assignments/$assignmentId/assistant/feedback/report',
+        data: <String, dynamic>{
+          'context': context.toJson(),
+          'reasons': reasons,
+          if (note != null) 'note': note,
+        },
+      ),
+    );
+    return _feedbackMutationBody(httpResponse.data);
+  }
 
   /// Asks one roster question with an in-memory, de-identified transcript.
   /// The returned assignment map is used only to render player names/links.
@@ -3509,6 +3561,64 @@ class ApiClient {
     await _send(() => _dio.delete<dynamic>('/chat/history'));
   }
 
+  /// Stores or clears this account's 👍/👎 on one assistant reply (`POST
+  /// /chat/feedback/vote`, #748). The signed [context] rides back unchanged;
+  /// a reply restored from history sends only its server `messageId`.
+  Future<Map<String, dynamic>> voteChatFeedback({
+    AssistantFeedbackContext? context,
+    String? messageId,
+    required String? vote,
+    List<String> reasons = const <String>[],
+    String? note,
+  }) async {
+    final httpResponse = await _send(
+      () => _dio.post<dynamic>(
+        '/chat/feedback/vote',
+        data: <String, dynamic>{
+          if (context != null) 'context': context.toJson(),
+          if (context == null && messageId != null) 'message_id': messageId,
+          'vote': vote,
+          'reasons': reasons,
+          if (note != null) 'note': note,
+        },
+      ),
+    );
+    return _feedbackMutationBody(httpResponse.data);
+  }
+
+  /// Reports one assistant reply with a required reason (`POST
+  /// /chat/feedback/report`, #748). The service forwards it to the owner.
+  Future<Map<String, dynamic>> reportChatFeedback({
+    AssistantFeedbackContext? context,
+    String? messageId,
+    required List<String> reasons,
+    String? note,
+  }) async {
+    final httpResponse = await _send(
+      () => _dio.post<dynamic>(
+        '/chat/feedback/report',
+        data: <String, dynamic>{
+          if (context != null) 'context': context.toJson(),
+          if (context == null && messageId != null) 'message_id': messageId,
+          'reasons': reasons,
+          if (note != null) 'note': note,
+        },
+      ),
+    );
+    return _feedbackMutationBody(httpResponse.data);
+  }
+
+  Map<String, dynamic> _feedbackMutationBody(dynamic data) {
+    if (data is! Map<String, dynamic>) {
+      const String message = 'The service returned invalid feedback data.';
+      throw ApiException(
+        message,
+        failureMessage: _invalidServiceDataFailure(message),
+      );
+    }
+    return data;
+  }
+
   Future<List<Map<String, dynamic>>> assistantPreferences() async {
     final response = await _send(() => _dio.get<dynamic>('/chat/preferences'));
     final dynamic body = response.data;
@@ -3584,6 +3694,12 @@ class ApiClient {
         programEditPreview:
             frame['program_edit_preview'] is Map<String, dynamic>
                 ? frame['program_edit_preview'] as Map<String, dynamic>
+                : null,
+        feedbackContext:
+            frame['feedback_context'] is Map<String, dynamic>
+                ? AssistantFeedbackContext.fromJson(
+                    frame['feedback_context'] as Map<String, dynamic>,
+                  )
                 : null,
       ),
     );

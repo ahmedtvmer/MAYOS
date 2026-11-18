@@ -10,11 +10,13 @@ logger = logging.getLogger(__name__)
 ALERT_SWEEP_JOB = "Alert sweep"
 PUSH_SWEEP_JOB = "Web Push sweep"
 DAILY_BACKUP_JOB = "Daily backup"
+FEEDBACK_MAINTENANCE_JOB = "Assistant feedback"
 
 _JOB_INTERVALS = {
     PUSH_SWEEP_JOB: ("MAYOS_PUSH_SWEEP_INTERVAL_SECONDS", 60.0),
     ALERT_SWEEP_JOB: ("MAYOS_ALERT_SWEEP_INTERVAL_SECONDS", 3600.0),
     DAILY_BACKUP_JOB: ("MAYOS_DAILY_BACKUP_INTERVAL_SECONDS", 3600.0),
+    FEEDBACK_MAINTENANCE_JOB: ("MAYOS_FEEDBACK_INTERVAL_SECONDS", 3600.0),
 }
 _PROCESS_STARTED_AT = datetime.now(UTC)
 
@@ -65,6 +67,7 @@ __all__ = [
     "ALERT_SWEEP_JOB",
     "PUSH_SWEEP_JOB",
     "DAILY_BACKUP_JOB",
+    "FEEDBACK_MAINTENANCE_JOB",
     "PeriodicRun",
     "configured_interval_seconds",
     "get",

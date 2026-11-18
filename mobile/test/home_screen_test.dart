@@ -1573,6 +1573,11 @@ void main() {
             find.text('Push notifications are available in the installed web app.'),
           'assistant_meals' => find.byTooltip('Assistant'),
           'assistant_personal_logs' => find.byTooltip('Assistant'),
+          // The vote bar exists only under an assistant reply; with an empty
+          // chat the composer carries the same TourTarget id (#748).
+          'assistant_feedback' => find.byKey(const Key('assistant_feedback_vote_buttons')).evaluate().isNotEmpty
+              ? find.byKey(const Key('assistant_feedback_vote_buttons'))
+              : find.byKey(const Key('chat_composer_bar')),
           _ => find.text(entry.titleEn),
         };
         expect(realControl, findsOneWidget, reason: entry.id);
@@ -1765,6 +1770,11 @@ void main() {
             find.text('Push notifications are available in the installed web app.'),
           'assistant_meals' => find.byTooltip('Assistant'),
           'assistant_personal_logs' => find.byTooltip('Assistant'),
+          // The vote bar exists only under an assistant reply; with an empty
+          // chat the composer carries the same TourTarget id (#748).
+          'assistant_feedback' => find.byKey(const Key('assistant_feedback_vote_buttons')).evaluate().isNotEmpty
+              ? find.byKey(const Key('assistant_feedback_vote_buttons'))
+              : find.byKey(const Key('chat_composer_bar')),
           _ => find.text(entry.titleEn),
         };
         expect(realControl, findsOneWidget, reason: entry.id);
@@ -1789,6 +1799,78 @@ void main() {
     // variable invariant check runs before addTearDown does (see mediaTest in
     // workout_logger_pictures_test.dart).
     FakeMediaCatalog.uninstall();
+  });
+
+  testWidgets('Show me for Rate assistant replies lands on an empty chat',
+      (tester) async {
+    // The vote bar exists only under an assistant reply; the fake serves an
+    // empty chat, so this proves the empty-chat case still shows a spotlight.
+    final FakeMayosApi fake = _signedInFake();
+    final FakeAnalyticsClient analytics = FakeAnalyticsClient();
+    await _pumpHome(tester, fake, size: const Size(390, 844),
+        extraOverrides: <Override>[
+      analyticsClientProvider.overrideWithValue(analytics),
+    ]);
+    final ProviderContainer container =
+        ProviderScope.containerOf(tester.element(find.byType(MayosApp)));
+    for (int attempt = 0;
+        attempt < 40 && !container.read(activeWorkoutControllerProvider).ready;
+        attempt++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(container.read(activeWorkoutControllerProvider).ready, isTrue);
+
+    // Drive Show me the way the Player does: tap the Feature guide entry's
+    // button (the guide calls showMe without a source) and pump while the
+    // tour navigates and waits for the target.
+    final GoRouter router = container.read(routerProvider);
+    router.go(featureGuidePath);
+    await tester.pumpAndSettle();
+    final List<FeatureEntry> entries = featureList
+        .where((FeatureEntry entry) => entry.audience == 'lifter')
+        .toList(growable: false);
+    final FeatureEntry entry = entries
+        .firstWhere((FeatureEntry entry) => entry.id == 'assistant_feedback');
+    final Finder showMe = find.text('Show me').at(entries.indexOf(entry));
+    await tester.ensureVisible(showMe);
+    await tester.pumpAndSettle();
+    await tester.tap(showMe);
+    await _pumpUntilFound(tester, find.byKey(const ValueKey<String>('tour_next')));
+    await tester.pumpAndSettle();
+
+    expect(
+      router.routerDelegate.state.uri.path,
+      chatPath,
+      reason: 'Show me should land on the chat screen',
+    );
+    expect(
+      find.descendant(
+        of: find.byType(SpotlightOverlay),
+        matching: find.text('Rate assistant replies'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byType(SpotlightOverlay),
+        matching: find.textContaining('Tap 👍 or 👎 under an assistant reply'),
+      ),
+      findsOneWidget,
+    );
+    // The spotlight cutout covers the composer that carries the fallback id.
+    final Rect cutout = tester.getRect(
+      find.byKey(const ValueKey<String>('tour_spotlight_cutout')),
+    );
+    expect(
+      cutout.contains(
+        tester.getRect(find.byKey(const Key('chat_composer_bar'))).center,
+      ),
+      isTrue,
+    );
+    expect(analytics.events.any((Map<String, Object> event) =>
+        event['event'] == 'show_me_tapped' &&
+        (event['properties'] as Map<String, Object>)['feature_id'] ==
+            'assistant_feedback'), isTrue);
   });
 
   testWidgets('Show me to Profile preserves the guide as the Back destination',

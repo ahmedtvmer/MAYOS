@@ -37,6 +37,7 @@ from service.periodic_status import (
     ALERT_SWEEP_JOB,
     PUSH_SWEEP_JOB,
     DAILY_BACKUP_JOB,
+    FEEDBACK_MAINTENANCE_JOB,
     configured_interval_seconds,
     record_run,
 )
@@ -289,6 +290,7 @@ async def lifespan(app: FastAPI):
     push_task: asyncio.Task[None] | None = None
     backup_task: asyncio.Task[None] | None = None
     food_search_task: asyncio.Task[None] | None = None
+    feedback_task: asyncio.Task[None] | None = None
     metrics_task: asyncio.Task[None] | None = None
     metrics_flush_task: asyncio.Task[None] | None = None
     unit_test_mode = os.getenv("SKIP_LLM_LOAD") == "true"
@@ -408,6 +410,20 @@ async def lifespan(app: FastAPI):
         )
         logger.info("Daily backup loop started (every %ss).", backup_interval)
 
+    # Assistant feedback maintenance: retries reports Discord did not accept and
+    # sends the Monday-morning weekly vote summary. Both steps are idempotent,
+    # so the hourly cadence only ever re-runs no-ops.
+    feedback_interval = configured_interval_seconds(FEEDBACK_MAINTENANCE_JOB)
+    if loops_enabled and feedback_interval > 0:
+        from service.assistant_feedback import feedback_maintenance
+
+        feedback_task = asyncio.create_task(
+            _periodic_loop(
+                app.state.db, feedback_interval, feedback_maintenance, FEEDBACK_MAINTENANCE_JOB
+            )
+        )
+        logger.info("Assistant feedback loop started (every %ss).", feedback_interval)
+
     metrics_task = asyncio.create_task(summary_loop(app.state.request_metrics))
     logger.info("Request metrics summary loop started (hourly; process-local counters).")
     if _ready["storage"] and app.state.db is not None:
@@ -425,6 +441,7 @@ async def lifespan(app: FastAPI):
     await _cancel_loop(sweep_task, ALERT_SWEEP_JOB)
     await _cancel_loop(push_task, PUSH_SWEEP_JOB)
     await _cancel_loop(backup_task, DAILY_BACKUP_JOB)
+    await _cancel_loop(feedback_task, FEEDBACK_MAINTENANCE_JOB)
     await _cancel_loop(food_search_task, "Food search")
     await _cancel_loop(metrics_task, "request metrics summary")
     await _cancel_loop(metrics_flush_task, "monitoring flush")

@@ -189,8 +189,8 @@ def test_v55_meal_stack_upgrades_to_the_fresh_schema_without_changing_plan_versi
      ([{"enabled": True}, {"enabled": False}], 0),
      ([{"enabled": False}, {"enabled": True}], 1)],
 )
-@pytest.mark.parametrize("schema_version", range(57, 63))
-def test_v63_migrates_the_latest_player_meal_switch_choice(tmp_path, player_payloads, expected, schema_version):
+@pytest.mark.parametrize("schema_version", range(57, 64))
+def test_v64_migrates_the_latest_player_meal_switch_choice(tmp_path, player_payloads, expected, schema_version):
     conn = sqlite3.connect(":memory:")
     conn.execute(
         "CREATE TABLE nutrition_plan_versions ("
@@ -211,14 +211,14 @@ def test_v63_migrates_the_latest_player_meal_switch_choice(tmp_path, player_payl
 
     apply_lazy_migrations(conn, "meal-switch", tmp_path / "ledgers", tmp_path / "backups")
     first = conn.execute("SELECT enabled,updated_at FROM nutrition_meal_preference").fetchall()
-    MIGRATION_REGISTRY[62](conn)
+    MIGRATION_REGISTRY[63](conn)
 
     rows = conn.execute(
         "SELECT enabled FROM nutrition_meal_preference WHERE id=1"
     ).fetchall()
     assert rows == ([] if expected is None else [(expected,)])
     assert conn.execute("SELECT enabled,updated_at FROM nutrition_meal_preference").fetchall() == first
-    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION == 63
+    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION == 64
 
 
 def test_v47_scopes_existing_regeneration_decisions_to_design_v2():

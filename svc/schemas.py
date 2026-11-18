@@ -79,6 +79,9 @@ __all__ = [
     "AssignmentRedeemOut",
     "ChatMessageIn",
     "ChatMessageOut",
+    "AssistantFeedbackContextIn",
+    "AssistantFeedbackVoteIn",
+    "AssistantFeedbackReportIn",
     "CardioIn",
     "CardioOut",
     "CheckInIn",
@@ -468,6 +471,52 @@ class CoachRosterAssistantOut(BaseModel):
     left_out_for_budget: int = 0
     excluded_for_missing_disclosure: int = 0
     coach_ai_allowance: AiAllowanceOut | None = None
+
+
+FeedbackReason = Literal[
+    "wrong_information", "not_helpful", "didnt_understand", "unsafe_advice", "offensive"
+]
+
+
+class AssistantFeedbackContextIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    message_id: str = Field(min_length=1, max_length=80)
+    question_text: str = Field(min_length=1, max_length=10000)
+    reply_text: str = Field(min_length=1, max_length=20000)
+    language: Literal["en", "ar"]
+    route: str = Field(min_length=1, max_length=120)
+    model: str | None = Field(default=None, max_length=120)
+    prompt_version: str | None = Field(default=None, max_length=160)
+    redact_terms: list[str] = Field(default_factory=list, max_length=30)
+    signature: str = Field(min_length=64, max_length=64, pattern=r"^[0-9a-f]{64}$")
+
+
+class AssistantFeedbackVoteIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    context: AssistantFeedbackContextIn | None = None
+    # A reply restored from server history carries its stored id without the
+    # signed context; the server re-derives the context from the ledger.
+    message_id: str | None = Field(default=None, max_length=80)
+    vote: Literal["up", "down"] | None
+    reasons: list[FeedbackReason] = Field(default_factory=list, max_length=5)
+    note: str | None = Field(default=None, max_length=500)
+
+    @model_validator(mode="after")
+    def reasons_and_note_belong_to_down(self) -> "AssistantFeedbackVoteIn":
+        if self.vote != "down" and (self.reasons or self.note):
+            raise ValueError("Reasons and a note belong to a down vote.")
+        return self
+
+
+class AssistantFeedbackReportIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    context: AssistantFeedbackContextIn | None = None
+    message_id: str | None = Field(default=None, max_length=80)
+    reasons: list[FeedbackReason] = Field(min_length=1, max_length=5)
+    note: str | None = Field(default=None, max_length=500)
 
 
 #: Bounds for the coach assistant request (issue #45). The client holds the

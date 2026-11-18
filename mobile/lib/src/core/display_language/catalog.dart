@@ -276,6 +276,42 @@ class MayosCopy {
           isolateCount: true,
         )}'
       : '$count character${count == 1 ? '' : 's'} left';
+  String get assistantFeedbackUp =>
+      isArabic ? 'إجابة مفيدة' : 'Good reply';
+  String get assistantFeedbackDown =>
+      isArabic ? 'إجابة غير مفيدة' : 'Bad reply';
+  String get assistantFeedbackMenu =>
+      isArabic ? 'خيارات الإجابة' : 'Reply options';
+  String get assistantFeedbackCopy =>
+      isArabic ? 'نسخ' : 'Copy';
+  String get assistantFeedbackCopied =>
+      isArabic ? 'تم النسخ' : 'Copied';
+  String get assistantFeedbackReport =>
+      isArabic ? 'إبلاغ' : 'Report';
+  String get assistantFeedbackReportTitle => isArabic
+      ? 'ما الخطأ في هذه الإجابة؟'
+      : 'What was wrong with this reply?';
+  String get assistantFeedbackReportRequired => isArabic
+      ? 'اختر سببًا واحدًا على الأقل لإرسال الإبلاغ.'
+      : 'Choose at least one reason to send the report.';
+  String get assistantFeedbackReportNote =>
+      isArabic ? 'أضف ملاحظة (اختياري)' : 'Add a note (optional)';
+  String get assistantFeedbackReportSend =>
+      isArabic ? 'إرسال الإبلاغ' : 'Send report';
+  String get assistantFeedbackReportSent =>
+      isArabic ? 'تم إرسال الإبلاغ' : 'Report sent';
+  String get assistantFeedbackReported =>
+      isArabic ? 'أبلغت عن هذه الإجابة' : 'You reported this reply';
+  String get assistantFeedbackShowAnyway =>
+      isArabic ? 'إظهار على أي حال' : 'Show anyway';
+  String assistantFeedbackReason(String reason) => switch (reason) {
+        'offensive' => isArabic ? 'مسيء' : 'Offensive',
+        'unsafe_advice' => isArabic ? 'نصيحة غير آمنة' : 'Unsafe advice',
+        'wrong_information' => isArabic ? 'معلومات خاطئة' : 'Wrong information',
+        'not_helpful' => isArabic ? 'غير مفيد' : 'Not helpful',
+        'didnt_understand' => isArabic ? 'لم يفهم سؤالي' : "Didn't understand me",
+        _ => isArabic ? 'سبب آخر' : 'Other',
+      };
   String lifterDailyAllowance(int? requestLimit) =>
       _allowanceCopy.lifterDailyAllowance(requestLimit);
   String coachDailyAllowance(int? requestLimit) =>

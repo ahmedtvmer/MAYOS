@@ -17,6 +17,7 @@ import '../../core/ui/mayos_markdown.dart';
 import '../../core/ui/mayos_card.dart';
 import '../../core/ui/mayos_scaffold.dart';
 import '../../core/ui/mayos_text_field.dart';
+import '../../core/ui/assistant_feedback.dart';
 import '../../core/ui/first_strong_direction.dart';
 import '../../providers.dart';
 import 'coach_assistant_state.dart';
@@ -45,6 +46,15 @@ class _CoachAssistantScreenState extends ConsumerState<CoachAssistantScreen> {
   bool _sending = false;
   FailureMessage? _error;
   String _draftAnswer = '';
+
+  // Vote/report state per assistant turn index (#748). The transcript is
+  // in-memory only, so this state dies with it; the signed contexts come
+  // from each turn's done frame.
+  final Map<int, AssistantFeedbackContext> _feedbackContexts =
+      <int, AssistantFeedbackContext>{};
+  final Map<int, String?> _votes = <int, String?>{};
+  final Map<int, bool> _reported = <int, bool>{};
+  final Set<int> _revealedReported = <int>{};
 
   String get _assignmentId => widget.entry.assignmentId;
 
@@ -168,11 +178,20 @@ class _CoachAssistantScreenState extends ConsumerState<CoachAssistantScreen> {
         ),
       );
     }
-    _recordCompletedExchange(question, completion.responseContent);
+    _recordCompletedExchange(question, completion.responseContent, completion.feedbackContext);
   }
 
-  void _recordCompletedExchange(String question, String answer) {
+  void _recordCompletedExchange(
+    String question,
+    String answer,
+    AssistantFeedbackContext? feedbackContext,
+  ) {
     _question.clear();
+    // The answer becomes transcript turn (count + 1) after recordExchange
+    // appends the question and the answer.
+    final CoachAssistantTranscript? transcript =
+        ref.read(coachAssistantControllerProvider);
+    final int assistantIndex = (transcript?.turns.length ?? 0) + 1;
     ref.read(coachAssistantControllerProvider.notifier).recordExchange(
           _assignmentId,
           question: question,
@@ -181,7 +200,63 @@ class _CoachAssistantScreenState extends ConsumerState<CoachAssistantScreen> {
     setState(() {
       _sending = false;
       _draftAnswer = '';
+      if (feedbackContext != null) {
+        _feedbackContexts[assistantIndex] = feedbackContext;
+        _votes.remove(assistantIndex);
+        _reported.remove(assistantIndex);
+        _revealedReported.remove(assistantIndex);
+      }
     });
+  }
+
+  Future<void> _voteOnReply(
+    int turnIndex,
+    String? vote, {
+    List<String> reasons = const <String>[],
+    String? note,
+  }) async {
+    final AssistantFeedbackContext? feedbackContext = _feedbackContexts[turnIndex];
+    if (feedbackContext == null) return;
+    try {
+      await ref.read(apiClientProvider).coachVoteAssistantFeedback(
+            assignmentId: _assignmentId,
+            context: feedbackContext,
+            vote: vote,
+            reasons: reasons,
+            note: note,
+          );
+    } on ApiException catch (failure) {
+      _showApiFailure(failure);
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _votes[turnIndex] = vote);
+  }
+
+  Future<void> _reportReply(
+    int turnIndex,
+    List<String> reasons,
+    String? note,
+  ) async {
+    final AssistantFeedbackContext? feedbackContext = _feedbackContexts[turnIndex];
+    if (feedbackContext == null) return;
+    try {
+      await ref.read(apiClientProvider).coachReportAssistantFeedback(
+            assignmentId: _assignmentId,
+            context: feedbackContext,
+            reasons: reasons,
+            note: note,
+          );
+    } on ApiException catch (failure) {
+      _showApiFailure(failure);
+      return;
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      key: const Key('coach_assistant_report_sent'),
+      content: Text(displayCopyOf(context).assistantFeedbackReportSent),
+    ));
+    setState(() => _reported[turnIndex] = true);
   }
 
   void _showStreamError(ChatError failure) {
@@ -295,13 +370,7 @@ class _CoachAssistantScreenState extends ConsumerState<CoachAssistantScreen> {
         return _bubble(
           role: turn.role,
           child: turn.role == 'assistant'
-              ? SelectionArea(
-                  child: MayosMarkdown(
-                    source: turn.content,
-                    bodyStyle: MayosTypography.of(context).bodySecondary,
-                    selectable: false,
-                  ),
-                )
+              ? _assistantReply(turns, index, c)
               : FirstStrongDirection(
                   text: turn.content,
                   child: Text(
@@ -313,6 +382,47 @@ class _CoachAssistantScreenState extends ConsumerState<CoachAssistantScreen> {
                 ),
         );
       },
+    );
+  }
+
+  /// One persisted-in-memory assistant turn plus its 👍/👎 bar and reported
+  /// card. Voting needs the turn's signed context; without one the reply
+  /// renders bare.
+  Widget _assistantReply(
+    List<CoachAssistantTurn> turns,
+    int index,
+    MayosThemeExtension c,
+  ) {
+    final CoachAssistantTurn turn = turns[index];
+    final bool reported =
+        (_reported[index] ?? false) && !_revealedReported.contains(index);
+    if (reported) {
+      return AssistantReportedCard(
+        onShowAnyway: () => setState(() => _revealedReported.add(index)),
+      );
+    }
+    final AssistantFeedbackContext? feedbackContext = _feedbackContexts[index];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        SelectionArea(
+          child: MayosMarkdown(
+            source: turn.content,
+            bodyStyle: MayosTypography.of(context).bodySecondary,
+            selectable: false,
+          ),
+        ),
+        if (feedbackContext != null)
+          AssistantFeedbackBar(
+            replyText: turn.content,
+            vote: _votes[index],
+            onVote: (String? vote,
+                    {List<String> reasons = const <String>[], String? note}) =>
+                _voteOnReply(index, vote, reasons: reasons, note: note),
+            onReport: (List<String> reasons, String? note) =>
+                _reportReply(index, reasons, note),
+          ),
+      ],
     );
   }
 
