@@ -186,6 +186,20 @@ include your username when something about your account is being debugged.
 Password-reset tokens are redacted from access logs. Logs are kept only as long
 as they are useful for operating and securing the service.
 
+### Error reporting (Sentry)
+
+Release builds of the apps and the service report crashes and errors to
+**Sentry** (held in Sentry's Europe region) so we can find and fix faults.
+Reports carry the error message and stack trace, the app or service release and
+platform, and breadcrumbs reduced to safe facts: screen names with any ids in
+the route replaced by a placeholder, and HTTP method, route template and status
+code. They never contain your chat text, onboarding answers, workout contents,
+program requests, or contact details. The account associated with a report is
+identified only by a **pseudonymous, one-way-hashed account id**; no username,
+recovery email or raw account id is attached, IP addresses are not stored, and
+screenshots, view hierarchies and session replays are disabled. Reports are
+kept for a limited period in Sentry and are used only to debug the service.
+
 ### Children
 
 MAYOS is a training tool for adults and older teenagers; it is **not directed
@@ -372,6 +386,25 @@ eligibility. Roster questions are stateless: no conversation transcript is
 stored, and the request is covered by the Coach's model-usage record described
 above.
 
+### Assistant reply feedback and reports
+
+When you vote (👍/👎) on or report an assistant reply, we store with your
+account, for each vote or report: the reply's message id and text, the
+question before it, the language and the time, the assistant route or intent
+that answered, the model and the prompt or graph version when available,
+your vote, the reason codes you chose (for example "Wrong information" or
+"Unsafe advice"), and an optional note you write, bounded in length. The
+feedback is not used to train anything automatically.
+
+A report notifies the owner immediately through the owner's **Discord**
+webhook, carrying the reason, the language, the route and a short excerpt of
+the reply, redacted so the post never includes your username, recovery email
+or account id — only a feedback id the owner can look up. Votes also feed a
+weekly counts summary to the owner. Nobody else ever sees this data: a coach
+never sees their players' votes or reports, and there is no in-app review
+screen. Submissions are rate-limited. Deleting your account removes the
+feedback and reports.
+
 ## How long we keep your data
 
 - **Live data is kept while your account exists**, and is deleted when you
@@ -408,11 +441,13 @@ above.
 
 You can delete your account yourself, without contacting anyone:
 
-- **In the app**: Settings → Profile → Delete account, then confirm with your
-  password.
+- **In the app**: Settings → Linked sign-in → Danger zone → Delete account,
+  then confirm with your password.
 - **On the web**: open [`/account/delete-request`](/account/delete-request) on
   this site, enter your username and password, tick the confirmation box, and
-  submit. The same password check applies as in the app.
+  submit. The same password check applies as in the app. You can reach this
+  form without having the app installed: our public website links it from
+  its **Delete account** page.
 
 Deletion is immediate and irreversible. We never tell you whether a given
 username exists: an unknown username, a wrong password, and a password-less

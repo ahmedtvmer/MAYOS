@@ -25,6 +25,11 @@
   }
 
   function skipSignedIn() {
+    // The account-deletion page must stay reachable for signed-in visitors
+    // too: someone may need the public form for another device or account.
+    if (document.body && document.body.dataset.page === 'account-deletion') {
+      return false;
+    }
     try {
       if (Object.prototype.hasOwnProperty.call(localStorage, securePrefix + 'mayos.access_token')) {
         location.replace('/app/');
@@ -46,10 +51,19 @@
   }
 
   function updatePageMetadata(language) {
-    document.title = language === 'ar' ? 'MAYOS — تمرينك. مدروس.' : 'MAYOS — Your training. Engineered.';
-    document.querySelector('meta[name="description"]').content = language === 'ar'
-      ? 'يبني ميوس برنامج تمرينك بالذكاء الاصطناعي حسب هدفك ووقتك والأدوات المتاحة لك. سجّل كل مجموعة وتابع قوتك وهي تزيد.'
-      : 'MAYOS uses AI to build your training program around your goal, schedule and equipment. Log every set and watch your strength grow.';
+    // Both the landing and the account-deletion page carry their EN/AR title
+    // and description as data-copy slots, so one function serves both pages.
+    var titleSlot = document.querySelector('title[data-copy="page_title"]');
+    if (titleSlot) {
+      var title = titleSlot.getAttribute('data-' + language);
+      if (title) document.title = title;
+    }
+    var descriptionSlot = document.querySelector('meta[data-copy="page_description"]');
+    if (descriptionSlot) {
+      var meta = document.querySelector('meta[name="description"]');
+      var description = descriptionSlot.getAttribute('data-' + language);
+      if (meta && description) meta.content = description;
+    }
   }
 
   function updateCopy(language) {

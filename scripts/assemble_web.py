@@ -268,18 +268,21 @@ def assemble(flutter_build: Path, landing: Path, output: Path) -> None:
         "instagramHandle": "mayosapp",
         "tiktokHandle": "mayosapp",
     }
-    landing_html = output / "index.html"
-    landing_source = landing_html.read_text(encoding="utf-8")
-    for template_marker, configured_value in {
-        "@@BUSINESS_EMAIL@@": config["businessEmail"],
-        "@@INSTAGRAM_HANDLE@@": config["instagramHandle"],
-        "@@TIKTOK_HANDLE@@": config["tiktokHandle"],
-        "@@API_BASE_URL@@": config["apiBaseUrl"].rstrip("/"),
-    }.items():
-        landing_source = landing_source.replace(
-            template_marker, html.escape(configured_value, quote=True)
-        )
-    landing_html.write_text(landing_source, encoding="utf-8")
+    # Substitute build-time values in every landing HTML document, so each
+    # page (index, account-deletion, and any future one) serves the resolved
+    # configuration a visitor actually sees, in text and data-en/data-ar both.
+    for landing_html in sorted(output.glob("*.html")):
+        landing_source = landing_html.read_text(encoding="utf-8")
+        for template_marker, configured_value in {
+            "@@BUSINESS_EMAIL@@": config["businessEmail"],
+            "@@INSTAGRAM_HANDLE@@": config["instagramHandle"],
+            "@@TIKTOK_HANDLE@@": config["tiktokHandle"],
+            "@@API_BASE_URL@@": config["apiBaseUrl"].rstrip("/"),
+        }.items():
+            landing_source = landing_source.replace(
+                template_marker, html.escape(configured_value, quote=True)
+            )
+        landing_html.write_text(landing_source, encoding="utf-8")
     runtime_config = {"posthogKey": config["posthogKey"]}
     (output / "landing-config.js").write_text(
         "window.MAYOS_LANDING = " + json.dumps(runtime_config, ensure_ascii=True) + ";\n",

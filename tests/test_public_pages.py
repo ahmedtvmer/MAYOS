@@ -371,7 +371,10 @@ def test_privacy_page_discloses_coach_access_hosted_ai_and_retention(api):
     assert "deletion record" in body
     # Deletion is offered in-app and at the external URL.
     assert 'href="/account/delete-request"' in body
-    assert "Settings &rarr; Profile &rarr; Delete account" in body or "Settings → Profile → Delete account" in body
+    assert (
+        "Settings &rarr; Linked sign-in &rarr; Danger zone &rarr; Delete account" in body
+        or "Settings → Linked sign-in → Danger zone → Delete account" in body
+    )
     # Analytics: the processor, minimisation, and permanent historical opt-outs.
     assert "PostHog (EU Cloud)" in body
     assert "never contain free text" in body
@@ -462,9 +465,9 @@ def test_policy_source_file_exists_and_every_section_is_served(api):
     # wraps across lines and bolds its lead-ins.
     flat = " ".join(source.split()).replace("**", "")
     from service import privacy_policy
-    assert privacy_policy.POLICY_VERSION == "1.12"
-    assert privacy_policy.POLICY_EFFECTIVE_DATE == "2026-11-09"
-    assert "Effective date: 2026-11-09 — Policy version 1.12" in body
+    assert privacy_policy.POLICY_VERSION == "1.13"
+    assert privacy_policy.POLICY_EFFECTIVE_DATE == "2026-11-17"
+    assert "Effective date: 2026-11-17 — Policy version 1.13" in body
     assert "Germany (Contabo)" in flat and "fly.io" not in flat.lower()
     assert "This is the only email sent to you." not in flat
     for phrase in (
@@ -500,8 +503,39 @@ def test_policy_source_file_exists_and_every_section_is_served(api):
         "never food names, food ids, entry details or Personal food records",
         "Nutrition setup, health-screening answers, target versions, pace proposals, adherence, Water log, Food log entries, Personal foods",
         "copies of your ledger are removed separately; failed cleanup is retried",
+        # Error reporting processor (#750): what Sentry receives and what it
+        # never carries.
+        "Error reporting (Sentry)",
+        "pseudonymous, one-way-hashed account id",
+        "screenshots, view hierarchies and session replays are disabled",
+        # Assistant feedback/reports ship with #748 (in the same release as
+        # this ticket), so the policy describes them in public-document
+        # wording: plain title, present tense, no issue numbers or
+        # "planned / not yet shipped" phrasing. Push tokens (#749) are
+        # deliberately absent: #749 must add that section when push ships.
+        "Assistant reply feedback and reports",
+        "When you vote (👍/👎) on or report an assistant reply",
+        "the reply's message id and text",
+        "the owner's Discord",
+        "never includes your username, recovery email or account id",
+        "Deleting your account removes the feedback and reports",
+        # The landing site's public deletion page is another route to the form.
+        "Delete account",
     ):
         assert phrase in flat, f"missing from {POLICY_PATH.name}: {phrase!r}"
+    # The policy describes only what ships. Push notifications (#749) have no
+    # section yet; the guard keeps ticket numbers and pre-release framing out.
+    for banned in (
+        "#748",
+        "#749",
+        "upcoming release",
+        "not yet shipped",
+        "FCM",
+        "Firebase Cloud Messaging",
+        "push notification",
+    ):
+        assert banned not in flat.lower(), f"leaked into {POLICY_PATH.name}: {banned!r}"
+    assert not re.search(r"\bplanned\b", flat, re.IGNORECASE)
     assert "This is the only email sent to you." not in flat
 
 

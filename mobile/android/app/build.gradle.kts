@@ -63,7 +63,7 @@ if (releaseBuildRequested) {
 
 android {
     namespace = "com.mayos.mayos_mobile"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -78,7 +78,7 @@ android {
         applicationId = "com.mayos.mayos_mobile"
         // sentry_flutter 10 needs Android 8.0 (API 26).
         minSdk = maxOf(flutter.minSdkVersion, 26)
-        targetSdk = flutter.targetSdkVersion
+        targetSdk = 36
         // versionCode/versionName come from pubspec.yaml (`version: 0.1.0+1`).
         // When using split APKs, 1000 * ABI_VERSION is added automatically by
         // Flutter. (https://flutter.dev/to/review/gradle-config)
