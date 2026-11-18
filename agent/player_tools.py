@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from database.ledger.profile import PLAYER_PROFILE_STORAGE_DEFAULTS
 from database.ledger.chat import MAX_CHAT_HISTORY_SEARCH_RESULTS
+from core.effort import rir_from_rpe
 from core.muscle_volume import (
     MAIN_MUSCLE_GROUPS,
     default_muscle_credits,
@@ -39,6 +40,8 @@ from agent.player_prompt import (
 logger = logging.getLogger(__name__)
 
 MAX_TOOL_RESULT_BYTES = 4 * 1024
+#: Headroom per page so the page's own envelope and a follow-up key always fit.
+TOOL_RESULT_PAGE_MARGIN_BYTES = 128
 MAX_PLAYER_TOOL_ROUNDS = 3
 CHAT_SEARCH_MATCH_MAX_CHARS = 300
 TOOL_TIMEOUT_SECONDS = 5.0
@@ -96,6 +99,19 @@ class ChatHistorySearchArgs(BaseModel):
         ge=1,
         le=MAX_CHAT_HISTORY_SEARCH_RESULTS,
     )
+
+
+WorkoutHistoryScope = Literal["last_session", "date", "exercise", "recent_sessions"]
+
+
+class WorkoutHistoryArgs(BaseModel):
+    """Scope for the current player's committed workout history."""
+
+    scope: WorkoutHistoryScope = "last_session"
+    date: str | None = None
+    exercise: str | None = None
+    limit: int = Field(default=3, ge=1, le=10)
+    offset: int = Field(default=0, ge=0)
 
 
 class ProgramRationaleArgs(BaseModel):
@@ -341,7 +357,7 @@ def _food_log_page(entries, summary, offset):
     for index in range(offset, len(entries)):
         response["entries"].append(_food_log_entry(entries[index]))
         encoded = json.dumps(response, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
-        if len(encoded.encode("utf-8")) > MAX_TOOL_RESULT_BYTES - 128:
+        if len(encoded.encode("utf-8")) > MAX_TOOL_RESULT_BYTES - TOOL_RESULT_PAGE_MARGIN_BYTES:
             response["entries"].pop()
             response["next_offset"] = index
             return response
@@ -369,6 +385,306 @@ def _read_player_food_log(ledger: Any, args: FoodLogArgs) -> dict[str, Any]:
         "entry_count": len(entries),
     }
     return _food_log_page(entries, response, args.offset)
+
+
+def _history_set_entry(row: dict[str, Any]) -> dict[str, Any]:
+    entry: dict[str, Any] = {
+        "set": row["set_index"], "kg": row["weight_kg"], "reps": row["reps"],
+    }
+    rir = rir_from_rpe(row.get("rpe"))
+    if rir is not None:
+        entry["rir"] = rir
+        entry["rpe"] = row["rpe"]
+    return entry
+
+
+def _group_history_sessions(
+    rows: Sequence[dict[str, Any]],
+) -> list[tuple[str, dict[str, Any]]]:
+    """(session_id, session) pairs, newest first, sets in logged order.
+
+    ``get_session_log`` returns one row per set, oldest session first; warm-ups
+    stay excluded like every other committed-history read.
+    """
+    grouped: list[tuple[str, dict[str, Any]]] = []
+    by_id: dict[str, dict[str, Any]] = {}
+    exercises_by_id: dict[str, dict[str, dict[str, Any]]] = {}
+    for row in rows:
+        if row["is_warmup"]:
+            continue
+        session = by_id.get(row["session_id"])
+        if session is None:
+            session = {
+                "date": str(row["session_date"]),
+                "day": str(row["split_name"] or "not set"),
+                "exercises": [],
+            }
+            by_id[row["session_id"]] = session
+            exercises_by_id[row["session_id"]] = {}
+            grouped.append((str(row["session_id"]), session))
+        exercise = exercises_by_id[row["session_id"]].get(row["exercise_id"])
+        if exercise is None:
+            exercise = {
+                "id": str(row["exercise_id"]),
+                "name": str(row["exercise_name"] or "not set"),
+                "sets": [],
+            }
+            exercises_by_id[row["session_id"]][row["exercise_id"]] = exercise
+            session["exercises"].append(exercise)
+        exercise["sets"].append(_history_set_entry(row))
+    for session_id, _session in grouped:
+        for exercise in exercises_by_id[session_id].values():
+            exercise["sets"].sort(key=lambda entry: entry["set"])
+    return list(reversed(grouped))
+
+
+def _history_exercise_entries(sessions: Sequence[dict[str, Any]]) -> list[dict[str, str]]:
+    entries: dict[str, dict[str, str]] = {}
+    for session in sessions:
+        for exercise in session["exercises"]:
+            entries.setdefault(
+                exercise["id"], {"exercise_id": exercise["id"], "name": exercise["name"]}
+            )
+    return list(entries.values())
+
+
+def _resolve_history_exercise(
+    store: Any, sessions: Sequence[dict[str, Any]], name: str
+) -> tuple[str | None, list[str] | None]:
+    """Resolves an exercise with the same matchers the history keyword path uses."""
+    from agent.assistant_graph import _history_exercise_matches
+
+    matches = _history_exercise_matches(name, _history_exercise_entries(sessions))
+    if len(matches) == 1:
+        return str(matches[0]["exercise_id"]), None
+    if store is not None:
+        resolver = getattr(store, "find_unique_exercise_id_by_exact_name", None)
+        if callable(resolver):
+            resolved = resolver(name)
+            if resolved:
+                return str(resolved), None
+    return None, [entry["name"] for entry in matches] if matches else None
+
+
+def _history_comparison_by_id(ledger: Any, session_id: str) -> dict[str, dict[str, Any]]:
+    """Compact previous-session deltas from the debrief comparison read."""
+    getter = getattr(ledger, "get_session_comparison_context", None)
+    context = getter() if callable(getter) else None
+    if not isinstance(context, dict) or (context.get("session") or {}).get("id") != session_id:
+        return {}
+    comparison = {}
+    for exercise in context.get("exercises") or []:
+        previous = exercise.get("previous")
+        if previous is None:
+            continue
+        deltas = exercise.get("deltas") or {}
+        comparison[str(exercise["exercise_id"])] = {
+            "baseline": (previous.get("session") or {}).get("session_date", "not set"),
+            "delta_kg": deltas.get("load_kg"),
+            "delta_reps": deltas.get("reps"),
+            "status": exercise.get("status", "insufficient_data"),
+        }
+    return comparison
+
+
+def _history_summary_extras(summary: Any, session_id: str) -> dict[str, Any]:
+    """Session-level facts only ``get_latest_session_summary`` knows."""
+    if not isinstance(summary, dict) or summary.get("session_id") != session_id:
+        return {}
+    extras: dict[str, Any] = {}
+    if summary.get("readiness_score") is not None:
+        extras["readiness"] = summary["readiness_score"]
+    minutes = sum(
+        int(item.get("minutes", 0) or 0) for item in (summary.get("cardio") or [])
+    )
+    if minutes:
+        extras["cardio_minutes"] = minutes
+    return extras
+
+
+def _compact_history_session(session: dict[str, Any]) -> dict[str, Any]:
+    exercises = [
+        {
+            "id": exercise["id"],
+            "name": exercise["name"],
+            "sets": [
+                {key: set_entry[key] for key in ("kg", "reps") if key in set_entry}
+                for set_entry in exercise["sets"]
+            ],
+        }
+        for exercise in session.get("exercises", ())
+    ]
+    return {
+        "date": session["date"], "day": session["day"],
+        "exercises": exercises, "detail_truncated": True,
+    }
+
+
+def _history_page(
+    base: dict[str, Any], selected: list[dict[str, Any]], args: WorkoutHistoryArgs
+) -> dict[str, Any]:
+    """Adds up to ``limit`` sessions until the result cap, paging by session index."""
+    response = {**base, "status": "ok", "sessions": [], "next_offset": None}
+    end = min(args.offset + args.limit, len(selected))
+    for index in range(args.offset, end):
+        response["sessions"].append(selected[index])
+        encoded = json.dumps(response, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+        if len(encoded.encode("utf-8")) > MAX_TOOL_RESULT_BYTES - TOOL_RESULT_PAGE_MARGIN_BYTES:
+            response["sessions"].pop()
+            if response["sessions"]:
+                response["next_offset"] = index
+                return response
+            compact = _compact_history_session(selected[index])
+            session = {**base, "status": "ok", "sessions": [compact], "next_offset": None}
+            encoded = json.dumps(session, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+            if len(encoded.encode("utf-8")) <= MAX_TOOL_RESULT_BYTES - TOOL_RESULT_PAGE_MARGIN_BYTES:
+                session["next_offset"] = index + 1 if index + 1 < len(selected) else None
+                return session
+            oversized = selected[index]
+            return {
+                **base, "status": "truncated",
+                "message": "This session's detail exceeds the result cap; ask about one exercise.",
+                "date": oversized["date"], "day": oversized["day"],
+            }
+    if end < len(selected):
+        response["next_offset"] = end
+    return response
+
+
+def _history_date_scope(
+    base: dict[str, Any], args: WorkoutHistoryArgs, grouped: list[tuple[str, dict[str, Any]]]
+) -> dict[str, Any]:
+    today = date.fromisoformat(base["today"])
+    requested = (args.date or "").strip().lower()
+    day = {"today": today, "yesterday": today - timedelta(days=1)}.get(requested)
+    if day is None:
+        try:
+            day = date.fromisoformat(requested)
+        except ValueError:
+            return {
+                **base, "status": "invalid_date",
+                "message": "Use today, yesterday or YYYY-MM-DD.",
+            }
+    selected = [
+        session for _session_id, session in grouped if session["date"] == day.isoformat()
+    ]
+    if not selected:
+        return {
+            **base, "status": "no_sessions", "date": day.isoformat(),
+            "message": "No sessions logged on that date.", "sessions": [], "next_offset": None,
+        }
+    return _history_page(base, selected, args)
+
+
+def _history_exercise_scope(
+    base: dict[str, Any],
+    store: Any,
+    args: WorkoutHistoryArgs,
+    grouped: list[tuple[str, dict[str, Any]]],
+) -> dict[str, Any]:
+    name = (args.exercise or "").strip()
+    sessions = [session for _session_id, session in grouped]
+    if not name:
+        return {
+            **base, "status": "unknown_exercise",
+            "message": "Pass the exercise name for scope=exercise.", "sessions": [],
+        }
+    resolved, ambiguous = _resolve_history_exercise(store, sessions, name)
+    if ambiguous:
+        return {
+            **base, "status": "ambiguous_exercise", "candidates": ambiguous[:8],
+            "message": "Which exercise variant do you mean?", "sessions": [],
+        }
+    if resolved is None:
+        return {
+            **base, "status": "unknown_exercise",
+            "message": "No Exercise library or logged-session match for that name.",
+            "sessions": [],
+        }
+    selected = []
+    for _session_id, session in grouped:
+        exercises = [
+            exercise for exercise in session["exercises"] if exercise["id"] == resolved
+        ]
+        if exercises:
+            selected.append({**session, "exercises": exercises})
+    if not selected:
+        return {
+            **base, "status": "not_logged",
+            "message": "No sessions logged for that exercise.", "sessions": [],
+        }
+    return _history_page(base, selected, args)
+
+
+def _history_date_of(value: Any) -> date | None:
+    """ISO session dates parse to dates; anything unparseable never outranks one."""
+    try:
+        return date.fromisoformat(str(value))
+    except ValueError:
+        return None
+
+
+def _history_last_session(
+    base: dict[str, Any], ledger: Any, args: WorkoutHistoryArgs,
+    grouped: list[tuple[str, dict[str, Any]]],
+) -> dict[str, Any]:
+    summary_getter = getattr(ledger, "get_latest_session_summary", None)
+    latest = summary_getter() if callable(summary_getter) else None
+    newest_id, newest = grouped[0]
+    summary_date = (
+        _history_date_of(latest.get("session_date")) if isinstance(latest, dict) else None
+    )
+    newest_date = _history_date_of(newest["date"])
+    if (
+        isinstance(latest, dict)
+        and latest.get("session_id") != newest_id
+        and summary_date is not None
+        and newest_date is not None
+        and summary_date >= newest_date
+    ):
+        # The newest committed session has no working sets; report it honestly.
+        session = {
+            "date": str(latest.get("session_date", newest["date"])),
+            "day": str(latest.get("split_name") or "not set"),
+            "exercises": [], "no_working_sets": True,
+            **_history_summary_extras(latest, str(latest.get("session_id"))),
+        }
+        return {**base, "status": "ok", "sessions": [session], "next_offset": None}
+    session = dict(newest)
+    comparison = _history_comparison_by_id(ledger, newest_id)
+    session["exercises"] = [
+        {
+            **exercise,
+            **({"vs_previous": comparison[exercise["id"]]} if exercise["id"] in comparison else {}),
+        }
+        for exercise in session["exercises"]
+    ]
+    session.update(_history_summary_extras(latest, newest_id))
+    paged = _history_page(base, [session], args.model_copy(update={"offset": 0}))
+    return paged
+
+
+def _read_workout_history(
+    ledger: Any, args: WorkoutHistoryArgs | None = None, store: Any = None
+) -> dict[str, Any]:
+    args = args or WorkoutHistoryArgs()
+    today = player_local_date(ledger, ledger.ledger_id)
+    base = {"today": today.isoformat(), "scope": args.scope}
+    grouped = _group_history_sessions(ledger.get_session_log())
+    if not grouped:
+        return {
+            **base, "status": "no_sessions",
+            "message": "No sessions logged.", "sessions": [], "next_offset": None,
+        }
+    if args.scope == "exercise":
+        return _history_exercise_scope(base, store, args, grouped)
+    if args.scope == "date":
+        return _history_date_scope(base, args, grouped)
+    if args.scope == "last_session":
+        return _history_last_session(base, ledger, args, grouped)
+    return _history_page(
+        base, [session for _session_id, session in grouped], args
+    )
 
 
 def _program_muscle_groups(muscle: str | None) -> list[str]:
@@ -771,6 +1087,24 @@ PLAYER_READ_TOOL_REGISTRY: tuple[PlayerReadTool, ...] = (
         status_ar="ببص على سجل الطعام بتاعك…",
     ),
     PlayerReadTool(
+        name="get_workout_history",
+        description=(
+            "Read the current player's committed workout history. scope last_session: the newest "
+            "session with date, Training-day name, per-exercise sets as weight (kg) × reps, "
+            "RIR/RPE when rated, and vs_previous deltas against the previous session. scope date: "
+            "sessions on one Player-local date (today, yesterday or YYYY-MM-DD). scope exercise: "
+            "the named exercise's most recent sessions (any language). scope recent_sessions: the "
+            "newest sessions; limit 1-10 (default 3). offset pages older sessions with the same "
+            "args. no_sessions, not_logged or unknown_exercise means nothing is logged; never "
+            "invent figures."
+        ),
+        args_schema=WorkoutHistoryArgs,
+        reader=_read_workout_history,
+        args_reader=_read_workout_history,
+        status_en="Checking your workout history…",
+        status_ar="ببص على سجل تمرينك…",
+    ),
+    PlayerReadTool(
         name="get_assistant_preferences",
         description=(
             "Read preferences the current player explicitly asked the assistant to remember. "
@@ -883,6 +1217,8 @@ def build_player_read_tools(ledger: Any, store: Any = None, player_account_id: s
                             ledger, args, recent_window_size=recent_window_size
                         )
                     )
+                if _definition.name == "get_workout_history":
+                    return _encode_tool_result(_read_workout_history(ledger, args, store))
                 return _encode_tool_result(_definition.args_reader(ledger, args))
         else:
             def reader(_definition=definition) -> str:

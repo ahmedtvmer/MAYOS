@@ -113,6 +113,19 @@ def test_a_single_ambiguous_common_word_does_not_trigger_franco_refusal():
         assert graph.router_node(_state(query))["intent"] != "clinical_intercept"
 
 
+@pytest.mark.parametrize("query", [
+    "a5er mara kan 3amel ezay",
+    "kan 3amel kam set el a5er mara",
+    "el workout ely fat kan 3amel ezay",
+])
+def test_plain_franco_history_questions_are_clinical_negatives(query):
+    # Plain Franco history questions trip the #343 Stage-A input refusal
+    # (is_franco_arabic digit evidence), never the injury guard: no
+    # injury/pain/trauma stem transliterates from these words.
+    assert graph.is_franco_arabic(query) is True, query
+    assert clinical_guard.is_franco_clinical_franco_message(query) is False, query
+
+
 def test_two_common_franco_words_provide_corroborating_evidence():
     assert graph.is_franco_arabic("ana leh") is True
     route = graph.router_node(_state("ana leh"))
