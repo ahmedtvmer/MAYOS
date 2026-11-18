@@ -421,6 +421,68 @@ def test_report_delivery_to_discord_carries_no_identifiers(api, monkeypatch):
         assert secret not in content, f"Discord payload leaked {secret!r}"
 
 
+def test_feedback_webhook_wins_when_both_webhooks_are_set(monkeypatch):
+    from service import assistant_feedback
+
+    monkeypatch.setenv("DISCORD_FEEDBACK_WEBHOOK_URL", " https://discord.com/api/webhooks/1/fbtoken ")
+    monkeypatch.setenv("DISCORD_ALERT_WEBHOOK_URL", "https://discord.com/api/webhooks/2/alerttoken")
+
+    posted: list[tuple[str, str]] = []
+
+    def fake_post(webhook: str, content: str) -> tuple[int, float]:
+        posted.append((webhook, content))
+        return 204, 0.0
+
+    import svc.monitoring.tiles.sentry_discord as sentry_discord
+
+    monkeypatch.setattr(sentry_discord, "_post", fake_post)
+
+    assert assistant_feedback._discord_post("MAYOS AI reply report") is True
+    # The feedback-specific webhook is used even though the alert webhook is
+    # also configured; the stripped URL is what reaches Discord.
+    assert posted == [("https://discord.com/api/webhooks/1/fbtoken", "MAYOS AI reply report")]
+
+
+def test_alert_webhook_is_the_fallback_when_feedback_webhook_is_unset(monkeypatch):
+    from service import assistant_feedback
+
+    monkeypatch.delenv("DISCORD_FEEDBACK_WEBHOOK_URL", raising=False)
+    monkeypatch.setenv("DISCORD_ALERT_WEBHOOK_URL", "https://discord.com/api/webhooks/2/alerttoken")
+    # A whitespace-only feedback URL counts as unset.
+    monkeypatch.setenv("DISCORD_FEEDBACK_WEBHOOK_URL", "   ")
+
+    posted: list[tuple[str, str]] = []
+
+    def fake_post(webhook: str, content: str) -> tuple[int, float]:
+        posted.append((webhook, content))
+        return 200, 0.0
+
+    import svc.monitoring.tiles.sentry_discord as sentry_discord
+
+    monkeypatch.setattr(sentry_discord, "_post", fake_post)
+
+    assert assistant_feedback._feedback_webhook() == "https://discord.com/api/webhooks/2/alerttoken"
+    assert assistant_feedback._discord_post("MAYOS assistant feedback") is True
+    assert posted == [("https://discord.com/api/webhooks/2/alerttoken", "MAYOS assistant feedback")]
+
+
+def test_nothing_is_posted_when_neither_webhook_is_set(monkeypatch):
+    from service import assistant_feedback
+
+    monkeypatch.delenv("DISCORD_FEEDBACK_WEBHOOK_URL", raising=False)
+    monkeypatch.delenv("DISCORD_ALERT_WEBHOOK_URL", raising=False)
+
+    import svc.monitoring.tiles.sentry_discord as sentry_discord
+
+    def unexpected_post(webhook: str, content: str) -> tuple[int, float]:
+        raise AssertionError("Discord delivery ran without a configured webhook")
+
+    monkeypatch.setattr(sentry_discord, "_post", unexpected_post)
+
+    assert assistant_feedback._feedback_webhook() == ""
+    assert assistant_feedback._discord_post("MAYOS AI reply report") is False
+
+
 def test_redaction_failure_does_not_duplicate_the_persisted_reply(api, monkeypatch):
     client, db = api
     registered = _register(client, PLAYER_USERNAME)

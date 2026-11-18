@@ -23,6 +23,9 @@ os.environ["POSTHOG_API_KEY"] = ""
 
 # Tests must not post Sentry alerts using a developer/server webhook from .env.
 os.environ["DISCORD_ALERT_WEBHOOK_URL"] = ""
+# Same for assistant reply reports (#748): the alert webhook above is also
+# their fallback, so both must start blank for tests to stay hermetic.
+os.environ["DISCORD_FEEDBACK_WEBHOOK_URL"] = ""
 
 # Same for outbound email: a developer `.env` with real SMTP settings must not
 # make tests send mail. ``service/email_sender._deliver`` treats an empty

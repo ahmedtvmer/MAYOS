@@ -60,6 +60,7 @@ export JWT_SECRET="$(python -c 'import secrets; print(secrets.token_hex(32))')"
 | `SENTRY_ENVIRONMENT` | `production` in server Compose | Sentry environment label (`production` or `staging`) |
 | `SENTRY_READ_TOKEN` | unset | Server-only read-only Sentry token with `event:read` access to the API and app projects; unset disables the Monitoring Sentry tile and Discord issue alerts |
 | `DISCORD_ALERT_WEBHOOK_URL` | unset | Server-only Discord webhook for Sentry issue alerts; disabled unless this and `SENTRY_READ_TOKEN` are set |
+| `DISCORD_FEEDBACK_WEBHOOK_URL` | unset (⇒ `DISCORD_ALERT_WEBHOOK_URL`) | Discord webhook for assistant reply reports and the weekly feedback summary; falls back to `DISCORD_ALERT_WEBHOOK_URL` |
 | `SENTRY_ORG` | `mayos` | Sentry organisation slug for Monitoring and Discord issue alerts |
 | `SENTRY_PROJECTS` | `mayos-api,mayos-app` | Comma-separated Sentry project slugs for Monitoring and Discord issue alerts |
 | `SENTRY_API_BASE_URL` | `https://de.sentry.io` | HTTPS API origin for Monitoring and Discord issue reads; keep the EU region required by ADR 097 |
