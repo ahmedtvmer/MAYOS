@@ -4,9 +4,12 @@ class PlannedMealsCopy {
   bool get arabic => language == 'ar';
   String get title => arabic ? 'الوجبات المخططة' : 'Planned meals';
   String get loggedLabel => arabic ? 'مسجلة' : 'Logged';
+  String get foodColumn => arabic ? 'الطعام' : 'Food';
+  String get amountColumn => arabic ? 'الكمية' : 'Amount';
+  String get dayTotal => arabic ? 'إجمالي اليوم' : 'Day total';
+  String get target => arabic ? 'الهدف' : 'Target';
+  String get logAction => arabic ? 'سجّل' : 'Log';
   String logMeal(String name) => arabic ? 'سجّل وجبة $name' : 'Log $name';
-  String showMore(int count) =>
-      arabic ? 'عرض $count وجبات أخرى' : 'Show $count more meals';
   String get turnOn => arabic ? 'تفعيل الوجبات' : 'Turn on meals';
   String get introduction => arabic
       ? 'وجبات من أطعمة أساسية بحصص واقعية تراعي قيودك الغذائية. '
@@ -18,6 +21,9 @@ class PlannedMealsCopy {
   String get cookedWeights => arabic
       ? 'كل الأوزان مطبوخة، ما عدا خضار السلطة والفاكهة'
       : 'All weights are cooked, except salad vegetables and fruit';
+  String get swapHint => arabic
+      ? 'اضغط على ⇄ لتبديل الطعام بطعام مشابه.'
+      : 'Tap ⇄ to swap a food for a similar one.';
   String get unavailable => arabic
       ? 'الوجبات غير متاحة بعد. نحتاج إلى أطعمة أساسية معتمدة ذات بيانات غذائية كاملة تسمح بها قيودك الغذائية.'
       : "Meals aren't available yet. We need reviewed Staple foods with complete nutrients that your Food restrictions allow.";
@@ -71,6 +77,12 @@ class PlannedMealsCopy {
       };
   String amount(double grams) =>
       '${grams.toStringAsFixed(grams == grams.roundToDouble() ? 0 : 1)} ${arabic ? 'غ' : 'g'}';
-  String calories(double calories) =>
-      '${calories.round()} ${arabic ? 'سعرة' : 'kcal'}';
+  String foodAmount(double grams, String? portionLabel, double? portionGrams) {
+    final String? label = portionLabel?.trim();
+    if (label == null || label.isEmpty) return amount(grams);
+    if (portionGrams == null || portionGrams <= 0) return '${amount(grams)} · $label';
+    final String count = (grams / portionGrams).toStringAsFixed(1);
+    return '${amount(grams)} · $count $label';
+  }
+
 }

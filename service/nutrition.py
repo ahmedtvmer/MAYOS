@@ -12,8 +12,15 @@ from core.nutrition_targets import (ACTIVITY_FACTORS, NutritionCalculationInput,
                                     calculate_fiber_water_targets, calculate_targets)
 from core.cardio_calories import estimate_cardio_calories
 from core.cardio_prescriptions import parse_legacy_cardio_prescription
+from core.meal_generator import meals_with_food_macros
 from database.ledger.nutrition import NutritionPlanVersion, NutritionSetup
-from database.ledger.nutrition_meals import meals_still_allowed, resolve_variant
+from database.ledger.nutrition_meals import (
+    generate_variants,
+    materialize_plan_meals,
+    meal_switch_enabled,
+    meals_still_allowed,
+    resolve_variant,
+)
 from service import nutrition_pace_check
 from service.nutrition_assistant_meals import meal_context
 
@@ -421,11 +428,11 @@ def read(
         nutrition_state = _read_without_plan(ledger, answers, language)
     else:
         training_day = _is_training_day(ledger, today)
+        active_plan = materialize_plan_meals(
+            ledger, active_plan, "training_day" if training_day else "rest_day",
+        )
         nutrition_state = _read_active_plan(active_plan, answers, training_day)
-        if nutrition_state["meals_enabled"]:
-            payload = json.loads(active_plan["meals_json"])
-            variant = resolve_variant(ledger, active_plan, payload, nutrition_state["target_day_type"])
-            nutrition_state["meals"] = variant.get("meals", [])
+        _read_plan_meals(ledger, active_plan, nutrition_state)
         profile = ledger.get_nutrition_profile()
         if profile and _profile_is_complete(profile):
             _fill_fiber_water_defaults(nutrition_state, float(profile["weight_kg"]))
@@ -447,8 +454,8 @@ def read(
         _apply_cardio_day_adjustment(ledger, nutrition_state, today)
     proposal = ledger.get_nutrition_pace_proposal()
     if proposal is not None:
-        active = ledger.get_active_nutrition_plan()
-        proposal["stale"] = active is None or int(active["id"]) != int(proposal["plan_version_id"])
+        baseline = ledger.get_active_nutrition_target_plan()
+        proposal["stale"] = baseline is None or int(proposal["plan_version_id"]) < int(baseline["id"])
         nutrition_state["pace_proposal"] = proposal
     else:
         nutrition_state["pace_proposal"] = None
@@ -546,7 +553,8 @@ def _accept_pace_proposal(ledger: Any, proposal: dict[str, Any],
     from service.nutrition_pace_check import (PaceCheckContext, _capped_calories,
                                               _recompute_macros, _with_rate_metadata)
     active = ledger.get_active_nutrition_plan()
-    if active is None or int(active["id"]) != int(proposal["plan_version_id"]):
+    baseline = ledger.get_active_nutrition_target_plan()
+    if baseline is None or int(proposal["plan_version_id"]) < int(baseline["id"]):
         raise ValueError("This pace proposal is stale because the Nutrition plan changed.")
     payload = proposal["payload"]
     profile = ledger.get_nutrition_profile() or {}
@@ -773,11 +781,20 @@ def _read_without_plan(ledger: Any, answers: dict[str, bool] | None,
 
 
 def targets_for_day(ledger: Any, entry_date: date) -> dict[str, Any] | None:
-    state = state_for_day(ledger, entry_date)
-    return state["targets"] if state else None
+    selected = _selected_day_state(ledger, entry_date)
+    return selected[1]["targets"] if selected else None
 
 
 def state_for_day(ledger: Any, entry_date: date) -> dict[str, Any] | None:
+    selected = _selected_day_state(ledger, entry_date)
+    if selected is None:
+        return None
+    plan, state = selected
+    _read_saved_plan_meals(plan, state)
+    return state
+
+
+def _selected_day_state(ledger: Any, entry_date: date) -> tuple[Any, dict[str, Any]] | None:
     screening = ledger.get_nutrition_screening()
     if screening and any(json.loads(screening[0]).values()):
         return None
@@ -786,7 +803,58 @@ def state_for_day(ledger: Any, entry_date: date) -> dict[str, Any] | None:
         return None
     state = _read_active_plan(plan, None, _is_training_day(ledger, entry_date))
     _apply_cardio_day_adjustment(ledger, state, entry_date)
-    return state
+    return plan, state
+
+
+def _read_saved_plan_meals(plan: Any, state: dict[str, Any]) -> None:
+    payload = json.loads(plan["meals_json"]) if plan["meals_json"] else None
+    state["meals_enabled"] = bool(payload and payload.get("enabled"))
+    state["meals_targets_changed"] = bool(payload and payload.get("targets_changed", False))
+    state["meals"] = []
+    state["day_totals"] = None
+    if not state["meals_enabled"]:
+        return
+    variant = payload.get("variants", {}).get(state["target_day_type"])
+    if variant is None:
+        return
+    state["meals"] = meals_with_food_macros(variant.get("meals", []))
+    state["day_totals"] = _variant_day_totals(variant)
+
+
+def _variant_day_totals(variant: dict[str, Any]) -> dict[str, Any] | None:
+    totals = variant.get("totals")
+    if totals:
+        return totals
+    meal_totals = [meal.get("totals") or {} for meal in variant.get("meals", [])]
+    if not meal_totals:
+        return None
+    shared_keys = set.intersection(*(set(totals) for totals in meal_totals))
+    return {
+        key: sum(float(totals[key]) for totals in meal_totals)
+        for key in meal_totals[0] if key in shared_keys
+    }
+
+
+def cardio_burned_for_day(ledger: Any, entry_date: date) -> int:
+    return _cardio_day_records(ledger, entry_date)[1]
+
+
+def cardio_adjustment_for_day(ledger: Any, entry_date: date) -> int:
+    selected = _selected_day_state(ledger, entry_date)
+    return int(selected[1].get("cardio_adjustment_kcal", 0)) if selected else 0
+
+
+def _read_plan_meals(ledger: Any, active_plan: Any, state: dict[str, Any]) -> None:
+    payload = json.loads(active_plan["meals_json"]) if active_plan["meals_json"] else None
+    state["meals_enabled"] = meal_switch_enabled(ledger, active_plan, payload)
+    state["meals_targets_changed"] = bool(payload and payload.get("targets_changed", False))
+    state["meals"] = []
+    if not state["meals_enabled"]:
+        return
+    if not payload or not payload.get("enabled"):
+        payload = generate_variants(ledger, json.loads(active_plan["targets_json"]), payload or {})
+    variant = resolve_variant(ledger, active_plan, payload, state["target_day_type"])
+    state["meals"] = meals_with_food_macros(variant.get("meals", []))
 
 
 def _nutrition_day_end(ledger: Any, entry_date: date) -> datetime:
@@ -809,12 +877,7 @@ def _read_active_plan(active_plan: Any, answers: dict[str, bool] | None,
         if is_day_target_map else targets
     )
     target_options = targets if is_day_target_map else {"daily": targets}
-    meal_payload = json.loads(active_plan["meals_json"]) if active_plan["meals_json"] else {}
-    meal_variant = meal_payload.get("variants", {}).get(day_type, {})
     return {"state": "ready", "goal": active_plan["goal"],
-            "meals": meal_variant.get("meals", []),
-            "meals_enabled": meal_payload.get("enabled", False),
-            "meals_targets_changed": meal_payload.get("targets_changed", False),
             "goal_reason": reason,
             "intensity": active_plan["intensity"], "daily_activity": active_plan["daily_activity"],
             "targets": selected_targets, "target_options": target_options, "target_day_type": day_type,

@@ -466,6 +466,7 @@ class AuthController extends StateNotifier<AuthState> {
 
   Future<void> logout() async {
     _cancelRestore();
+    await _repository.detachPushDevice();
     final String? accountId = state.session?.account.accountId;
     state = const AuthState.unauthenticated();
     await _repository.logout(accountId: accountId);

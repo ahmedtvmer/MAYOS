@@ -6,6 +6,7 @@ import '../../../core/chat_storage.dart';
 import '../../../core/display_language/store.dart';
 import '../../../core/first_touch.dart';
 import '../../../core/models.dart';
+import '../../../core/push_device.dart';
 import '../../../core/saved_player_data.dart';
 import '../../../core/token_store.dart';
 import '../../../core/token_subject.dart';
@@ -296,6 +297,7 @@ class AuthRepository {
         return null;
       }
       _savedData?.confirmSession();
+      unawaited(_refreshPushDevice(session.account.accountId));
       return session;
     } on ApiException catch (error) {
       if (error.statusCode == 401 || error.errorCode == 'account_deleted') {
@@ -538,11 +540,61 @@ class AuthRepository {
     }
   }
 
+  /// Push failures cannot block sign-out; browser unsubscribe also invalidates
+  /// an endpoint left behind by a failed offline delete.
+  Future<void> detachPushDevice() async {
+    _invalidateRestores();
+    try {
+      final device = pushDeviceState();
+      if (device['supported'] != true) return;
+      try {
+        await _api.deletePushSubscription(device['device_id'] as String);
+      } on ApiException {
+        // The browser unsubscribe below still prevents later delivery.
+      }
+      await disablePushDevice();
+    } on Object {
+      // An unavailable browser API must not trap someone in their account.
+    }
+  }
+
+  /// Refresh only an already registered device; never requests permission.
+  Future<void> _refreshPushDevice(String accountId) async {
+    final revision = _restoreRevision;
+    try {
+      final device = pushDeviceState();
+      if (device['permission'] != 'granted') return;
+      final status = await _api.pushStatus(device['device_id'] as String);
+      if (_sessionEnded ||
+          revision != _restoreRevision ||
+          _knownAccountId != accountId ||
+          status['enabled'] != true ||
+          status['subscribed'] != true)
+        return;
+      final subscription = await refreshPushDevice(
+        status['public_key'] as String,
+      );
+      if (subscription != null &&
+          !_sessionEnded &&
+          revision == _restoreRevision &&
+          _knownAccountId == accountId) {
+        await _api.savePushSubscription(subscription);
+      }
+    } on Object {
+      // Best effort: the existing endpoint remains usable; Settings offers retry.
+    }
+  }
+
   /// Drops the local session without a server call (the token is already
   /// invalid, e.g. after a 401): clears the account's cached chat history and
   /// the persisted token.
   Future<void> clearSession({String? accountId}) async {
     await _endSession();
+    try {
+      await disablePushDevice();
+    } on Object {
+      // Browser cleanup is best effort; revoked credentials still clear locally.
+    }
     await _clearReadCaches(accountId);
     if (!_usesPlatformTokenStorage) await _waitForRestoreWrites();
     await _clearPersistedTokens();
@@ -624,6 +676,7 @@ class AuthRepository {
     _knownAccountId = session.account.accountId;
     await _saveAccountId(session.account.accountId);
     _sessionEnded = false;
+    unawaited(_refreshPushDevice(session.account.accountId));
     unawaited(saveSession(session));
     _savedData?.confirmSession();
     return session;

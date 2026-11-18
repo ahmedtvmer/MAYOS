@@ -412,7 +412,10 @@ def _sanitize_llm_plan(plan: DynamicSplitPlan, frequency: int, gender: str) -> D
     if len(plan.days) != frequency or any(not day.target_slots for day in plan.days):
         return get_default_split(frequency, gender)
 
-    sanitized_days = [_sanitize_llm_day(day) for day in plan.days]
+    sanitized_days = [
+        _sanitize_llm_day(day).model_copy(update={"day_order": index})
+        for index, day in enumerate(plan.days, start=1)
+    ]
     if any(len(day.target_slots) < 3 for day in sanitized_days):
         return get_default_split(frequency, gender)
     return plan.model_copy(update={"days": sanitized_days})

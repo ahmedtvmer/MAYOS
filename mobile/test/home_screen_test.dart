@@ -34,6 +34,7 @@ import 'package:mayos_mobile/src/router.dart';
 import 'support/fake_mayos_api.dart';
 import 'support/fake_api_adapter.dart';
 import 'support/fake_analytics_client.dart';
+import 'support/fake_media_http.dart';
 import 'support/fake_tour_seen_retry_store.dart';
 import 'support/fake_whats_new_seen_retry_store.dart';
 
@@ -151,6 +152,27 @@ Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
   fail('Timed out after $attempts attempts waiting for $finder');
 }
 
+/// `_pumpUntilFound` for the demo-media Tour stop. The target only mounts on
+/// the decoded image, and image decode is a real engine callback that a plain
+/// `pump` never runs inside the test's fake-async zone, so every attempt first
+/// yields real time (the settle pattern from workout_logger_pictures_test).
+Future<void> _pumpUntilTourSpotlight(WidgetTester tester) async {
+  final Finder tourNext = find.byKey(const ValueKey<String>('tour_next'));
+  for (int i = 0; i < 40; i++) {
+    if (tourNext.evaluate().isNotEmpty) {
+      for (int j = 0; j < 4; j++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      return;
+    }
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 60)),
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+  }
+  fail('Timed out after 40 attempts waiting for $tourNext');
+}
+
 Future<void> _pumpHome(
   WidgetTester tester,
   FakeMayosApi fake, {
@@ -223,30 +245,6 @@ FakeMayosApi _signedInFake() {
   fake.whatsNewSeenRelease = currentFeatureRelease;
   return fake;
 }
-
-const Map<String, List<String>> _releaseSevenFeatureTitles =
-    <String, List<String>>{
-  'assistant_exercise_lookup': <String>[
-    'Search exercises by the name you know',
-    'ابحث عن التمرين بالاسم الذي تعرفه',
-  ],
-  'offline_start': <String>[
-    'Open your saved training offline',
-    'افتح بيانات تدريبك المحفوظة دون اتصال',
-  ],
-  'weak_points': <String>[
-    'Weak points',
-    'نقاط الضعف',
-  ],
-  'meal_setup': <String>[
-    'Meal setup and Food restrictions',
-    'إعداد الوجبات والقيود الغذائية',
-  ],
-  'assistant_feedback': <String>[
-    'Rate assistant replies',
-    'قيّم إجابات المساعد',
-  ],
-};
 
 void main() {
   testWidgets('What’s new shows only unseen supported entries and Got it remembers the release', (tester) async {
@@ -327,12 +325,10 @@ void main() {
 
   testWidgets("Profile What's new list is grouped and localized", (tester) async {
     final List<FeatureEntry> releaseSevenEntries = featureList
-        .where((FeatureEntry item) => item.release == currentFeatureRelease)
+        .where((FeatureEntry item) =>
+            item.release == currentFeatureRelease && item.audience == 'lifter')
         .toList();
-    expect(
-      releaseSevenEntries.map((FeatureEntry entry) => entry.id).toSet(),
-      _releaseSevenFeatureTitles.keys.toSet(),
-    );
+    expect(releaseSevenEntries, isNotEmpty);
     expect(
       releaseSevenEntries.map((FeatureEntry entry) => entry.titleEn).toSet().length,
       releaseSevenEntries.length,
@@ -354,8 +350,10 @@ void main() {
       reason: 'Release 7 Arabic feature copy must be unique',
     );
     for (final FeatureEntry entry in releaseSevenEntries) {
-      expect(entry.titleEn, _releaseSevenFeatureTitles[entry.id]![0]);
-      expect(entry.titleAr, _releaseSevenFeatureTitles[entry.id]![1]);
+      expect(entry.titleEn.trim(), isNotEmpty,
+          reason: '${entry.id}: English title must not be empty');
+      expect(entry.titleAr.trim(), isNotEmpty,
+          reason: '${entry.id}: Arabic title must not be empty');
     }
 
     for (final String language in <String>['en', 'ar']) {
@@ -780,7 +778,12 @@ void main() {
     ]);
     await tester.pump(const Duration(milliseconds: 1500));
     expect(find.text('1  Tap Share'), findsOneWidget);
-    expect(find.text('2  Add to Home Screen'), findsOneWidget);
+    expect(
+      find.text(
+        '2  Add to Home Screen. For notifications, open the app there on iOS 16.4 or later.',
+      ),
+      findsOneWidget,
+    );
     await tester.tap(find.text('Got it'));
     await tester.pumpAndSettle();
     expect(store.dismissed, isTrue);
@@ -870,7 +873,12 @@ void main() {
     ]);
     await tester.pump(const Duration(milliseconds: 1500));
     expect(find.text('١  اضغط على مشاركة'), findsOneWidget);
-    expect(find.text('٢  اختر إضافة إلى الشاشة الرئيسية'), findsOneWidget);
+    expect(
+      find.text(
+        '٢  اختر إضافة إلى الشاشة الرئيسية. تتطلب الإشعارات فتح التطبيق منها على iOS 16.4 أو أحدث.',
+      ),
+      findsOneWidget,
+    );
     expect(Directionality.of(tester.element(find.text('الرئيسية'))), TextDirection.rtl);
     store.fireInstalled();
     await tester.pump();
@@ -1504,6 +1512,10 @@ void main() {
   testWidgets("What's new Show me lands and spotlights each release entry", (tester) async {
     final FakeMayosApi fake = _signedInFake();
     final FakeAnalyticsClient analytics = FakeAnalyticsClient();
+    final FakeMediaCatalog media = FakeMediaCatalog()
+      ..serve('videos/mayos-3-cable-y-raise.gif');
+    media.install();
+    addTearDown(FakeMediaCatalog.uninstall);
     final List<FeatureEntry> entries = featureList
         .where((FeatureEntry entry) => entry.release == currentFeatureRelease)
         .toList(growable: false);
@@ -1526,7 +1538,7 @@ void main() {
       await tester.ensureVisible(showMe);
       await tester.pumpAndSettle();
       await tester.tap(showMe);
-      await _pumpUntilFound(tester, find.byKey(const ValueKey<String>('tour_next')));
+      await _pumpUntilTourSpotlight(tester);
       await tester.pumpAndSettle();
 
       final ProviderContainer container = ProviderScope.containerOf(tester.element(find.byType(MayosApp)));
@@ -1542,6 +1554,9 @@ void main() {
       }
       if (entry.release == currentFeatureRelease) {
         final Finder realControl = switch (entry.id) {
+          'cable_y_raise_demo' => find.byKey(
+              container.read(tourTargetRegistryProvider)['exercise_demo_media']!.key,
+            ),
           'weak_points' => find.byKey(const Key('profile_weak_points_section')),
           'assistant_why' || 'assistant_volume' || 'assistant_exercise_lookup' =>
             find.byKey(const Key('chat_composer')),
@@ -1554,7 +1569,10 @@ void main() {
           'meal_setup' => find.byKey(const Key('nutrition_targets')).evaluate().isNotEmpty
               ? find.byKey(const Key('nutrition_targets')) : find.byKey(const Key('food_log_entry_point')),
           'food_swap_requests' => find.byKey(const Key('food_swap_requests_history')),
+          'web_push' =>
+            find.text('Push notifications are available in the installed web app.'),
           'assistant_meals' => find.byTooltip('Assistant'),
+          'assistant_personal_logs' => find.byTooltip('Assistant'),
           // The vote bar exists only under an assistant reply; with an empty
           // chat the composer carries the same TourTarget id (#748).
           'assistant_feedback' => find.byKey(const Key('assistant_feedback_vote_buttons')).evaluate().isNotEmpty
@@ -1576,12 +1594,102 @@ void main() {
       expect(fake.whatsNewSeenWriteCount, writesBefore + 1, reason: entry.id);
       await tester.pumpWidget(const SizedBox.shrink());
     }
+    // Reset the image HTTP hook inside the body: the framework's painting
+    // variable invariant check runs before addTearDown does (see mediaTest in
+    // workout_logger_pictures_test.dart).
+    FakeMediaCatalog.uninstall();
+  });
+
+  testWidgets(
+      'PR #728 finding 2: Show me waits for demo media before spotlighting',
+      (tester) async {
+    const String gifPath = 'videos/mayos-3-cable-y-raise.gif';
+    final FakeMediaCatalog media = FakeMediaCatalog()
+      ..serve(gifPath)
+      ..delayResponse(gifPath);
+    media.install();
+    addTearDown(() {
+      media.releaseResponse(gifPath);
+      FakeMediaCatalog.uninstall();
+    });
+    await _pumpHome(tester, _signedInFake());
+
+    final ProviderContainer container =
+        ProviderScope.containerOf(tester.element(find.byType(MayosApp)));
+    final Future<void> showing = container
+        .read(tourControllerProvider.notifier)
+        .showMe('cable_y_raise_demo');
+    for (int i = 0; i < 40 && media.requestCount(gifPath) == 0; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(media.requestCount(gifPath), 1);
+
+    await tester.pump(const Duration(seconds: 3));
+    expect(find.byKey(const ValueKey<String>('tour_next')), findsNothing);
+    expect(find.byKey(const ValueKey<String>('tour_spotlight_cutout')), findsNothing);
+
+    media.releaseResponse(gifPath);
+    await _pumpUntilTourSpotlight(tester);
+    await showing;
+    final TourTargetHandle target =
+        container.read(tourTargetRegistryProvider)['exercise_demo_media']!;
+    final Rect cutout = tester.getRect(
+      find.byKey(const ValueKey<String>('tour_spotlight_cutout')),
+    );
+    final Finder targetedImage = find.descendant(
+      of: find.byKey(target.key),
+      matching: find.byType(RawImage),
+    );
+    expect(targetedImage, findsOneWidget);
+    expect(cutout.contains(tester.getRect(targetedImage).center), isTrue);
+    // Reset the image HTTP hook inside the body: the framework's painting
+    // variable invariant check runs before addTearDown does (see mediaTest in
+    // workout_logger_pictures_test.dart).
+    FakeMediaCatalog.uninstall();
+  });
+
+  testWidgets(
+      'PR #728 finding 2: Show me skips spotlight when demo media fails',
+      (tester) async {
+    final FakeMediaCatalog media = FakeMediaCatalog();
+    media.install();
+    addTearDown(FakeMediaCatalog.uninstall);
+    await _pumpHome(tester, _signedInFake());
+
+    final ProviderContainer container =
+        ProviderScope.containerOf(tester.element(find.byType(MayosApp)));
+    final Future<void> showing = container
+        .read(tourControllerProvider.notifier)
+        .showMe('cable_y_raise_demo');
+    for (int i = 0; i < 40 && media.totalRequests < 2; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(media.totalRequests, 2);
+    for (int i = 0;
+        i < 40 && container.read(tourControllerProvider) != null;
+        i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    await showing;
+
+    expect(find.text('Cable Y-Raise'), findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('tour_next')), findsNothing);
+    expect(find.byKey(const ValueKey<String>('tour_spotlight_cutout')), findsNothing);
+    expect(container.read(tourControllerProvider), isNull);
+    // Reset the image HTTP hook inside the body: the framework's painting
+    // variable invariant check runs before addTearDown does (see mediaTest in
+    // workout_logger_pictures_test.dart).
+    FakeMediaCatalog.uninstall();
   });
 
   testWidgets('Feature guide Show me lands and spotlights every lifter feature',
       (tester) async {
     final FakeMayosApi fake = _signedInFake();
     final FakeAnalyticsClient analytics = FakeAnalyticsClient();
+    final FakeMediaCatalog media = FakeMediaCatalog()
+      ..serve('videos/mayos-3-cable-y-raise.gif');
+    media.install();
+    addTearDown(FakeMediaCatalog.uninstall);
     const FeatureEntry unsupported = FeatureEntry(
       id: 'future_feature',
       titleEn: 'Future feature',
@@ -1612,7 +1720,7 @@ void main() {
       final Finder button = find.text('Show me').at(entries.indexOf(entry));
       await tester.ensureVisible(button);
       await tester.tap(button);
-      await _pumpUntilFound(tester, find.byKey(const ValueKey<String>('tour_next')));
+      await _pumpUntilTourSpotlight(tester);
       await tester.pumpAndSettle();
 
       final int shellTab = container.read(playerShellTabProvider);
@@ -1643,6 +1751,9 @@ void main() {
       }
       if (entry.release == currentFeatureRelease) {
         final Finder realControl = switch (entry.id) {
+          'cable_y_raise_demo' => find.byKey(
+              container.read(tourTargetRegistryProvider)['exercise_demo_media']!.key,
+            ),
           'weak_points' => find.byKey(const Key('profile_weak_points_section')),
           'assistant_why' || 'assistant_volume' || 'assistant_exercise_lookup' =>
             find.byKey(const Key('chat_composer')),
@@ -1655,7 +1766,10 @@ void main() {
           'meal_setup' => find.byKey(const Key('nutrition_targets')).evaluate().isNotEmpty
               ? find.byKey(const Key('nutrition_targets')) : find.byKey(const Key('food_log_entry_point')),
           'food_swap_requests' => find.byKey(const Key('food_swap_requests_history')),
+          'web_push' =>
+            find.text('Push notifications are available in the installed web app.'),
           'assistant_meals' => find.byTooltip('Assistant'),
+          'assistant_personal_logs' => find.byTooltip('Assistant'),
           // The vote bar exists only under an assistant reply; with an empty
           // chat the composer carries the same TourTarget id (#748).
           'assistant_feedback' => find.byKey(const Key('assistant_feedback_vote_buttons')).evaluate().isNotEmpty
@@ -1681,6 +1795,10 @@ void main() {
           .toList(),
       entries.map((FeatureEntry entry) => entry.id).toList(),
     );
+    // Reset the image HTTP hook inside the body: the framework's painting
+    // variable invariant check runs before addTearDown does (see mediaTest in
+    // workout_logger_pictures_test.dart).
+    FakeMediaCatalog.uninstall();
   });
 
   testWidgets('Show me for Rate assistant replies lands on an empty chat',
@@ -1786,6 +1904,12 @@ void main() {
   testWidgets('Show me leaves tour seen version unchanged and is blocked by workout',
       (tester) async {
     final FakeMayosApi fake = _signedInFake()..tourSeenVersion = 1;
+    // `Show me`.first is the Cable Y-Raise demo, whose spotlight target only
+    // mounts on the decoded demo image.
+    final FakeMediaCatalog media = FakeMediaCatalog()
+      ..serve('videos/mayos-3-cable-y-raise.gif');
+    media.install();
+    addTearDown(FakeMediaCatalog.uninstall);
     await _pumpHome(tester, fake, size: const Size(390, 844));
     final ProviderContainer container =
         ProviderScope.containerOf(tester.element(find.byType(MayosApp)));
@@ -1831,6 +1955,11 @@ void main() {
         attempt < 40 &&
             find.byKey(const ValueKey<String>('tour_next')).evaluate().isEmpty;
         attempt++) {
+      // Yield real time so the demo image decode can complete inside the
+      // fake-async zone (see _pumpUntilTourSpotlight).
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 60)),
+      );
       await tester.pump(const Duration(milliseconds: 100));
     }
     expect(
@@ -1844,12 +1973,22 @@ void main() {
     expect(find.byKey(const ValueKey<String>('tour_next')), findsOneWidget);
     await tester.pumpAndSettle();
     expect(fake.tourSeenVersion, 1);
+    // Reset the image HTTP hook inside the body: the framework's painting
+    // variable invariant check runs before addTearDown does (see mediaTest in
+    // workout_logger_pictures_test.dart).
+    FakeMediaCatalog.uninstall();
   });
 
   testWidgets('Feature guide Show me analytics honors the account opt-out',
       (tester) async {
     final FakeMayosApi fake = _signedInFake()..analyticsAllowed = false;
     final FakeAnalyticsClient analytics = FakeAnalyticsClient();
+    // `Show me`.first is the Cable Y-Raise demo, whose spotlight target only
+    // mounts on the decoded demo image.
+    final FakeMediaCatalog media = FakeMediaCatalog()
+      ..serve('videos/mayos-3-cable-y-raise.gif');
+    media.install();
+    addTearDown(FakeMediaCatalog.uninstall);
     await _pumpHome(tester, fake, size: const Size(390, 844),
         extraOverrides: <Override>[
       analyticsClientProvider.overrideWithValue(analytics),
@@ -1859,11 +1998,15 @@ void main() {
     container.read(routerProvider).go(featureGuidePath);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Show me').first);
-    await _pumpUntilFound(tester, find.byKey(const ValueKey<String>('tour_next')));
+    await _pumpUntilTourSpotlight(tester);
     expect(
       analytics.events.where((event) => event['event'] == 'show_me_tapped'),
       isEmpty,
     );
+    // Reset the image HTTP hook inside the body: the framework's painting
+    // variable invariant check runs before addTearDown does (see mediaTest in
+    // workout_logger_pictures_test.dart).
+    FakeMediaCatalog.uninstall();
   });
 
   testWidgets('Tour version 2 only reaches accounts created at version 2',

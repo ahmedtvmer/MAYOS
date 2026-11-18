@@ -243,7 +243,7 @@ def test_substitution_unknown_abbreviation_asks_illustration(db_with_good_mornin
     ] == before_ids
 
 
-def test_end_to_end_router_with_abbreviation():
+def test_end_to_end_router_with_abbreviation(fresh_store):
     """Verifies that the router parses abbreviation query and routes to substitution correctly."""
     query = "swap dumbbell romanian deadlift for OHP"
     state: AssistantState = {
@@ -259,7 +259,9 @@ def test_end_to_end_router_with_abbreviation():
         "response_content": None,
     }
 
-    routed = router_node(state)
+    routed = router_node(
+        state, {"configurable": {"ledger": fresh_store.ledger, "store": fresh_store}}
+    )
     assert routed.get("intent") == "exercise_substitution"
     assert routed["intent_metadata"]["source_exercise"].lower() == "dumbbell romanian deadlift"
     assert routed["intent_metadata"]["target_exercise"].lower() == "ohp"

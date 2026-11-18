@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -380,6 +382,33 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       if (uri.path == appUpdateRequiredPath) return splashPath;
       final String location =
           uri.hasQuery ? '${uri.path}?${uri.query}' : uri.path;
+      final account = ref.read(authControllerProvider).session?.account;
+      final mode = ref.read(appModeControllerProvider);
+      final carrying = const <String>{splashPath, loginPath, registerPath,
+        googleSignupPath, recoveryEmailPath}.contains(uri.path);
+      final requested = carrying
+          ? _carriedTarget(uri.queryParameters['from']) ?? location : location;
+      final desired = notificationModeFor(requested, account);
+      if (account != null && mode.isResolvedFor(account.accountId) &&
+          desired != null && desired != mode.mode) {
+        // A notification click lands on the other role's destination. The
+        // switch applies synchronously and the mode listener re-runs the
+        // redirect with the switched mode, so this evaluation must not await:
+        // an async redirect turns every route commit into a multi-microtask
+        // chain, and an auth/mode refresh that lands mid-chain re-parses the
+        // stale provider location with the new state — dropping carried deep
+        // links (#127) and racing roster starts in widget tests.
+        unawaited(() async {
+          try {
+            await ref.read(appModeControllerProvider.notifier).setMode(
+              desired, accountId: account.accountId, isCoach: account.isCoach,
+            );
+          } on Object {
+            // Persistence failed; the in-memory mode is already applied and
+            // Settings' push entry can retry on the next visit.
+          }
+        }());
+      }
       return redirectFor(ref.read(authControllerProvider), location,
           ref.read(appModeControllerProvider),
           from: uri.queryParameters['from']);
@@ -445,7 +474,8 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: homePath,
         builder: (BuildContext context, GoRouterState state) =>
-            _withRecoveryEmailReminder(state, const PlayerShell()),
+            _withRecoveryEmailReminder(
+              state, PlayerShell(pushTab: state.uri.queryParameters['push'])),
       ),
       GoRoute(
         path: settingsPath,
@@ -743,3 +773,16 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
     ],
   );
 });
+
+/// Only explicit notification destinations can change the account's mode.
+AppMode? notificationModeFor(String location, Account? account) {
+  if (account == null) return null;
+  if (account.isCoach && const <String>{
+    '/coach/alerts?push=coach', '/coach/requests?push=coach',
+  }.contains(location)) return AppMode.coach;
+  if (account.capabilities.player && const <String>{
+    '/home?push=player', '/home?push=program', '/home?push=nutrition',
+    '/player-notifications?push=player', '/food-swap-requests?push=player',
+  }.contains(location)) return AppMode.player;
+  return null;
+}

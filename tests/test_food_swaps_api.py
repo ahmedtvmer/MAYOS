@@ -74,7 +74,7 @@ def test_swap_versions_both_day_types_preserves_other_slots_and_never_logs(meals
                                         "2026-01-01T00:00:00Z")
     other = client.get("/nutrition/meals", headers=headers).json()
     assert other["day_type"] != before["day_type"]
-    assert other["plan_version_id"] == after["plan_version_id"]
+    assert other["plan_version_id"] > after["plan_version_id"]
     assert other["meals"][0]["foods"][0]["id"] == "alternative"
     assert other["meals"][0]["foods"][0]["swapped"]
 

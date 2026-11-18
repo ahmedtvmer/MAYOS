@@ -75,13 +75,6 @@ BODYWEIGHT_STAPLE_EQUIVALENTS = {
     "quad_iso": {("quad_iso", "1489")},
 }
 BODYWEIGHT_STAPLE_EXCEPTIONS = BODYWEIGHT_SLOT_EXCEPTIONS
-# Some bodyweight-only day blueprints have no available small-muscle opener.
-BODYWEIGHT_OPENER_FALLBACKS = {
-    "flat_press", "horizontal_row", "biceps_alt", "glute_thrust",
-    "vertical_pull",
-}
-
-
 def _generate_matrix_program(db, *, experience, days, equipment):
     user = f"coach_rubric_{experience}_{days}_{equipment}"
     db.switch_user(user)
@@ -145,6 +138,69 @@ def _program_snapshot(program):
             for day in program.days
         ],
     }
+
+
+def _main_progressed_exercise(program, day):
+    rationale_day = next(
+        item for item in program.program_rationale["days"]
+        if item["day_order"] == day.day_order
+    )
+    main_record = next(
+        (
+            item for item in rationale_day["exercises"]
+            if item["rationale"]["position"]["code"]
+            == "position.main_progressed_lift"
+        ),
+        None,
+    )
+    if main_record is None:
+        return None
+    return next(
+        exercise for exercise in day.exercises
+        if exercise.exercise_id == main_record["exercise_id"]
+    )
+
+
+def _assert_focus_exercises_keep_opening_position(program, day, focus_ids):
+    focus_exercises = [
+        exercise for exercise in day.exercises if exercise.exercise_id in focus_ids
+    ]
+    assert {exercise.exercise_id for exercise in focus_exercises} == focus_ids
+    rationale_day = next(
+        item for item in program.program_rationale["days"]
+        if item["day_order"] == day.day_order
+    )
+    rationale_by_id = {
+        item["exercise_id"]: item["rationale"]
+        for item in rationale_day["exercises"]
+    }
+    focus_rationale = rationale_by_id[focus_exercises[0].exercise_id]
+    experience_level = focus_rationale["prescription"]["rir"]["params"][
+        "experience_level"
+    ]
+    position_codes = {
+        exercise_id: rationale["position"]["code"]
+        for exercise_id, rationale in rationale_by_id.items()
+    }
+    main_exercise = _main_progressed_exercise(program, day)
+    if main_exercise is not None:
+        assert day.exercises[0] is main_exercise
+        for focus_exercise in focus_exercises:
+            assert day.exercises.index(main_exercise) < day.exercises.index(
+                focus_exercise
+            )
+    for focus_exercise in focus_exercises:
+        earlier_exercises = day.exercises[:day.exercises.index(focus_exercise)]
+        for exercise in earlier_exercises:
+            assert (
+                exercise is main_exercise
+                or exercise.exercise_id in focus_ids
+                or position_codes[exercise.exercise_id] == "position.stabilizer_safety"
+                or (
+                    experience_level == "beginner"
+                    and SLOT_SPECS[exercise.slot_key].archetype in COMPOUND_CLASSES
+                )
+            )
 
 
 def _remove_expected_back_slot_additions(snapshot, additions):
@@ -242,7 +298,7 @@ def test_bodyweight_only_does_not_relabel_ham_curl_as_ham_hinge(real_library_sto
     assert curls and all(exercise.exercise_id == "1766" for exercise in curls)
 
 
-def test_focus_chest_adds_a_new_variant_first_on_lightest_training_day(fresh_store):
+def test_focus_chest_adds_a_variant_after_the_main_lift_on_lightest_day(fresh_store):
     db = fresh_store
     user = "focus_chest_rubric"
     db.switch_user(user)
@@ -262,8 +318,14 @@ def test_focus_chest_adds_a_new_variant_first_on_lightest_training_day(fresh_sto
     assert focus["status"] == "added"
     assert focus["exercise_id"] in {exercise.exercise_id for day in program.days for exercise in day.exercises}
     target_day = next(day for day in program.days if day.day_order == focus["day_order"])
-    assert target_day.exercises[0].exercise_id == focus["exercise_id"]
-    assert focus["exercise_id"] not in {exercise.exercise_id for day in program.days for exercise in day.exercises[1:]}
+    _assert_focus_exercises_keep_opening_position(
+        program, target_day, {focus["exercise_id"]}
+    )
+    assert all(
+        exercise.exercise_id != focus["exercise_id"]
+        for day in program.days if day is not target_day
+        for exercise in day.exercises
+    )
     reason = next(item["rationale"] for item in program.program_rationale["days"][focus["day_order"] - 1]["exercises"] if item["exercise_id"] == focus["exercise_id"])
     assert reason["selection"]["code"] == "selection.focus_muscle_extra"
     assert reason["position"]["code"] == "position.focus_first"
@@ -341,7 +403,9 @@ def test_two_focus_muscles_keep_named_order_when_opening_same_day(fresh_store):
         upper_chest["day_order"], upper_chest["exercise_id"]
     )
     day = next(day for day in program.days if day.day_order == upper_chest["day_order"])
-    assert day.exercises[0].exercise_id == upper_chest["exercise_id"]
+    _assert_focus_exercises_keep_opening_position(
+        program, day, {upper_chest["exercise_id"]}
+    )
 
 
 def test_barbell_only_chest_extra_candidates_fall_through_to_unavailable(
@@ -417,10 +481,14 @@ def test_focus_chest_generation_supports_every_frequency_and_equipment(
     assert focus["muscle"] == "chest" and focus["source"] == "named"
     if focus["status"] == "added":
         day = next(day for day in program.days if day.day_order == focus["day_order"])
-        assert day.exercises[0].exercise_id == focus["exercise_id"]
-        assert focus["exercise_id"] not in {
-            exercise.exercise_id for candidate_day in program.days for exercise in candidate_day.exercises[1:]
-        }
+        _assert_focus_exercises_keep_opening_position(
+            program, day, {focus["exercise_id"]}
+        )
+        assert all(
+            exercise.exercise_id != focus["exercise_id"]
+            for candidate_day in program.days if candidate_day is not day
+            for exercise in candidate_day.exercises
+        )
         set_reason = next(
             record["rationale"]["prescription"]["sets"]["params"]
             for record in program.program_rationale["days"][focus["day_order"] - 1]["exercises"]
@@ -495,7 +563,18 @@ def test_abs_focus_extra_adds_exposure_to_upper_day(fresh_store):
     focus = program.program_rationale["focus_muscles"][0]
     day = next(day for day in program.days if day.day_order == focus["day_order"])
     assert day.day_name.casefold().startswith("upper")
-    assert not any(exercise.slot_key == "abs" for exercise in day.exercises[1:])
+    focus_ids_on_day = {
+        item["exercise_id"]
+        for extra_day, item in _focus_extra_records(program)
+        if extra_day.day_order == day.day_order
+    }
+    assert len(focus_ids_on_day) == 1
+    _assert_focus_exercises_keep_opening_position(
+        program, day, focus_ids_on_day
+    )
+    abs_exercises = [exercise for exercise in day.exercises if exercise.slot_key == "abs"]
+    assert len(abs_exercises) == 1
+    assert abs_exercises[0].exercise_id in focus_ids_on_day
     extra = next(item for _day, item in _focus_extra_records(program))
     assert extra["rationale"]["day_choice"]["code"] == "focus.new_weekly_exposure"
 
@@ -595,7 +674,14 @@ def test_nonaggregate_focus_muscles_keep_extra_gym_work(fresh_store, muscle):
     baseline_ids = {exercise.exercise_id for day in baseline.days for exercise in day.exercises}
     assert not baseline_ids.intersection(focus["extra_exercise_ids"])
     for day, record in _focus_extra_records(focused):
-        assert day.exercises[0].exercise_id == record["exercise_id"]
+        focus_ids_on_day = {
+            item["exercise_id"]
+            for extra_day, item in _focus_extra_records(focused)
+            if extra_day.day_order == day.day_order
+        }
+        _assert_focus_exercises_keep_opening_position(
+            focused, day, focus_ids_on_day
+        )
         dose = record["rationale"]["prescription"]["sets"]["params"]
         assert dose["actual_weekly_sets"] >= dose["target_weekly_sets"]
     credits = fresh_store.ledger.volume_review_exercise_credits(focus["extra_exercise_ids"])
@@ -758,11 +844,9 @@ def test_focus_rubric_covers_every_selectable_split_and_frequency(fresh_store):
                         candidate["exercise_id"]
                         for extra_day, candidate in extra_records if extra_day.day_order == day.day_order
                     }
-                    prescribed_ids = [exercise.exercise_id for exercise in day.exercises]
-                    assert prescribed_ids[:len(focus_ids_on_day)] == [
-                        exercise_id for exercise_id in prescribed_ids
-                        if exercise_id in focus_ids_on_day
-                    ]
+                    _assert_focus_exercises_keep_opening_position(
+                        focused, day, focus_ids_on_day
+                    )
                 focused_slots = set().union(*(FOCUS_MUSCLE_SLOTS[muscle] for muscle in pair))
                 for muscle in set(FOCUS_MUSCLE_SLOTS) - set(pair):
                     unchanged_slots = FOCUS_MUSCLE_SLOTS[muscle] - focused_slots
@@ -924,14 +1008,28 @@ def test_generated_programs_pass_the_coach_pattern_rubric(
         slot: muscle for muscle, muscle_slots in MUSCLE_GROUPS.items() for slot in muscle_slots
     }
     for day in program.days:
-        available_small_openers = [
-            exercise.slot_key for exercise in day.exercises
-            if exercise.slot_key in SMALL_MUSCLE_OPENERS
-        ]
-        if equipment == "Bodyweight only" and not available_small_openers:
-            assert day.exercises[0].slot_key in BODYWEIGHT_OPENER_FALLBACKS
+        main_exercise = _main_progressed_exercise(program, day)
+        if main_exercise:
+            assert day.exercises[0] is main_exercise
+        elif equipment == "Bodyweight only":
+            assert not any(
+                SLOT_SPECS[exercise.slot_key].archetype in COMPOUND_CLASSES
+                for exercise in day.exercises
+            )
+            assert day.exercises[0].slot_key != "calf"
         else:
-            assert day.exercises[0].slot_key == available_small_openers[0]
+            assert day.exercises[0].slot_key in SMALL_MUSCLE_OPENERS
+        if experience == "beginner":
+            compound_indexes = [
+                index for index, exercise in enumerate(day.exercises)
+                if SLOT_SPECS[exercise.slot_key].archetype in COMPOUND_CLASSES
+            ]
+            isolation_indexes = [
+                index for index, exercise in enumerate(day.exercises)
+                if SLOT_SPECS[exercise.slot_key].archetype == "isolation"
+            ]
+            if compound_indexes and isolation_indexes:
+                assert max(compound_indexes) < min(isolation_indexes)
         for index in range(len(day.exercises) - 2):
             pre_exhaust, first_compound, second_compound = day.exercises[index : index + 3]
             compound_slots = (first_compound.slot_key, second_compound.slot_key)

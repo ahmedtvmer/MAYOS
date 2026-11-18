@@ -23,7 +23,9 @@ ARABIC_CLINICAL_STEMS = {
         "تفلت", "اتفلت",
     ),
     "pain": (
-        "الم", "الام", "اوجاع", "وجع", "يوجع", "يؤلم", "تؤلم", "مؤلم", "يالم", "pain", "hurt", "ache",
+        "الم", "الام", "اوجاع", "وجع", "يوجع", "يؤلم", "تؤلم", "مؤلم", "يالم", "pain", "painful", "hurt", "hurts", "hurting",
+        "ache", "aches", "aching", "headache", "headaches", "backache", "backaches",
+        "toothache", "toothaches",
         "موجوع", "وجعان", "بتوجع", "بيوجع", "يحرقني",
         "توجع", "تالم", "بتالم", "بيالم", "وجعت", "وجعني",
     ),
@@ -50,24 +52,35 @@ _ARABIC_PRONOUN_SUFFIXES = ("ني", "كم", "كن", "هم", "هن", "ها", "ن�
 _ARABIC_CLITIC_PREFIX = r"(?:[وف]?(?:[بل])?(?:ال)?|ل{1,2}|)"
 
 
+# Latin tokens use Latin boundaries so Arabic clitics may touch them without
+# matching substrings inside English exercise names such as "Preacher".
+def _bounded_clinical_stems(stems, boundary_letters: str, suffixes: str) -> str:
+    if not stems:
+        return ""
+    ordered = sorted(stems, key=lambda stem: (-len(stem), stem))
+    alternatives = "|".join(re.escape(stem) for stem in ordered)
+    return (
+        rf"(?<![{boundary_letters}]){_ARABIC_CLITIC_PREFIX}"
+        rf"(?:{alternatives})(?:{suffixes})?(?![{boundary_letters}])"
+    )
+
+
 def _arabic_stem_pattern(stems) -> re.Pattern[str]:
-    expanded_stems = set(stems)
-    expanded_stems.update(
-        stem[:-1] + "ت" for stem in stems if stem.endswith(("ة", "ه"))
-    )
-    ordered = sorted(expanded_stems, key=len, reverse=True)
+    arabic_stems = {stem for stem in stems if ARABIC_SCRIPT_RE.search(stem)}
+    arabic_stems = arabic_stems | {
+        stem[:-1] + "ت" for stem in arabic_stems if stem.endswith(("ة", "ه"))
+    }
+    latin_stems = {stem for stem in stems if not ARABIC_SCRIPT_RE.search(stem)}
     suffixes = "|".join(_ARABIC_PRONOUN_SUFFIXES)
-    return re.compile(
-        rf"(?<![{_ARABIC_LETTERS}]){_ARABIC_CLITIC_PREFIX}"
-        rf"(?:{'|'.join(re.escape(stem) for stem in ordered)})"
-        rf"(?:{suffixes})?(?![{_ARABIC_LETTERS}])"
-    )
+    return re.compile("|".join((
+        _bounded_clinical_stems(arabic_stems, _ARABIC_LETTERS, suffixes),
+        _bounded_clinical_stems(latin_stems, "A-Za-z", suffixes),
+    )))
 
 
 _ARABIC_STEMS = sorted(
     (stem for stems in ARABIC_CLINICAL_STEMS.values() for stem in stems),
-    key=len,
-    reverse=True,
+    key=lambda stem: (-len(stem), stem),
 )
 _ARABIC_STEM_PATTERN = _arabic_stem_pattern(_ARABIC_STEMS)
 
@@ -85,8 +98,7 @@ _ARABIC_BODY_PART_WORDS = sorted(
         "دراعي", "ايد", "ايدي", "يد", "يدي", "قدم", "قدمي", "صدر",
         "صدري",
     },
-    key=len,
-    reverse=True,
+    key=lambda word: (-len(word), word),
 )
 _ARABIC_BODY_PART_PATTERN = "|".join(
     re.escape(word) for word in _ARABIC_BODY_PART_WORDS
@@ -253,10 +265,10 @@ RE_TRAUMA_SENSATIONS = re.compile(
 #: (knee, shoulder, joint) are deliberately excluded: "every joint feels cold and
 #: sluggish" is systemic fatigue, not an injury. Fail-closed on pain/neural signs.
 RE_ACUTE_PAIN_SIGNALS = re.compile(
-    r"\b(pain|painful|hurts?|aching|ache|sharp|shooting|radiat(?:ing|es|ed)|numb|numbness|"
+    r"(?<![A-Za-z0-9_])(?:pain|painful|hurt(?:s|ing)?|(?:(?:head|back|tooth)?ache(?:s)?|ach(?:ing))|sharp|shooting|radiat(?:ing|es|ed)|numb|numbness|"
     r"tingling|pins\s+and\s+needles|pop(?:ping|ped)?|tear(?:ing|s)?|torn|tore|ripping|"
     r"grinding|clicking|pinch(?:ed)?|crunch(?:ing)?|dislocat\w*|impingement|giving\s+way|"
-    r"electric|shock|glass|swollen|swelling|unstable|instability)\b",
+    r"electric|shock|glass|swollen|swelling|unstable|instability)(?![A-Za-z0-9_])",
     re.IGNORECASE,
 )
 
@@ -401,12 +413,40 @@ def _arabic_semantic_guard(query: str) -> tuple[bool, float]:
 
 
 _CLINICAL_LEXICAL_TOKENS = re.compile(
-    r"\b(pain|hurt|ache|aching|sharp|pop|popping|tear|tearing|torn|tore|numb|numbness|tingling|"
+    r"(?<![A-Za-z0-9_])(?:injur(?:y|ies|ed)|strain(?:ed)?|sprain(?:ed)?|fractur(?:e|ed)|broken|"
+    r"pain(?:ful)?|hurt(?:s|ing)?|(?:(?:head|back|tooth)?ache(?:s)?|ach(?:ing))|sharp|pop|popping|tear|tearing|torn|tore|numb|numbness|tingling|"
     r"joint|shoulder|knee|elbow|hip|wrist|pec|tendon|disc|spine|hernia|swollen|swell|swelling|"
     r"shooting|radiating|grinding|clicking|pinch|pinched|crunch|crunching|dislocat|impingement|"
-    r"glass|giving\s+way|loose|slipping|electric|shock|ripping)\b",
+    r"glass|giving\s+way|loose|slipping|electric|shock|ripping)(?![A-Za-z0-9_])",
     re.IGNORECASE,
 )
+
+_EXPLICIT_CLINICAL_MENTIONS = re.compile(
+    r"\b(injur(?:y|ies|ed)|strain(?:ed)?|sprain(?:ed)?|fractur(?:e|ed)|broken|"
+    r"diagnos(?:e|is|ed|ing)|medical|doctor|physician|surgeon|surger(?:y|ies)|"
+    r"medication|prescription|physio(?:therapy)?|rehabilitation)\b",
+    re.IGNORECASE,
+)
+
+
+def has_deterministic_clinical_signal(query: str) -> bool:
+    """Return whether explicit symptoms or medical terms require semantic screening."""
+    if ARABIC_SCRIPT_RE.search(query):
+        try:
+            normalized = normalize_arabic_text(query)
+        except TypeError:
+            # A failed clinical normalization must retain the semantic screen.
+            return True
+        return _arabic_lexical_hit(normalized) or bool(
+            RE_TRAUMA_SENSATIONS.search(query)
+            or RE_ACUTE_PAIN_SIGNALS.search(query)
+            or _EXPLICIT_CLINICAL_MENTIONS.search(query)
+        )
+    return bool(
+        RE_TRAUMA_SENSATIONS.search(query)
+        or RE_ACUTE_PAIN_SIGNALS.search(query)
+        or _EXPLICIT_CLINICAL_MENTIONS.search(query)
+    )
 
 
 def _english_semantic_guard(query: str, threshold: float = 0.70) -> tuple[bool, float]:
@@ -428,7 +468,20 @@ def evaluate_clinical_semantic_guard(query: str, threshold: float = 0.70) -> tup
     """Return the clinical decision; ``threshold`` applies only to English.
 
     Arabic uses ``ARABIC_SEMANTIC_THRESHOLD`` after its lexical and acute tiers.
+    Code-switched messages screen both languages: the Arabic result decides, and
+    when it reports benign the English tier also runs so trailing English injury
+    prose after Arabic text cannot slip through on a technicality.
     """
     if ARABIC_SCRIPT_RE.search(query):
-        return _arabic_semantic_guard(query)
+        is_clinical, score = _arabic_semantic_guard(query)
+        if is_clinical or not re.search(r"[A-Za-z]", query):
+            return is_clinical, score
+        try:
+            english_is_clinical, english_score = _english_semantic_guard(query, threshold)
+        except Exception:
+            # The English screen must fail closed exactly like the Arabic one.
+            return True, 1.0
+        if english_is_clinical:
+            return True, max(score, english_score)
+        return False, score
     return _english_semantic_guard(query, threshold)

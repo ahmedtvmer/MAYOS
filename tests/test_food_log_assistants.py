@@ -10,6 +10,7 @@ from langchain_core.messages import HumanMessage
 
 from agent import assistant_graph
 from agent.player_tools import MAX_TOOL_RESULT_BYTES, build_player_read_tools
+from database.ledger.nutrition import NutritionPlanVersion
 from service import coach_ai, coach_roster_ai, food_log, roster_snapshot, weight_history
 from service.assignments import record_roster_ai_disclosure
 from tests.fakes.chat_model import ScriptedChatModel, ToolCallsTurn
@@ -53,8 +54,14 @@ def assigned_food_player(api, monkeypatch):  # noqa: F811
         def now(cls, tz=None):
             return INSTANT.astimezone(tz) if tz else INSTANT.replace(tzinfo=None)
 
-    # Freeze the clock boundary; all date resolution still uses the real schedule.
+    # Keep local-day reads on the fixture date while targets still use the schedule.
     monkeypatch.setattr(weight_history, "datetime", FrozenDateTime)
+    monkeypatch.setattr(
+        "agent.player_tools.player_local_date",
+        lambda ledger, ledger_id: weight_history.player_local_date(
+            ledger, ledger_id, now=INSTANT,
+        ),
+    )
     coach_headers, coach_id = _make_coach(client, db)
     player = _assign(client, db, coach_headers, "foodassistantplayer")
     with db.open_ledger(player["ledger_id"]) as ledger:
@@ -77,6 +84,49 @@ def assigned_food_player(api, monkeypatch):  # noqa: F811
 def _tool(ledger):
     tools, _definitions = build_player_read_tools(ledger)
     return next(tool for tool in tools if tool.name == "get_player_food_log")
+
+
+def _trend_tool(ledger):
+    tools, _definitions = build_player_read_tools(ledger)
+    return next(tool for tool in tools if tool.name == "get_player_nutrition_trend")
+
+
+@pytest.mark.parametrize(("args", "expected_dates", "expected_calories"), [
+    ({"day": "yesterday"}, ["2026-11-07"], [1800]),
+    ({"day": "2026-11-07"}, ["2026-11-07"], [1800]),
+    ({"day": "today"}, ["2026-11-08"], [2200]),
+    ({"days": 3}, ["2026-11-06", "2026-11-07", "2026-11-08"], [None, 1800, 2200]),
+    ({"day": "2026-10-26"}, ["2026-10-26"], [None]),
+])
+def test_historical_target_reads_use_saved_versions_without_loading_food_or_active_plan(
+    assigned_food_player, args, expected_dates, expected_calories,
+):
+    db, _coach_id, player = assigned_food_player
+    with db.open_ledger(player["ledger_id"]) as ledger:
+        with ledger.ledger_transaction():
+            for day, calories in [("2026-11-07", 1800), ("2026-11-08", 2200)]:
+                ledger.save_nutrition_plan(NutritionPlanVersion(
+                    goal="maintain", reason={"code": "test"}, intensity=None,
+                    daily_activity="mostly_sitting",
+                    targets={"calories": calories, "protein_g": 130,
+                             "carbs_g": 200, "fat_g": 60},
+                    # The fixture's +14 timezone puts these versions inside each local day.
+                    created_at=f"{day}T00:00:00+14:00",
+                ))
+        ledger.conn.execute("PRAGMA query_only=ON")
+        tools, _definitions = build_player_read_tools(ledger)
+        tool = next(tool for tool in tools if tool.name == "get_player_nutrition")
+        payload = tool.invoke(args)
+    result = json.loads(payload)
+    assert len(payload.encode("utf-8")) <= MAX_TOOL_RESULT_BYTES
+    assert result["status"] == ("ok" if any(expected_calories) else "no_data")
+    assert [day["date"] for day in result["days"]] == expected_dates
+    assert [day["targets"]["calories"] if day["targets"] else None
+            for day in result["days"]] == expected_calories
+    assert result["start_date"] == expected_dates[0]
+    assert result["end_date"] == expected_dates[-1]
+    assert all(set(day) == {"date", "targets"} for day in result["days"])
+    assert LIBRARY_NAME not in payload and PERSONAL_NAME not in payload
 
 
 @pytest.mark.parametrize("mode", ["stream", "graph"])
@@ -178,6 +228,59 @@ def test_player_reads_own_day_and_personal_names_without_writing(assigned_food_p
                    "PRIVATE_FOOD_ID_478"):
         assert secret not in payload
     assert len(payload.encode("utf-8")) <= MAX_TOOL_RESULT_BYTES
+
+
+def test_player_nutrition_trend_returns_daily_totals_against_saved_targets(assigned_food_player):
+    db, _coach_id, player = assigned_food_player
+    with db.open_ledger(player["ledger_id"]) as ledger:
+        with ledger.ledger_transaction():
+            ledger.save_nutrition_plan(NutritionPlanVersion(
+                goal="maintain", reason={"code": "test"}, intensity=None,
+                daily_activity="mostly_sitting",
+                targets={
+                    "daily": None,
+                    "training_day": {"calories": 2300, "protein_g": 150,
+                                     "carbs_g": 280, "fat_g": 64},
+                    "rest_day": {"calories": 2000, "protein_g": 140,
+                                 "carbs_g": 225, "fat_g": 60},
+                },
+                created_at="2026-01-01T00:00:00+00:00",
+            ))
+        ledger.conn.execute("PRAGMA query_only=ON")
+        payload = _trend_tool(ledger).invoke({})
+
+    result = json.loads(payload)
+    assert len(payload.encode("utf-8")) <= MAX_TOOL_RESULT_BYTES
+    assert result["status"] == "ok"
+    assert result["start_date"] == (TODAY - timedelta(days=13)).isoformat()
+    assert result["end_date"] == TODAY.isoformat()
+    by_date = {day["date"]: day for day in result["days"]}
+    assert by_date[TODAY.isoformat()]["totals"] == {
+        "energy_kcal": 1000, "protein_g": 50, "carbohydrate_g": 20, "fat_g": 10,
+    }
+    assert by_date[TODAY.isoformat()]["targets"] == {
+        "calories": 2000, "protein_g": 140, "carbs_g": 225, "fat_g": 60,
+    }
+    assert by_date[(TODAY - timedelta(days=2)).isoformat()]["totals"] is None
+    # Nov 6 is Friday, a training day in this fixture's schedule.
+    assert by_date[(TODAY - timedelta(days=2)).isoformat()]["targets"]["protein_g"] == 150
+
+
+def test_player_nutrition_trend_marks_an_empty_range_without_zeroing_unknowns(
+    assigned_food_player, monkeypatch,
+):
+    db, _coach_id, player = assigned_food_player
+    end_day = TODAY + timedelta(days=15)
+    monkeypatch.setattr("agent.player_tools.player_local_date", lambda *_args: end_day)
+    with db.open_ledger(player["ledger_id"]) as ledger:
+        ledger.conn.execute("PRAGMA query_only=ON")
+        payload = _trend_tool(ledger).invoke({})
+
+    result = json.loads(payload)
+    assert result["status"] == "no_data"
+    assert result["end_date"] == end_day.isoformat()
+    assert all(day["totals"] is None for day in result["days"])
+    assert all(day["targets"] is None for day in result["days"])
 
 
 @pytest.mark.parametrize(("day", "expected_kcal"), [

@@ -12,6 +12,8 @@ class InstallPromptCopy {
   String get gotIt => _ar ? 'حسنًا' : 'Got it';
   String get notNow => _ar ? 'ليس الآن' : 'Not now';
   String get shareStep => _ar ? '١  اضغط على مشاركة' : '1  Tap Share';
-  String get addStep => _ar ? '٢  اختر إضافة إلى الشاشة الرئيسية' : '2  Add to Home Screen';
+  String get addStep => _ar
+      ? '٢  اختر إضافة إلى الشاشة الرئيسية. تتطلب الإشعارات فتح التطبيق منها على iOS 16.4 أو أحدث.'
+      : '2  Add to Home Screen. For notifications, open the app there on iOS 16.4 or later.';
   String get dismiss => _ar ? 'إغلاق' : 'Dismiss';
 }

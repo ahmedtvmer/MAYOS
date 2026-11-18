@@ -37,6 +37,10 @@ services:
       - SENTRY_API_BASE_URL=${SENTRY_API_BASE_URL:-https://de.sentry.io}
       - UPTIMEROBOT_READ_KEY=${UPTIMEROBOT_READ_KEY:-}
       - POSTHOG_PROJECT_URL=${POSTHOG_PROJECT_URL:-}
+      - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-}
+      - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY:-}
+      - VAPID_SUBJECT=${VAPID_SUBJECT:-}
+      - MAYOS_PUSH_SWEEP_INTERVAL_SECONDS=${MAYOS_PUSH_SWEEP_INTERVAL_SECONDS:-60}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/healthz"]
       interval: 30s

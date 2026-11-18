@@ -38,17 +38,17 @@ def _carb_weights(request):
     return weights
 
 
-def slot_targets(request):
+def slot_targets(request, targets):
     slots = MEAL_LAYOUTS[request.setup["meal_count"]]
     weights = _carb_weights(request)
-    macro_calories = (4 * request.targets["protein_g"] + 4 * request.targets["carbs_g"]
-                      + 9 * request.targets["fat_g"])
+    macro_calories = (4 * targets["protein_g"] + 4 * targets["carbs_g"]
+                      + 9 * targets["fat_g"])
     return {slot: {
-        "protein_g": request.targets["protein_g"] / len(slots),
-        "carbs_g": request.targets["carbs_g"] * weights[slot] / sum(weights.values()),
-        "fat_g": (macro_calories / len(slots) - 4 * request.targets["protein_g"] / len(slots)
-                  - 4 * request.targets["carbs_g"] * weights[slot] / sum(weights.values())) / 9,
-        "calories": request.targets["calories"] / len(slots),
+        "protein_g": targets["protein_g"] / len(slots),
+        "carbs_g": targets["carbs_g"] * weights[slot] / sum(weights.values()),
+        "fat_g": (macro_calories / len(slots) - 4 * targets["protein_g"] / len(slots)
+                  - 4 * targets["carbs_g"] * weights[slot] / sum(weights.values())) / 9,
+        "calories": targets["calories"] / len(slots),
     } for slot in slots}
 
 
@@ -93,6 +93,20 @@ def _meal_food(food, grams):
 def meal_totals(foods):
     return {target: sum(food["nutrients_per_100g"][nutrient] * food["grams"] / 100 for food in foods)
             for target, nutrient in zip(TARGET_KEYS, NUTRIENT_KEYS)}
+
+
+def meal_food_macros(food):
+    nutrients = food.get("nutrients_per_100g", {})
+    grams = float(food["grams"])
+    return {target: (None if nutrients.get(nutrient) is None
+                     else float(nutrients[nutrient]) * grams / 100)
+            for target, nutrient in zip(TARGET_KEYS, NUTRIENT_KEYS)}
+
+
+def meals_with_food_macros(meals):
+    return [{**meal, "foods": [{**food, "macros": meal_food_macros(food)}
+                                for food in meal["foods"]]}
+            for meal in meals]
 
 
 def meal_target_deviation(totals, targets):
@@ -157,19 +171,23 @@ def _day_candidates(request, shares):
 
 def generate_meals(request):
     """Keep limits inviolable; evaluate fit on the day, never require a slot fit."""
-    if any(not isfinite(request.targets[key]) or request.targets[key] < 0 for key in TARGET_KEYS):
+    # A plan saved without every macro key (or with an empty map fallback) has no
+    # target for it; missing and None read as zero and leave the day unavailable.
+    raw_targets = request.targets if isinstance(request.targets, dict) else {}
+    targets = {key: raw_targets.get(key) or 0 for key in TARGET_KEYS}
+    if any(not isfinite(targets[key]) or targets[key] < 0 for key in TARGET_KEYS):
         raise ValueError("Meal targets must be finite and non-negative.")
-    if not any(request.targets[key] for key in TARGET_KEYS[1:]):
+    if not any(targets[key] for key in TARGET_KEYS[1:]):
         return {"status": "unavailable", "reason": "portions", "meals": []}
-    shares = slot_targets(request)
+    shares = slot_targets(request, targets)
     candidates, reason = _day_candidates(request, shares)
     if reason:
         return {"status": "unavailable", "reason": reason, "meals": []}
-    selected = choose_day(candidates, tuple(request.targets[key] for key in TARGET_KEYS),
+    selected = choose_day(candidates, tuple(targets[key] for key in TARGET_KEYS),
                           [tuple(share[key] for key in TARGET_KEYS) for share in shares.values()])
     meals = [_portioned_meal(slot, share, [food for food, _grams in candidate.choices],
                             [grams for _food, grams in candidate.choices])
              for (slot, share), candidate in zip(shares.items(), selected.choices)]
     totals = {key: sum(meal["totals"][key] for meal in meals) for key in TARGET_KEYS}
     return {"status": "ready", "meals": meals, "totals": totals,
-            "gap_note": day_gap_note(totals, request.targets)}
+            "gap_note": day_gap_note(totals, targets)}

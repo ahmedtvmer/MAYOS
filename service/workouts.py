@@ -10,6 +10,8 @@ from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from agent.chat_markers import SessionPointerFacts, format_session_pointer
+from agent.program_blueprints import SLOT_SPECS
+from agent.program_order import shares_main_muscle
 from agent.ProgramState import program_exercise_working_sets
 from agent.debrief import generate_session_debrief
 from agent.progression_engine import (
@@ -681,6 +683,104 @@ def _previous_progression_sets(
     ]
 
 
+def _program_position_rationale(
+    program: Any, day_order: int, exercise_id: str
+) -> dict[str, Any] | None:
+    rationale = getattr(program, "program_rationale", None) or {}
+    for day in rationale.get("days", []):
+        if int(day.get("day_order", 0)) != int(day_order):
+            continue
+        for entry in day.get("exercises", []):
+            if str(entry.get("exercise_id")) == exercise_id:
+                return (entry.get("rationale") or {}).get("position")
+    return None
+
+
+def _program_has_pre_exhaust_order(program: Any, day_order: int, exercise_id: str) -> bool:
+    if program is None:
+        return False
+    day = _program_day(program, day_order)
+    if day is None:
+        return False
+    compound_index = _exercise_position(day.exercises, exercise_id)
+    if compound_index is None:
+        return False
+    compound = day.exercises[compound_index]
+    return any(
+        _is_pre_exhaust_isolation(isolation, compound)
+        for isolation in day.exercises[:compound_index]
+    )
+
+
+def _program_day(program: Any, day_order: int) -> Any | None:
+    return next(
+        (day for day in program.days if int(day.day_order) == int(day_order)), None
+    )
+
+
+def _exercise_position(exercises: list[Any], exercise_id: str) -> int | None:
+    return next(
+        (index for index, exercise in enumerate(exercises)
+         if str(exercise.exercise_id) == exercise_id),
+        None,
+    )
+
+
+def _is_pre_exhaust_isolation(isolation: Any, compound: Any) -> bool:
+    spec = SLOT_SPECS.get(isolation.slot_key or "")
+    return bool(
+        spec
+        and spec.archetype == "isolation"
+        and shares_main_muscle(isolation.slot_key, compound.slot_key)
+    )
+
+
+def _pre_exhaust_position_transition(
+    program: Any, ledger: Any, day_order: int, exercise_id: str
+) -> dict[str, Any] | None:
+    from agent.program_rationale import POSITION_FOLLOWS_PRE_EXHAUST
+
+    current_version = getattr(program, "version", None)
+    current_position = _program_position_rationale(program, day_order, exercise_id) or {}
+    if current_version is None or current_position.get("code") != POSITION_FOLLOWS_PRE_EXHAUST:
+        return None
+    previous_version = ledger.get_last_performance_program_version(exercise_id)
+    if previous_version == current_version or _previous_version_has_pre_exhaust_order(
+        ledger, previous_version, day_order, exercise_id
+    ):
+        return None
+
+    return _position_transition_details(
+        current_position, POSITION_FOLLOWS_PRE_EXHAUST, previous_version, current_version
+    )
+
+
+def _previous_version_has_pre_exhaust_order(
+    ledger: Any, version: int | None, day_order: int, exercise_id: str
+) -> bool:
+    if version is None:
+        return False
+    previous_program = ledger.get_program_by_version(version)
+    return _program_has_pre_exhaust_order(previous_program, day_order, exercise_id)
+
+
+def _position_transition_details(
+    position: dict[str, Any], reason_code: str, previous_version: int | None, current_version: int
+) -> dict[str, Any]:
+    transition = {
+        "reason_code": reason_code,
+        "from_program_version": previous_version,
+        "to_program_version": current_version,
+    }
+    reason_params = position.get("params", {})
+    transition.update({
+        key: reason_params[key]
+        for key in ("reason_en", "reason_ar")
+        if reason_params.get(key)
+    })
+    return transition
+
+
 def _persist_session(
     db: Any,
     ledger_id: str,
@@ -791,6 +891,13 @@ def _persist_session(
         previous_progression_sets = _previous_progression_sets(
             prev_perf, set_groups, excluded_group_index
         )
+        position_transition = (
+            _pre_exhaust_position_transition(
+                progression_program, ledger, day_plan.day_order, exercise_id
+            )
+            if previous_progression_sets
+            else None
+        )
         top_set, target_group = max(
             progression_sets or [(logged_set, set_groups[0]) for logged_set in working_sets],
             key=lambda entry: entry[0]["weight_kg"],
@@ -881,6 +988,7 @@ def _persist_session(
                 "status_badge": status_badge,
                 "projection_status": next_proj["status"],
                 "target_text": target_text,
+                **({"position_transition": position_transition} if position_transition else {}),
             }
         )
 

@@ -378,7 +378,7 @@ An account's chosen English or Arabic language for the app and MAYOS messages, i
 _Avoid_: Locale (implementation term), app language
 
 **Franco-Arabic**:
-Arabic written in Latin letters and digits, such as "3ayez a8ayar el bench". The assistant does not act on or answer it, and asks the person to write in Arabic or English instead.
+Arabic written in Latin letters and digits, such as "3ayez a8ayar el bench". The assistant recognizes an explicit, fully named exercise-swap request when clinical screening finds no symptoms. Other Franco-Arabic input receives the existing request to write in Arabic or English; clinical Franco-Arabic remains screened before routing.
 _Avoid_: Arabizi, Franco
 
 **Linked sign-in**:

@@ -1149,6 +1149,44 @@ def test_assistant_swap_refused_during_control(api, monkeypatch):
     swap.assert_not_called()
 
 
+def test_validated_arabic_swap_during_coach_control_suggests_request(api, monkeypatch):
+    from agent import assistant_graph
+    from langchain_core.messages import HumanMessage
+
+    client, db, _ = api
+    coach_headers, _, assignment_id, _, player_account_id = _assigned_player(api)
+    _coach_generation(db, monkeypatch)
+    assert _publish(client, coach_headers, assignment_id).status_code == 200
+
+    db.switch_user("p1")
+    before = db.ledger.get_active_program()
+    state = {
+        "messages": [HumanMessage(content="بدل Bench Press بـ Dumbbell Press")],
+        "trainee_id": "p1",
+        "player_account_id": player_account_id,
+        "intent": "exercise_substitution",
+        "intent_metadata": {
+            "mode": "direct_swap",
+            "source_exercise": "Bench Press",
+            "source_exercise_id": "bp",
+            "source_day": "Full A",
+            "target_exercise": "Dumbbell Press",
+            "target_exercise_id": "dbp",
+            "arabic_data_validated": True,
+        },
+    }
+
+    result = assistant_graph.exercise_substitution_node(
+        state, {"configurable": {"ledger": db.ledger, "store": db}}
+    )
+
+    assert result["program_updated"] is False
+    assert result["request_suggestion"]["kind"] == "exercise_substitution"
+    assert result["request_suggestion"]["exercise_id"] == "bp"
+    assert result["request_suggestion"]["replacement_exercise_id"] == "dbp"
+    assert db.ledger.get_active_program().version == before.version
+
+
 def test_chat_api_suggests_prefilled_substitution_only_from_resolved_ledger_facts(api, monkeypatch):
     from agent import assistant_graph
     from service.program_requests import MAX_REASON_CHARS

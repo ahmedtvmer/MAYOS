@@ -340,7 +340,7 @@ def test_apply_request_targets_exact_week_and_day_in_two_week_program(api, monke
 
 def test_coach_applied_substitution_records_coach_and_keeps_untouched_reason(api, monkeypatch):
     client, db, _ = api
-    coach_headers, player_headers, assignment_id, coach_account_id, _ = _assigned_player(api)
+    coach_headers, player_headers, assignment_id, coach_account_id, player_account_id = _assigned_player(api)
     _coach_generation(db, monkeypatch)
     assert _publish(client, coach_headers, assignment_id).status_code == 200
     db.switch_user("p1")
@@ -356,6 +356,14 @@ def test_coach_applied_substitution_records_coach_and_keeps_untouched_reason(api
     assert created.status_code == 200, created.text
     applied = client.post(f"/coach/assignments/{assignment_id}/program-requests/{created.json()['request_id']}/apply", headers=coach_headers)
     assert applied.status_code == 200, applied.text
+    with db.catalog_locked() as connection:
+        push = connection.execute(
+            "SELECT account_id, dedupe_key, notification_type FROM push_events WHERE dedupe_key=?",
+            (f"program-request-reply:{created.json()['request_id']}",),
+        ).fetchone()
+    assert tuple(push) == (
+        player_account_id, f"program-request-reply:{created.json()['request_id']}", "coach_updates"
+    )
     db.switch_user("p1")
     rationale = db.ledger.get_active_program().program_rationale["days"][0]["exercises"]
     by_id = {row["exercise_id"]: row for row in rationale}
@@ -1094,6 +1102,38 @@ def test_notify_failure_after_program_write_does_not_reopen_request(api, monkeyp
     active = db.ledger.get_active_program()
     assert active.version == 2
     assert active.weekly_frequency == 3
+
+
+def test_742_program_request_and_decline_pushes_survive_notice_failures(api, monkeypatch):
+    client, db, _ = api
+    coach_headers, player_headers, assignment_id, coach_account_id, player_account_id = _assigned_player(api)
+    _coach_generation(db, monkeypatch)
+    assert _publish(client, coach_headers, assignment_id).status_code == 200
+
+    def fail_notice(_notice):
+        raise RuntimeError("notice store unavailable")
+
+    monkeypatch.setattr(db, "create_assignment_notice_record", fail_notice)
+    created = _create(client, player_headers, **_substitution())
+    request_id = created.json()["request_id"]
+    declined = client.post(
+        f"/coach/assignments/{assignment_id}/program-requests/{request_id}/decline",
+        headers=coach_headers,
+        json={"response": "Keep the squat for now."},
+    )
+    assert declined.status_code == 200, declined.text
+
+    with db.catalog_locked() as connection:
+        cursor = connection.execute(
+            "SELECT dedupe_key, account_id, notification_type FROM push_events "
+            "WHERE dedupe_key IN (?, ?)",
+            (f"program-request:{request_id}", f"program-request-reply:{request_id}"),
+        )
+        events = {row[0]: (row[1], row[2]) for row in cursor}
+    assert events == {
+        f"program-request:{request_id}": (coach_account_id, "alerts"),
+        f"program-request-reply:{request_id}": (player_account_id, "coach_updates"),
+    }
 
 
 def test_apply_stale_request_after_new_publication(api, monkeypatch):
