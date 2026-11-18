@@ -1826,7 +1826,7 @@ alerts, and clears `SMTP_HOST` regardless of settings-file values. Emails
 appear in `docker logs` instead of being sent:
 
 ```bash
-sudo docker logs mayos-staging-api-1
+sudo docker logs mayos-staging-api-staging-1
 ```
 
 Install the auto-stop helper and units using the shared unit installation
