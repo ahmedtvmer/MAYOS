@@ -7,7 +7,7 @@ import numpy as np
 
 from core.meal_portions import portion_grid, portion_limits
 
-TOLERANCES = (.05, .05, .10, .10)
+TOLERANCES = (.02, .05, .10, .10)
 FOODS_PER_ROLE = 4
 PORTION_SWEEPS = 12
 MEAL_CANDIDATES = 16
@@ -134,10 +134,13 @@ def _continuous_portions(triples, targets):
 
 def _nearby_amounts(option, optimum):
     # Fixed intervals collapse to one amount; off-grid bounds stay unavailable.
+    # Two steps on each side keep the ±2% day calorie band reachable: a single
+    # 25 g (or 5 g oil) step moves a slot by more than that band, so one-step
+    # neighborhoods can leave every retained meal just outside it.
     unit = optimum / option.step
-    nearest = np.floor(unit + .5)
+    nearest = int(np.floor(unit + .5))
     return sorted({round(float(np.clip(index * option.step, option.lower, option.upper)), 6)
-                   for index in (nearest - 1, nearest, nearest + 1)})
+                   for index in range(nearest - 2, nearest + 3)})
 
 
 def _portion_neighborhood(triple, optimum):
