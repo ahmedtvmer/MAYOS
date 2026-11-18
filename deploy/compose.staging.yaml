@@ -1,7 +1,7 @@
 name: mayos-staging
 
 services:
-  api:
+  api-staging:
     image: "mayos-api-staging:${MAYOS_STAGING_IMAGE_TAG:?set staging image tag}"
     build:
       context: ..

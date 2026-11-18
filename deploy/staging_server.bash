@@ -31,17 +31,33 @@ staging_upload_path() {
 }
 
 staging_container() {
-  sudo docker ps -aq --filter label=com.docker.compose.project=mayos-staging \
-    --filter label=com.docker.compose.service=api | awk 'NR == 1 { print }'
+  # The staging service container for reads (status, autostop gating): prefer
+  # the renamed api-staging service, fall back to the pre-rename "api" label so
+  # a container started before #763 stays readable. Production (project mayos)
+  # is never matched.
+  local service id
+  for service in api-staging api; do
+    id="$(sudo docker ps -aq --filter label=com.docker.compose.project=mayos-staging \
+      --filter label=com.docker.compose.service="$service" | awk 'NR == 1 { print }')"
+    if [[ -n "$id" ]]; then printf '%s\n' "$id"; return; fi
+  done
+}
+
+staging_containers() {
+  # Every container in the staging project. down/autostop must remove ALL of
+  # them: a pre-rename mayos-staging-api-1 keeps the "api" network alias and
+  # would otherwise keep answering production's api.mayos.online route (#763).
+  sudo docker ps -aq --filter label=com.docker.compose.project=mayos-staging
 }
 
 staging_stop() {
-  local container
-  container="$(staging_container)"
-  if [[ -n "$container" ]]; then
+  local containers container
+  containers="$(staging_containers)"
+  while IFS= read -r container; do
+    [[ -n "$container" ]] || continue
     sudo docker stop --time 60 "$container" >/dev/null
     sudo docker rm "$container" >/dev/null
-  fi
+  done <<<"$containers"
   printf 'Staging is off.\n'
 }
 
@@ -75,18 +91,23 @@ staging_status() {
 }
 
 staging_autostop() {
-  local container started_at stop_epoch now
-  container="$(staging_container)"
-  [[ -n "$container" ]] || return 0
-  [[ "$(sudo docker inspect --format '{{.State.Running}}' "$container")" == true ]] || return 0
-  started_at="$(sudo docker inspect --format '{{.State.StartedAt}}' "$container")"
-  stop_epoch="$(staging_deadline_epoch "$container" "$started_at")"
+  local container containers started_at stop_epoch now
+  containers="$(staging_containers)"
   now="$(date +%s)"
-  # The boundary is inclusive: the first check at or after expiry stops staging.
-  if (( now >= stop_epoch )); then
-    printf 'Staging TTL expired (%s); stopping.\n' "$started_at"
-    staging_stop
-  fi
+  # Check each staging container's own TTL: a pre-rename container must not be
+  # skipped just because the renamed one is absent or already stopped (#763).
+  while IFS= read -r container; do
+    [[ -n "$container" ]] || continue
+    [[ "$(sudo docker inspect --format '{{.State.Running}}' "$container")" == true ]] || continue
+    started_at="$(sudo docker inspect --format '{{.State.StartedAt}}' "$container")"
+    stop_epoch="$(staging_deadline_epoch "$container" "$started_at")"
+    # The boundary is inclusive: the first check at or after expiry stops staging.
+    if (( now >= stop_epoch )); then
+      printf 'Staging TTL expired (%s); stopping.\n' "$started_at"
+      staging_stop
+      return
+    fi
+  done <<<"$containers"
 }
 
 staging_wait_ready() {
@@ -95,7 +116,7 @@ staging_wait_ready() {
     remaining=$((deadline - SECONDS))
     request_timeout=4
     if (( remaining < request_timeout )); then request_timeout=$remaining; fi
-    if (( request_timeout > 0 )) && last_output="$(timeout "${request_timeout}s" "${compose[@]}" exec -T api \
+    if (( request_timeout > 0 )) && last_output="$(timeout "${request_timeout}s" "${compose[@]}" exec -T api-staging \
       curl -fsS --max-time "$request_timeout" http://localhost:8000/readyz 2>&1)"; then
       printf '%s\n' "$last_output"
       return 0
@@ -161,10 +182,13 @@ staging_up() {
   printf 'MAYOS_STAGING_IMAGE_TAG=%s\nMAYOS_STAGING_COMMIT=%s\n' "$tag" "$commit" > "$staging_state/image.env"
   local -a compose=(sudo docker compose -f "$staging_state/app/deploy/compose.staging.yaml"
     --env-file /opt/mayos/staging.env --env-file "$staging_state/image.env" -p mayos-staging)
-  ttl_hours="$("${compose[@]}" config --format json | python3 -c 'import json,sys; print(json.load(sys.stdin)["services"]["api"]["labels"]["online.mayos.staging.ttl-hours"])')"
+  ttl_hours="$("${compose[@]}" config --format json | python3 -c 'import json,sys; print(json.load(sys.stdin)["services"]["api-staging"]["labels"]["online.mayos.staging.ttl-hours"])')"
   staging_ttl_seconds "$ttl_hours" >/dev/null
   staging_build "$tag" "$commit"
-  "${compose[@]}" up -d --no-deps --no-build --force-recreate api
+  # --remove-orphans drops a pre-rename mayos-staging-api-1 container (#763):
+  # its service label "api" no longer exists in this project, and it would
+  # otherwise keep answering production's api.mayos.online route on mayos_default.
+  "${compose[@]}" up -d --no-deps --no-build --force-recreate --remove-orphans api-staging
   staging_remember_image "$commit" "$tag"
   staging_prune_images
   staging_wait_ready
