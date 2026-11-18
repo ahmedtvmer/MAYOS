@@ -4326,7 +4326,10 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
             if requested_day is not None
             else (None, None, 0.0)
         )
-        matched_ex, target_day, best_similarity = requested_match
+        # A named day only locks the slot when it holds the source; when it does
+        # not, the day that actually holds the source stays authoritative.
+        if requested_match[0] and requested_match[2] >= SUBSTITUTION_SOURCE_SIMILARITY_THRESHOLD:
+            matched_ex, target_day, best_similarity = requested_match
 
     if (
         requested_day_name is None
