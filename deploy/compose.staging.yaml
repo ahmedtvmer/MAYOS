@@ -17,6 +17,7 @@ services:
       SENTRY_ENVIRONMENT: staging
       MAYOS_LITESTREAM: "false"
       DISCORD_ALERT_WEBHOOK_URL: ""
+      DISCORD_FEEDBACK_WEBHOOK_URL: ""
       SMTP_HOST: ""
       MAYOS_DATA_DIR: /data
       MAYOS_REQUIRE_PERSISTENT_DATA: "true"

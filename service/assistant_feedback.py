@@ -18,6 +18,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 FEEDBACK_WEBHOOK_ENV = "DISCORD_FEEDBACK_WEBHOOK_URL"
+ALERT_WEBHOOK_ENV = "DISCORD_ALERT_WEBHOOK_URL"
 NOTE_MAX_CHARS = 500
 REASONS = {
     "wrong_information": "Wrong information",
@@ -156,6 +157,21 @@ def _redact_excerpt(text: str, terms: list[str]) -> str:
     return excerpt or "[reply excerpt redacted]"
 
 
+def _feedback_webhook() -> str:
+    """Feedback webhook URL: the dedicated env first, then the alert webhook.
+
+    ``DISCORD_FEEDBACK_WEBHOOK_URL`` is the owner's feedback-specific choice;
+    the already-deployed ``DISCORD_ALERT_WEBHOOK_URL`` (Sentry alerts, issue
+    #639) is the fallback so reports work without a second secret. Whitespace
+    is stripped and an empty result means "no delivery configured".
+    """
+    for name in (FEEDBACK_WEBHOOK_ENV, ALERT_WEBHOOK_ENV):
+        value = os.getenv(name, "").strip()
+        if value:
+            return value
+    return ""
+
+
 def _discord_post(content: str) -> bool:
     """Sends one message to the feedback webhook; True only on a 2xx.
 
@@ -163,7 +179,7 @@ def _discord_post(content: str) -> bool:
     Returns ``False`` when no webhook is configured or delivery fails. Tests
     patch this function; the webhook URL never enters logs or test payloads.
     """
-    webhook = os.getenv(FEEDBACK_WEBHOOK_ENV, "").strip()
+    webhook = _feedback_webhook()
     if not webhook:
         return False
     try:
@@ -476,8 +492,7 @@ def send_weekly_summary(db: Any, now: datetime | None = None) -> bool:
     summary = summarize_votes(db, now)
     if summary is None or (summary["up"] + summary["down"] == 0):
         return False
-    webhook = os.getenv(FEEDBACK_WEBHOOK_ENV, "").strip()
-    if not webhook:
+    if not _feedback_webhook():
         return False
     db.ensure_account_schema()
     if db.catalog_conn.execute(
@@ -498,8 +513,7 @@ def send_weekly_summary(db: Any, now: datetime | None = None) -> bool:
 
 
 def retry_pending_reports(db: Any, limit: int = 20) -> int:
-    webhook = os.getenv(FEEDBACK_WEBHOOK_ENV, "").strip()
-    if not webhook:
+    if not _feedback_webhook():
         return 0
     delivered = 0
     for account in db.list_accounts():
