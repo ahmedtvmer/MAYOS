@@ -10,7 +10,7 @@ from agent.prompts import DEFAULT_ASSISTANT_STYLE
 from database.exercise_library.curation import apply_exercise_curation
 from database.food_library.seeding import ensure_food_meal_limits_schema, ensure_food_search_schema
 from database.migration_manager import CURRENT_LEDGER_SCHEMA_VERSION
-from database.migration_manager import CHAT_HISTORY_FTS_DDL, FOOD_LOG_DDL, MEAL_SETUP_DDL, PERSONAL_FOODS_DDL
+from database.migration_manager import CHAT_HISTORY_FTS_DDL, CHAT_HISTORY_LEDGER_DDL, FOOD_LOG_DDL, MEAL_SETUP_DDL, PERSONAL_FOODS_DDL
 from database.migration_manager import (
     ASSISTANT_GOAL_WEAK_POINT_PENDING_DDL,
     ASSISTANT_PREFERENCES_DDL,
@@ -22,6 +22,7 @@ from database.migration_manager import EQUIPMENT_ACCESS_DDL
 from database.migration_manager import CHECKPOINT_REVIEWS_DDL
 from database.ledger.nutrition_drafts import NUTRITION_DRAFTS_DDL
 from database.ledger.nutrition import NUTRITION_MEAL_GENERATION_CACHE_DDL
+from database.ledger.assistant_feedback import ASSISTANT_FEEDBACK_DDL
 from database.migration_manager import DELOAD_CHOICES_DDL
 from database.migration_manager import INTAKE_DDL
 from database.migration_manager import INJURY_RECORDS_DDL
@@ -362,17 +363,10 @@ class SchemaMixin:
             );
             CREATE INDEX IF NOT EXISTS idx_pr_exercise ON personal_records(exercise_id, record_type);
 
-            CREATE TABLE IF NOT EXISTS chat_history (
-                id TEXT PRIMARY KEY,
-                role TEXT CHECK(role IN ('user', 'assistant', 'system')) NOT NULL,
-                content TEXT NOT NULL,
-                created_at TEXT NOT NULL
-            );
             CREATE TABLE IF NOT EXISTS assistant_memory (
                 key TEXT PRIMARY KEY CHECK (key = 'preferred_name'),
                 value TEXT NOT NULL CHECK (length(value) BETWEEN 1 AND 60 AND length(trim(value)) > 0)
             );
-            CREATE INDEX IF NOT EXISTS idx_chat_created ON chat_history(created_at);
             CREATE INDEX IF NOT EXISTS idx_sets_session ON workout_sets(session_id);
             CREATE INDEX IF NOT EXISTS idx_sets_exercise ON workout_sets(exercise_id);
             CREATE INDEX IF NOT EXISTS idx_sessions_date ON workout_sessions(session_date);
@@ -444,6 +438,7 @@ class SchemaMixin:
                 *WEIGHT_HISTORY_DDL,
                 *FOOD_LOG_DDL,
                 *PERSONAL_FOODS_DDL,
+                *CHAT_HISTORY_LEDGER_DDL,
                 *CHAT_HISTORY_FTS_DDL,
                 *MEAL_SETUP_DDL,
                 NUTRITION_DRAFTS_DDL,
@@ -453,6 +448,7 @@ class SchemaMixin:
                 *ASSISTANT_GOAL_WEAK_POINT_PENDING_DDL,
                 *VOLUME_REVIEWS_DDL,
                 *PROGRAM_DESIGN_OFFER_DDL,
+                *ASSISTANT_FEEDBACK_DDL,
             )
         ))
         ensure_revision_schema(
@@ -519,6 +515,10 @@ class SchemaMixin:
                 CREATE TABLE IF NOT EXISTS password_reset_notice_limits (
                     email_hash TEXT PRIMARY KEY,
                     claimed_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS assistant_feedback_summary_weeks (
+                    week_start TEXT PRIMARY KEY,
+                    sent_at TEXT NOT NULL
                 );
 
                 CREATE TABLE IF NOT EXISTS account_login_failures (

@@ -1786,7 +1786,13 @@ def test_coach_ai_analysis_emits_metered_turn_after_http_answer(api, monkeypatch
         for line in response.text.splitlines()
         if line.startswith("data: ") and '"done"' in line
     ]
-    assert done == [{"done": True, "answer": "Keep the same training load."}]
+    assert len(done) == 1
+    done_frame = done[0]
+    assert done_frame["done"] is True
+    assert done_frame["answer"] == "Keep the same training load."
+    feedback_context = done_frame["feedback_context"]
+    assert feedback_context["reply_text"] == done_frame["answer"]
+    assert feedback_context["route"] == "coach_assistant"
     _assert_ai_usage_event(recording_analytics, db, coach_account_id, "coach_assistant", 1)
 
 

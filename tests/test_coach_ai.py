@@ -1919,7 +1919,13 @@ def test_empty_model_reply_returns_the_standard_fallback(api, monkeypatch, tmp_p
     assert response.status_code == 200, response.text
     assert response.headers["content-type"].startswith("text/event-stream")
     frames = _sse_frames(response)
-    assert frames[-1] == ("message", {"done": True, "answer": EMPTY_RESPONSE_FALLBACK})
+    assert frames[-1][0] == "message"
+    done = frames[-1][1]
+    assert done["done"] is True
+    assert done["answer"] == EMPTY_RESPONSE_FALLBACK
+    feedback_context = done["feedback_context"]
+    assert feedback_context["reply_text"] == done["answer"]
+    assert feedback_context["route"] == "coach_assistant"
     assert any(frame == ("message", {"token": EMPTY_RESPONSE_FALLBACK}) for frame in frames)
 
 
