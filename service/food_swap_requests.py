@@ -1,6 +1,7 @@
 """Player Food swap requests and Assignment-gated Coach decisions (ADR 027)."""
 
 import json
+import logging
 import sqlite3
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -8,9 +9,12 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from database import food_swap_requests as queue
+from database.ledger import push as ledger_push
 from database.ledger.nutrition import NutritionPlanVersion
 from service.assignments import authorized_player_ledger
 from service.coach_nutrition_validation import evaluate
+
+logger = logging.getLogger(__name__)
 
 
 class RequestNotFound(ValueError):
@@ -80,6 +84,10 @@ def _create_record(db, assignment, target, reason):
     request_id = uuid4().hex
     queue.insert(db, {**assignment, "request_id": request_id, "food_swap": target,
                       "reason": reason.strip(), "created_at": _now()})
+    from service.web_push import queue_event
+
+    queue_event(db.catalog_conn, assignment["coach_account_id"], "food_swap_request",
+                f"food-swap-request:{request_id}")
     return queue.get(db, assignment["coach_account_id"], assignment["assignment_id"], request_id), True
 
 
@@ -194,7 +202,20 @@ def _resolve(db, ledger, command, claimed_ids):
         claimed_ids.append(command.request_id)
         _save_plan(ledger, active, payload)
     _require_assignment(db, command.coach_id, command.assignment_id)
-    return queue.get(db, command.coach_id, command.assignment_id, command.request_id)
+    resolved_request = queue.get(db, command.coach_id, command.assignment_id, command.request_id)
+    if command.applies:
+        ledger.record_push_intent(
+            ledger_push.PushIntent(
+                resolved_request["player_account_id"], "food_swap_reply",
+                f"food-swap-reply:{command.request_id}", resolved_request["resolved_at"],
+            ),
+        )
+    else:
+        from service.web_push import queue_event
+
+        queue_event(db.catalog_conn, resolved_request["player_account_id"], "food_swap_reply",
+                    f"food-swap-reply:{command.request_id}", resolved_request["resolved_at"])
+    return resolved_request
 
 
 def decide(db, command):
@@ -208,4 +229,12 @@ def decide(db, command):
             # The catalog claim serializes decisions with Assignment ending. Keep it
             # pending on validation/write failure, like the Program request queue.
             with db.catalog_transaction(immediate=True):
-                return _resolve(db, ledger, command, claimed_ids)
+                resolved_request = _resolve(db, ledger, command, claimed_ids)
+        if command.applies:
+            try:
+                from service.web_push import drain_push_intents
+
+                drain_push_intents(db, ledger)
+            except Exception:
+                logger.warning("Food swap push intent reconciliation failed", exc_info=False)
+    return resolved_request

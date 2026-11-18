@@ -3,17 +3,20 @@
 import json
 import sqlite3
 from dataclasses import replace
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 
 from database.food_library.builder import NUTRIENTS
 from database.food_library.seeding import FoodLibraryPaths, seed_food_library
-from database.ledger.nutrition import NutritionPlanVersion
+from database.ledger.nutrition import NutritionMealGenerationCacheKey, NutritionPlanVersion
+from database.ledger.nutrition_meals import generate_variants
 from database.migration_manager import apply_lazy_migrations, set_ledger_schema_version
-from service import meals, nutrition
-from tests.test_food_log_api import _csv
-from tests.test_nutrition_api import api, _player_today, _seed_profile  # noqa: F401
+from service import food_log, meals, nutrition
+from tests.test_food_log_api import _csv, _make_legacy_default_on_plan
+from tests.test_nutrition_api import (  # noqa: F401
+    api, _backdate_active_nutrition_plan, _player_today, _seed_pace_weight_history, _seed_profile,
+)
 
 
 @pytest.fixture
@@ -47,6 +50,9 @@ def meals_api(api, tmp_path):
         "sex": "male", "sex_confirmed": True, "daily_activity": "mostly_sitting",
         "screening": {"pregnant_or_breastfeeding": False, "medical_condition": False, "eating_disorder": False}})
     assert setup.status_code == 200, setup.text
+    ledger_id = db.get_active_account_by_username("meal-player")["ledger_id"]
+    with db.open_ledger(ledger_id) as ledger:
+        ledger.set_nutrition_meal_preference(False)
     return client, db, headers, _player_today(db, "meal-player")
 
 
@@ -88,6 +94,295 @@ def test_repeated_disabled_meal_reads_reuse_persisted_day_variants(meals_api):
     assert [row["created_at"] for row in rows_after] == [row["created_at"] for row in rows_before]
 
 
+def test_never_set_meal_switch_defaults_on_for_player(meals_api):
+    client, db, headers, _today = meals_api
+    with db.open_ledger(_ledger_id(db)) as ledger:
+        active = ledger.get_active_nutrition_plan()
+        assert json.loads(active["meals_json"])["enabled"] is True
+        ledger.conn.execute(
+            "INSERT INTO nutrition_plan_versions(author,provenance,goal,goal_reason_data_json,"
+            "intensity,daily_activity,targets_json,authority_assignment_id,created_at,meals_json) "
+            "SELECT author,provenance,goal,goal_reason_data_json,intensity,daily_activity,targets_json,"
+            "authority_assignment_id,created_at,NULL FROM nutrition_plan_versions WHERE id=?",
+            (active["id"],),
+        )
+        ledger.conn.execute("DELETE FROM nutrition_meal_preference WHERE id=1")
+        ledger.commit_ledger()
+
+    meals_state = client.get("/nutrition/meals", headers=headers).json()
+    nutrition_state = client.get("/nutrition", headers=headers).json()
+
+    assert meals_state["enabled"] is True
+    assert meals_state["status"] == "ready"
+    assert nutrition_state["meals_enabled"] is True
+    assert nutrition_state["meals"]
+
+
+def test_legacy_default_on_preview_remains_that_days_food_log_history_737(meals_api):
+    _client, db, _headers, today = meals_api
+    with db.open_ledger(_ledger_id(db)) as ledger:
+        _make_legacy_default_on_plan(ledger)
+        preview = nutrition.read(ledger, today=today)
+        assert preview["meals_enabled"] is True and preview["meals"]
+        saved = ledger.get_active_nutrition_plan()
+        assert json.loads(saved["meals_json"])["enabled"] is True
+        assert ledger.get_nutrition_meal_preference() is None
+
+        ledger.set_nutrition_meal_preference(False)
+        meals.read(ledger, today + timedelta(days=31))
+        history = food_log.read_day(ledger, today, today + timedelta(days=1))
+
+    assert history["planned_meals"] is not None
+    assert history["planned_meals"]["date"] == today.isoformat()
+    assert history["planned_meals"]["meals"] == preview["meals"]
+
+
+@pytest.mark.parametrize("reader", [nutrition.read, meals.read])
+def test_cold_legacy_meal_read_saves_only_after_query_only_mode_737(meals_api, reader):
+    _client, db, _headers, today = meals_api
+    with db.open_ledger(_ledger_id(db)) as ledger:
+        _make_legacy_default_on_plan(ledger)
+        legacy_id = ledger.get_active_nutrition_plan()["id"]
+        cache_before = ledger.conn.execute(
+            "SELECT count(*) FROM nutrition_meal_generation_cache"
+        ).fetchone()[0]
+        changes_before = ledger.conn.total_changes
+        ledger.conn.execute("PRAGMA query_only=ON")
+
+        state = reader(ledger, today=today)
+
+        cache_after = ledger.conn.execute(
+            "SELECT count(*) FROM nutrition_meal_generation_cache"
+        ).fetchone()[0]
+        assert ledger.conn.total_changes == changes_before
+        assert ledger.get_active_nutrition_plan()["id"] == legacy_id
+        ledger.conn.execute("PRAGMA query_only=OFF")
+        saved_state = reader(ledger, today=today)
+        saved_id = ledger.get_active_nutrition_plan()["id"]
+        assert saved_id > legacy_id
+        assert saved_state["meals"] == state["meals"]
+        reader(ledger, today=today)
+        assert ledger.get_active_nutrition_plan()["id"] == saved_id
+        assert ledger.get_nutrition_meal_preference() is None
+
+    assert state["meals"]
+    assert cache_after == cache_before
+
+
+def test_pinned_plan_history_survives_generation_cache_cleanup_737(meals_api, monkeypatch):
+    _client, db, _headers, today = meals_api
+    from database.ledger import nutrition as storage
+
+    class EndOfDay(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime.combine(today, datetime.max.time(), tzinfo=UTC).astimezone(tz)
+
+    monkeypatch.setattr(storage, "datetime", EndOfDay)
+    with db.open_ledger(_ledger_id(db)) as ledger:
+        active = ledger.get_active_nutrition_plan()
+        old_day = today - timedelta(days=40)
+        targets = json.loads(active["targets_json"])
+        with ledger.ledger_transaction():
+            pinned_id = ledger.save_nutrition_plan(NutritionPlanVersion(
+                "maintain", {"code": "default"}, None, "mostly_sitting", targets,
+                created_at=f"{old_day}T00:00:00+00:00", meals=generate_variants(ledger, targets, {}),
+            ))
+            ledger.conn.execute("DELETE FROM nutrition_meal_preference")
+        preview = meals.read(ledger, today)
+        assert preview["meals"] and preview["plan_version_id"] > pinned_id
+
+        ledger.save_nutrition_meal_generation_cache(NutritionMealGenerationCacheKey(
+            (today + timedelta(days=1)).isoformat(), preview["plan_version_id"], "cleanup", preview["day_type"],
+        ), {"status": "unavailable", "meals": []})
+        assert ledger.conn.execute(
+            "SELECT count(*) FROM nutrition_meal_generation_cache WHERE plan_version_id=?", (pinned_id,),
+        ).fetchone()[0] == 0
+        ledger.conn.execute("DELETE FROM nutrition_meal_generation_cache")
+        ledger.commit_ledger()
+        changes_before = ledger.conn.total_changes
+        history = food_log.read_day(ledger, today, today + timedelta(days=1))
+        assert ledger.conn.total_changes == changes_before
+
+    assert history["planned_meals"]["meals"] == preview["meals"]
+    assert history["planned_meals"]["day_totals"] == preview["day_totals"]
+
+
+def test_disabled_null_plan_preview_never_becomes_enabled_history_737(meals_api):
+    client, db, headers, today = meals_api
+    _enable(client, headers)
+    _disable(client, headers)
+    changed = client.put("/nutrition/activity", headers=headers, json={"daily_activity": "on_feet"})
+    assert changed.status_code == 200, changed.text
+    preview = client.get("/nutrition/meals", headers=headers).json()
+    assert preview["enabled"] is False and preview["status"] == "disabled"
+    with db.open_ledger(_ledger_id(db)) as ledger:
+        assert ledger.get_active_nutrition_plan()["meals_json"] is None
+        assert ledger.conn.execute(
+            "SELECT count(*) FROM nutrition_meal_generation_cache WHERE plan_version_id=?",
+            (preview["plan_version_id"],),
+        ).fetchone()[0] > 0
+        for current_preference in (False, True):
+            ledger.set_nutrition_meal_preference(current_preference)
+            changes_before = ledger.conn.total_changes
+            history = food_log.read_day(ledger, today, today + timedelta(days=1))
+            assert history["planned_meals"] is None
+            assert ledger.conn.total_changes == changes_before
+
+
+@pytest.mark.parametrize("viewed_before_setup", [False, True])
+@pytest.mark.parametrize("training_day", [False, True])
+def test_implicit_on_meals_regenerate_after_meal_setup_save_737(meals_api, viewed_before_setup, training_day):
+    client, db, headers, today = meals_api
+    with db.open_ledger(_ledger_id(db)) as ledger:
+        _make_legacy_default_on_plan(ledger)
+        weekday = today.isoweekday() if training_day else today.isoweekday() % 7 + 1
+        ledger.append_training_schedule(ledger.ledger_id, [weekday], "UTC", today.isoformat(),
+                                        "2026-01-01T00:00:00Z")
+    if viewed_before_setup:
+        assert len(client.get("/nutrition/meals", headers=headers).json()["meals"]) == 3
+    with db.open_ledger(_ledger_id(db)) as ledger:
+        before_id = ledger.get_active_nutrition_plan()["id"]
+    changed = client.put("/nutrition/meal-setup", headers=headers, json={
+        "meal_count": 5, "training_time": "evening",
+        "restrictions": {"allergies": [], "dislikes": [], "vegetarian": False}})
+    assert changed.status_code == 200, changed.text
+    assert len(changed.json()["slots"]) == 5
+    # #737: no meals read after setup save; history must use the saved table alone.
+    with db.open_ledger(_ledger_id(db)) as ledger:
+        ledger.conn.execute("DELETE FROM nutrition_meal_generation_cache")
+        ledger.commit_ledger()
+        ledger.conn.execute("PRAGMA query_only=ON")
+        history = food_log.read_day(ledger, today, today + timedelta(days=1))
+    planned = history["planned_meals"]
+    assert len(planned["meals"]) == 5
+    assert planned["day_type"] == ("training_day" if training_day else "rest_day")
+    refreshed = client.get("/nutrition/meals", headers=headers).json()
+    assert refreshed["enabled"] is True and len(refreshed["meals"]) == 5
+    assert refreshed["plan_version_id"] > before_id
+    assert planned["meals"] == refreshed["meals"]
+    with db.open_ledger(_ledger_id(db)) as ledger:
+        assert ledger.get_nutrition_meal_preference() is None
+
+
+def test_uncached_legacy_history_has_no_meals_or_writes_737(meals_api):
+    _client, db, _headers, today = meals_api
+    yesterday = today - timedelta(days=1)
+    with db.open_ledger(_ledger_id(db)) as ledger:
+        _make_legacy_default_on_plan(ledger, created_at=f"{yesterday}T00:00:00+00:00")
+        changes_before = ledger.conn.total_changes
+        history = food_log.read_day(ledger, yesterday, today)
+        assert ledger.conn.total_changes == changes_before
+    assert history["targets"] is not None
+    assert history["planned_meals"] is None
+
+
+@pytest.mark.parametrize("pending_before_read", [False, True])
+def test_meal_materialization_preserves_pace_baseline_and_proposal_737(meals_api, pending_before_read):
+    client, db, headers, today = meals_api
+    with db.open_ledger(_ledger_id(db)) as ledger:
+        _make_legacy_default_on_plan(ledger)
+        start = today - timedelta(days=21)
+        _backdate_active_nutrition_plan(ledger, start)
+        _seed_pace_weight_history(ledger, start, (70, 68.6, 67.2, 65.8))
+        baseline = dict(ledger.get_active_nutrition_target_plan())
+        previous_version = ledger.get_active_nutrition_plan()["id"]
+        pending = nutrition.evaluate_pace_check(ledger, today) if pending_before_read else None
+        if pending_before_read:
+            assert pending is not None
+
+        state = nutrition.read(ledger, today=today)
+
+        assert state["meals"]
+        assert ledger.get_active_nutrition_plan()["id"] > previous_version
+        after = ledger.get_active_nutrition_target_plan()
+        assert (after["id"], after["created_at"]) == (baseline["id"], baseline["created_at"])
+        if pending_before_read:
+            assert state["pace_proposal"]["stale"] is False
+            assert state["pace_proposal"]["status"] == "pending"
+            assert state["pace_proposal"]["plan_version_id"] == pending["plan_version_id"]
+        else:
+            pending = nutrition.evaluate_pace_check(ledger, today)
+            assert pending is not None  # Pre-materialization weigh-ins still qualify.
+        assert pending["plan_version_id"] == baseline["id"]
+
+    accepted = client.post(f"/nutrition/pace-proposals/{pending['id']}/decision", headers=headers,
+                           json={"decision": "accepted"})
+    assert accepted.status_code == 200, accepted.text
+    assert accepted.json()["pace_proposal"]["status"] == "accepted"
+
+
+@pytest.mark.parametrize("hourly_sweep", [False, True])
+def test_pace_checks_with_default_on_meals_never_generate_meals_737(meals_api, hourly_sweep, monkeypatch):
+    _client, db, _headers, today = meals_api
+    with db.open_ledger(_ledger_id(db)) as ledger:
+        _make_legacy_default_on_plan(ledger)
+        _backdate_active_nutrition_plan(ledger, today - timedelta(days=21))
+        _seed_pace_weight_history(ledger, today - timedelta(days=21), (70, 68.6, 67.2, 65.8))
+        ledger.conn.execute(
+            "INSERT INTO workout_sessions(id,session_date,split_name,started_at,completed_at) VALUES(?,?,?,?,?)",
+            ("pace-cardio", today.isoformat(), "Day 1", "now", "now"),
+        )
+        ledger.conn.execute(
+            "INSERT INTO session_cardio_entries(session_id,machine,minutes,calories_kcal,calories_are_estimate,logged_at) "
+            "VALUES(?,?,?,?,?,?)", ("pace-cardio", "bike", 30, 301, 0, "now"),
+        )
+        ledger.conn.execute("DELETE FROM nutrition_meal_generation_cache")
+        ledger.commit_ledger()
+        before = dict(ledger.get_active_nutrition_plan())
+
+    from core import meal_execution
+
+    # Observe the worker-process boundary, including when a sweep catches its error.
+    meal_execution._completed.clear()
+
+    def reject_generation(*args, **kwargs):
+        raise AssertionError("Pace checks must not start a meal-generation worker")
+
+    monkeypatch.setattr(meal_execution._generation_pool, "submit", reject_generation)
+    if hourly_sweep:
+        from service.alert_sweep import run_sweep
+
+        result = run_sweep(db)
+        assert result["errors"] == 0
+    else:
+        with db.open_ledger(_ledger_id(db)) as ledger:
+            assert nutrition.evaluate_pace_check(ledger, today) is not None
+
+    with db.open_ledger(_ledger_id(db)) as ledger:
+        changes = ledger.conn.total_changes
+        assert nutrition.cardio_adjustment_for_day(ledger, today) == 150
+        assert ledger.conn.total_changes == changes
+        assert dict(ledger.get_active_nutrition_plan()) == before
+        assert ledger.conn.execute("SELECT count(*) FROM nutrition_meal_generation_cache").fetchone()[0] == 0
+        pending = ledger.get_nutrition_pace_proposal()
+        assert pending is not None and pending["status"] == "pending"
+        assert pending["plan_version_id"] == ledger.get_active_nutrition_target_plan()["id"]
+
+
+def test_saved_coach_history_ignores_player_switch_without_writes_737(meals_api):
+    client, db, headers, today = meals_api
+    enabled = _enable(client, headers)
+    with db.open_ledger(_ledger_id(db)) as ledger:
+        active = ledger.get_active_nutrition_plan()
+        with ledger.ledger_transaction():
+            ledger.save_nutrition_plan(NutritionPlanVersion(
+                "maintain", {"code": "coach"}, None, "mostly_sitting",
+                json.loads(active["targets_json"]), author="Coach", provenance="coach",
+                meals=json.loads(active["meals_json"]),
+            ))
+            ledger.conn.execute("DELETE FROM nutrition_meal_generation_cache")
+            ledger.set_nutrition_meal_preference(False)
+        changes_before = ledger.conn.total_changes
+        ledger.conn.execute("PRAGMA query_only=ON")
+        current = meals.read(ledger, today)
+        history = food_log.read_day(ledger, today, today + timedelta(days=1))
+        assert ledger.conn.total_changes == changes_before
+    assert current["enabled"] is True and current["meals"] == enabled["meals"]
+    assert history["planned_meals"]["author"] == "Coach"
+    assert history["planned_meals"]["meals"] == enabled["meals"]
+
+
 def test_other_day_type_is_generated_on_demand_from_pinned_foods(meals_api):
     client, db, headers, today = meals_api
     first = _enable(client, headers)
@@ -117,17 +412,23 @@ def test_other_day_type_is_generated_on_demand_from_pinned_foods(meals_api):
     demanded = client.get("/nutrition/meals", headers=headers).json()
 
     api_permissions = {"can_enable", "can_request_swap"}
-    assert {key: value for key, value in demanded.items() if key not in api_permissions} == read_only
+    assert {key: value for key, value in demanded.items() if key not in api_permissions | {"plan_version_id"}} == {
+        key: value for key, value in read_only.items() if key != "plan_version_id"}
     assert demanded["can_enable"] is True
     assert demanded["can_request_swap"] is False
     assert demanded["status"] == "ready" and demanded["day_type"] == other
-    assert demanded["plan_version_id"] == first["plan_version_id"]
+    assert demanded["plan_version_id"] > first["plan_version_id"]
     assert all(meal["foods"][0]["nutrients_per_100g"]["energy_kcal"] == 128 for meal in demanded["meals"])
     rows = _meal_cache_rows(db, ledger_id, anchor, first["plan_version_id"])
     assert {row["variant"] for row in rows} == {other}
     assert client.get("/nutrition/meals", headers=headers).json() == demanded
     with db.open_ledger(ledger_id) as ledger:
-        assert ledger.get_active_nutrition_plan()["meals_json"] == pinned
+        original = ledger.conn.execute(
+            "SELECT meals_json FROM nutrition_plan_versions WHERE id=?", (first["plan_version_id"],),
+        ).fetchone()[0]
+        assert original == pinned
+        assert set(json.loads(ledger.get_active_nutrition_plan()["meals_json"])["variants"]) == {
+            "training_day", "rest_day"}
 
 
 def test_meal_cache_fingerprint_changes_with_setup_foods_and_targets(meals_api):
@@ -186,6 +487,7 @@ def test_disable_versions_the_plan_keeps_logged_food_and_regenerates_when_enable
     with db.open_ledger(_ledger_id(db)) as ledger:
         active = ledger.get_active_nutrition_plan()
         assert active["author"] == "Player" and json.loads(active["meals_json"])["enabled"] is False
+        assert ledger.get_nutrition_meal_preference() is False
 
     # Saving setup while off must not silently turn meals on (#676).
     changed = client.put("/nutrition/meal-setup", headers=headers, json={
@@ -235,17 +537,26 @@ def test_enable_versions_the_plan_once_and_emits_allowlisted_analytics(meals_api
     client, db, headers, _today = meals_api
     before = client.get("/nutrition", headers=headers).json()
     assert client.get("/nutrition/meals", headers=headers).json()["status"] == "disabled"
+    with db.open_ledger(_ledger_id(db)) as ledger:
+        versions_before = ledger.conn.execute("SELECT count(*) FROM nutrition_plan_versions").fetchone()[0]
     enabled = _enable(client, headers)
     assert enabled["enabled"] and enabled["status"] == "ready"
-    assert enabled["plan_version_id"] == 2
     assert enabled["meals"][0]["foods"][0]["id"] == "protein"  # Curation order, not id order.
     assert _enable(client, headers)["plan_version_id"] == enabled["plan_version_id"]
     after = client.get("/nutrition", headers=headers).json()
     assert after["targets"] == before["targets"] and after["authority"] == before["authority"]
     assert after["meals"] == enabled["meals"]
+    food = enabled["meals"][0]["foods"][0]
+    assert food["macros"] == {
+        "calories": pytest.approx(food["nutrients_per_100g"]["energy_kcal"] * food["grams"] / 100),
+        "protein_g": pytest.approx(food["nutrients_per_100g"]["protein_g"] * food["grams"] / 100),
+        "carbs_g": pytest.approx(food["nutrients_per_100g"]["carbohydrate_g"] * food["grams"] / 100),
+        "fat_g": pytest.approx(food["nutrients_per_100g"]["fat_g"] * food["grams"] / 100),
+    }
+    assert enabled["day_totals"] == enabled["totals"]
     with db.open_ledger(_ledger_id(db)) as ledger:
         rows = ledger.conn.execute("SELECT meals_json FROM nutrition_plan_versions ORDER BY id").fetchall()
-        assert len(rows) == 2 and rows[0][0] is None
+        assert len(rows) == versions_before + 1 and json.loads(rows[0][0])["enabled"] is True
         with pytest.raises(sqlite3.IntegrityError, match="immutable"):
             ledger.conn.execute("UPDATE nutrition_plan_versions SET meals_json='{}'")
     events = [event for event in recording_analytics.events if event["event"] == "nutrition_meals_turned_on"]
@@ -262,7 +573,43 @@ def test_no_reviewed_staples_means_no_enable_or_new_version(meals_api):
     refused = client.post("/nutrition/meals/enable", headers=headers)
     assert refused.status_code == 400 and "aren't available yet" in refused.json()["detail"]
     with db.open_ledger(_ledger_id(db)) as ledger:
-        assert ledger.get_active_nutrition_plan()["id"] == 1
+        assert ledger.get_active_nutrition_plan()["id"] == state["plan_version_id"]
+
+
+def test_enabled_meals_can_be_disabled_after_staples_become_unavailable(meals_api):
+    client, db, headers, _today = meals_api
+    enabled = _enable(client, headers)
+    assert enabled["enabled"] is True
+    with db.catalog_locked() as connection:
+        connection.execute("UPDATE foods SET reviewed=0")
+        connection.commit()
+
+    unavailable = client.get("/nutrition/meals", headers=headers).json()
+    assert unavailable["status"] == "unavailable"
+    assert unavailable["enabled"] is True
+
+    disabled = _disable(client, headers)
+    assert disabled["enabled"] is False
+
+
+def test_meal_read_returns_authoritative_cardio_adjusted_targets(meals_api):
+    client, db, headers, today = meals_api
+    account = db.get_active_account_by_username("meal-player")
+    with db.open_ledger(account["ledger_id"]) as ledger, ledger.ledger_transaction():
+        ledger.conn.execute(
+            "INSERT INTO workout_sessions(id,session_date,split_name,started_at,completed_at) VALUES(?,?,?,?,?)",
+            ("meal-cardio", today.isoformat(), "Day 1", "now", "now"),
+        )
+        ledger.conn.execute(
+            "INSERT INTO session_cardio_entries(session_id,machine,minutes,calories_kcal,calories_are_estimate,logged_at) "
+            "VALUES(?,?,?,?,?,?)", ("meal-cardio", "bike", 30, 301, 0, "now"),
+        )
+
+    nutrition_state = client.get("/nutrition", headers=headers).json()
+    meal_targets = client.get("/nutrition/meals", headers=headers).json()["targets"]
+    assert nutrition_state["cardio_burned_kcal"] == 301
+    assert nutrition_state["cardio_adjustment_kcal"] == 150
+    assert meal_targets == nutrition_state["targets"]
 
 
 def test_training_schedule_selects_the_stored_day_variant_and_snacks_log_to_their_slot(meals_api):
@@ -412,7 +759,9 @@ def test_coach_target_edits_preserve_coach_meals_with_notice_and_gate_enable(mea
     monkeypatch.setattr(db, "get_active_assignment_for_player", lambda _account: {"assignment_id": "assignment"})
     assert client.post("/nutrition/meals/enable", headers=headers).status_code == 403
     assert client.post("/nutrition/meals/disable", headers=headers).status_code == 403
-    assert client.get("/nutrition/meals", headers=headers).json()["targets_changed"]
+    meal_state = client.get("/nutrition/meals", headers=headers).json()
+    assert meal_state["targets_changed"]
+    assert meal_state["targets"]["calories"] == plan.targets["calories"] + 100
 
 
 def test_lazy_v60_adds_meals_without_rewriting_existing_versions(tmp_path):

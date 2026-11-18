@@ -1,7 +1,7 @@
 name: mayos-staging
 
 services:
-  api:
+  api-staging:
     image: "mayos-api-staging:${MAYOS_STAGING_IMAGE_TAG:?set staging image tag}"
     build:
       context: ..
@@ -19,6 +19,9 @@ services:
       DISCORD_ALERT_WEBHOOK_URL: ""
       DISCORD_FEEDBACK_WEBHOOK_URL: ""
       SMTP_HOST: ""
+      VAPID_PUBLIC_KEY: ""
+      VAPID_PRIVATE_KEY: ""
+      VAPID_SUBJECT: ""
       MAYOS_DATA_DIR: /data
       MAYOS_REQUIRE_PERSISTENT_DATA: "true"
       MAYOS_CLIENT_IP_HEADER: cf-connecting-ip

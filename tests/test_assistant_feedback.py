@@ -470,9 +470,9 @@ def test_claim_blocks_concurrent_retry_and_stale_claim_is_taken_over(api, monkey
     assert (claimed, notified) == (1, 1)  # delivered and unclaimed
 
 
-def test_v64_migration_never_sends_preexisting_downvotes(api, monkeypatch):
+def test_v65_migration_never_sends_preexisting_downvotes(api, monkeypatch):
     """Existing 👎 feedback predates 👎 sends (policy 1.13 shared only reports
-    with the owner), so the v64 migration stamps old rows as already notified
+    with the owner), so the v65 migration stamps old rows as already notified
     and the retry pass sends nothing for them; new 👎 sends still go out."""
     from database.migration_manager import get_ledger_schema_version, set_ledger_schema_version
     from service import assistant_feedback
@@ -499,10 +499,10 @@ def test_v64_migration_never_sends_preexisting_downvotes(api, monkeypatch):
         ).fetchone()
     assert (pending, unclaimed) == (1, 1)
 
-    # Demote the ledger to v63 so reopening runs the v64 migration again,
+    # Demote the ledger to v64 so reopening runs the v65 migration again,
     # exactly as a Player's upgraded ledger would.
     with db.open_ledger(PLAYER_USERNAME) as ledger:
-        set_ledger_schema_version(ledger.conn, 63)
+        set_ledger_schema_version(ledger.conn, 64)
         ledger._commit_ledger()
 
     # After the upgrade the retry pass sends nothing for the old row.
@@ -521,7 +521,7 @@ def test_v64_migration_never_sends_preexisting_downvotes(api, monkeypatch):
             "WHERE feedback_id = ?",
             (feedback_id,),
         ).fetchone()[0]
-        assert get_ledger_schema_version(ledger.conn) == 64
+        assert get_ledger_schema_version(ledger.conn) == 65
     assert stamped == 1
 
     # A new 👎 after the migration behaves as designed and is sent.

@@ -64,31 +64,41 @@ class RegistryProgramRequestsMixin:
         """Inserts a pending player program request. Never touches the player ledger."""
         self.ensure_account_schema()
         with self._catalog_lock:
-            self.catalog_conn.execute(
-                "INSERT INTO program_requests"
-                " (request_id, assignment_id, coach_account_id, player_account_id, kind, program_version,"
-                " day_name, week_order, day_order, exercise_id, replacement_exercise_id, desired_weekly_frequency,"
-                " desired_split_preference, reason, status, response, created_at, resolved_at, resolved_by)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NULL, ?, NULL, NULL)",
-                (
-                    str(request_id),
-                    str(assignment_id),
-                    str(coach_account_id),
-                    str(player_account_id),
-                    str(kind),
-                    int(program_version),
-                    day_name,
-                    week_order,
-                    day_order,
-                    exercise_id,
-                    replacement_exercise_id,
-                    desired_weekly_frequency,
-                    desired_split_preference,
-                    reason,
-                    now_iso,
-                ),
-            )
-            self.catalog_conn.commit()
+            try:
+                self.catalog_conn.execute(
+                    "INSERT INTO program_requests"
+                    " (request_id, assignment_id, coach_account_id, player_account_id, kind, program_version,"
+                    " day_name, week_order, day_order, exercise_id, replacement_exercise_id, desired_weekly_frequency,"
+                    " desired_split_preference, reason, status, response, created_at, resolved_at, resolved_by)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NULL, ?, NULL, NULL)",
+                    (
+                        str(request_id),
+                        str(assignment_id),
+                        str(coach_account_id),
+                        str(player_account_id),
+                        str(kind),
+                        int(program_version),
+                        day_name,
+                        week_order,
+                        day_order,
+                        exercise_id,
+                        replacement_exercise_id,
+                        desired_weekly_frequency,
+                        desired_split_preference,
+                        reason,
+                        now_iso,
+                    ),
+                )
+                from service.web_push import queue_event
+
+                queue_event(
+                    self.catalog_conn, str(coach_account_id), "program_request",
+                    f"program-request:{request_id}", now_iso,
+                )
+                self.catalog_conn.commit()
+            except Exception:
+                self.catalog_conn.rollback()
+                raise
         return request_id
 
     def get_program_request(self, request_id: str) -> dict[str, Any] | None:
@@ -183,13 +193,29 @@ class RegistryProgramRequestsMixin:
         self.ensure_account_schema()
         with self._catalog_lock:
             cursor = self.catalog_conn.cursor()
-            cursor.execute(
-                "UPDATE program_requests SET status = ?, response = ?, resolved_at = ?, resolved_by = ?"
-                " WHERE request_id = ? AND status = 'pending'",
-                (str(status), response, now_iso, str(resolved_by), str(request_id)),
-            )
-            self.catalog_conn.commit()
-            return {"ok": cursor.rowcount == 1, "rowcount": int(cursor.rowcount)}
+            try:
+                cursor.execute(
+                    "UPDATE program_requests SET status = ?, response = ?, resolved_at = ?, resolved_by = ?"
+                    " WHERE request_id = ? AND status = 'pending'",
+                    (str(status), response, now_iso, str(resolved_by), str(request_id)),
+                )
+                if cursor.rowcount == 1 and status == "declined":
+                    player = self.catalog_conn.execute(
+                        "SELECT player_account_id FROM program_requests WHERE request_id=?",
+                        (str(request_id),),
+                    ).fetchone()
+                    if player is not None:
+                        from service.web_push import queue_event
+
+                        queue_event(
+                            self.catalog_conn, str(player[0]), "swap_reply",
+                            f"program-request-reply:{request_id}", now_iso,
+                        )
+                self.catalog_conn.commit()
+                return {"ok": cursor.rowcount == 1, "rowcount": int(cursor.rowcount)}
+            except Exception:
+                self.catalog_conn.rollback()
+                raise
 
     def resolve_program_requests_for_publish(
         self, responses: dict[str, str], resolved_by: str, now_iso: str
@@ -199,7 +225,16 @@ class RegistryProgramRequestsMixin:
         claimed: list[str] = []
         with self._catalog_lock:
             try:
+                from service.web_push import queue_event
+
                 for request_id, response in responses.items():
+                    player = self.catalog_conn.execute(
+                        "SELECT player_account_id FROM program_requests "
+                        "WHERE request_id=? AND status='pending'",
+                        (str(request_id),),
+                    ).fetchone()
+                    if player is None:
+                        continue
                     cursor = self.catalog_conn.execute(
                         "UPDATE program_requests SET status = 'applied', response = ?,"
                         " resolved_at = ?, resolved_by = ?"
@@ -208,6 +243,10 @@ class RegistryProgramRequestsMixin:
                     )
                     if cursor.rowcount == 1:
                         claimed.append(str(request_id))
+                        queue_event(
+                            self.catalog_conn, str(player[0]), "swap_reply",
+                            f"program-request-reply:{request_id}", now_iso,
+                        )
                 self.catalog_conn.commit()
             except Exception:
                 self.catalog_conn.rollback()

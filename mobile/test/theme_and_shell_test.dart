@@ -12,6 +12,7 @@ import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/core/ui/mayos_bottom_navigation.dart';
 import 'package:mayos_mobile/src/features/shared/mode_switch.dart';
 import 'package:mayos_mobile/src/providers.dart';
+import 'package:mayos_mobile/src/router.dart';
 
 import 'support/fake_mayos_api.dart';
 
@@ -116,6 +117,29 @@ Future<void> _settleTheme(WidgetTester tester) async {
 
 void main() {
   setUpAll(_loadFonts);
+
+  testWidgets('notification clicks switch role and select the destination tab',
+      (WidgetTester tester) async {
+    final fake = _signedInFake(coach: true)..whatsNewSeenRelease = 7;
+    await _pumpApp(tester, fake, store: InMemoryThemeModeStore());
+    final container = ProviderScope.containerOf(
+        tester.element(find.byType(MayosApp)), listen: false);
+    final router = container.read(routerProvider);
+    for (final destination in <(String, int)>[
+      ('/home?push=program', 1), ('/home?push=nutrition', 2),
+    ]) {
+      router.go(destination.$1);
+      await _pumpUntilFound(tester, find.text('Home'));
+      expect(container.read(appModeControllerProvider).mode, AppMode.player);
+      expect(tester.widget<MayosBottomNavigation>(find.byType(MayosBottomNavigation)).index,
+          destination.$2);
+    }
+    router.go('/coach/alerts?push=coach');
+    await _pumpUntilFound(tester, find.text('Roster'));
+    expect(container.read(appModeControllerProvider).mode, AppMode.coach);
+    expect(router.routeInformationProvider.value.uri.path, coachAlertsPath);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
 
   testWidgets(
       'appearance defaults to System and switches Light/Dark immediately',

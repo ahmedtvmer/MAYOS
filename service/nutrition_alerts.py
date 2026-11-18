@@ -28,7 +28,7 @@ def _read_adherence(
         versions = ledger.list_training_schedules(ledger_id)
         timezone = timezone_for_versions(versions) if versions else "UTC"
         today = local_date_in(now, timezone)
-        has_targets = nutrition_service.read(ledger, today=today).get("state") == "ready"
+        has_targets = nutrition_service.targets_for_day(ledger, today) is not None
         start = today
         first_plan_at = ledger.get_first_nutrition_plan_created_at()
         if first_plan_at:

@@ -526,7 +526,14 @@ class RegistryAssignmentsMixin:
                     message_fallback,
                 ),
             )
-            self.catalog_conn.commit()
+            if notice.kind == "program_published":
+                from service.web_push import queue_event
+
+                key = f"assignment-notice:{notice_id}"
+                if notice.message_params:
+                    key = f"program-published:{notice.assignment_id}:{notice.message_params.get('version')}"
+                queue_event(self.catalog_conn, str(notice.account_id), "program_published", key, notice.created_at)
+            self._commit_catalog()
         return notice_id
 
     def list_assignment_notices(self, account_id: str, limit: int = 20) -> list[dict[str, Any]]:

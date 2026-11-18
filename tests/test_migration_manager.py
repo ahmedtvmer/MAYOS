@@ -152,8 +152,10 @@ def test_v55_meal_stack_upgrades_to_the_fresh_schema_without_changing_plan_versi
         "SELECT sql FROM sqlite_master WHERE type='table' AND name=?", (name,)
     ).fetchone()[0] for name in (
         "meal_setup", "nutrition_plan_drafts", "nutrition_meal_generation_cache",
+        "nutrition_meal_preference",
     )}
     conn.execute("DROP TABLE nutrition_meal_generation_cache")
+    conn.execute("DROP TABLE nutrition_meal_preference")
     conn.execute("DROP TABLE nutrition_plan_drafts")
     conn.execute("DROP TABLE meal_setup")
     conn.execute("ALTER TABLE nutrition_plan_versions DROP COLUMN meals_json")
@@ -179,6 +181,44 @@ def test_v55_meal_stack_upgrades_to_the_fresh_schema_without_changing_plan_versi
     catalog_tables = {row[0] for row in db.catalog_conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     assert {"food_swap_requests", "nutrition_templates"} <= catalog_tables
     assert not {"meal_setup", "nutrition_plan_drafts"} & catalog_tables
+
+
+@pytest.mark.parametrize(
+    ("player_payloads", "expected"),
+    [([], None), ([None], None), ([{"enabled": True}], 1),
+     ([{"enabled": True}, {"enabled": False}], 0),
+     ([{"enabled": False}, {"enabled": True}], 1)],
+)
+@pytest.mark.parametrize("schema_version", range(57, 64))
+def test_v64_migrates_the_latest_player_meal_switch_choice(tmp_path, player_payloads, expected, schema_version):
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE nutrition_plan_versions ("
+        "id INTEGER PRIMARY KEY, author TEXT NOT NULL, meals_json TEXT)"
+    )
+    for payload in player_payloads:
+        conn.execute(
+            "INSERT INTO nutrition_plan_versions(author,meals_json) VALUES('Player',?)",
+            (json.dumps(payload) if payload is not None else None,),
+        )
+    conn.execute(
+        "INSERT INTO nutrition_plan_versions(author,meals_json) VALUES('Coach',?)",
+        (json.dumps({"enabled": True}),),
+    )
+    conn.execute("INSERT INTO nutrition_plan_versions(author,meals_json) VALUES('Player',NULL)")
+    set_ledger_schema_version(conn, schema_version)
+    conn.commit()
+
+    apply_lazy_migrations(conn, "meal-switch", tmp_path / "ledgers", tmp_path / "backups")
+    first = conn.execute("SELECT enabled,updated_at FROM nutrition_meal_preference").fetchall()
+    MIGRATION_REGISTRY[63](conn)
+
+    rows = conn.execute(
+        "SELECT enabled FROM nutrition_meal_preference WHERE id=1"
+    ).fetchall()
+    assert rows == ([] if expected is None else [(expected,)])
+    assert conn.execute("SELECT enabled,updated_at FROM nutrition_meal_preference").fetchall() == first
+    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION == 65
 
 
 def test_v47_scopes_existing_regeneration_decisions_to_design_v2():

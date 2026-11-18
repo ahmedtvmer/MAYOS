@@ -20,13 +20,17 @@ import '../../../core/ui/mayos_scaffold.dart';
 import '../../../core/ui/mayos_segmented_control.dart';
 import '../../../core/workout_equipment.dart';
 import '../../../providers.dart';
+import '../tour/tour_targets.dart';
+
+const String _cableYRaiseDemoExerciseId = 'mayos:3';
+const String _exerciseDemoTargetId = 'exercise_demo_media';
 
 /// Read-only exercise detail (#53): a typographic/muscle-group hero, the
 /// prescription stat trio when opened from a program day, and Overview /
 /// Technique / History tabs backed by real catalog and dashboard data.
 ///
 /// The hero stays fully useful without media; exercise media is gated behind
-/// [mayosExerciseMediaEnabled] and a loadable URL, neither of which exist yet.
+/// [mayosExerciseMediaEnabled] and a loadable URL.
 class ExerciseDetailScreen extends ConsumerStatefulWidget {
   const ExerciseDetailScreen({
     super.key,
@@ -77,13 +81,21 @@ class _ExerciseDetailScreenState extends ConsumerState<ExerciseDetailScreen>
 
   late Future<_DetailData> _future;
   late String _tab;
+  late final StateController<Set<String>> _tourLoadingTargets;
+  // Captured in initState: after dispose the `widget` getter is no longer
+  // readable, but the post-frame cleanup below still runs.
+  late final bool _demoTargetApplies;
+  bool _demoTargetLoading = false;
 
   @override
   void initState() {
     super.initState();
+    _tourLoadingTargets = ref.read(tourLoadingTargetsProvider.notifier);
+    _demoTargetApplies = widget.exerciseId == _cableYRaiseDemoExerciseId;
     _tab = !widget.showHistory && widget.initialTab == 'history'
         ? 'overview'
         : widget.initialTab;
+    _scheduleDemoTargetLoading(true);
     _future = _load();
   }
 
@@ -117,12 +129,40 @@ class _ExerciseDetailScreenState extends ConsumerState<ExerciseDetailScreen>
       }
     }
 
-    return _DetailData(
+    final _DetailData loadedDetail = _DetailData(
       exercise: exercise,
       catalog: catalog,
       history: history,
       partialError: partialError,
     );
+    if (!mayosExerciseMediaEnabled ||
+        loadedDetail.catalog?.hasLoadableMedia != true) {
+      _scheduleDemoTargetLoading(false);
+    }
+    return loadedDetail;
+  }
+
+  void _setDemoTargetLoading(bool isLoading) {
+    if (!_demoTargetApplies ||
+        _demoTargetLoading == isLoading ||
+        !_tourLoadingTargets.mounted) {
+      return;
+    }
+    _demoTargetLoading = isLoading;
+    final Set<String> loadingTargets =
+        Set<String>.of(_tourLoadingTargets.state);
+    if (isLoading) {
+      loadingTargets.add(_exerciseDemoTargetId);
+    } else {
+      loadingTargets.remove(_exerciseDemoTargetId);
+    }
+    _tourLoadingTargets.state = loadingTargets;
+  }
+
+  void _scheduleDemoTargetLoading(bool isLoading) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _setDemoTargetLoading(isLoading);
+    });
   }
 
   ProgramExercise? _programExerciseForDay(
@@ -139,6 +179,7 @@ class _ExerciseDetailScreenState extends ConsumerState<ExerciseDetailScreen>
   }
 
   Future<void> _retry() async {
+    _scheduleDemoTargetLoading(true);
     final Future<_DetailData> future = _load();
     setState(() {
       _future = future;
@@ -174,10 +215,26 @@ class _ExerciseDetailScreenState extends ConsumerState<ExerciseDetailScreen>
               data: data,
               tab: _tab,
               showHistory: widget.showHistory,
+              demoTargetId: _demoTargetApplies ? _exerciseDemoTargetId : null,
+              onDemoMediaSettled:
+                  _demoTargetApplies ? () => _setDemoTargetLoading(false) : null,
               onTab: (String tab) => setState(() => _tab = tab));
         },
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    // Like Profile, the tour loading-provider cleanup is scheduled after the
+    // frame instead of mutating a Riverpod provider while the tree tears
+    // down; the provider's own `mounted` guard makes it safe when the app is
+    // shutting down.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted || !_tourLoadingTargets.mounted) return;
+      _setDemoTargetLoading(false);
+    });
+    super.dispose();
   }
 }
 
@@ -187,12 +244,16 @@ class _DetailBody extends StatelessWidget {
     required this.tab,
     required this.showHistory,
     required this.onTab,
+    required this.demoTargetId,
+    required this.onDemoMediaSettled,
   });
 
   final _DetailData data;
   final String tab;
   final bool showHistory;
   final ValueChanged<String> onTab;
+  final String? demoTargetId;
+  final VoidCallback? onDemoMediaSettled;
 
   @override
   Widget build(BuildContext context) {
@@ -206,7 +267,12 @@ class _DetailBody extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(
           MayosSpacing.lg, MayosSpacing.sm, MayosSpacing.lg, MayosSpacing.xxl),
       children: <Widget>[
-        _Hero(name: name, catalog: catalog),
+        _Hero(
+          name: name,
+          catalog: catalog,
+          demoTargetId: demoTargetId,
+          onDemoMediaSettled: onDemoMediaSettled,
+        ),
         if (exercise != null) ...<Widget>[
           const SizedBox(height: MayosSpacing.xl),
           _PrescriptionTrio(exercise: exercise),
@@ -246,10 +312,17 @@ class _DetailBody extends StatelessWidget {
 }
 
 class _Hero extends StatelessWidget {
-  const _Hero({required this.name, required this.catalog});
+  const _Hero({
+    required this.name,
+    required this.catalog,
+    required this.demoTargetId,
+    required this.onDemoMediaSettled,
+  });
 
   final String name;
   final ExerciseCatalogDetail? catalog;
+  final String? demoTargetId;
+  final VoidCallback? onDemoMediaSettled;
 
   @override
   Widget build(BuildContext context) {
@@ -269,7 +342,11 @@ class _Hero extends StatelessWidget {
           // past it — so loading and failure states never shift the layout.
           Align(
             alignment: Alignment.center,
-            child: _CatalogMedia(detail: detail),
+            child: _CatalogMedia(
+              detail: detail,
+              targetId: demoTargetId,
+              onMediaSettled: onDemoMediaSettled,
+            ),
           ),
           const SizedBox(height: MayosSpacing.xxs),
           Text(
@@ -389,7 +466,11 @@ class _Hero extends StatelessWidget {
 /// every state inside the same 180×180 footprint, centred, so loading and
 /// failure never shift the layout.
 class _CatalogMedia extends StatelessWidget {
-  const _CatalogMedia({required this.detail});
+  const _CatalogMedia({
+    required this.detail,
+    required this.targetId,
+    required this.onMediaSettled,
+  });
 
   /// Gym visual's native size: the box never grows past it and the picture
   /// is painted `contain` inside it, so the media is never stretched larger
@@ -397,6 +478,8 @@ class _CatalogMedia extends StatelessWidget {
   static const double size = 180;
 
   final ExerciseCatalogDetail detail;
+  final String? targetId;
+  final VoidCallback? onMediaSettled;
 
   @override
   Widget build(BuildContext context) {
@@ -427,8 +510,7 @@ class _CatalogMedia extends StatelessWidget {
       height: size,
       fit: BoxFit.contain,
       gaplessPlayback: true,
-      loadingBuilder: (_, Widget child, ImageChunkEvent? progress) =>
-          progress == null ? child : _placeholder(c),
+      frameBuilder: _frameBuilder,
       errorBuilder: (_, __, ___) => _still(context, c),
     );
   }
@@ -436,6 +518,7 @@ class _CatalogMedia extends StatelessWidget {
   Widget _still(BuildContext context, MayosThemeExtension c) {
     final String? url = detail.imageUrl;
     if (url == null) {
+      _mediaSettled();
       return _fallback(context, c);
     }
     return Image.network(
@@ -444,10 +527,46 @@ class _CatalogMedia extends StatelessWidget {
       height: size,
       fit: BoxFit.contain,
       gaplessPlayback: true,
-      loadingBuilder: (_, Widget child, ImageChunkEvent? progress) =>
-          progress == null ? child : _placeholder(c),
-      errorBuilder: (_, __, ___) => _fallback(context, c),
+      frameBuilder: _frameBuilder,
+      errorBuilder: (_, __, ___) {
+        _mediaSettled();
+        return _fallback(context, c);
+      },
     );
+  }
+
+  Widget _target(Widget child) {
+    final String? id = targetId;
+    assert(id == null || id == 'exercise_demo_media');
+    return id == null
+        ? child
+        : TourTarget(
+            // The feature-list validator discovers target ids by scanning the
+            // source for a TourTarget registration whose id parameter is a
+            // string literal before the child parameter, so this literal must
+            // stay inline — do not swap it back for the
+            // [_exerciseDemoTargetId] constant. `targetId` is only non-null
+            // for the Cable Y-Raise demo, whose target is exercise_demo_media.
+            id: 'exercise_demo_media',
+            child: child,
+          );
+  }
+
+  Widget _frameBuilder(
+    BuildContext context,
+    Widget child,
+    int? frame,
+    bool wasSynchronouslyLoaded,
+  ) {
+    final bool loaded = frame != null || wasSynchronouslyLoaded;
+    if (frame == 0 || wasSynchronouslyLoaded) _mediaSettled();
+    return loaded ? _target(child) : _placeholder(MayosTheme.of(context));
+  }
+
+  void _mediaSettled() {
+    final VoidCallback? callback = onMediaSettled;
+    if (callback == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) => callback());
   }
 
   /// A static glyph while the bytes arrive — never a spinner, so the screen

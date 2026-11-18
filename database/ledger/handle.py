@@ -31,6 +31,7 @@ from database.ledger.chat import LedgerChatMixin
 from database.ledger.debriefs import LedgerDebriefsMixin
 from database.ledger.onboarding import LedgerOnboardingMixin
 from database.ledger.nutrition import LedgerNutritionMixin
+from database.ledger.push import LedgerPushMixin
 from database.ledger.food_log import LedgerFoodLogMixin
 from database.ledger.meal_setup import LedgerMealSetupMixin
 from database.ledger.profile import LedgerProfileMixin
@@ -53,6 +54,7 @@ class TrainingLedger(
     LedgerAssistantFeedbackMixin,
     LedgerDebriefsMixin,
     LedgerNutritionMixin,
+    LedgerPushMixin,
     LedgerFoodLogMixin,
     LedgerMealSetupMixin,
 ):

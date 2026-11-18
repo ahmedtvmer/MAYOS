@@ -6,7 +6,14 @@ from dataclasses import dataclass
 from core.food_swap import swap_day, swap_meal
 from core.meal_generator import role_matches
 from core.meal_setup import restriction_reasons
-from database.ledger.nutrition_meals import _swaps, meals_still_allowed, resolve_variant, reviewed_staples
+from database.ledger.nutrition_meals import (
+    _swaps,
+    generate_variants,
+    meal_switch_enabled,
+    meals_still_allowed,
+    resolve_variant,
+    reviewed_staples,
+)
 from database.ledger.nutrition_swap_foods import library_food, swap_allowed
 from service.meals import _save_player_meals
 
@@ -31,9 +38,17 @@ def _context(ledger, target):
         raise PermissionError("Food swaps require your own Nutrition plan and Nutrition authority.")
     if active["id"] != target.plan_version_id:
         raise ValueError("The Nutrition plan changed. Refresh meals and try again.")
-    payload = json.loads(active["meals_json"]) if active["meals_json"] else {}
+    payload = json.loads(active["meals_json"]) if active["meals_json"] else None
+    if not meal_switch_enabled(ledger, active, payload):
+        raise ValueError("Meals aren't available yet.")
+    if not payload or not payload.get("enabled"):
+        payload = generate_variants(
+            ledger,
+            json.loads(active["targets_json"]),
+            payload or {},
+        )
     variant = resolve_variant(ledger, active, payload, target.day_type)
-    if not payload.get("enabled") or variant.get("status") != "ready":
+    if variant.get("status") != "ready":
         raise ValueError("Meals aren't available yet.")
     payload.setdefault("variants", {})[target.day_type] = variant
     meal = _target_meal(variant, target)

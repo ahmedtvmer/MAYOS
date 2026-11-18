@@ -139,7 +139,13 @@ def test_systemic_fatigue_states():
 )
 def test_deterministic_router_fast_paths(query, expected_intent):
     state = {"messages": [HumanMessage(content=query)]}
-    result = router_node(state)
+    store = MagicMock()
+    store.find_unique_exercise_id_by_exact_name.side_effect = lambda name: (
+        name.casefold()
+        if name.casefold() in {"barbell bench press", "dumbbell press"}
+        else None
+    )
+    result = router_node(state, {"configurable": {"store": store}})
     assert result["intent"] == expected_intent
 
 

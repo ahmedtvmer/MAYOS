@@ -32,7 +32,7 @@ Most per-muscle numbers below are **Practice**. The research reports volume for 
 > **Rule for MAYOS – order**
 > - Isolation-first for the same muscle is **allowed and preferred** (owner choice) on any exercise that is *not* the day's main progressed lift.
 > - Pre-exhaust block: at most **2 isolation sets** at **RIR 1–3** (no sets to failure) before the compound for that muscle.
-> - The day's **main progressed lift** always comes first among the exercises that load the same muscles.
+> - The day's **main progressed lift** always comes first in the exercise order.
 > - **Beginners** (first **8 weeks**, or until the coach marks the technique stable): compound lifts go first.
 > - Never pre-fatigue a stabiliser of a heavy free-weight lift that follows it (list above).
 > - After pre-exhaust, expect the compound load to be **~5–15% lower**. Do not treat that drop as a regression.
@@ -190,7 +190,7 @@ Rows with a specific lats or traps target use the owner-directed row rule: traps
 | Area | Rule | Evidence |
 |---|---|---|
 | Order | Isolation-first allowed/preferred, ≤ 2 sets at RIR 1–3, except before the day's main progressed lift, for beginners (first 8 weeks), or before heavy lifts it stabilises | Hypertrophy: Strong (no effect). Strength-first: Strong |
-| Order | Main progressed lift is first among exercises for the same muscles | Strong |
+| Order | Main progressed lift is first in the exercise order | Strong |
 | Frequency | ≥ 2×/week per main muscle (floor); 3× preferred when weekly target > 12 sets | Moderate (ACSM); 3× > 2× not shown |
 | Weekly volume | Intermediate typical 10–16/20 sets; ceiling 18–22; beginner ceiling 10–14; advanced ceiling 20–26 (see table) | Strong for the trend, Practice for the exact numbers |
 | Volume progression | +2 sets/muscle/week max; start low | Practice |

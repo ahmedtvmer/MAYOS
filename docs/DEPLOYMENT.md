@@ -13,6 +13,53 @@ This document details production deployment procedures, container orchestration,
 
 ---
 
+## Web Push notifications (#742)
+
+Install the server requirements, including `pywebpush` (added to both
+`requirements.txt` and `requirements-fly.txt`). Flutter uses its existing `web`
+dependency; no Firebase project or mobile dependency is required.
+
+Generate a **new** VAPID pair with `python scripts/generate_vapid_keys.py
+--subject mailto:YOUR_CONTACT_ADDRESS` and paste its output directly into the
+server's secret configuration. The script reads no existing secrets and writes
+no key files. Do not save or commit its output. Configure these server names:
+`VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`. The authenticated
+`GET /push` response exposes only the public key. Keep the pair stable across
+deployments; browsers bind their subscriptions to that public key. A deliberate
+key rotation requires devices to turn notifications off and on again.
+The server Compose deployment reads these names from its existing environment
+file; root Compose forwards them explicitly. Staging overrides all three to
+blank so it cannot deliver production notifications.
+
+With any VAPID name unset or blank, the API reports push unavailable and the
+sender does no work. Training, publishing and in-app alerts remain available.
+`MAYOS_PUSH_SWEEP_INTERVAL_SECONDS` defaults to 60; `0` disables the loop. Like
+the existing alert sweep, it runs in the API lifespan, skips test/model-skip
+mode and isolates reminder evaluation failures. Use an always-on API process.
+The outbox retries transient failures with bounded backoff, prunes 404/410
+subscriptions, expires pending messages after one day and retains event history
+for 90 days. Browser persistence prevents duplicate presentation after ambiguous
+network retries. Delivery is best effort and depends on browser/OS support.
+
+Build the web app through the existing Workbox deployment: `push_worker.js` is
+imported by `service-worker.js`, and `push_bridge.js` loads before Flutter.
+Notifications require HTTPS and an explicit Turn on tap after a completed
+workout or in Settings. On iPhone, open MAYOS from its Home Screen installation
+on iOS 16.4 or later; the existing install prompt explains this prerequisite.
+Delivery is free for all plans. This ticket exposes the `self_coach_slip` send
+seam but does not evaluate slip alerts or grant their future Pro entitlement.
+
+Server validation (with the new requirements installed): run
+`python -m pytest -ra tests/test_web_push.py tests/test_web_push_browser.py
+tests/test_web_service_worker.py tests/test_coach_alerts_api.py
+tests/test_missed_day_alerts.py tests/test_coach_nutrition_drafts.py
+tests/test_food_swap_requests.py tests/test_feature_release.py`.
+The browser harness tests require Node.js; the Workbox integration also requires
+`npx` and access to the pinned Workbox package. Run Flutter analysis and the
+mobile suite in the server/CI Flutter environment, including
+`test/feature_list_test.dart`, `test/deep_link_routing_test.dart`,
+`test/theme_and_shell_test.dart` and the auth/settings tests.
+
 ## 1. Host Runtime Prerequisites
 
 MAYOS runs its chat, judge, and coach roles through a hosted OpenAI-compatible API. The service loads BGE embeddings through ONNX Runtime for clinical triage and Exercise library search. The image includes the model graph, tokenizer and pooling configuration; chat model weights are not stored or downloaded by the service.
@@ -1826,7 +1873,7 @@ alerts, and clears `SMTP_HOST` regardless of settings-file values. Emails
 appear in `docker logs` instead of being sent:
 
 ```bash
-sudo docker logs mayos-staging-api-1
+sudo docker logs mayos-staging-api-staging-1
 ```
 
 Install the auto-stop helper and units using the shared unit installation

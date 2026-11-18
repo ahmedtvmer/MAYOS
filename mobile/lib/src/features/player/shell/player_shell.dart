@@ -42,7 +42,9 @@ import '../tour/whats_new_screen.dart';
 /// logout) is reached from Settings or the header, never a placeholder
 /// destination.
 class PlayerShell extends ConsumerStatefulWidget {
-  const PlayerShell({super.key});
+  const PlayerShell({super.key, this.pushTab});
+
+  final String? pushTab;
 
   @override
   ConsumerState<PlayerShell> createState() => _PlayerShellState();
@@ -106,9 +108,27 @@ class _PlayerShellState extends ConsumerState<PlayerShell> {
     // below for a restore that lands later.
     Future<void>.microtask(() {
       if (mounted) {
+        _openPushTab();
         _offerStartupNotices();
       }
     });
+  }
+
+  void _openPushTab() {
+    if (!mounted) return;
+    final tab = widget.pushTab;
+    if (tab == 'program' || tab == 'nutrition') {
+      ref.read(playerShellTabProvider.notifier).state = tab == 'program'
+          ? 1
+          : 2;
+    }
+  }
+
+  @override
+  void didUpdateWidget(PlayerShell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.pushTab != widget.pushTab)
+      Future<void>.microtask(_openPushTab);
   }
 
   Future<void> _offerStartupNotices() async {

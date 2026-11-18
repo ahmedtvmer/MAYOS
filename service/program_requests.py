@@ -19,6 +19,7 @@ from agent.program_generator import (
     generate_program_pipeline,
     has_supported_split_keyword,
 )
+from database.ledger import push as ledger_push
 from database.exercise_resolution import resolve_exercise_display_row
 from database.registry.assignments import AssignmentNoticeRecord
 from service._base import ledger_scope
@@ -556,9 +557,14 @@ def apply_request(
         ):
             return _unrecognized_split_refusal()
 
-        claimed = db.resolve_program_request(request_id, "applied", None, coach_account_id, _now_iso())
+        resolved_at = _now_iso()
+        claimed = db.resolve_program_request(request_id, "applied", None, coach_account_id, resolved_at)
         if not claimed["ok"]:
             return _refusal("program_request.not_pending.v1", NOT_PENDING_ERROR)
+        reply_intent = ledger_push.PushIntent(
+            request["player_account_id"], "swap_reply",
+            f"program-request-reply:{request_id}", resolved_at,
+        )
 
         def _finish_applied_request() -> dict[str, Any]:
             published = ledger.get_active_program()
@@ -613,6 +619,7 @@ def apply_request(
                         replacement_exercise_id=request["replacement_exercise_id"],
                         published_by_coach_account_id=coach_account_id,
                     ),
+                    push_intent=reply_intent,
                 )
                 if not substitution["ok"]:
                     reverted = db.reopen_program_request(request_id, _now_iso())
@@ -648,6 +655,7 @@ def apply_request(
                         frequency_override=request["desired_weekly_frequency"],
                         user_split_override=request["desired_split_preference"],
                         published_by_coach_account_id=coach_account_id,
+                        push_intent=reply_intent,
                         ledger=ledger,
                         scope=inference_scope,
                     )
@@ -666,6 +674,12 @@ def apply_request(
                 logger.exception("Program request %s revert raised unexpectedly", request_id)
             raise
 
+        try:
+            from service.web_push import drain_push_intents
+
+            drain_push_intents(db, ledger)
+        except Exception:
+            logger.warning("Program request push intent reconciliation failed", exc_info=False)
         return _finish_applied_request()
 
 

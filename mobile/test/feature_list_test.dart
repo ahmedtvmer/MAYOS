@@ -114,7 +114,24 @@ void main() {
     expect(entry.audience, 'lifter');
   });
 
-  test('Meal setup has bilingual discovery copy in release 7', () {
+  test('Cable Y-Raise demo is a bilingual exercise detail target in release 7', () {
+    final FeatureEntry entry = featureList.singleWhere(
+      (FeatureEntry entry) => entry.id == 'cable_y_raise_demo',
+    );
+    expect(entry.titleEn, 'Cable Y-Raise demo');
+    expect(entry.sentenceEn,
+        'See a still image and animated demo of the Cable Y-Raise.');
+    expect(entry.titleAr, 'عرض Cable Y-Raise');
+    expect(entry.sentenceAr,
+        'شاهد صورة ثابتة وصورة متحركة توضّحان تمرين Cable Y-Raise.');
+    expect(entry.target, 'exercise_demo_media');
+    expect(entry.location, const TourRouteLocation('/exercise/mayos:3'));
+    expect(entry.release, 7);
+    expect(currentFeatureRelease, 7);
+    expect(entry.audience, 'lifter');
+  });
+
+  test('Meal setup and the planned meal table are discoverable in release 7', () {
     final FeatureEntry entry = featureList.singleWhere((FeatureEntry entry) => entry.id == 'meal_setup');
     expect(entry.release, 7);
     expect(currentFeatureRelease, 7);
@@ -122,8 +139,10 @@ void main() {
     expect(entry.titleAr, 'إعداد الوجبات والقيود الغذائية');
     expect(entry.sentenceEn, isNotEmpty);
     expect(entry.sentenceAr, isNotEmpty);
-    expect(entry.sentenceEn, contains('swap foods in your own plan'));
-    expect(entry.sentenceEn, contains('coach'));
+    expect(entry.sentenceEn, contains('on by default'));
+    expect(entry.sentenceEn, contains('day table'));
+    expect(entry.sentenceEn, contains('Coach swap'));
+    expect(entry.sentenceEn, contains('Swap beside food names'));
     expect(entry.target, 'meal_setup');
     expect(entry.location, const TourShellTabLocation(tabIndex: 2));
     expect(entry.audience, 'lifter');
@@ -145,6 +164,21 @@ void main() {
         ? const TourShellTabLocation(tabIndex: 0) : const TourRouteLocation(foodSwapRequestsPath));
       expect(entry.audience, 'lifter');
     }
+  });
+
+  test('Cardio and Nutrition logs are discoverable in release 7', () {
+    final FeatureEntry entry = featureList.singleWhere(
+      (FeatureEntry entry) => entry.id == 'assistant_personal_logs',
+    );
+    expect(entry.release, 7);
+    expect(entry.titleEn, 'Ask about your Cardio and Nutrition logs');
+    expect(entry.titleAr, isNotEmpty);
+    expect(entry.sentenceEn, contains('what you ate'));
+    expect(entry.sentenceAr, isNotEmpty);
+    expect(entry.target, 'assistant');
+    expect(entry.location, const TourShellTabLocation(tabIndex: 0));
+    expect(currentFeatureRelease, 7);
+    expect(entry.audience, 'lifter');
   });
 
   test('Feature list copy, targets, and Tour stop ids are valid', () {

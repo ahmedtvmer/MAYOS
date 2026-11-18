@@ -5,6 +5,7 @@ import json
 
 import pytest
 
+from database.ledger import push as ledger_push
 from database.migration_manager import apply_lazy_migrations, set_ledger_schema_version
 from service import coach as coach_service
 from tests.test_nutrition_api import api  # noqa: F401
@@ -36,6 +37,11 @@ def _start(context, source="generated"):
     return response.json()
 
 
+def _player_plan_id(db):
+    with db.open_ledger(_ledger_id(db)) as ledger:
+        return ledger.get_active_nutrition_plan()["id"]
+
+
 def _save(context, record):
     client, _db, coach_headers, _player_headers, path = context
     response = client.put(path, headers=coach_headers,
@@ -52,6 +58,7 @@ def _publish(context, record):
 
 def test_draft_autosaves_without_changing_player_plan_and_rejects_stale_saves(coach_draft_api):
     client, db, headers, player, path = coach_draft_api
+    player_plan_id = _player_plan_id(db)
     record = _start(coach_draft_api, "blank")
     assert client.post(path, headers=headers, json={"source": "current"}).status_code == 409
     before = client.get("/nutrition", headers=player).json()
@@ -64,7 +71,7 @@ def test_draft_autosaves_without_changing_player_plan_and_rejects_stale_saves(co
                       json={"draft": record["draft"], "revision": record["revision"]}).status_code == 409
     assert client.get(path, headers=player).status_code == 403
     with db.open_ledger(_ledger_id(db)) as ledger:
-        assert ledger.get_active_nutrition_plan()["id"] == 1
+        assert ledger.get_active_nutrition_plan()["id"] == player_plan_id
 
 
 def test_draft_is_private_and_discarded_when_assignment_ends(coach_draft_api):
@@ -120,6 +127,10 @@ def test_publish_versions_plan_moves_only_nutrition_authority_and_exposes_meal_n
     assert logged.status_code == 201, logged.text
     with db.open_ledger(_ledger_id(db)) as ledger:
         assert ledger.get_active_nutrition_plan()["provenance"] == "coach"
+        intent = ledger_push.pending_intents(ledger.conn)[0]
+        assert (intent["event"], intent["dedupe_key"]) == (
+            "nutrition_published", f"nutrition-published:{path.split('/')[3]}:{meals['plan_version_id']}"
+        )
     events = [event for event in recording_analytics.events if event["event"] == "coach_nutrition_plan_published"]
     assert len(events) == 1 and events[0]["properties"]["with_meals"] is True
     assert client.post("/assignments/me/end", headers=player).status_code == 200
@@ -168,6 +179,7 @@ def test_live_restrictions_warn_and_strict_restrictions_block_publish(coach_draf
 @pytest.mark.parametrize("change", ["floor", "rate", "macros", "minor_lose", "screening", "review_revoked"])
 def test_publish_rechecks_spec_a_and_catalog_safety(coach_draft_api, change):
     client, db, _headers, _player, _path = coach_draft_api
+    player_plan_id = _player_plan_id(db)
     record = _start(coach_draft_api)
     if change in ("floor", "rate", "macros"):
         target = record["draft"]["targets"]["rest_day"]
@@ -194,7 +206,7 @@ def test_publish_rechecks_spec_a_and_catalog_safety(coach_draft_api, change):
             record = _save(coach_draft_api, record)
     assert _publish(coach_draft_api, record).status_code == 400
     with db.open_ledger(_ledger_id(db)) as ledger:
-        assert ledger.get_active_nutrition_plan()["id"] == 1
+        assert ledger.get_active_nutrition_plan()["id"] == player_plan_id
 
 
 def test_targets_only_publish_removes_existing_meals_and_requires_takeover_confirmation(coach_draft_api):
@@ -212,19 +224,21 @@ def test_targets_only_publish_removes_existing_meals_and_requires_takeover_confi
 
 
 def test_stale_publish_does_not_discard_or_publish_newer_edits(coach_draft_api):
+    client, db, headers, _player, path = coach_draft_api
+    player_plan_id = _player_plan_id(db)
     record = _start(coach_draft_api)
     stale = deepcopy(record)
     record["draft"]["variants"]["rest_day"][0]["note"] = "Updated"
     saved = _save(coach_draft_api, record)
     assert _publish(coach_draft_api, stale).status_code == 409
-    client, db, headers, _player, path = coach_draft_api
     assert client.get(path, headers=headers).json()["revision"] == saved["revision"]
     with db.open_ledger(_ledger_id(db)) as ledger:
-        assert ledger.get_active_nutrition_plan()["id"] == 1
+        assert ledger.get_active_nutrition_plan()["id"] == player_plan_id
 
 
 def test_revocation_during_publication_rolls_back_plan_and_draft_deletion(coach_draft_api, monkeypatch):
     client, db, headers, _player, path = coach_draft_api
+    player_plan_id = _player_plan_id(db)
     record = _start(coach_draft_api)
     original_gate = db.get_active_assignment_for_coach
     calls = 0
@@ -239,7 +253,7 @@ def test_revocation_during_publication_rolls_back_plan_and_draft_deletion(coach_
     monkeypatch.setattr(db, "get_active_assignment_for_coach", original_gate)
     assert client.get(path, headers=headers).json()["revision"] == record["revision"]
     with db.open_ledger(_ledger_id(db)) as ledger:
-        assert ledger.get_active_nutrition_plan()["id"] == 1
+        assert ledger.get_active_nutrition_plan()["id"] == player_plan_id
 
 
 def test_v60_ledger_migrates_to_draft_storage_without_changing_plans(coach_draft_api, tmp_path):

@@ -47,7 +47,14 @@ def staging_server(tmp_path):
     _executable(bin_dir / "docker", r'''
 printf '%s\n' "$*" >> "$DOCKER_LOG"
 case "$1" in
-  ps) if [[ "${HAS_CONTAINER:-0}" == 1 ]]; then printf 'staging-api\n'; fi ;;
+  ps)
+    if [[ "${HAS_CONTAINER:-0}" != 1 ]]; then exit 0; fi
+    case "$*" in
+      *'service=api-staging'*) [[ "${ONLY_OLD:-0}" == 1 ]] || printf 'staging-new\n' ;;
+      *'service=api'*) printf 'staging-old\n' ;;
+      *)
+        if [[ "${ONLY_OLD:-0}" == 1 ]]; then printf 'staging-old\n'; else printf 'staging-old\nstaging-new\n'; fi ;;
+    esac ;;
   inspect)
     case "$3" in
       *State.Running*) printf '%s\n' "${RUNNING:-true}" ;;
@@ -58,8 +65,8 @@ case "$1" in
     esac ;;
   compose)
     case " $* " in
-      *' config --format json '*) printf '{"services":{"api":{"labels":{"online.mayos.staging.ttl-hours":"%s"}}}}\n' "${TTL_HOURS:-4}" ;;
-      *' exec -T api '*) printf '{"ready":true}\n' ;;
+      *' config --format json '*) printf '{"services":{"api-staging":{"labels":{"online.mayos.staging.ttl-hours":"%s"}}}}\n' "${TTL_HOURS:-4}" ;;
+      *' exec -T api-staging '*) printf '{"ready":true}\n' ;;
     esac ;;
   image)
     if [[ "$2" == ls ]]; then printf '%s' "${IMAGE_LIST:-}"; fi ;;
@@ -222,8 +229,10 @@ def test_autostop_obeys_container_age_and_configured_ttl(
     result = subprocess.run(["bash", str(worker), "autostop"], env=env, text=True, capture_output=True)
     assert result.returncode == 0, result.stderr
     calls = log.read_text(encoding="utf-8")
-    assert ("stop --time 60 staging-api" in calls) is stopped
-    assert ("rm staging-api" in calls) is stopped
+    assert ("stop --time 60 staging-old" in calls) is stopped
+    assert ("rm staging-old" in calls) is stopped
+    assert ("stop --time 60 staging-new" in calls) is stopped
+    assert ("rm staging-new" in calls) is stopped
     assert "com.docker.compose.project=mayos-staging" in calls
     assert "com.docker.compose.project=mayos " not in calls
 
@@ -239,7 +248,7 @@ def test_autostop_rejects_invalid_ttl_without_stopping(staging_server, ttl):
 
 
 def test_staging_status_reports_commit_start_and_expiry(staging_server):
-    _, _, _, worker, _, env = staging_server
+    _, _, _, worker, log, env = staging_server
     env["HAS_CONTAINER"] = "1"
     result = subprocess.run(["bash", str(worker), "status"], env=env, text=True, capture_output=True)
     assert result.returncode == 0, result.stderr
@@ -247,6 +256,23 @@ def test_staging_status_reports_commit_start_and_expiry(staging_server):
     assert f"Commit: {'a' * 40}" in result.stdout
     assert "Started: 2026-11-08T00:00:00Z" in result.stdout
     assert "Auto-stops: 2026-11-08T04:00:00Z" in result.stdout
+    # status reads the renamed api-staging service container, never the
+    # pre-rename "api" one (#763).
+    calls = log.read_text(encoding="utf-8")
+    assert "staging-new" in calls
+    assert "staging-old" not in calls
+
+
+def test_staging_status_falls_back_to_pre_rename_container(staging_server):
+    """A container started before the #763 rename is still readable."""
+    _, _, _, worker, log, env = staging_server
+    env.update({"HAS_CONTAINER": "1", "ONLY_OLD": "1"})
+    result = subprocess.run(["bash", str(worker), "status"], env=env, text=True, capture_output=True)
+    assert result.returncode == 0, result.stderr
+    assert "Staging running: true" in result.stdout
+    calls = log.read_text(encoding="utf-8")
+    assert "staging-old" in calls
+    assert "staging-new" not in calls
 
 
 def test_staging_down_removes_only_its_container(staging_server):
@@ -260,8 +286,9 @@ def test_staging_down_removes_only_its_container(staging_server):
     result = subprocess.run(["bash", str(worker), "down"], env=env, text=True, capture_output=True)
     assert result.returncode == 0, result.stderr
     assert log.read_text(encoding="utf-8").splitlines() == [
-        "ps -aq --filter label=com.docker.compose.project=mayos-staging --filter label=com.docker.compose.service=api",
-        "stop --time 60 staging-api", "rm staging-api",
+        "ps -aq --filter label=com.docker.compose.project=mayos-staging",
+        "stop --time 60 staging-old", "rm staging-old",
+        "stop --time 60 staging-new", "rm staging-new",
     ]
     assert production_history.read_text(encoding="utf-8") == "production rollback state\n"
     assert production_env.read_text(encoding="utf-8") == "MAYOS_IMAGE_TAG=production\n"
@@ -307,7 +334,7 @@ def test_staging_up_bounds_build_checks_ready_and_keeps_two_images(staging_serve
     calls = log.read_text(encoding="utf-8")
     assert "--driver-opt memory=1536m,memory-swap=1536m" in calls
     assert "buildx rm mayos-staging-builder" in calls
-    assert "--force-recreate api" in calls
+    assert "--force-recreate --remove-orphans api-staging" in calls
     assert "http://localhost:8000/readyz" in calls
     assert f"image rm mayos-api-staging:{old_tag}" in calls
     assert f"image rm mayos-api-staging:{previous_tag}" not in calls
@@ -366,15 +393,17 @@ def test_staging_compose_isolates_data_secrets_and_runtime_settings():
     staging = yaml.safe_load(staging_path.read_text(encoding="utf-8"))
     production = yaml.safe_load((ROOT / "deploy" / "compose.server.yaml").read_text(encoding="utf-8"))
     assert staging["name"] == "mayos-staging"
-    assert set(staging["services"]) == {"api"}
-    api = staging["services"]["api"]
+    assert set(staging["services"]) == {"api-staging"}
+    api = staging["services"]["api-staging"]
     assert api["env_file"] == ["/opt/mayos/staging.env"]
     assert "/opt/mayos/.env" not in staging_path.read_text(encoding="utf-8")
     assert api["environment"] == {
         "JWT_SECRET": "${JWT_SECRET:?set JWT_SECRET in /opt/mayos/staging.env}",
         "ANONYMOUS_ID_SECRET": "${ANONYMOUS_ID_SECRET:?set ANONYMOUS_ID_SECRET in /opt/mayos/staging.env}",
         "MAYOS_ENV": "staging", "SENTRY_ENVIRONMENT": "staging", "MAYOS_LITESTREAM": "false",
-        "DISCORD_ALERT_WEBHOOK_URL": "", "DISCORD_FEEDBACK_WEBHOOK_URL": "", "SMTP_HOST": "", "MAYOS_DATA_DIR": "/data",
+        "DISCORD_ALERT_WEBHOOK_URL": "", "DISCORD_FEEDBACK_WEBHOOK_URL": "", "SMTP_HOST": "",
+        "VAPID_PUBLIC_KEY": "", "VAPID_PRIVATE_KEY": "", "VAPID_SUBJECT": "",
+        "MAYOS_DATA_DIR": "/data",
         "MAYOS_REQUIRE_PERSISTENT_DATA": "true", "MAYOS_CLIENT_IP_HEADER": "cf-connecting-ip",
         "RESET_LINK_BASE_URL": "https://${MAYOS_STAGING_HOSTNAME:?set MAYOS_STAGING_HOSTNAME in /opt/mayos/staging.env}",
     }
@@ -395,6 +424,24 @@ def test_staging_compose_isolates_data_secrets_and_runtime_settings():
     assert api["command"] == production["services"]["api"]["command"]
     assert api["build"]["dockerfile"] == "Dockerfile.fly"
     assert api["image"].startswith("mayos-api-staging:")
+
+
+def test_staging_names_never_collide_with_production_service_names():
+    """#763: Compose adds the service name as a network alias, so a staging
+    service or alias named like a production service would capture that
+    service's traffic on the shared mayos_default network."""
+    staging = yaml.safe_load((ROOT / "deploy" / "compose.staging.yaml").read_text(encoding="utf-8"))
+    production = yaml.safe_load((ROOT / "deploy" / "compose.server.yaml").read_text(encoding="utf-8"))
+    production_names = set(production["services"])
+    staging_names = set(staging["services"])
+    staging_aliases = set()
+    for service in staging["services"].values():
+        for network in (service.get("networks") or {}).values():
+            if isinstance(network, dict):
+                staging_aliases.update(network.get("aliases") or [])
+    collisions = (staging_names | staging_aliases) & production_names
+    assert not collisions, f"staging names collide with production services on mayos_default: {sorted(collisions)}"
+    assert "api-staging" in staging_aliases
 
 
 def test_staging_autostop_units_are_installed_alongside_queue_units():

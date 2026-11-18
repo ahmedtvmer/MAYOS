@@ -64,6 +64,42 @@ List<String> validateFeatureEntries(
 
 const List<FeatureEntry> featureList = <FeatureEntry>[
   FeatureEntry(
+    id: 'web_push',
+    titleEn: 'Encouragement when it suits you',
+    sentenceEn: 'Turn on training reminders, alerts and coach updates in the installed web app, with quiet hours you choose.',
+    titleAr: 'تشجيع في الوقت المناسب لك',
+    sentenceAr: 'شغّل تذكيرات التدريب والتنبيهات وتحديثات المدرب في تطبيق الويب المثبّت، مع ساعات هدوء تختارها.',
+    target: 'push_notifications',
+    location: TourRouteLocation(settingsPath),
+    release: 7,
+    audience: 'lifter',
+  ),
+  FeatureEntry(
+    id: 'cable_y_raise_demo',
+    titleEn: 'Cable Y-Raise demo',
+    sentenceEn: 'See a still image and animated demo of the Cable Y-Raise.',
+    titleAr: 'عرض Cable Y-Raise',
+    sentenceAr: 'شاهد صورة ثابتة وصورة متحركة توضّحان تمرين Cable Y-Raise.',
+    target: 'exercise_demo_media',
+    location: TourRouteLocation('$exerciseDetailPath/mayos:3'),
+    release: 7,
+    audience: 'lifter',
+  ),
+  FeatureEntry(
+    id: 'isolation_first_order',
+    titleEn: 'A clearer exercise order',
+    sentenceEn:
+        'When a day allows, up to two isolation sets may come before a later compound for the same muscle; the main lift stays first in the day.',
+    titleAr: 'ترتيب أوضح للتمارين',
+    sentenceAr:
+        'عندما يسمح اليوم، قد تسبق مجموعتا عزل على الأكثر تمرينًا مركبًا لاحقًا للعضلة نفسها؛ ويظل تمرين القوة الأساسي أولًا في اليوم.',
+    target: 'program',
+    location: TourShellTabLocation(tabIndex: 1),
+    release: 7,
+    audience: 'lifter',
+    requiresProgramControl: true,
+  ),
+  FeatureEntry(
     id: 'assistant_feedback',
     titleEn: 'Rate assistant replies',
     sentenceEn:
@@ -202,10 +238,10 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
     id: 'meal_setup',
     titleEn: 'Meal setup and Food restrictions',
     sentenceEn:
-        'Open Targets beside the date to switch meals on or off, choose Meal slots and training time, see practical portions and notes when a day misses your targets, swap foods in your own plan or follow your coach, and log a planned meal with one tap.',
+        'Meals are on by default and shown in a day table with calories, protein, carbs and fat; choose Meal slots and training time, use Log beside meal names and Swap beside food names or request a Coach swap, and keep today’s meals in Food log history as soon as Meal setup is saved.',
     titleAr: 'إعداد الوجبات والقيود الغذائية',
     sentenceAr:
-        'افتح الأهداف بجانب التاريخ لتفعيل الوجبات أو إيقافها، واختر وجباتك ووقت تدريبك، وراجع الحصص العملية والملاحظات عندما لا يحقق اليوم أهدافك، وبدّل الأطعمة في خطتك أو اتبع مدربك، وسجّل الوجبة المخططة بلمسة واحدة.',
+        'تُفعَّل الوجبات افتراضيًا وتظهر في جدول اليوم مع السعرات والبروتين والكربوهيدرات والدهون؛ حدّد عدد الوجبات ووقت التدريب، واستخدم التسجيل بجوار اسم الوجبة والتبديل بجوار اسم الطعام أو اطلب من مدربك التبديل، وتُحفظ وجبات اليوم في سجل الطعام بمجرد حفظ إعداد الوجبات.',
     target: 'meal_setup',
     location: TourShellTabLocation(tabIndex: 2),
     release: 7,
@@ -233,6 +269,19 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
     target: 'assistant',
     location: TourShellTabLocation(tabIndex: 0),
     release: 6,
+    audience: 'lifter',
+  ),
+  FeatureEntry(
+    id: 'assistant_personal_logs',
+    titleEn: 'Ask about your Cardio and Nutrition logs',
+    sentenceEn:
+        'Ask about saved Cardio and Nutrition records for a day or recent period, including what you ate and the Nutrition targets saved for those days.',
+    titleAr: 'اسأل عن سجل الكارديو والتغذية',
+    sentenceAr:
+        'اسأل عن سجل الكارديو والتغذية ليوم أو فترة قريبة، وأكلك، وأهداف التغذية المحفوظة لتلك الأيام.',
+    target: 'assistant',
+    location: TourShellTabLocation(tabIndex: 0),
+    release: 7,
     audience: 'lifter',
   ),
   FeatureEntry(
@@ -355,9 +404,10 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
   FeatureEntry(
     id: 'edit_program_chat',
     titleEn: 'Edit your program from chat',
-    sentenceEn: 'Tell the assistant how you want to change your Training program.',
+    sentenceEn:
+        'Tell the assistant to swap an exercise by name or make another supported change to your Training program.',
     titleAr: 'عدّل برنامجك عبر المحادثة',
-    sentenceAr: 'أخبر المساعد بالتغييرات التي تريدها في برنامجك التدريبي.',
+    sentenceAr: 'اطلب من المساعد تبديل تمرين بالاسم أو إجراء تغيير آخر يدعمه في برنامجك التدريبي.',
     target: 'whats_new_edit_program_chat',
     location: TourRouteLocation(chatPath),
     release: 1,

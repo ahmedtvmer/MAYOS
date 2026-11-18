@@ -20,7 +20,7 @@ from utils.equipment_access import (
 logger = MayosLogger().get_logger(__name__)
 
 # Current target schema version for all user ledgers
-CURRENT_LEDGER_SCHEMA_VERSION: int = 64
+CURRENT_LEDGER_SCHEMA_VERSION: int = 65
 
 MEAL_SETUP_DDL: tuple[str, ...] = (
     "CREATE TABLE IF NOT EXISTS meal_setup ("
@@ -1432,9 +1432,30 @@ def _migrate_v62_to_v63(conn: sqlite3.Connection) -> None:
 
 
 def _migrate_v63_to_v64(conn: sqlite3.Connection) -> None:
+    """Stores the Player's planned-meal switch (issue #737)."""
+    from database.ledger.nutrition import NUTRITION_MEAL_PREFERENCE_DDL
+
+    conn.execute(NUTRITION_MEAL_PREFERENCE_DDL)
+    if not _ledger_table_exists(conn, "nutrition_plan_versions"):
+        return
+    for row in conn.execute(
+        "SELECT meals_json FROM nutrition_plan_versions "
+        "WHERE author='Player' AND meals_json IS NOT NULL ORDER BY id DESC"
+    ):
+        payload = json.loads(row[0])
+        enabled = payload.get("enabled")
+        if isinstance(enabled, bool):
+            conn.execute(
+                "INSERT OR IGNORE INTO nutrition_meal_preference(id,enabled,updated_at) VALUES(1,?,?)",
+                (int(enabled), datetime.now(UTC).isoformat(timespec="microseconds")),
+            )
+            break
+
+
+def _migrate_v64_to_v65(conn: sqlite3.Connection) -> None:
     """Adds Discord delivery state for 👎 feedback rows (issue #764).
 
-    The v63 ledger is guaranteed to have the feedback table (v62→v63 created
+    The v64 ledger is guaranteed to have the feedback table (v62→v63 created
     it), but the columns are added only when missing, mirroring the tolerant
     pattern above.
     """
@@ -1624,6 +1645,7 @@ MIGRATION_REGISTRY: dict[int, MigrationCallable] = {
     61: _migrate_v61_to_v62,
     62: _migrate_v62_to_v63,
     63: _migrate_v63_to_v64,
+    64: _migrate_v64_to_v65,
 }
 
 
