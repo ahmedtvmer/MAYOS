@@ -10,9 +10,12 @@ from time import perf_counter
 
 import pytest
 
-from core.meal_generator import MealGenerationInput, NUTRIENT_KEYS, ROLES, generate_meals, role_matches
+from core.meal_generator import (TARGET_KEYS, MealGenerationInput, NUTRIENT_KEYS, ROLES, generate_meals,
+                                 role_matches)
 from core.meal_portions import portion_amounts
+from core.meal_search import TOLERANCES
 from core.meal_setup import MEAL_LAYOUTS
+from core.nutrition_targets import NutritionCalculationInput, calculate_targets
 
 
 def _food(food_id, role, protein=0, carbs=0, fat=0, **curation):
@@ -189,7 +192,7 @@ def test_seeded_target_grid_never_breaks_food_limits_and_explains_day_gaps(count
                 lower, upper, step = expected[food["id"]]
                 assert lower <= food["grams"] <= upper
                 assert food["grams"] / step == pytest.approx(round(food["grams"] / step))
-        outside = [key for key, tolerance in zip(targets, (.05, .05, .10, .10))
+        outside = [key for key, tolerance in zip(targets, TOLERANCES)
                    if abs(generated["totals"][key] - targets[key]) > targets[key] * tolerance + 1e-8]
         assert bool(generated["gap_note"]) == bool(outside)
         if outside:
@@ -210,7 +213,7 @@ def test_known_realistic_days_land_inside_all_four_day_tolerances(count):
         generated = generate_meals(request)
         assert generated["status"] == "ready"
         assert generated["gap_note"] is None
-        for key, tolerance in (("calories", .05), ("protein_g", .05), ("carbs_g", .10), ("fat_g", .10)):
+        for key, tolerance in zip(TARGET_KEYS, TOLERANCES):
             assert abs(generated["totals"][key] - targets[key]) <= targets[key] * tolerance + 1e-8
 
 
@@ -307,6 +310,23 @@ def test_real_food_library_day_generates_within_two_seconds(real_staples, count,
     assert elapsed < 2, f"Real-library meal day took {elapsed:.3f}s (budget 2s)"
 
 
+def test_real_staples_fit_a_realistic_80kg_day_inside_two_percent_calories(real_staples):
+    # #774: the lose/moderate Nutrition targets for an 80 kg player are
+    # 2360 kcal with 160 g protein, 286 g carbs and 64 g fat; a generated day
+    # over the real Staple fixtures must land inside the day calorie tolerance.
+    targets = calculate_targets(NutritionCalculationInput(
+        sex="male", age=37, height_cm=176, weight_kg=80, daily_activity="on_feet",
+        training_days=4, goal="lose", intensity="moderate"))
+    assert targets.calories == 2360
+    expected = {"calories": targets.calories, "protein_g": targets.protein_g,
+                "carbs_g": targets.carbs_g, "fat_g": targets.fat_g}
+    generated = generate_meals(replace(_request(3), staples=real_staples, targets=expected))
+    assert generated["status"] == "ready"
+    assert generated["gap_note"] is None
+    for key, tolerance in zip(TARGET_KEYS, TOLERANCES):
+        assert abs(generated["totals"][key] - expected[key]) <= expected[key] * tolerance + 1e-8
+
+
 def test_normal_amounts_win_before_curation_order_for_equal_nutrient_fit():
     request = replace(_request(), targets={"calories": 1140, "protein_g": 90, "carbs_g": 150, "fat_g": 20},
         staples=[_food("first", "protein", protein=30, portion_grams=100, min_grams=100, max_grams=300),
@@ -322,6 +342,9 @@ def test_normal_amounts_win_before_curation_order_for_equal_nutrient_fit():
     ({"calories": 1954, "protein_g": 106, "carbs_g": 300, "fat_g": 30},
      "About 120 kcal under and 15 g protein under. Add a snack or a bigger portion.",
      "تقريبًا: نقص 120 سعرة ونقص 15 غ بروتين. أضف وجبة خفيفة أو حصة أكبر."),
+    ({"calories": 1954, "protein_g": 90, "carbs_g": 300, "fat_g": 30},
+     "About 120 kcal under. Add a snack or a bigger portion.",
+     "تقريبًا: نقص 120 سعرة. أضف وجبة خفيفة أو حصة أكبر."),
     ({"calories": 1830, "protein_g": 90, "carbs_g": 280, "fat_g": 28}, None, None),
     ({"calories": 1700, "protein_g": 80, "carbs_g": 300, "fat_g": 30},
      "About 130 kcal over and 10 g protein over. Try a smaller portion or a different food.",
