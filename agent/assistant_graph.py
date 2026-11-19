@@ -2632,7 +2632,17 @@ _WEAK_POINT_CHAT_LABELS = {
 }
 
 
+def _normalized_goal_statement(query: str) -> str:
+    normalized = unicodedata.normalize("NFKC", query).strip().rstrip(".!؟")
+    return re.sub(r"[\u064b-\u065f\u0670]", "", normalized)
+
+
 def _goal_change_from_statement(query: str) -> tuple[str, str] | None:
+    """Explicit goal statements, which write the goal directly.
+
+    Inferred forms («عايز أكبر …») live in ``_inferred_goal_change_from_statement``
+    and confirm with the Player before anything is written.
+    """
     patterns = (
         ("current_goal", r"(?:change|update|set) my (?:current )?goal to\s+(.+)$"),
         ("long_term_goal", r"(?:change|update|set) my long[- ]term goal to\s+(.+)$"),
@@ -2641,10 +2651,8 @@ def _goal_change_from_statement(query: str) -> tuple[str, str] | None:
         ("current_goal", r"(?:غيّر|غير|عدّل|عدل) هدفي(?: الحالي)? (?:إلى|الى)\s*(.+)$"),
         ("long_term_goal", r"(?:غيّر|غير|عدّل|عدل) هدفي طويل المدى (?:إلى|الى)\s*(.+)$"),
         ("current_goal", r"هدفي(?: الحالي)? هو\s*(.+)$"),
-        ("current_goal", r"(?:هدفي(?: الحالي)?|عايز|عايزة|نفسي)\s+((?:أكبر|اكبر|أوسع|اوسع|أزود|ازود)\s+.+)$"),
     )
-    normalized = unicodedata.normalize("NFKC", query).strip().rstrip(".!؟")
-    normalized = re.sub(r"[\u064b-\u065f\u0670]", "", normalized)
+    normalized = _normalized_goal_statement(query)
     for field_name, pattern in patterns:
         match = re.fullmatch(pattern, normalized, re.IGNORECASE)
         if match is not None:
@@ -2652,6 +2660,36 @@ def _goal_change_from_statement(query: str) -> tuple[str, str] | None:
             if len(goal) >= 2:
                 return field_name, goal[:500]
     return None
+
+
+# Inferred «عايز/عايزة/نفسي/هدفي» + أكبر/أوسع/أزود statements only count as a
+# goal change when the rest names a muscle (the #509 detection) or body size or
+# weight; even then the goal is written only after the Player confirms.
+_INFERRED_GOAL_CHANGE_PATTERN = (
+    r"(?:هدفي(?: الحالي)?|عايز|عايزة|نفسي)\s+((?:أكبر|اكبر|أوسع|اوسع|أزود|ازود)\s+.+)$"
+)
+# Size and weight count only for the Player's own body: the possessive forms
+# «وزني/حجمي/جسمي/كتلتي» («وزن جسمي» matches via «جسمي»), plus «عضل» which
+# covers عضلات/عضلي. Bare «وزن/حجم/كتلة» about a lift or the program
+# (e.g. «وزن البنش», «حجم التمرين») must not count.
+_INFERRED_GOAL_BODY_TARGET_PATTERN = re.compile(r"عضل|وزني|حجمي|جسمي|كتلتي")
+
+
+def _inferred_goal_change_from_statement(query: str) -> tuple[str, str] | None:
+    normalized = _normalized_goal_statement(query)
+    match = re.fullmatch(_INFERRED_GOAL_CHANGE_PATTERN, normalized, re.IGNORECASE)
+    if match is None:
+        return None
+    goal = match.group(1).strip()
+    if len(goal) >= 2:
+        return "current_goal", goal[:500]
+    return None
+
+
+def _inferred_goal_change_targets_body(goal: str) -> bool:
+    if suggest_weak_points(goal):
+        return True
+    return _INFERRED_GOAL_BODY_TARGET_PATTERN.search(goal) is not None
 
 
 def _goal_weak_point_labels(muscles: list[str], language: str) -> str:
@@ -2726,13 +2764,71 @@ def _decline_goal_weak_point_suggestion(ledger: Any, language: str) -> dict[str,
     return _response(reply)
 
 
+def _goal_change_confirmation_reply(goal: str) -> str:
+    return f'تحب أخلي "{goal}" هدفك؟ رد أيوه أو لا.'
+
+
+def _goal_change_question_response(goal: str) -> dict[str, Any]:
+    return _response(_goal_change_confirmation_reply(goal))
+
+
+def _save_chat_goal_reply(
+    goal_change: tuple[str, str], query: str, ledger: Any, store: Any, state: AssistantState
+) -> dict[str, Any]:
+    suggestions = _write_chat_goal(goal_change, ledger, store, state)
+    language = _tool_reply_language({"messages": [HumanMessage(content=query)]})
+    if not suggestions:
+        return _response("I updated your goal." if language == "en" else "حدّثت هدفك.")
+    return _offer_goal_weak_points(suggestions, ledger, language)
+
+
+def _pending_goal_change_confirmation(
+    query: str, ledger: Any, store: Any, state: AssistantState
+) -> dict[str, Any] | None:
+    pending = ledger.get_pending_goal_weak_point_suggestion()
+    if not pending or pending.get("kind") != "goal_change":
+        return None
+    offer = {
+        **pending,
+        "offer_text": _goal_change_question_response(pending["offer_text"])["response_content"],
+    }
+    if _goal_confirmation_turn(state.get("messages", []), offer) != "goal_change":
+        return None
+    confirmation = _goal_confirmation_kind(query)
+    if confirmation is None:
+        ledger.clear_pending_goal_weak_point_suggestion()
+        return None
+    ledger.clear_pending_goal_weak_point_suggestion()
+    if confirmation == "no":
+        language = _tool_reply_language({"messages": [HumanMessage(content=query)]})
+        return _response(
+            "Okay, I left your goal unchanged."
+            if language == "en"
+            else "تمام، سبت هدفك زي ما هو."
+        )
+    return _save_chat_goal_reply(
+        (pending["muscles"][0], pending["offer_text"]), query, ledger, store, state
+    )
+
+
+def _inferred_goal_change_intent(
+    query: str, ledger: Any, state: AssistantState
+) -> dict[str, Any] | None:
+    inferred = _inferred_goal_change_from_statement(query)
+    if inferred is None or not _inferred_goal_change_targets_body(inferred[1]):
+        return None
+    response = _goal_change_question_response(inferred[1])
+    ledger.set_pending_goal_weak_point_suggestion([inferred[0]], "goal_change", inferred[1])
+    return response
+
+
 def _pending_goal_confirmation(
     query: str, ledger: Any, messages: list[Any]
 ) -> tuple[list[str], str] | None:
     if _weak_point_names_from_statement(query) is not None:
         return None
     pending_state = ledger.get_pending_goal_weak_point_suggestion()
-    if not pending_state:
+    if not pending_state or pending_state.get("kind") == "goal_change":
         return None
     turn = _goal_confirmation_turn(messages, pending_state)
     if turn is None or turn != pending_state.get("kind"):
@@ -2893,11 +2989,13 @@ def _goal_write_intent(
     goal_change = _goal_change_from_statement(query)
     if goal_change is not None:
         ledger.clear_pending_goal_weak_point_suggestion()
-        suggestions = _write_chat_goal(goal_change, ledger, store, state)
-        language = _tool_reply_language({"messages": [HumanMessage(content=query)]})
-        if not suggestions:
-            return _response("I updated your goal." if language == "en" else "حدّثت هدفك.")
-        return _offer_goal_weak_points(suggestions, ledger, language)
+        return _save_chat_goal_reply(goal_change, query, ledger, store, state)
+    goal_confirmation = _pending_goal_change_confirmation(query, ledger, store, state)
+    if goal_confirmation is not None:
+        return goal_confirmation
+    inferred_goal = _inferred_goal_change_intent(query, ledger, state)
+    if inferred_goal is not None:
+        return inferred_goal
     confirmation = _goal_weak_point_confirmation(query, ledger, store, state)
     if confirmation is not None:
         return confirmation
