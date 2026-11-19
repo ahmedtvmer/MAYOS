@@ -794,10 +794,16 @@ ARABIC_PROGRAM_AND_TECHNIQUE_QUESTIONS = [
         # The last-session request with hamza, ة/ه and MSA spellings.
         ("آخِر جلسة كانت عاملة إيه؟", "whole_session", None),
         ("أداء آخر تمرين", "whole_session", None),
+        # A possessive pronoun after the session noun names the Player, not an
+        # exercise (#780): the question is about the last session.
+        ("كيف كان آخر تمرين لي؟", "whole_session", None),
+        ("اخر تمرين ليا كان عامل ازاي", "whole_session", None),
+        ("آخر حصة بتاعتي كانت عاملة ايه", "whole_session", None),
         # Per-exercise history
         ("اخر مرة لعبت بنش عملت كام", "exercise", "Bench Press"),
         ("عملت ايه في السكوات اخر مرة", "exercise", "Squat"),
         ("اخر تمرين بنش كان عامل ازاي", "exercise", "Bench Press"),
+        ("اخر تمرين للسكوات كان عامل ازاي", "exercise", "Squat"),
         ("عملت كام تكرار في آخر تمرين للقرفصاء؟", "exercise", "Squat"),
         ("رفعت كام في البنش المره الاخيره؟", "exercise", "Bench Press"),
         ("شلت كام في البنش اخر مره؟", "exercise", "Bench Press"),
@@ -805,6 +811,7 @@ ARABIC_PROGRAM_AND_TECHNIQUE_QUESTIONS = [
         ("عملت كام في البنش قبل كده؟", "exercise", "Bench Press"),
         ("عملت ايه في البنش النهارده؟", "exercise", "Bench Press"),
         ("عملت كام بنش امبارح؟", "exercise", "Bench Press"),
+        ("اخر تمرين للبنش، رفعت كام؟", "exercise", "Bench Press"),
         ("ما الوزن الذي سجلته في تمرين squat خلال آخر جلسة؟", "exercise", "Squat"),
         # MSA/relative-clause: «اخر مرة» + past training verb (+ فيها) + exercise
         ("اخر مرة سجلت فيها بنش", "exercise", "Bench Press"),
@@ -933,6 +940,33 @@ def test_arabic_last_bench_session_question_answers_from_the_seeded_session(
     assert any("\u0600" <= character <= "\u06ff" for character in response)
     assert "100 kg × 8" in response
     assert "تكرار" in response
+    assert model.calls == []
+
+
+def test_arabic_possessive_last_workout_answers_the_whole_session(
+    fresh_store, monkeypatch
+):
+    # «كيف كان آخر تمرين لي؟» — the possessive «لي» is not an exercise (#780):
+    # the deterministic whole-session reply from the seeded session, not the
+    # which-exercise clarification, with no model call.
+    _seed_history_session(fresh_store, "bench")
+    model = ScriptedChatModel()
+    monkeypatch.setattr("agent.assistant_graph.llm", model)
+    state = _turn("كيف كان آخر تمرين لي؟")
+
+    response = "".join(
+        stream_assistant_turn(state, ledger=fresh_store.ledger, store=fresh_store)
+    )
+
+    assert state["intent"] == "exercise_history"
+    assert state["intent_metadata"]["arabic_history"] is True
+    assert "history_exercise_id" not in state["intent_metadata"]
+    assert "مش لاقي التمرين ده" not in response
+    assert "انهي نسخة من التمرين" not in response
+    assert "ده آخر جلسة سجلتها" in response
+    assert "Bench Press (Barbell)" in response
+    assert "100 kg × 8" in response
+    assert any("\u0600" <= character <= "\u06ff" for character in response)
     assert model.calls == []
 
 
