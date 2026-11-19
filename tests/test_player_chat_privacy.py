@@ -22,6 +22,7 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from langchain_core.messages import HumanMessage
 from agent import assistant_graph
 from agent import player_prompt
 from agent import player_tools
@@ -292,11 +293,7 @@ def test_chat_writes_weak_points_in_english_and_arabic_without_guessing(api, mon
         ("Change my current goal to build my shoulders", "ماشي", ["shoulders"], "Weak point"),
         ("My goal is grow my abs", "تمام", ["abs"], "Weak point"),
         ("My goal is grow my rear delts", "yes", ["rear_delts"], "rear delts"),
-        ("عايز أكبر الأكتاف الخلفية", "أيوه", ["rear_delts"], "الأكتاف الخلفية"),
         ("غيّر هدفي الحالي إلى عايز صدر أكبر", "أيوه", ["chest"], "نقطة ضعف"),
-        ("هدفي أكبر صدري", "نعم", ["chest"], "نقطة ضعف"),
-        ("عايز أكبر صدري", "ايوة", ["chest"], "نقطة ضعف"),
-        ("نفسي أكبر دراعاتي", "تمام", ["biceps", "triceps"], "نقطة ضعف"),
     ],
 )
 def test_goal_change_chat_offers_and_saves_named_weak_points(
@@ -328,6 +325,177 @@ def test_goal_change_chat_offers_and_saves_named_weak_points(
     assert client.get("/programs/active", headers=headers).json()[
         "regeneration_offer_reason"
     ] == "focus_muscles_changed"
+
+
+def _save_goal_chat_program(db: DatabaseManager, username: str) -> None:
+    from agent.program_generator import PROGRAM_DESIGN_VERSION
+
+    db.switch_user(username)
+    db.ledger.save_training_program({
+        "program_name": "Current plan",
+        "split_type": "Full Body",
+        "weekly_frequency": 4,
+        "design_version": PROGRAM_DESIGN_VERSION,
+        "days": [_day_plan().model_dump()],
+    })
+
+
+@pytest.mark.parametrize(
+    ("goal_request", "yes", "expected", "goal_text", "offer_fragment"),
+    [
+        ("عايز أكبر الأكتاف الخلفية", "أيوه", ["rear_delts"], "أكبر الأكتاف الخلفية", "الأكتاف الخلفية"),
+        ("هدفي أكبر صدري", "نعم", ["chest"], "أكبر صدري", "نقطة ضعف"),
+        ("عايز أكبر صدري", "ايوة", ["chest"], "أكبر صدري", "نقطة ضعف"),
+        ("نفسي أكبر دراعاتي", "تمام", ["biceps", "triceps"], "أكبر دراعاتي", "نقطة ضعف"),
+    ],
+)
+def test_inferred_goal_change_asks_then_saves_on_confirmation(
+    api, monkeypatch, goal_request, yes, expected, goal_text, offer_fragment
+):
+    client, db = api
+    username = f"goal-inferred-{expected[0]}"
+    headers = _authed(_register(client, username)["access_token"])
+    monkeypatch.setattr(
+        "service.profile.generate_program_draft_pipeline",
+        lambda *_args, **_kwargs: (None, None),
+    )
+    _save_goal_chat_program(db, username)
+
+    asked = client.post("/chat/messages", headers=headers, json={"content": goal_request})
+    assert asked.status_code == 200, asked.text
+    assert "تحب أخلي" in _done_content(asked.text)
+    assert client.get("/profile", headers=headers).json().get("current_goal") is None
+
+    confirmed = client.post("/chat/messages", headers=headers, json={"content": yes})
+    assert confirmed.status_code == 200, confirmed.text
+    assert offer_fragment in _done_content(confirmed.text)
+    assert client.get("/profile", headers=headers).json()["current_goal"] == goal_text
+
+    saved = client.post("/chat/messages", headers=headers, json={"content": "أيوه"})
+    assert "حفظت" in _done_content(saved.text)
+    profile = client.get("/profile", headers=headers).json()
+    assert [point["muscle"] for point in profile["weak_points"]] == expected
+    assert client.get("/programs/active", headers=headers).json()[
+        "regeneration_offer_reason"
+    ] == "focus_muscles_changed"
+
+
+def test_declined_inferred_goal_change_writes_nothing(api, monkeypatch):
+    client, _db = api
+    headers = _authed(_register(client, "goal-inferred-decline")["access_token"])
+    monkeypatch.setattr(
+        "service.profile.generate_program_draft_pipeline",
+        lambda *_args, **_kwargs: (None, None),
+    )
+    asked = client.post("/chat/messages", headers=headers,
+                        json={"content": "عايز أكبر صدري"})
+    assert "تحب أخلي" in _done_content(asked.text)
+    declined = client.post("/chat/messages", headers=headers, json={"content": "لا"})
+    assert "سبت هدفك" in _done_content(declined.text)
+    profile = client.get("/profile", headers=headers).json()
+    assert profile.get("current_goal") is None
+    assert profile.get("weak_points") is None
+
+
+def test_unrelated_message_drops_pending_goal_change(api, monkeypatch):
+    client, _db = api
+    headers = _authed(_register(client, "goal-inferred-unrelated")["access_token"])
+    monkeypatch.setattr(
+        "service.profile.generate_program_draft_pipeline",
+        lambda *_args, **_kwargs: (None, None),
+    )
+    client.post("/chat/messages", headers=headers, json={"content": "عايز أكبر صدري"})
+    client.post("/chat/messages", headers=headers,
+                json={"content": "إيه أفضل وقت للكارديو؟"})
+    accepted = client.post("/chat/messages", headers=headers, json={"content": "أيوه"})
+    assert "هدفك" not in _done_content(accepted.text)
+    profile = client.get("/profile", headers=headers).json()
+    assert profile.get("current_goal") is None
+    assert profile.get("weak_points") is None
+
+
+@pytest.mark.parametrize(
+    ("message", "username"),
+    [
+        ("عايز أزود وزن البنش", "goal-inferred-barbell"),
+        ("عايز أزود حجم التمرين", "goal-inferred-volume"),
+    ],
+)
+def test_exercise_weight_and_volume_requests_ask_no_goal_question(api, message, username):
+    client, _db = api
+    headers = _authed(_register(client, username)["access_token"])
+    response = client.post("/chat/messages", headers=headers, json={"content": message})
+    assert response.status_code == 200, response.text
+    assert "تحب أخلي" not in _done_content(response.text)
+    assert client.get("/profile", headers=headers).json().get("current_goal") is None
+
+
+@pytest.mark.parametrize(
+    ("message", "username"),
+    [
+        ("عايز أزود وزني", "goal-inferred-own-weight"),
+        ("نفسي أكبر حجم جسمي", "goal-inferred-own-size"),
+    ],
+)
+def test_own_body_weight_and_size_still_ask_goal_question(api, message, username):
+    client, _db = api
+    headers = _authed(_register(client, username)["access_token"])
+    response = client.post("/chat/messages", headers=headers, json={"content": message})
+    assert response.status_code == 200, response.text
+    assert "تحب أخلي" in _done_content(response.text)
+    assert client.get("/profile", headers=headers).json().get("current_goal") is None
+
+
+@pytest.mark.parametrize(
+    ("goal_request", "goal_text", "offer_fragment"),
+    [
+        ("هدفي هو أكبر صدري", "أكبر صدري", "نقطة ضعف"),
+        ("my goal is to build my chest", "to build my chest", "Weak point"),
+    ],
+)
+def test_explicit_goal_statements_write_directly(
+    api, monkeypatch, goal_request, goal_text, offer_fragment
+):
+    client, db = api
+    username = f"goal-explicit-{goal_text.split()[0]}"
+    headers = _authed(_register(client, username)["access_token"])
+    monkeypatch.setattr(
+        "service.profile.generate_program_draft_pipeline",
+        lambda *_args, **_kwargs: (None, None),
+    )
+    _save_goal_chat_program(db, username)
+
+    response = client.post("/chat/messages", headers=headers, json={"content": goal_request})
+    assert response.status_code == 200, response.text
+    assert offer_fragment in _done_content(response.text)
+    assert client.get("/profile", headers=headers).json()["current_goal"] == goal_text
+    assert client.get("/profile", headers=headers).json().get("weak_points") is None
+
+
+def test_protein_increase_request_never_touches_goal_or_goal_route(api):
+    client, db = api
+    username = "goal-route-protein"
+    headers = _authed(_register(client, username)["access_token"])
+    state = {"messages": [HumanMessage(content="عايز أزود البروتين بعد التمرين")]}
+    with db.open_ledger(username) as ledger:
+        result = assistant_graph.router_node(
+            state, {"configurable": {"ledger": ledger, "store": db}}
+        )
+    assert result["intent"] != "telemetry_intercept"
+    assert client.get("/profile", headers=headers).json().get("current_goal") is None
+
+
+def test_training_days_increase_request_reaches_program_route(api):
+    client, db = api
+    username = "goal-route-days"
+    headers = _authed(_register(client, username)["access_token"])
+    state = {"messages": [HumanMessage(content="عايز أزود أيام التمرين لأربعة")]}
+    with db.open_ledger(username) as ledger:
+        result = assistant_graph.router_node(
+            state, {"configurable": {"ledger": ledger, "store": db}}
+        )
+    assert result["intent"] in {"program_edit", "program_mutation"}
+    assert client.get("/profile", headers=headers).json().get("current_goal") is None
 
 
 def test_declining_goal_weak_point_suggestion_does_not_save_it(api, monkeypatch):
