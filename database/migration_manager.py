@@ -20,7 +20,7 @@ from utils.equipment_access import (
 logger = MayosLogger().get_logger(__name__)
 
 # Current target schema version for all user ledgers
-CURRENT_LEDGER_SCHEMA_VERSION: int = 64
+CURRENT_LEDGER_SCHEMA_VERSION: int = 65
 
 MEAL_SETUP_DDL: tuple[str, ...] = (
     "CREATE TABLE IF NOT EXISTS meal_setup ("
@@ -1452,6 +1452,39 @@ def _migrate_v63_to_v64(conn: sqlite3.Connection) -> None:
             break
 
 
+def _migrate_v64_to_v65(conn: sqlite3.Connection) -> None:
+    """Adds Discord delivery state for 👎 feedback rows (issue #764).
+
+    The v64 ledger is guaranteed to have the feedback table (v62→v63 created
+    it), but the columns are added only when missing, mirroring the tolerant
+    pattern above.
+    """
+    from database.ledger.assistant_feedback import ASSISTANT_FEEDBACK_DDL
+
+    for statement in ASSISTANT_FEEDBACK_DDL:
+        conn.execute(statement)
+    columns = {
+        str(row[1]) for row in conn.execute("PRAGMA table_info(assistant_reply_feedback)")
+    }
+    for column, declaration in (
+        ("vote_notified_at", "TEXT"),
+        ("vote_redact_terms_json", "TEXT"),
+        ("delivery_claimed_at", "TEXT"),
+    ):
+        if column not in columns:
+            conn.execute(f"ALTER TABLE assistant_reply_feedback ADD COLUMN {column} {declaration}")
+    # Pre-existing 👎 feedback was given under a policy that shared only
+    # reports with the owner (policy 1.13), so it must never be sent
+    # retroactively once the upgrade makes 👎 sends possible: stamp every old
+    # row as already notified. Rows created after the migration behave as
+    # designed (issue #764).
+    conn.execute(
+        "UPDATE assistant_reply_feedback SET vote_notified_at = ? "
+        "WHERE vote_notified_at IS NULL",
+        (datetime.now(UTC).isoformat(),),
+    )
+
+
 def get_ledger_schema_version(conn: sqlite3.Connection) -> int:
     """Reads the current user_version PRAGMA from the SQLite connection."""
     cursor = conn.cursor()
@@ -1612,6 +1645,7 @@ MIGRATION_REGISTRY: dict[int, MigrationCallable] = {
     61: _migrate_v61_to_v62,
     62: _migrate_v62_to_v63,
     63: _migrate_v63_to_v64,
+    64: _migrate_v64_to_v65,
 }
 
 

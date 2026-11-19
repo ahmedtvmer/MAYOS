@@ -465,9 +465,9 @@ def test_policy_source_file_exists_and_every_section_is_served(api):
     # wraps across lines and bolds its lead-ins.
     flat = " ".join(source.split()).replace("**", "")
     from service import privacy_policy
-    assert privacy_policy.POLICY_VERSION == "1.13"
-    assert privacy_policy.POLICY_EFFECTIVE_DATE == "2026-11-17"
-    assert "Effective date: 2026-11-17 — Policy version 1.13" in body
+    assert privacy_policy.POLICY_VERSION == "1.14"
+    assert privacy_policy.POLICY_EFFECTIVE_DATE == "2026-11-18"
+    assert "Effective date: 2026-11-18 — Policy version 1.14" in body
     assert "Germany (Contabo)" in flat and "fly.io" not in flat.lower()
     assert "This is the only email sent to you." not in flat
     for phrase in (
@@ -517,6 +517,7 @@ def test_policy_source_file_exists_and_every_section_is_served(api):
         "When you vote (👍/👎) on or report an assistant reply",
         "the reply's message id and text",
         "the owner's Discord",
+        "the exchange you rated (your message and the assistant's reply)",
         "never includes your username, recovery email or account id",
         "Deleting your account removes the feedback and reports",
         # The landing site's public deletion page is another route to the form.

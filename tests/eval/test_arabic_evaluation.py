@@ -121,6 +121,19 @@ def test_unseeded_deadlift_history_requires_honest_missing_data(fresh_store):
     assert result["history_scoring"]["passed"] is True
 
 
+def test_graph_plumbing_last_workout_summary_is_deterministic_and_lean(fresh_store):
+    # ar-hist-05 («عملت إيه في آخر تمرين؟») now takes the deterministic #766
+    # Arabic ledger route: a lean whole-session reply naming each recorded
+    # exercise with its weight and reps, every number a seeded ledger figure.
+    result = _run("ar-hist-05", fresh_store)
+    assert result["observed_intent"] == "exercise_history"
+    assert result["expected_intent_match"] is True
+    assert result["history_scoring"]["kind"] == "fact"
+    assert result["history_scoring"]["passed"] is True
+    assert result["history_scoring"]["exercise_mentioned"] is True
+    assert result["history_scoring"]["value_bound_to_exercise_reply"] is True
+
+
 def test_history_comparison_and_unsupported_monthly_scope_are_scored(fresh_store):
     compare = _run("ar-hist-03", fresh_store)
     monthly = _run("ar-hist-04", fresh_store)
@@ -332,9 +345,12 @@ def test_monthly_history_rejects_affirmative_trend_after_scope_caveat():
 def test_graph_swallowed_model_failure_is_runner_error(fresh_store):
     from tests.eval.run_arabic_evaluation import _run_one
 
-    scenario = dict(SCENARIOS["cases"]["ar-hist-01"])
+    # ar-hist-02 still reaches the model: its phrasing («ايه احسن رقم سجلته»)
+    # does not hit the deterministic #766 Arabic ledger route, so the forced
+    # model failure happens and must be reported as a runner error.
+    scenario = dict(SCENARIOS["cases"]["ar-hist-02"])
     scenario["plumbing_raise_model"] = True
-    case = next(case for case in DATA["player_messages"] if case["id"] == "ar-hist-01")
+    case = next(case for case in DATA["player_messages"] if case["id"] == "ar-hist-02")
     result = _run_one(case, scenario, fresh_store, mode="plumbing")
     assert result["case_status"] == "runner_error"
     assert "graph returned error response" in result["error"].lower()

@@ -1,3 +1,6 @@
+import uuid
+from datetime import UTC, datetime, timedelta
+
 import pytest
 from langchain_core.messages import HumanMessage
 
@@ -688,18 +691,20 @@ def test_live_arabic_history_targets_remain_history_routes(
         for day in program.days
         for exercise in day.exercises
     }
-    model = ScriptedChatModel([classification, "البيانات المسجلة للتمرين موجودة في السياق."])
+    # #766: the vocabulary rule routes these lexically — the Arabic classifier
+    # is never called (the scripted classification documents the intended target).
+    model = ScriptedChatModel([])
     monkeypatch.setattr("agent.assistant_graph.llm", model)
     state = _turn(message)
 
-    response = "".join(stream_assistant_turn(state, ledger=fresh_store.ledger, store=fresh_store))
+    "".join(stream_assistant_turn(state, ledger=fresh_store.ledger, store=fresh_store))
 
     assert state["intent"] == "exercise_history"
     assert state["intent_metadata"]["arabic_history"] is True
     assert state["intent_metadata"]["history_exercise_id"] in program_exercise_ids
-    assert state["intent_metadata"]["history_exercise_name"]
+    assert classification["history_exercise"] in state["intent_metadata"]["history_exercise_name"]
     assert state["program_updated"] is False
-    assert response == "البيانات المسجلة للتمرين موجودة في السياق."
+    assert model.calls == []
 
 
 def test_arabic_train_or_rest_advice_overrides_misclassified_history(
@@ -720,3 +725,261 @@ def test_arabic_train_or_rest_advice_overrides_misclassified_history(
     assert state["intent"] == "coaching_qa"
     assert state["program_updated"] is False
     assert response == COACHING_REPLY
+
+
+# --- #766: deterministic Arabic workout-history routing ----------------------
+
+ARABIC_PROGRAM_AND_TECHNIQUE_QUESTIONS = [
+    "ايه تمارين برنامجي",
+    "اعمل تمرين ايه النهارده",
+    "ازاي اعمل بنش صح",
+    "عايز تمرين للصدر",
+    "تمارين يوم الرجل كام سيت",
+    "برنامجي عامل ازاي؟",
+    # The program's last exercise is a program question, not history (#766).
+    "اخر تمرين في البرنامج ايه",
+    # Today's plan, not today's logged workout.
+    "تمرين النهارده ايه",
+    "هتمرن ايه النهارده",
+    # Lifestyle questions where the workout word is only a time reference
+    # («قبل/بعد التمرين/الجيم») — drinks, supplements, sleep, calories. Food
+    # questions («كلت ايه بعد الجيم امبارح») live in test_food_log_assistants:
+    # the food-log guard routes them without a model call.
+    "شربت ايه امبارح قبل التمرين",
+    "اخدت مكملات امبارح قبل التمرين",
+    "نمت كام ساعه امبارح قبل التمرين",
+    "السعرات اللي دخلتها قبل التمرين امبارح",
+    "شربت بروتين بعد الجيم امبارح",
+]
+
+
+@pytest.mark.parametrize(
+    ("message", "expected_kind", "expected_exercise"),
+    [
+        # LAST/PAST + WORKOUT (rule a)
+        ("اخر تمرين كان عامل ازاي؟", "whole_session", None),
+        ("اخر تمرينه كانت عامله ازاي", "whole_session", None),
+        ("آخر حصة كانت عاملة إيه؟", "whole_session", None),
+        ("التمرين الأخير كان عامل إيه؟", "whole_session", None),
+        ("اخر جلسه عملتها", "whole_session", None),
+        ("تمريني امبارح كان عامل ازاي", "whole_session", None),
+        ("حصتي اللي فاتت؟", "whole_session", None),
+        ("اخر جلسه كانت كويس؟", "whole_session", None),
+        ("تمرين السبت كان عامل ازاي؟", "whole_session", None),
+        ("روحت الجيم امبارح", "whole_session", None),
+        ("ورك اوت امبارح كان عامل ازاي؟", "whole_session", None),
+        ("الجيم امبارح كان عامل ازاي؟", "whole_session", None),
+        ("لخصلي اخر جلسة", "whole_session", None),
+        ("راجعلي اخر جلسه", "whole_session", None),
+        ("وريني اخر تمرين", "whole_session", None),
+        ("اداء اخر تمرين", "whole_session", None),
+        ("كيف كان آخر تمرين؟", "whole_session", None),
+        ("ملخص آخر جلسة", "whole_session", None),
+        ("تقييم اخر جلسه", "whole_session", None),
+        ("ايه اخباره اخر جلسه؟", "whole_session", None),
+        ("مستوايا اخر تمرين؟", "whole_session", None),
+        ("كيف كان ادائي اخر تمرين", "whole_session", None),
+        ("ماذا فعلت امبارح", "whole_session", None),
+        ("كم رفعت امبارح", "whole_session", None),
+        ("شفت اخر جلسه كانت عامله ايه", "whole_session", None),
+        # Elongated letters collapse to the same match.
+        ("اخر تمرين كان عامل ازااااي؟", "whole_session", None),
+        # HOW/PERFORMANCE + LAST/PAST (rule b)
+        ("عملت ايه امبارح", "whole_session", None),
+        ("اتمرنت امبارح عملت ايه", "whole_session", None),
+        ("عملت ايه قبل كده", "whole_session", None),
+        ("عملت ايه من يومين", "whole_session", None),
+        ("عملت ايه الاسبوع اللي فات", "whole_session", None),
+        ("عملت ايه النهارده", "whole_session", None),
+        # The last-session request with hamza, ة/ه and MSA spellings.
+        ("آخِر جلسة كانت عاملة إيه؟", "whole_session", None),
+        ("أداء آخر تمرين", "whole_session", None),
+        # Per-exercise history
+        ("اخر مرة لعبت بنش عملت كام", "exercise", "Bench Press"),
+        ("عملت ايه في السكوات اخر مرة", "exercise", "Squat"),
+        ("اخر تمرين بنش كان عامل ازاي", "exercise", "Bench Press"),
+        ("عملت كام تكرار في آخر تمرين للقرفصاء؟", "exercise", "Squat"),
+        ("رفعت كام في البنش المره الاخيره؟", "exercise", "Bench Press"),
+        ("شلت كام في البنش اخر مره؟", "exercise", "Bench Press"),
+        ("لعبت كام بنش امبارح؟", "exercise", "Bench Press"),
+        ("عملت كام في البنش قبل كده؟", "exercise", "Bench Press"),
+        ("عملت ايه في البنش النهارده؟", "exercise", "Bench Press"),
+        ("عملت كام بنش امبارح؟", "exercise", "Bench Press"),
+        ("ما الوزن الذي سجلته في تمرين squat خلال آخر جلسة؟", "exercise", "Squat"),
+        # MSA/relative-clause: «اخر مرة» + past training verb (+ فيها) + exercise
+        ("اخر مرة سجلت فيها بنش", "exercise", "Bench Press"),
+        ("آخر مرة لعبت فيها بنش", "exercise", "Bench Press"),
+        ("اخر مرة قدرت ارفع فيها البنش", "exercise", "Bench Press"),
+        # Exercise after a relative clause / purpose phrase on the session noun
+        ("آخر حصة عملت فيها بنش", "exercise", "Bench Press"),
+        ("اخر تمرين عملته للبنش", "exercise", "Bench Press"),
+        ("اخر جلسه عملتها للسكوات", "exercise", "Squat"),
+    ],
+)
+def test_arabic_history_routing_table(
+    fresh_store, monkeypatch, message, expected_kind, expected_exercise
+):
+    _seed_program(fresh_store)
+    # No scripted turns: a history hit must route without any model call, so an
+    # unexpected classifier call fails the test loudly.
+    model = ScriptedChatModel([])
+    monkeypatch.setattr("agent.assistant_graph.llm", model)
+    state = _turn(message)
+
+    routed = router_node(
+        state, {"configurable": {"ledger": fresh_store.ledger, "store": fresh_store}}
+    )
+
+    assert routed["intent"] == "exercise_history"
+    metadata = routed["intent_metadata"]
+    assert metadata["arabic_history"] is True
+    assert model.calls == []
+    if expected_kind == "whole_session":
+        # «اخر تمرين» with no exercise named after it means the last session.
+        assert "history_exercise_id" not in metadata
+        assert metadata["raw_query"] == "how did I do last session"
+    else:
+        assert expected_exercise in metadata["history_exercise_name"]
+
+
+@pytest.mark.parametrize("message", ARABIC_PROGRAM_AND_TECHNIQUE_QUESTIONS)
+def test_arabic_program_and_technique_questions_stay_off_the_history_route(
+    fresh_store, monkeypatch, message
+):
+    before = _seed_program(fresh_store)
+    model = ScriptedChatModel([{"intent": "coaching_qa"}, COACHING_REPLY])
+    monkeypatch.setattr("agent.assistant_graph.llm", model)
+    state = _turn(message)
+
+    routed = router_node(
+        state, {"configurable": {"ledger": fresh_store.ledger, "store": fresh_store}}
+    )
+
+    assert routed["intent"] == "coaching_qa"
+    assert len(model.calls) == 1  # only the Arabic classifier ran, no history hijack
+    assert fresh_store.ledger.get_active_program().version == before.version
+
+
+def _seed_history_session(store, exercise_name_fragment):
+    """Log one saved session with a working set on a seeded program exercise."""
+    program = _seed_program(store)
+    slot = next(
+        exercise
+        for day in program.days
+        for exercise in day.exercises
+        if exercise_name_fragment in exercise.exercise_name.lower()
+    )
+    session_id = str(uuid.uuid4())
+    now = datetime.now(UTC).isoformat()
+    store.ledger.log_workout_session(
+        session_id=session_id,
+        session_date="2026-11-17",
+        split_name="Upper",
+        started_at=now,
+        completed_at=now,
+    )
+    store.ledger.log_workout_set(
+        set_id=str(uuid.uuid4()),
+        session_id=session_id,
+        exercise_id=str(slot.exercise_id),
+        set_index=1,
+        weight_kg=100.0,
+        reps=8,
+        rpe=8.0,
+    )
+    return slot
+
+
+def test_arabic_last_workout_question_answers_from_the_seeded_session(
+    fresh_store, monkeypatch
+):
+    slot = _seed_history_session(fresh_store, "bench")
+    model = ScriptedChatModel()
+    monkeypatch.setattr("agent.assistant_graph.llm", model)
+    state = _turn("اخر تمرين كان عامل ازاي؟")
+
+    response = "".join(
+        stream_assistant_turn(state, ledger=fresh_store.ledger, store=fresh_store)
+    )
+
+    assert state["intent"] == "exercise_history"
+    assert state["program_updated"] is False
+    # The reply is the lean Egyptian Arabic rendering of the ledger answer —
+    # never the English template — naming the exercise with its recorded
+    # weight and reps, Western digits, kg.
+    assert any("\u0600" <= character <= "\u06ff" for character in response)
+    assert "Your last logged session" not in response
+    assert slot.exercise_name in response
+    assert "100 kg × 8" in response
+    assert "أحسن سيت" in response
+    assert model.calls == []
+
+
+def test_arabic_last_bench_session_question_answers_from_the_seeded_session(
+    fresh_store, monkeypatch
+):
+    slot = _seed_history_session(fresh_store, "bench")
+    model = ScriptedChatModel()
+    monkeypatch.setattr("agent.assistant_graph.llm", model)
+    state = _turn("اخر مره لعبت بنش عملت كام؟")
+
+    response = "".join(
+        stream_assistant_turn(state, ledger=fresh_store.ledger, store=fresh_store)
+    )
+
+    assert state["intent"] == "exercise_history"
+    assert state["intent_metadata"]["history_exercise_id"] == str(slot.exercise_id)
+    assert slot.exercise_name in response
+    assert any("\u0600" <= character <= "\u06ff" for character in response)
+    assert "100 kg × 8" in response
+    assert "تكرار" in response
+    assert model.calls == []
+
+
+def test_arabic_progress_status_reaches_the_player(fresh_store, monkeypatch):
+    # Two recorded bench sessions with a heavier, higher-rep best set in the
+    # newer one: the lean Arabic reply must carry both best sets and the
+    # progress status in words (the ledger scores load + reps + e1RM all up as
+    # "improvement"), with no model call.
+    _seed_program(fresh_store)
+    program = fresh_store.ledger.get_active_program()
+    slot = next(
+        exercise
+        for day in program.days
+        for exercise in day.exercises
+        if "bench" in exercise.exercise_name.lower()
+    )
+    now = datetime.now(UTC)
+    for index, (weight, reps) in enumerate([(80.0, 5), (100.0, 8)]):
+        started = (now - timedelta(days=7 - index * 7)).isoformat()
+        session_id = str(uuid.uuid4())
+        fresh_store.ledger.log_workout_session(
+            session_id=session_id,
+            session_date=(now - timedelta(days=7 - index * 7)).date().isoformat(),
+            split_name="Upper",
+            started_at=started,
+            completed_at=started,
+        )
+        fresh_store.ledger.log_workout_set(
+            set_id=str(uuid.uuid4()),
+            session_id=session_id,
+            exercise_id=str(slot.exercise_id),
+            set_index=1,
+            weight_kg=weight,
+            reps=reps,
+            rpe=8.0,
+        )
+    model = ScriptedChatModel()
+    monkeypatch.setattr("agent.assistant_graph.llm", model)
+    state = _turn("اخر مره لعبت بنش عملت كام؟")
+
+    response = "".join(
+        stream_assistant_turn(state, ledger=fresh_store.ledger, store=fresh_store)
+    )
+
+    assert state["intent"] == "exercise_history"
+    assert "100 kg × 8" in response
+    assert "80 kg × 5" in response
+    assert "تحسن" in response
+    assert "مش اتجاه طويل المدى" in response
+    assert model.calls == []

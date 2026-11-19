@@ -5,9 +5,13 @@ Exercises the public HTTP surface and the ledger writes behind it:
    erases the stored reasons or note.
 2. A report requires at least one reason and a bounded note; the reply is
    reported once and client retries are safe.
-3. The Discord payload carries the reason, language, route, and a redacted
-   reply excerpt — never the player's username, preferred name, email, or
-   account id.
+3. Reports — and 👎 feedback with a reason or a note — reach the owner's
+   Discord with the full redacted reply and any redacted comment, split into
+   2000-character parts when long; a 👎 without a reason or note is a quiet
+   vote. Delivery is saved first, retried hourly, sent at most once per
+   feedback row, and cancelled when the vote flips to 👍 before delivery.
+   The payload never includes the player's username, preferred name, email,
+   or account id.
 4. The signed context is account-bound: a forged or foreign context is refused.
 5. Feedback is owner-only, joins the clear-history cascade, and dies with the
    account's ledger at deletion.
@@ -16,6 +20,7 @@ Exercises the public HTTP surface and the ledger writes behind it:
 """
 
 import json
+import re
 import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -27,7 +32,7 @@ from fastapi.testclient import TestClient
 from database.database_manager import DatabaseManager
 from service import coach as coach_service
 from service.assistant_feedback import (
-    _redact_excerpt,
+    _redact_text,
     build_feedback_context,
     send_weekly_summary,
     validate_feedback_context,
@@ -106,12 +111,16 @@ def _signed_context(account_id: str, message_id: str = "reply-1") -> dict:
 
 
 def _seed_reply(db, ledger_id: str, message_id: str = "reply-1") -> None:
-    """Inserts one persisted user/assistant exchange with a known reply id."""
+    """Inserts one persisted user/assistant exchange with a known reply id.
+
+    The user question's id is derived from the reply id, so one test can seed
+    several exchanges without colliding on chat_history's unique ids.
+    """
     now = datetime.now(UTC).isoformat()
     with db.open_ledger(ledger_id) as ledger:
         ledger.conn.execute(
             "INSERT INTO chat_history (id, role, content, created_at) VALUES (?, 'user', ?, ?)",
-            ("question-1", "How many sets should I bench?", now),
+            (f"question-{message_id}", "How many sets should I bench?", now),
         )
         ledger.conn.execute(
             "INSERT INTO chat_history (id, role, content, created_at) VALUES (?, 'assistant', ?, ?)",
@@ -131,6 +140,585 @@ def _down_vote(client, headers, context, reasons=None, note=None):
             **({"note": note} if note else {}),
         },
     )
+
+
+def _capture_discord(monkeypatch) -> list[str]:
+    """Patches the Discord seam to capture every sent part; all parts succeed."""
+    captured: list[str] = []
+
+    def fake_discord_post(content: str) -> bool:
+        captured.append(content)
+        return True
+
+    from service import assistant_feedback
+
+    monkeypatch.setattr(assistant_feedback, "_discord_post", fake_discord_post)
+    monkeypatch.setenv("DISCORD_FEEDBACK_WEBHOOK_URL", "https://discord.invalid/webhook")
+    return captured
+
+
+def _strip_part_marker(part: str) -> str:
+    return re.sub(r" \(\d+/\d+\)$", "", part)
+
+
+def test_downvote_with_reason_is_delivered_and_marked(api, monkeypatch):
+    client, db = api
+    registered = _register(client, PLAYER_USERNAME)
+    headers = _authed(registered["access_token"])
+    account_id = _account_id(client, headers)
+    _seed_reply(db, PLAYER_USERNAME)
+    context = _signed_context(account_id, message_id="reply-1")
+
+    captured = _capture_discord(monkeypatch)
+    response = _down_vote(client, headers, context, reasons=["unsafe_advice"])
+    assert response.status_code == 200, response.text
+    assert response.json()["delivery_pending"] is False
+    assert len(captured) == 1
+    content = captured[0]
+    assert content.startswith("MAYOS AI reply 👎 feedback")
+    assert "Reason: Unsafe advice" in content
+    assert "Language: en" in content and "Route: assistant" in content
+    # The rated exchange is sent: the redacted question, then the full reply.
+    assert "Question: How many sets should I bench?" in content
+    assert "Keep three working sets and leave two reps in reserve." in content
+    question_at = content.index("Question: ")
+    reply_at = content.index("Reply: ")
+    assert question_at < reply_at
+
+    from service import assistant_feedback
+
+    with db.open_ledger(PLAYER_USERNAME) as ledger:
+        notified = ledger.conn.execute(
+            "SELECT vote_notified_at FROM assistant_reply_feedback WHERE message_id = ?",
+            (context["message_id"],),
+        ).fetchone()[0]
+    assert notified is not None
+    # Delivered: the hourly retry has nothing pending.
+    assert assistant_feedback.retry_pending_reports(db) == 0
+    assert len(captured) == 1
+
+
+def test_bare_downvote_and_upvote_never_send(api, monkeypatch):
+    client, db = api
+    registered = _register(client, PLAYER_USERNAME)
+    headers = _authed(registered["access_token"])
+    account_id = _account_id(client, headers)
+    _seed_reply(db, PLAYER_USERNAME)
+    context = _signed_context(account_id, message_id="reply-1")
+
+    captured = _capture_discord(monkeypatch)
+    assert _down_vote(client, headers, context).status_code == 200
+    assert client.post(
+        "/chat/feedback/vote", headers=headers, json={"context": context, "vote": "up", "reasons": []}
+    ).status_code == 200
+    assert captured == []
+
+
+def test_downvote_edit_is_saved_but_not_resent(api, monkeypatch):
+    client, db = api
+    registered = _register(client, PLAYER_USERNAME)
+    headers = _authed(registered["access_token"])
+    account_id = _account_id(client, headers)
+    _seed_reply(db, PLAYER_USERNAME)
+    context = _signed_context(account_id, message_id="reply-1")
+
+    captured = _capture_discord(monkeypatch)
+    first = _down_vote(client, headers, context, reasons=["unsafe_advice"])
+    assert first.status_code == 200 and first.json()["delivery_pending"] is False
+    assert len(captured) == 1
+
+    # A later edit of the same 👎 is saved but never re-sent: one send per row.
+    second = _down_vote(client, headers, context, reasons=["not_helpful"], note="also confusing")
+    assert second.status_code == 200 and second.json()["delivery_pending"] is False
+    assert len(captured) == 1
+    with db.open_ledger(PLAYER_USERNAME) as ledger:
+        reasons, note = ledger.conn.execute(
+            "SELECT vote_reasons_json, vote_note FROM assistant_reply_feedback "
+            "WHERE message_id = ?",
+            (context["message_id"],),
+        ).fetchone()
+    assert (reasons, note) == ('["not_helpful"]', "also confusing")
+
+
+def test_flip_to_up_before_delivery_cancels_the_send(api, monkeypatch):
+    from service import assistant_feedback
+
+    client, db = api
+    registered = _register(client, PLAYER_USERNAME)
+    headers = _authed(registered["access_token"])
+    account_id = _account_id(client, headers)
+    _seed_reply(db, PLAYER_USERNAME)
+    context = _signed_context(account_id, message_id="reply-1")
+
+    # Discord is down at vote time: the 👎 stays pending.
+    monkeypatch.setattr(assistant_feedback, "_discord_post", lambda content: False)
+    monkeypatch.setenv("DISCORD_FEEDBACK_WEBHOOK_URL", "https://discord.invalid/webhook")
+    response = _down_vote(client, headers, context, reasons=["unsafe_advice"])
+    assert response.status_code == 200 and response.json()["delivery_pending"] is True
+    with db.open_ledger(PLAYER_USERNAME) as ledger:
+        notified = ledger.conn.execute(
+            "SELECT vote_notified_at FROM assistant_reply_feedback WHERE message_id = ?",
+            (context["message_id"],),
+        ).fetchone()[0]
+    assert notified is None
+
+    # Flipping to 👍 before delivery cancels the pending send.
+    assert client.post(
+        "/chat/feedback/vote", headers=headers, json={"context": context, "vote": "up", "reasons": []}
+    ).status_code == 200
+    captured: list[str] = []
+    monkeypatch.setattr(
+        assistant_feedback,
+        "_discord_post",
+        lambda content: captured.append(content) or True,
+    )
+    assert assistant_feedback.retry_pending_reports(db) == 0
+    assert captured == []
+
+    # A fresh 👎 with a reason after the cancel was never delivered, so it goes.
+    again = _down_vote(client, headers, context, reasons=["unsafe_advice"])
+    assert again.status_code == 200 and again.json()["delivery_pending"] is False
+    assert len(captured) == 1
+
+
+def test_clear_chat_history_keeps_row_until_both_sides_are_done(api, monkeypatch):
+    """One row holds the reply's report and its 👎: nothing is deleted while
+    either side is still owed, whichever order they were completed in."""
+    from service import assistant_feedback
+
+    client, db = api
+    registered = _register(client, PLAYER_USERNAME)
+    headers = _authed(registered["access_token"])
+    account_id = _account_id(client, headers)
+    _seed_reply(db, PLAYER_USERNAME)
+    context = _signed_context(account_id, message_id="reply-1")
+
+    captured: list[str] = []
+
+    def healthy_post(content: str) -> bool:
+        captured.append(content)
+        return True
+
+    def failing_post(content: str) -> bool:
+        captured.append(content)
+        return False
+
+    monkeypatch.setenv("DISCORD_FEEDBACK_WEBHOOK_URL", "https://discord.invalid/webhook")
+
+    # Case A: the report is delivered, then a 👎 with a reason arrives while
+    # Discord is down. The row must survive Clear chat.
+    monkeypatch.setattr(assistant_feedback, "_discord_post", healthy_post)
+    report = client.post(
+        "/chat/feedback/report", headers=headers, json={"context": context, "reasons": ["unsafe_advice"]}
+    )
+    assert report.status_code == 200 and report.json()["delivery_pending"] is False
+
+    monkeypatch.setattr(assistant_feedback, "_discord_post", failing_post)
+    vote = _down_vote(client, headers, context, reasons=["not_helpful"])
+    assert vote.status_code == 200 and vote.json()["delivery_pending"] is True
+
+    assert client.delete("/chat/history", headers=headers).status_code == 204
+    with db.open_ledger(PLAYER_USERNAME) as ledger:
+        kept = ledger.conn.execute(
+            "SELECT report_delivered_at IS NOT NULL, vote_notified_at IS NULL, "
+            "delivery_claimed_at IS NULL, COUNT(*) FROM assistant_reply_feedback"
+        ).fetchone()
+    assert tuple(kept) == (1, 1, 1, 1)  # report done, 👎 send still owed, claim released
+
+    # The retry delivers the 👎; with the message gone and nothing owed, the
+    # row is cleaned up.
+    monkeypatch.setattr(assistant_feedback, "_discord_post", healthy_post)
+    assert assistant_feedback.retry_pending_reports(db) == 1
+    assert len(captured) == 3  # report, failed 👎 send, delivered 👎 send
+    with db.open_ledger(PLAYER_USERNAME) as ledger:
+        assert ledger.conn.execute("SELECT COUNT(*) FROM assistant_reply_feedback").fetchone()[0] == 0
+
+    # Case B: the 👎 is delivered first, then a report arrives while Discord
+    # is down. The row must survive Clear chat just the same.
+    _seed_reply(db, PLAYER_USERNAME, message_id="reply-2")
+    context2 = _signed_context(account_id, message_id="reply-2")
+    vote2 = _down_vote(client, headers, context2, reasons=["unsafe_advice"])
+    assert vote2.status_code == 200 and vote2.json()["delivery_pending"] is False
+
+    monkeypatch.setattr(assistant_feedback, "_discord_post", failing_post)
+    report2 = client.post(
+        "/chat/feedback/report", headers=headers, json={"context": context2, "reasons": ["offensive"]}
+    )
+    assert report2.status_code == 200 and report2.json()["delivery_pending"] is True
+
+    assert client.delete("/chat/history", headers=headers).status_code == 204
+    with db.open_ledger(PLAYER_USERNAME) as ledger:
+        kept2 = ledger.conn.execute(
+            "SELECT vote_notified_at IS NOT NULL, reported_at IS NOT NULL, "
+            "report_delivered_at IS NULL, COUNT(*) FROM assistant_reply_feedback"
+        ).fetchone()
+    assert tuple(kept2) == (1, 1, 1, 1)  # 👎 done, report still owed
+
+    monkeypatch.setattr(assistant_feedback, "_discord_post", healthy_post)
+    assert assistant_feedback.retry_pending_reports(db) == 1
+    with db.open_ledger(PLAYER_USERNAME) as ledger:
+        assert ledger.conn.execute("SELECT COUNT(*) FROM assistant_reply_feedback").fetchone()[0] == 0
+
+
+def test_undelivered_downvote_survives_clear_chat_on_its_own(api, monkeypatch):
+    from service import assistant_feedback
+
+    client, db = api
+    registered = _register(client, PLAYER_USERNAME)
+    headers = _authed(registered["access_token"])
+    account_id = _account_id(client, headers)
+    _seed_reply(db, PLAYER_USERNAME)
+    context = _signed_context(account_id, message_id="reply-1")
+
+    # Discord is down: the 👎 with a reason stays pending.
+    monkeypatch.setattr(assistant_feedback, "_discord_post", lambda content: False)
+    monkeypatch.setenv("DISCORD_FEEDBACK_WEBHOOK_URL", "https://discord.invalid/webhook")
+    vote = _down_vote(client, headers, context, reasons=["not_helpful"])
+    assert vote.status_code == 200 and vote.json()["delivery_pending"] is True
+
+    assert client.delete("/chat/history", headers=headers).status_code == 204
+    with db.open_ledger(PLAYER_USERNAME) as ledger:
+        kept = ledger.conn.execute(
+            "SELECT vote, vote_reasons_json, vote_notified_at IS NULL, COUNT(*) "
+            "FROM assistant_reply_feedback"
+        ).fetchone()
+    assert tuple(kept) == ("down", '["not_helpful"]', 1, 1)
+
+    # The retry delivers the surviving send, then the row goes with its reply.
+    captured: list[str] = []
+
+    def healthy_post(content: str) -> bool:
+        captured.append(content)
+        return True
+
+    monkeypatch.setattr(assistant_feedback, "_discord_post", healthy_post)
+    assert assistant_feedback.retry_pending_reports(db) == 1
+    assert "Not helpful" in captured[0]
+    with db.open_ledger(PLAYER_USERNAME) as ledger:
+        assert ledger.conn.execute("SELECT COUNT(*) FROM assistant_reply_feedback").fetchone()[0] == 0
+
+
+def test_claim_blocks_concurrent_retry_and_stale_claim_is_taken_over(api, monkeypatch):
+    from service import assistant_feedback
+
+    client, db = api
+    registered = _register(client, PLAYER_USERNAME)
+    headers = _authed(registered["access_token"])
+    account_id = _account_id(client, headers)
+    _seed_reply(db, PLAYER_USERNAME)
+    context = _signed_context(account_id, message_id="reply-1")
+
+    # The immediate send fails (Discord down) and releases its claim, so the
+    # row stays pickable by the next retry pass.
+    monkeypatch.setattr(assistant_feedback, "_discord_post", lambda content: False)
+    monkeypatch.setenv("DISCORD_FEEDBACK_WEBHOOK_URL", "https://discord.invalid/webhook")
+    vote = _down_vote(client, headers, context, reasons=["unsafe_advice"])
+    assert vote.status_code == 200 and vote.json()["delivery_pending"] is True
+    feedback_id = str(vote.json()["feedback_id"])
+    with db.open_ledger(PLAYER_USERNAME) as ledger:
+        claimed, notified = ledger.conn.execute(
+            "SELECT delivery_claimed_at IS NULL, vote_notified_at IS NULL "
+            "FROM assistant_reply_feedback WHERE feedback_id = ?",
+            (feedback_id,),
+        ).fetchone()
+    assert (claimed, notified) == (1, 1)  # failed post released the claim
+
+    # A concurrent holder claims the row: the retry pass must not post it.
+    with db.open_ledger(PLAYER_USERNAME) as ledger:
+        assert ledger.claim_assistant_feedback_vote_delivery(feedback_id) is True
+        # A second claim on the same row loses the race.
+        assert ledger.claim_assistant_feedback_vote_delivery(feedback_id) is False
+    captured: list[str] = []
+
+    def healthy_post(content: str) -> bool:
+        captured.append(content)
+        return True
+
+    monkeypatch.setattr(assistant_feedback, "_discord_post", healthy_post)
+    assert assistant_feedback.retry_pending_reports(db) == 0
+    assert captured == []  # nothing was posted under someone else's claim
+    with db.open_ledger(PLAYER_USERNAME) as ledger:
+        claimed, notified = ledger.conn.execute(
+            "SELECT delivery_claimed_at IS NOT NULL, vote_notified_at IS NULL "
+            "FROM assistant_reply_feedback WHERE feedback_id = ?",
+            (feedback_id,),
+        ).fetchone()
+    assert (claimed, notified) == (1, 1)  # still pending under the fresh claim
+
+    # An immediate send yields to the claim holder instead of posting again.
+    edit = _down_vote(client, headers, context, reasons=["unsafe_advice"], note="again")
+    assert edit.status_code == 200 and edit.json()["delivery_pending"] is True
+    assert captured == []
+
+    # A stale claim — its holder crashed — is taken over and delivered.
+    with db.open_ledger(PLAYER_USERNAME) as ledger:
+        stale = (datetime.now(UTC) - timedelta(minutes=11)).isoformat()
+        ledger.conn.execute(
+            "UPDATE assistant_reply_feedback SET delivery_claimed_at = ? "
+            "WHERE feedback_id = ?",
+            (stale, feedback_id),
+        )
+        ledger._commit_ledger()
+    assert assistant_feedback.retry_pending_reports(db) == 1
+    assert len(captured) == 1
+    with db.open_ledger(PLAYER_USERNAME) as ledger:
+        claimed, notified = ledger.conn.execute(
+            "SELECT delivery_claimed_at IS NULL, vote_notified_at IS NOT NULL "
+            "FROM assistant_reply_feedback WHERE feedback_id = ?",
+            (feedback_id,),
+        ).fetchone()
+    assert (claimed, notified) == (1, 1)  # delivered and unclaimed
+
+
+def test_v65_migration_never_sends_preexisting_downvotes(api, monkeypatch):
+    """Existing 👎 feedback predates 👎 sends (policy 1.13 shared only reports
+    with the owner), so the v65 migration stamps old rows as already notified
+    and the retry pass sends nothing for them; new 👎 sends still go out."""
+    from database.migration_manager import get_ledger_schema_version, set_ledger_schema_version
+    from service import assistant_feedback
+
+    client, db = api
+    registered = _register(client, PLAYER_USERNAME)
+    headers = _authed(registered["access_token"])
+    account_id = _account_id(client, headers)
+    _seed_reply(db, PLAYER_USERNAME)
+    context = _signed_context(account_id, message_id="reply-1")
+
+    # Discord is down, so the 👎 lands exactly like a pre-upgrade row: a 👎
+    # with a reason and no notified stamp.
+    monkeypatch.setattr(assistant_feedback, "_discord_post", lambda content: False)
+    monkeypatch.setenv("DISCORD_FEEDBACK_WEBHOOK_URL", "https://discord.invalid/webhook")
+    vote = _down_vote(client, headers, context, reasons=["unsafe_advice"])
+    assert vote.status_code == 200 and vote.json()["delivery_pending"] is True
+    feedback_id = str(vote.json()["feedback_id"])
+    with db.open_ledger(PLAYER_USERNAME) as ledger:
+        pending, unclaimed = ledger.conn.execute(
+            "SELECT vote_notified_at IS NULL, delivery_claimed_at IS NULL "
+            "FROM assistant_reply_feedback WHERE feedback_id = ?",
+            (feedback_id,),
+        ).fetchone()
+    assert (pending, unclaimed) == (1, 1)
+
+    # Demote the ledger to v64 so reopening runs the v65 migration again,
+    # exactly as a Player's upgraded ledger would.
+    with db.open_ledger(PLAYER_USERNAME) as ledger:
+        set_ledger_schema_version(ledger.conn, 64)
+        ledger._commit_ledger()
+
+    # After the upgrade the retry pass sends nothing for the old row.
+    captured: list[str] = []
+
+    def healthy_post(content: str) -> bool:
+        captured.append(content)
+        return True
+
+    monkeypatch.setattr(assistant_feedback, "_discord_post", healthy_post)
+    assert assistant_feedback.retry_pending_reports(db) == 0
+    assert captured == []
+    with db.open_ledger(PLAYER_USERNAME) as ledger:
+        stamped = ledger.conn.execute(
+            "SELECT vote_notified_at IS NOT NULL FROM assistant_reply_feedback "
+            "WHERE feedback_id = ?",
+            (feedback_id,),
+        ).fetchone()[0]
+        assert get_ledger_schema_version(ledger.conn) == 65
+    assert stamped == 1
+
+    # A new 👎 after the migration behaves as designed and is sent.
+    _seed_reply(db, PLAYER_USERNAME, message_id="reply-post-migration")
+    context2 = _signed_context(account_id, message_id="reply-post-migration")
+    again = _down_vote(client, headers, context2, reasons=["not_helpful"])
+    assert again.status_code == 200 and again.json()["delivery_pending"] is False
+    assert len(captured) == 1
+    with db.open_ledger(PLAYER_USERNAME) as ledger:
+        new_notified = ledger.conn.execute(
+            "SELECT vote_notified_at IS NOT NULL FROM assistant_reply_feedback "
+            "WHERE message_id = 'reply-post-migration'"
+        ).fetchone()[0]
+    assert new_notified == 1
+
+
+def test_downvote_note_reaches_discord_redacted(api, monkeypatch):
+    client, db = api
+    registered = _register(client, PLAYER_USERNAME)
+    headers = _authed(registered["access_token"])
+    account_id = _account_id(client, headers)
+    _seed_reply(db, PLAYER_USERNAME)
+    context = build_feedback_context(
+        account_id,
+        message_id="reply-1",
+        question_text="How many sets should I bench?",
+        reply_text="Keep three working sets and leave two reps in reserve.",
+        language="en",
+        route="assistant",
+        model=None,
+        prompt_version=None,
+        redact_terms=[PLAYER_NAME, PLAYER_USERNAME],
+    )
+
+    captured = _capture_discord(monkeypatch)
+    response = _down_vote(
+        client, headers, context, reasons=["offensive"], note=f"Ask {PLAYER_NAME} to be kinder"
+    )
+    assert response.status_code == 200, response.text
+    assert len(captured) == 1
+    content = captured[0]
+    assert "Comment: Ask [redacted] to be kinder" in content
+    # Question, then reply, then comment.
+    assert content.index("Question: ") < content.index("Reply: ") < content.index("Comment: ")
+    assert PLAYER_NAME not in content and PLAYER_USERNAME not in content
+
+
+def test_long_reply_is_split_into_ordered_parts(api, monkeypatch):
+    from service import assistant_feedback
+
+    client, db = api
+    registered = _register(client, PLAYER_USERNAME)
+    headers = _authed(registered["access_token"])
+    account_id = _account_id(client, headers)
+    long_question = " ".join(
+        f"{PLAYER_NAME} asked question part {index} about bench programming" for index in range(150)
+    )
+    long_reply = " ".join(
+        f"sentence {index} about training volume and recovery" for index in range(400)
+    )
+    context = build_feedback_context(
+        account_id,
+        message_id="reply-long",
+        question_text=long_question,
+        reply_text=long_reply,
+        language="en",
+        route="assistant",
+        model=None,
+        prompt_version=None,
+        redact_terms=[PLAYER_NAME],
+    )
+
+    captured = _capture_discord(monkeypatch)
+    response = _down_vote(client, headers, context, reasons=["not_helpful"])
+    assert response.status_code == 200, response.text
+    assert response.json()["delivery_pending"] is False
+    assert len(captured) > 1
+    for part in captured:
+        assert len(part) <= assistant_feedback.DISCORD_MESSAGE_LIMIT
+    markers = [re.search(r" \((\d+)/(\d+)\)$", part) for part in captured]
+    assert all(marker is not None for marker in markers)
+    total = int(markers[0].group(2))
+    assert [int(marker.group(1)) for marker in markers] == list(range(1, total + 1))
+    # Stripping the markers and joining the parts rebuilds the full message:
+    # the redacted question precedes the full redacted reply, and nothing —
+    # question, reply, or otherwise — is dropped across the part boundary.
+    expected = assistant_feedback._feedback_message_content(
+        "MAYOS AI reply 👎 feedback",
+        context,
+        str(response.json()["feedback_id"]),
+        ["not_helpful"],
+        None,
+    )
+    assert "".join(_strip_part_marker(part) for part in captured) == expected
+    redacted_question = assistant_feedback._redact_text(long_question, [PLAYER_NAME])
+    redacted_reply = assistant_feedback._redact_text(long_reply, [PLAYER_NAME])
+    question_at = expected.index("Question: ")
+    reply_at = expected.index("Reply: ")
+    assert question_at < reply_at
+    assert redacted_question in expected
+    assert redacted_reply in expected
+    sent = "".join(_strip_part_marker(part) for part in captured)
+    assert PLAYER_NAME not in sent
+
+
+def test_partial_discord_failure_stays_pending_and_resends_all_parts(api, monkeypatch):
+    from service import assistant_feedback
+
+    client, db = api
+    registered = _register(client, PLAYER_USERNAME)
+    headers = _authed(registered["access_token"])
+    account_id = _account_id(client, headers)
+    long_reply = " ".join(
+        f"sentence {index} about training volume and recovery" for index in range(200)
+    )
+    context = build_feedback_context(
+        account_id,
+        message_id="reply-long",
+        question_text="q",
+        reply_text=long_reply,
+        language="en",
+        route="assistant",
+        model=None,
+        prompt_version=None,
+        redact_terms=[],
+    )
+    # The exchange must exist in chat history, or the delivered row would be
+    # cleaned up by the retry pass before its delivery can be asserted.
+    _seed_reply(db, PLAYER_USERNAME, message_id="reply-long")
+    with db.open_ledger(PLAYER_USERNAME) as ledger:
+        ledger.conn.execute(
+            "UPDATE chat_history SET content = ? WHERE id = ?",
+            (long_reply, "reply-long"),
+        )
+        ledger._commit_ledger()
+
+    # A partial failure: the first Discord post succeeds, the next one fails,
+    # and the send stops there — the whole message is retried later.
+    captured: list[str] = []
+
+    def flaky_discord_post(content: str) -> bool:
+        captured.append(content)
+        return len(captured) != 2
+
+    monkeypatch.setattr(assistant_feedback, "_discord_post", flaky_discord_post)
+    monkeypatch.setenv("DISCORD_FEEDBACK_WEBHOOK_URL", "https://discord.invalid/webhook")
+
+    response = _down_vote(client, headers, context, reasons=["unsafe_advice"])
+    assert response.status_code == 200 and response.json()["delivery_pending"] is True
+    first_attempt = len(captured)
+    assert first_attempt == 2  # part 1 sent, part 2 failed, send stopped
+    assert all(len(part) <= assistant_feedback.DISCORD_MESSAGE_LIMIT for part in captured)
+    with db.open_ledger(PLAYER_USERNAME) as ledger:
+        notified = ledger.conn.execute(
+            "SELECT vote_notified_at FROM assistant_reply_feedback WHERE message_id = ?",
+            (context["message_id"],),
+        ).fetchone()[0]
+    assert notified is None
+
+    # Discord recovers: the retry resends every part, and only then counts.
+    monkeypatch.setattr(
+        assistant_feedback,
+        "_discord_post",
+        lambda content: captured.append(content) or True,
+    )
+    assert assistant_feedback.retry_pending_reports(db) == 1
+    resend = captured[first_attempt:]
+    assert len(resend) > 1
+    total = int(re.search(r" \((\d+)/(\d+)\)$", resend[0]).group(2))
+    assert len(resend) == total  # every part of the message went out again
+    assert all(len(part) <= assistant_feedback.DISCORD_MESSAGE_LIMIT for part in resend)
+    with db.open_ledger(PLAYER_USERNAME) as ledger:
+        notified = ledger.conn.execute(
+            "SELECT vote_notified_at FROM assistant_reply_feedback WHERE message_id = ?",
+            (context["message_id"],),
+        ).fetchone()[0]
+    assert notified is not None
+
+
+def test_discord_parts_split_never_drop_text():
+    from service.assistant_feedback import DISCORD_MESSAGE_LIMIT, _discord_parts
+
+    multiline = "\n".join(f"line {index} of the reply" for index in range(300))
+    parts = _discord_parts(multiline)
+    assert len(parts) > 1
+    for part in parts:
+        assert len(part) <= DISCORD_MESSAGE_LIMIT
+    assert "".join(_strip_part_marker(part) for part in parts) == multiline
+
+    # A single unbroken word is hard-cut rather than dropped.
+    blob = "a" * 5000
+    parts = _discord_parts(blob)
+    assert all(len(part) <= DISCORD_MESSAGE_LIMIT for part in parts)
+    assert "".join(_strip_part_marker(part) for part in parts) == blob
+
+    # Content that fits is one unmarked part.
+    assert _discord_parts("short reply") == ["short reply"]
 
 
 def test_vote_up_down_switch_and_undo_are_idempotent(api):
@@ -402,21 +990,35 @@ def test_report_delivery_to_discord_carries_no_identifiers(api, monkeypatch):
     monkeypatch.setattr(assistant_feedback, "_discord_post", fake_discord_post)
     monkeypatch.setenv("DISCORD_FEEDBACK_WEBHOOK_URL", "https://discord.invalid/webhook")
 
+    # The report is posted with the signed context from the done frame: it
+    # carries the exact exchange being reported (question and reply). Posting
+    # by bare message id would instead re-derive the stored chat exchange,
+    # which is correct product behavior but a different fixture here.
     report = client.post(
         "/chat/feedback/report",
         headers=headers,
-        json={"message_id": "reply-1", "reasons": ["unsafe_advice"], "note": "told me to skip rest days"},
+        json={"context": context, "reasons": ["unsafe_advice"], "note": "told me to skip rest days"},
     )
     assert report.status_code == 200, report.text
     # The post carries the feedback id the owner can look up, not the chat
-    # message id.
+    # message id, plus the redacted question, the full redacted reply, and the
+    # redacted comment.
     feedback_id = str(report.json()["feedback_id"])
     assert len(captured) == 1
     content = captured[0]
     assert feedback_id in content
     assert "Unsafe advice" in content
     assert "Language: en" in content
-    assert "told me to skip rest days" not in content
+    # The rated exchange is sent in order: redacted question, full redacted
+    # reply, then the redacted comment.
+    assert "Question: How do I plan around [redacted]'s exam week?" in content
+    assert "Keep three working sets." in content
+    assert "[redacted email]" in content
+    assert "Comment: told me to skip rest days" in content
+    question_at = content.index("Question: ")
+    reply_at = content.index("Reply: ")
+    comment_at = content.index("Comment: ")
+    assert question_at < reply_at < comment_at
     for secret in (PLAYER_NAME, PLAYER_USERNAME, "player@example.com", account_id, "reply-1"):
         assert secret not in content, f"Discord payload leaked {secret!r}"
 
@@ -586,6 +1188,9 @@ def test_clear_history_keeps_undelivered_report_until_retry_delivers(api, monkey
     assert assistant_feedback.retry_pending_reports(db) == 1
     assert len(captured) == 1
     assert "Unsafe advice" in captured[0]
+    # The report was made by bare message id: the retry carries the reported
+    # reply's own stored question, re-derived from the ledger.
+    assert "Question: How many sets should I bench?" in captured[0]
     with db.open_ledger(PLAYER_USERNAME) as ledger:
         assert ledger.conn.execute(
             "SELECT COUNT(*) FROM assistant_reply_feedback"
@@ -822,18 +1427,18 @@ def test_feedback_context_signing_is_account_bound(monkeypatch):
         validate_feedback_context("account-b", dict(context))
 
 
-def test_excerpt_redaction_keeps_long_words_and_masks_ids():
+def test_redaction_keeps_long_words_and_masks_ids():
     # Ordinary long words pass through unredacted: the owner still reads the
     # reply (issue #748 round 2).
     sentence = "Unfortunately the strengthening recommendations need consistency."
-    assert _redact_excerpt(sentence, []) == sentence
+    assert _redact_text(sentence, []) == sentence
     # A 12+ char token that contains a digit is an id and is masked.
-    masked = _redact_excerpt("token a1b2c3d4e5f6g7 issued", [])
+    masked = _redact_text("token a1b2c3d4e5f6g7 issued", [])
     assert "a1b2c3d4e5f6g7" not in masked
     assert "[redacted id]" in masked
     # Account/Player names are applied before the generic patterns, so a name
     # is "[redacted]", never swallowed into "[redacted id]".
-    named = _redact_excerpt(
+    named = _redact_text(
         "Tell feedbackcoachee (preferred name FeedbackCoacheePref) to add 2.5kg "
         "when all sets hit the top of the range.",
         ["feedbackcoachee", "FeedbackCoacheePref"],
@@ -844,23 +1449,23 @@ def test_excerpt_redaction_keeps_long_words_and_masks_ids():
     assert "[redacted id]" not in named
 
 
-def test_excerpt_redaction_matches_names_as_whole_words():
+def test_redaction_matches_names_as_whole_words():
     # A short preferred name redacts standalone uses only: "more" and
     # "moment" keep their letters (issue #748 round 2).
-    out = _redact_excerpt("Mo, add a set to more of the moment work.", ["Mo"])
+    out = _redact_text("Mo, add a set to more of the moment work.", ["Mo"])
     assert out == "[redacted], add a set to more of the moment work."
     # Whole-word matching is Unicode-aware, so Arabic names redact too.
-    arabic = _redact_excerpt("اسأل عمر عن تمرينك، وثق بنفسك.", ["عمر"])
+    arabic = _redact_text("اسأل عمر عن تمرينك، وثق بنفسك.", ["عمر"])
     assert "عمر" not in arabic
     assert arabic == "اسأل [redacted] عن تمرينك، وثق بنفسك."
     # An attached Arabic prefix survives with the name redacted after it
     # (issue #748 round 3): the particles are not part of the name. Stacked
     # particles (e.g. فب) are captured too.
-    assert _redact_excerpt("وعمر حاضر.", ["عمر"]) == "و[redacted] حاضر."
-    assert _redact_excerpt("لعمر رسالة.", ["عمر"]) == "ل[redacted] رسالة."
-    assert _redact_excerpt("بعمر تمرين.", ["عمر"]) == "ب[redacted] تمرين."
-    assert _redact_excerpt("فبعمر البرنامج.", ["عمر"]) == "فب[redacted] البرنامج."
-    assert _redact_excerpt("والعمر موجود.", ["عمر"]) == "وال[redacted] موجود."
+    assert _redact_text("وعمر حاضر.", ["عمر"]) == "و[redacted] حاضر."
+    assert _redact_text("لعمر رسالة.", ["عمر"]) == "ل[redacted] رسالة."
+    assert _redact_text("بعمر تمرين.", ["عمر"]) == "ب[redacted] تمرين."
+    assert _redact_text("فبعمر البرنامج.", ["عمر"]) == "فب[redacted] البرنامج."
+    assert _redact_text("والعمر موجود.", ["عمر"]) == "وال[redacted] موجود."
     # An unrelated Arabic word that merely contains the same letters stays:
     # the trailing word char blocks the match.
-    assert _redact_excerpt("العمرة قريبة.", ["عمر"]) == "العمرة قريبة."
+    assert _redact_text("العمرة قريبة.", ["عمر"]) == "العمرة قريبة."
