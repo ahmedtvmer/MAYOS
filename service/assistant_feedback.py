@@ -129,7 +129,7 @@ def _signature(account_id: str, context: dict[str, Any]) -> str:
     ).hexdigest()
 
 
-def _redact_excerpt(text: str, terms: list[str]) -> str:
+def _redact_text(text: str, terms: list[str]) -> str:
     # Account and Player names go first so the generic id/phone patterns can
     # never swallow them into an opaque "[redacted id]" (issue #748). Each
     # term matches as a whole word — a short preferred name ("Mo") must not
@@ -147,14 +147,11 @@ def _redact_excerpt(text: str, terms: list[str]) -> str:
             text,
             flags=re.IGNORECASE,
         )
-    excerpt = _EMAIL.sub("[redacted email]", text)
-    excerpt = _PHONE.sub("[redacted phone]", excerpt)
-    excerpt = _UUID.sub("[redacted id]", excerpt)
-    excerpt = _LONG_ID.sub("[redacted id]", excerpt)
-    excerpt = " ".join(excerpt.split())
-    if len(excerpt) > 220:
-        excerpt = excerpt[:217].rsplit(" ", 1)[0] + "…"
-    return excerpt or "[reply excerpt redacted]"
+    text = _EMAIL.sub("[redacted email]", text)
+    text = _PHONE.sub("[redacted phone]", text)
+    text = _UUID.sub("[redacted id]", text)
+    text = _LONG_ID.sub("[redacted id]", text)
+    return " ".join(text.split())
 
 
 def _feedback_webhook() -> str:
@@ -195,25 +192,108 @@ def _discord_post(content: str) -> bool:
 
 
 def send_report_to_discord(
-    context: dict[str, Any], feedback_id: str, reasons: list[str]
+    context: dict[str, Any], feedback_id: str, reasons: list[str], note: str | None = None
 ) -> bool:
-    """Sends only owner-review fields; never includes an account or Player identity."""
-    reason_text = ", ".join(REASONS.get(reason, "Other") for reason in reasons)
-    content = "\n".join(
-        (
-            "MAYOS AI reply report",
-            f"Feedback ID: {feedback_id}",
-            f"Reason: {reason_text}",
-            f"Language: {context['language']}",
-            f"Route: {context['route']}",
-            f"Reply: {_redact_excerpt(context['reply_text'], context['redact_terms'])}",
+    """Sends only owner-review fields; never includes an account or Player identity.
+
+    The rated exchange (the Player's question and the reply) is sent in full,
+    redacted and never truncated, and the Player's note rides along as a
+    redacted "Comment:" line when there is one. Discord caps one message at
+    2000 characters, so long content is split into ordered parts and delivery
+    counts only when every part was sent.
+    """
+    return _send_discord_message(
+        _feedback_message_content("MAYOS AI reply report", context, feedback_id, reasons, note)
+    )
+
+
+def send_downvote_to_discord(
+    context: dict[str, Any], feedback_id: str, reasons: list[str], note: str | None = None
+) -> bool:
+    """Sends a 👎 that carries a reason or a note, marked as 👎 feedback."""
+    return _send_discord_message(
+        _feedback_message_content(
+            "MAYOS AI reply 👎 feedback", context, feedback_id, reasons, note
         )
     )
-    return _discord_post(content)
+
+
+def _feedback_message_content(
+    header: str,
+    context: dict[str, Any],
+    feedback_id: str,
+    reasons: list[str],
+    note: str | None,
+) -> str:
+    terms = context.get("redact_terms") or []
+    reason_text = ", ".join(REASONS.get(reason, "Other") for reason in reasons)
+    lines = [
+        header,
+        f"Feedback ID: {feedback_id}",
+        f"Reason: {reason_text}",
+        f"Language: {context['language']}",
+        f"Route: {context['route']}",
+        f"Question: {_redact_text(context['question_text'], terms)}",
+        f"Reply: {_redact_text(context['reply_text'], terms)}",
+    ]
+    if note:
+        lines.append(f"Comment: {_redact_text(note, terms)}")
+    return "\n".join(lines)
+
+
+DISCORD_MESSAGE_LIMIT = 2000
+
+
+def _discord_parts(content: str) -> list[str]:
+    """Splits one Discord message into ordered parts of at most 2000 chars.
+
+    Each part ends with an "(1/3)"-style marker that counts toward the limit.
+    A message that already fits is sent unchanged, without a marker. Text is
+    never dropped: parts cut at line or word boundaries where possible and
+    concatenate back to the original content.
+    """
+    if len(content) <= DISCORD_MESSAGE_LIMIT:
+        return [content]
+    marker_width = len(" (1/1)")
+    while True:
+        parts = _content_chunks(content, DISCORD_MESSAGE_LIMIT - marker_width)
+        needed = len(f" ({len(parts)}/{len(parts)})")
+        if needed <= marker_width:
+            break
+        marker_width = needed
+    total = len(parts)
+    return [f"{part} ({index}/{total})" for index, part in enumerate(parts, start=1)]
+
+
+def _content_chunks(text: str, budget: int) -> list[str]:
+    """Greedy chunks of at most ``budget`` characters, never dropping text.
+
+    Cuts preferentially after a newline, then after a space, and only falls
+    back to a mid-word cut when a single word overruns the budget. Because a
+    cut keeps its separator with the earlier chunk, the chunks concatenate
+    back to the original text exactly.
+    """
+    chunks: list[str] = []
+    remaining = text
+    while len(remaining) > budget:
+        window = remaining[:budget]
+        cut = window.rfind("\n")
+        if cut <= 0:
+            cut = window.rfind(" ")
+        boundary = cut + 1 if 0 < cut < budget else budget
+        chunks.append(remaining[:boundary])
+        remaining = remaining[boundary:]
+    chunks.append(remaining)
+    return chunks
+
+
+def _send_discord_message(content: str) -> bool:
+    """Delivers one logical message; True only when every part got a 2xx."""
+    return all(_discord_post(part) for part in _discord_parts(content))
 
 
 def report_context_redact_terms(db: Any, account_id: str, own_ledger: Any) -> list[str]:
-    """Collects account and active-coach names for Discord excerpt redaction only."""
+    """Collects account and active-coach names for Discord reply redaction only."""
     terms: list[str] = []
     account = db.get_account(account_id)
     if account:
@@ -234,7 +314,7 @@ def report_context_redact_terms(db: Any, account_id: str, own_ledger: Any) -> li
             if player_memory and player_memory.get("preferred_name"):
                 terms.append(str(player_memory["preferred_name"]))
         except Exception:
-            logger.info("Could not load a Player name for feedback excerpt redaction.")
+            logger.info("Could not load a Player name for feedback reply redaction.")
     return [term.strip() for term in terms if term and term.strip()]
 
 
@@ -379,16 +459,72 @@ def resolve_feedback_context(
     return context, None
 
 
+def _send_claimed_feedback(send: Any, ledger: Any, feedback_id: str) -> bool:
+    """Posts one claimed send; releases the claim on failure.
+
+    The claim is already held, so a concurrent retry pass cannot post the same
+    row. A failed post (or an unexpected error) releases the claim so the next
+    retry can pick the row up instead of waiting out the stale window.
+    """
+    try:
+        sent = send()
+    except Exception:
+        logger.exception("Assistant feedback Discord send failed.")
+        sent = False
+    if not sent:
+        ledger.release_assistant_feedback_delivery_claim(feedback_id)
+    return sent
+
+
 def record_vote(
     ledger: Any, account_id: str, context: dict[str, Any], payload: Any
 ) -> dict[str, Any] | None:
-    """Stores a 👍/👎 (or clears it); a replay of the same vote changes nothing."""
+    """Stores a 👍/👎 (or clears it); a replay of the same vote changes nothing.
+
+    A 👎 that carries at least one reason or a note is sent to the owner's
+    Discord through the same save-first, retry-hourly path as reports, at most
+    once per feedback row: the first time the 👎 has a reason or note. A later
+    edit is saved but not re-sent, and a flip to 👍 (or an undo) before
+    delivery cancels the pending send. A 👍, or a 👎 without reason and note,
+    is never sent.
+    """
     vote = payload.vote
     reasons = list(payload.reasons) if vote == "down" else []
     note = (payload.note or "").strip()[:NOTE_MAX_CHARS] or None
-    return ledger.set_assistant_reply_vote(
+    result = ledger.set_assistant_reply_vote(
         context, str(account_id), vote, reasons, note if vote == "down" else None
     )
+    if result is None:
+        return None
+    feedback_id = str(result["feedback_id"])
+    pending = ledger.pending_assistant_feedback_vote(feedback_id)
+    if pending is None:
+        result["delivery_pending"] = False
+        return result
+    if not ledger.claim_assistant_feedback_vote_delivery(feedback_id):
+        # A concurrent retry pass holds the claim and will deliver the send.
+        result["delivery_pending"] = True
+        return result
+    delivery = {
+        "question_text": pending["question_text"],
+        "reply_text": pending["reply_text"],
+        "language": pending["language"],
+        "route": pending["route"],
+        "redact_terms": pending["redact_terms"],
+    }
+    sent = _send_claimed_feedback(
+        lambda: send_downvote_to_discord(
+            delivery, feedback_id, pending["reasons"], pending["note"]
+        ),
+        ledger,
+        feedback_id,
+    )
+    if sent:
+        ledger.mark_assistant_feedback_vote_sent(feedback_id)
+        result["delivery_pending"] = False
+    else:
+        result["delivery_pending"] = True
+    return result
 
 
 def record_report(
@@ -400,8 +536,19 @@ def record_report(
         context, str(account_id), list(payload.reasons), note
     )
     if result.get("created") and not result.get("delivery_pending"):
-        if send_report_to_discord(context, str(result["feedback_id"]), list(payload.reasons)):
-            ledger.mark_assistant_feedback_report_delivered(str(result["feedback_id"]))
+        feedback_id = str(result["feedback_id"])
+        reasons = list(payload.reasons)
+        if not ledger.claim_assistant_feedback_report_delivery(feedback_id):
+            # A concurrent retry pass holds the claim and will deliver it.
+            result["delivery_pending"] = True
+            return result
+        sent = _send_claimed_feedback(
+            lambda: send_report_to_discord(context, feedback_id, reasons, note=note),
+            ledger,
+            feedback_id,
+        )
+        if sent:
+            ledger.mark_assistant_feedback_report_delivered(feedback_id)
             result["delivery_pending"] = False
         else:
             result["delivery_pending"] = True
@@ -409,7 +556,7 @@ def record_report(
 
 
 def feedback_maintenance(db: Any, limit: int = 20) -> None:
-    """Hourly background pass: retry undelivered reports, then the weekly summary."""
+    """Hourly background pass: retry undelivered reports and 👎 feedback, then the weekly summary."""
     try:
         retry_pending_reports(db, limit)
     except Exception:
@@ -522,19 +669,58 @@ def retry_pending_reports(db: Any, limit: int = 20) -> int:
         try:
             with db.open_ledger(account["ledger_id"]) as ledger:
                 for row in ledger.pending_assistant_feedback_reports(limit - delivered):
+                    feedback_id = row["feedback_id"]
+                    if not ledger.claim_assistant_feedback_report_delivery(feedback_id):
+                        # Another process holds the claim; it delivers this row.
+                        continue
                     context = {
+                        "question_text": row["question_text"],
                         "reply_text": row["reply_text"],
                         "language": row["language"],
                         "route": row["route"],
                         "redact_terms": row["redact_terms"],
                     }
-                    if send_report_to_discord(context, row["feedback_id"], row["reasons"]):
-                        ledger.mark_assistant_feedback_report_delivered(row["feedback_id"])
+                    sent = _send_claimed_feedback(
+                        lambda: send_report_to_discord(
+                            context, feedback_id, row["reasons"], note=row["note"]
+                        ),
+                        ledger,
+                        feedback_id,
+                    )
+                    if sent:
+                        ledger.mark_assistant_feedback_report_delivered(feedback_id)
                         delivered += 1
                         if delivered >= limit:
                             break
-                # Clearing chat history keeps undelivered reports; a delivered
-                # report whose message is gone has no remaining surface.
+                # Undelivered 👎 feedback follows the same retry path as
+                # reports: the terms captured at vote time keep the redaction
+                # intact even after the chat history is cleared.
+                if delivered < limit:
+                    for row in ledger.pending_assistant_feedback_votes(limit - delivered):
+                        feedback_id = row["feedback_id"]
+                        if not ledger.claim_assistant_feedback_vote_delivery(feedback_id):
+                            continue
+                        context = {
+                            "question_text": row["question_text"],
+                            "reply_text": row["reply_text"],
+                            "language": row["language"],
+                            "route": row["route"],
+                            "redact_terms": row["redact_terms"],
+                        }
+                        sent = _send_claimed_feedback(
+                            lambda: send_downvote_to_discord(
+                                context, feedback_id, row["reasons"], note=row["note"]
+                            ),
+                            ledger,
+                            feedback_id,
+                        )
+                        if sent:
+                            ledger.mark_assistant_feedback_vote_sent(feedback_id)
+                            delivered += 1
+                            if delivered >= limit:
+                                break
+                # A row whose chat message is gone and that owes nothing — no
+                # pending report and no pending 👎 send — is removed here.
                 ledger.delete_delivered_feedback_without_message()
         except Exception:
             logger.exception("Assistant feedback report retry failed for a ledger.")
