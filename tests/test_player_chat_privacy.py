@@ -3189,8 +3189,7 @@ def test_arabic_history_fallback_does_not_inject_ledger_figures(api, monkeypatch
     assert "Your last logged session" not in reply
     assert "Squat" in reply
     assert "100 kg × 5" in reply
-    assert "500" in reply
-    assert "عدّات" in reply
+    assert "تكرار" in reply
 
 
 @pytest.mark.parametrize(

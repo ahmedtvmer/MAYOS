@@ -1,5 +1,5 @@
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from langchain_core.messages import HumanMessage
@@ -699,13 +699,14 @@ def test_arabic_last_workout_question_answers_from_the_seeded_session(
 
     assert state["intent"] == "exercise_history"
     assert state["program_updated"] is False
-    # The reply is the polite Egyptian Arabic rendering of the ledger answer —
-    # never the English template — with the seeded figures, Western digits, kg.
+    # The reply is the lean Egyptian Arabic rendering of the ledger answer —
+    # never the English template — naming the exercise with its recorded
+    # weight and reps, Western digits, kg.
     assert any("\u0600" <= character <= "\u06ff" for character in response)
     assert "Your last logged session" not in response
     assert slot.exercise_name in response
-    assert "800 kg" in response
-    assert "سيتات" in response
+    assert "100 kg × 8" in response
+    assert "أحسن سيت" in response
     assert model.calls == []
 
 
@@ -726,5 +727,54 @@ def test_arabic_last_bench_session_question_answers_from_the_seeded_session(
     assert slot.exercise_name in response
     assert any("\u0600" <= character <= "\u06ff" for character in response)
     assert "100 kg × 8" in response
-    assert "عدّات" in response
+    assert "تكرار" in response
+    assert model.calls == []
+
+
+def test_arabic_progress_status_reaches_the_player(fresh_store, monkeypatch):
+    # Two recorded bench sessions with a heavier, higher-rep best set in the
+    # newer one: the lean Arabic reply must carry both best sets and the
+    # progress status in words (the ledger scores load + reps + e1RM all up as
+    # "improvement"), with no model call.
+    _seed_program(fresh_store)
+    program = fresh_store.ledger.get_active_program()
+    slot = next(
+        exercise
+        for day in program.days
+        for exercise in day.exercises
+        if "bench" in exercise.exercise_name.lower()
+    )
+    now = datetime.now(UTC)
+    for index, (weight, reps) in enumerate([(80.0, 5), (100.0, 8)]):
+        started = (now - timedelta(days=7 - index * 7)).isoformat()
+        session_id = str(uuid.uuid4())
+        fresh_store.ledger.log_workout_session(
+            session_id=session_id,
+            session_date=(now - timedelta(days=7 - index * 7)).date().isoformat(),
+            split_name="Upper",
+            started_at=started,
+            completed_at=started,
+        )
+        fresh_store.ledger.log_workout_set(
+            set_id=str(uuid.uuid4()),
+            session_id=session_id,
+            exercise_id=str(slot.exercise_id),
+            set_index=1,
+            weight_kg=weight,
+            reps=reps,
+            rpe=8.0,
+        )
+    model = ScriptedChatModel()
+    monkeypatch.setattr("agent.assistant_graph.llm", model)
+    state = _turn("اخر مره لعبت بنش عملت كام؟")
+
+    response = "".join(
+        stream_assistant_turn(state, ledger=fresh_store.ledger, store=fresh_store)
+    )
+
+    assert state["intent"] == "exercise_history"
+    assert "100 kg × 8" in response
+    assert "80 kg × 5" in response
+    assert "تحسن" in response
+    assert "مش اتجاه طويل المدى" in response
     assert model.calls == []

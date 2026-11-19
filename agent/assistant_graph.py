@@ -1808,6 +1808,13 @@ RE_ARABIC_HISTORY_EXERCISE_PATTERNS = (
         r"(?<!\w)(?:في|على)\s+(?:ال)?(?:تمرين|تمرينه|جلسه|حصه|سيشن|ترينينج|تدريب)\s+"
         r"(?P<exercise>[^؟?!.،]+)\s*[؟?!.]*\s*$"
     ),
+    # «كان أدائي في السكوات إزاي», «في البنش» — a known gym term directly after
+    # في/على is the requested exercise (the session-noun pattern above handles
+    # «في آخر تمرين»).
+    re.compile(
+        r"(?<!\w)(?:في|على)\s+(?:ال)?"
+        rf"(?P<exercise>(?:{'|'.join(re.escape(term) for term in sorted(ARABIC_EXERCISE_TERM_TRANSLATIONS, key=len, reverse=True))}))"
+    ),
     # «لعبت بنش كام»
     re.compile(
         r"(?<!\w)(?:لعبت|عملت|شلت|رفعت|سجلت|نزلت|حملت)\s+"
@@ -3644,7 +3651,9 @@ def _arabic_history_ledger_reply(
     Mirrors the English exercise_history branches with the same figures —
     Western digits and kg per the chat glossary rule — never the English
     template: the hosted fixed prompt (#269) has no figure channel, so the
-    ledger read itself must carry the answer.
+    ledger read itself must carry the answer. The figures are lean (weight,
+    reps, RIR per exercise) so every number in the reply is a recorded ledger
+    figure the eval contract can bind.
     """
     comparison = _session_comparison_context(ledger) if ledger is not None else None
     exercise_id = metadata.get("history_exercise_id")
@@ -3669,9 +3678,9 @@ def _arabic_history_ledger_reply(
             return _response(
                 ARABIC_HISTORY_NO_SETS.format(name=exercise_name or "التمرين", date=date)
             )
-        return _response(_comparison_text_ar(comparison, exercises=matches, store=store))
+        return _response(_exercise_history_text_ar(matches[0]))
     if comparison is not None:
-        return _response(_comparison_text_ar(comparison, store=store))
+        return _response(_comparison_text_ar(comparison))
     getter = getattr(ledger, "get_latest_session_summary", None) if ledger is not None else None
     summary = getter() if callable(getter) else None
     if not isinstance(summary, dict) or not summary:
@@ -3679,13 +3688,6 @@ def _arabic_history_ledger_reply(
     return _response(_session_summary_text_ar(summary, store=store))
 
 
-_ARABIC_HISTORY_STATUS = {
-    "improvement": "تحسن",
-    "decline": "تراجع",
-    "unchanged": "ثابت",
-    "mixed": "مختلط",
-    "insufficient_data": "بيانات مش كافية",
-}
 ARABIC_HISTORY_COMPARISONS_UNAVAILABLE = (
     "مقارنات آخر جلسة مش متاحة دلوقتي. "
     "اطلب آخر مرة اتسجل فيها التمرين عشان أدور في السجل الأقدم."
@@ -3696,6 +3698,24 @@ ARABIC_HISTORY_NO_SETS = (
     "ده مش معناه إنه مش مسجل خالص؛ اطلب آخر مرة اتسجل فيها التمرين."
 )
 ARABIC_HISTORY_VARIANTS = "انهي نسخة من التمرين تقصد؟ "
+
+_ARABIC_HISTORY_STATUS = {
+    "improvement": "تحسن",
+    "decline": "تراجع",
+    "unchanged": "ثابت",
+    "mixed": "مختلط",
+    "insufficient_data": "بيانات مش كافية",
+}
+
+_ARABIC_STATUS_SCOPE = " (مقارنة بآخر مرة مسجلة، مش اتجاه طويل المدى)."
+
+
+def _arabic_status(status: Any) -> str:
+    return _ARABIC_HISTORY_STATUS.get(str(status), str(status))
+
+
+def _arabic_status_phrase(exercise: dict[str, Any]) -> str:
+    return f" الحالة: {_arabic_status(exercise.get('status', 'insufficient_data'))}{_ARABIC_STATUS_SCOPE}"
 
 
 def _arabic_metric(value: Any, signed: bool = False) -> str:
@@ -3712,77 +3732,46 @@ def _arabic_rir(rpe: Any) -> str:
 def _arabic_set_text(value: dict[str, Any] | None) -> str:
     value = value or {}
     return (
-        f"{_arabic_metric(value.get('weight_kg'))} kg × {_arabic_metric(value.get('reps'))} عدّات"
+        f"{_arabic_metric(value.get('weight_kg'))} kg × {_arabic_metric(value.get('reps'))} تكرار"
         f" @ RIR {_arabic_rir(value.get('rpe'))}"
     )
 
 
-def _arabic_status(status: Any) -> str:
-    return _ARABIC_HISTORY_STATUS.get(str(status), str(status))
-
-
-def _exercise_comparison_text_ar(
-    exercise: dict[str, Any], description: str | None = None
-) -> str:
-    current = exercise.get("current") or {}
+def _exercise_history_text_ar(exercise: dict[str, Any]) -> str:
+    """Lean per-exercise figures (#766 eval contract): the recorded weight,
+    reps and RIR bound to the exercise — no derived counts, dates or volumes,
+    so every number in the reply is a seeded ledger figure. With an earlier
+    recorded session the baseline best set and the progress status come along
+    in words, without numeric deltas."""
+    best = (exercise.get("current") or {}).get("best_set") or {}
+    content = f"ده أداء {exercise['name']} في آخر جلسة: أحسن سيت {_arabic_set_text(best)}."
     previous = exercise.get("previous")
-    best = current.get("best_set") or {}
-    description = description or exercise["name"]
-    content = (
-        f"{description} [{exercise['exercise_id']}]: أحسن سيت {_arabic_set_text(best)}؛ "
-        f"{_arabic_metric(current.get('sets_count'))} سيتات، {_arabic_metric(current.get('total_reps'))} عدّات إجمالي، "
-        f"{_arabic_metric(current.get('volume_kg'))} kg حجم."
-    )
-    for logged_set in current.get("sets", []):
-        content += f"\n  سيت {logged_set['set_index']}: {_arabic_set_text(logged_set)}"
     if not previous:
-        return content + " خط الأساس: مفيش آخر مرة مسجلة؛ الحالة: بيانات مش كافية. مفيش تقييم تقدم متاح."
-    content += (
-        f" خط الأساس: {previous['session']['session_date']} (آخر مرة مسجلة"
-        f")؛ أحسن سيت {_arabic_set_text(previous.get('best_set'))}."
+        return content + " خط الأساس: مفيش آخر مرة مسجلة؛ الحالة: بيانات مش كافية."
+    return (
+        content
+        + f" خط الأساس: آخر مرة مسجلة؛ أحسن سيت {_arabic_set_text(previous.get('best_set'))}."
+        + _arabic_status_phrase(exercise)
     )
-    deltas = exercise.get("deltas") or {}
-    content += " التغييرات الملحوظة: " + ", ".join(
-        f"{label} {_arabic_metric(deltas.get(key), signed=True)}{unit}"
-        for key, label, unit in (
-            ("load_kg", "أحسن وزن", " kg"), ("reps", "عدّات", ""),
-            ("sets", "سيتات", ""), ("volume_kg", "حجم", " kg"), ("e1rm", "e1RM", " kg"),
-        )
-    ) + "."
-    content += (
-        f" الحالة: {_arabic_status(exercise.get('status', 'insufficient_data'))}"
-        " (ملحوظة مش اتجاه طويل المدى)."
-    )
-    return content
 
 
-def _comparison_text_ar(
-    context: dict[str, Any], exercises=None, store: Any = None
-) -> str:
-    session = context.get("session") or {}
+def _comparison_text_ar(context: dict[str, Any], exercises=None) -> str:
+    """Lean whole-session figures: each recorded exercise's best set — no
+    session-wide counts, dates or readiness, so every number in the reply is a
+    recorded weight, reps or RIR figure. With an earlier recorded session the
+    progress status comes along in words."""
     entries = context.get("exercises") or []
-    sets_count = sum((ex.get("current") or {}).get("sets_count", 0) for ex in entries)
-    volume = sum((ex.get("current") or {}).get("volume_kg", 0) for ex in entries)
-    content = (
-        f"ده آخر جلسة سجلتها: {session.get('split_name') or 'جلسة'} يوم {session.get('session_date') or 'مش معروف'}؛ "
-        f"{sets_count} سيتات شغل، {_arabic_metric(volume)} kg إجمالي الوزن المرفوع. "
-        f"الجاهزية: {_arabic_metric(session.get('readiness_score'))}/5.\n"
-        "أحسن سيت: أثقل وزن الأول، وبعدين أكتر عدّات، وبعدين أقدم سيت. "
-        "كل خط أساس هو آخر مرة اتسجل فيها التمرين، مش شرط تكون آخر جلسة."
-    )
     selected = entries if exercises is None else exercises
-    descriptions = (
-        describe_exercises(
-            store,
-            ((exercise["exercise_id"], exercise["name"]) for exercise in selected),
-        )
-        if store is not None
-        else [exercise["name"] for exercise in selected]
-    )
-    for exercise, description in zip(selected, descriptions):
-        content += "\n- " + _exercise_comparison_text_ar(exercise, description)
+    content = "ده آخر جلسة سجلتها:"
+    for exercise in selected:
+        best = (exercise.get("current") or {}).get("best_set") or {}
+        content += f"\n- {exercise['name']}: أحسن سيت {_arabic_set_text(best)}."
+        if not exercise.get("previous"):
+            content += " مفيش آخر مرة مسجلة عشان أقارن."
+        else:
+            content += _arabic_status_phrase(exercise)
     if not entries:
-        content += "\nمفيش سيتات شغل مسجلة في الجلسة دي؛ مفيش تقييم تقدم متاح."
+        content += "\nمفيش سيتات شغل مسجلة في الجلسة دي."
     return content
 
 
@@ -3817,7 +3806,7 @@ def _session_summary_text_ar(summary: dict[str, Any], store: Any = None) -> str:
         for exercise, description in zip(valid_exercises, described):
             content += (
                 f"\n- {str(description)[:100]}: {_arabic_metric(exercise.get('sets'))} سيتات، "
-                f"{_arabic_metric(exercise.get('reps'))} عدّات إجمالي، "
+                f"{_arabic_metric(exercise.get('reps'))} تكرار إجمالي، "
                 f"{_arabic_metric(exercise.get('volume_kg'))} kg حجم."
             )
     return content + "\n\nده ملخص جلسة؛ محتاج مقارنة عشان أقيّم التقدم."
