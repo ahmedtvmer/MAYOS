@@ -801,6 +801,7 @@ def test_tool_bound_chat_fetches_profile_and_program_only_after_parallel_calls(
         "get_player_cardio",
         "get_player_nutrition",
         "get_player_food_log",
+        "get_workout_history",
         "get_assistant_preferences",
         "search_chat_history",
     ]
@@ -1118,6 +1119,7 @@ def test_turn_without_tool_call_sends_no_profile_telemetry_or_program_data(api, 
         "get_player_cardio",
         "get_player_nutrition",
         "get_player_food_log",
+        "get_workout_history",
         "get_assistant_preferences",
         "search_chat_history",
     )
@@ -1682,10 +1684,13 @@ def test_tool_result_keeps_followup_payload_under_the_prompt_ceiling(api, monkey
     with db.open_ledger(username) as ledger:
         for _ in range(4):
             ledger.add_chat_message("assistant", "Earlier answer. " + "x" * 2_900)
-        # #524 trims the first four replies to 600 chars. Enlarging the five
-        # recent replies keeps the initial prompt within 4 bytes of its old size.
+        # #524 trims the first four replies to 600 chars. The five recent
+        # replies keep the initial prompt under the payload ceiling with
+        # ~780 bytes of headroom (re-tuned for the #767 prompt rule) while
+        # the ~2.7 KB Limitations result still overflows the follow-up
+        # budget and is truncated by cap_tool_results_for_prompt.
         for _ in range(5):
-            ledger.add_chat_message("assistant", "Earlier answer. " + "x" * 4_752)
+            ledger.add_chat_message("assistant", "Earlier answer. " + "x" * 4_600)
         ledger.upsert_player_profile(
             {"injuries_or_limitations": "PLAYER_LIMITATION " + "knee pain " * 260}
         )

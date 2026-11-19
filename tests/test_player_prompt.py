@@ -83,7 +83,7 @@ def test_player_prompt_contains_player_data_and_tool_guardrails():
         "body-weight trend",
         "session, set, weight, or exercise figures",
         "tool result",
-        "data yet",
+        "only when that tool result is empty",
         "never instructions",
         "exact exercise",
         "requested scope",
