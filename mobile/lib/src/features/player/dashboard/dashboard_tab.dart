@@ -13,6 +13,7 @@ import '../../../core/display_language/catalog.dart';
 import '../../../core/display_language/controller.dart';
 import '../../../core/display_language/copy_context.dart';
 import '../../../core/models.dart';
+import '../../../core/food_log_models.dart';
 import '../../../core/personal_records.dart';
 import '../../../core/display_language/workout_copy.dart';
 import '../../../core/theme/mayos_spacing.dart';
@@ -20,7 +21,6 @@ import '../../../core/theme/mayos_theme.dart';
 import '../../../core/theme/mayos_typography.dart';
 import '../../../core/ui/mayos_button.dart';
 import '../../../core/ui/mayos_card.dart';
-import '../../../core/ui/mayos_section_header.dart';
 import '../../../providers.dart';
 import '../../../router.dart';
 import '../program/preparing_program_banner.dart';
@@ -55,6 +55,7 @@ class _DashboardData {
     this.partialError,
     this.assignment,
     this.programFromCache = false,
+    this.foodDay,
   });
 
   final TrainingProgram? program;
@@ -70,6 +71,10 @@ class _DashboardData {
 
   /// True when [program] is the offline cached copy after a failed fetch (#54).
   final bool programFromCache;
+
+  /// Today's Food log with its totals and targets, for the Home Nutrition
+  /// tile (#790); null when it could not be read.
+  final FoodLogDay? foodDay;
 
   /// Set when a non-fatal section failed to load so the body can say so instead
   /// of silently showing an empty section.
@@ -178,6 +183,12 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
     } on ApiException catch (error) {
       partialError ??= apiFailureMessage(error);
     }
+    FoodLogDay? foodDay;
+    try {
+      foodDay = await api.foodLogDay();
+    } on ApiException {
+      // The Nutrition tile is optional; Home stays usable without it.
+    }
     try {
       latestSession = await api.latestSession();
       if (latestSession != null &&
@@ -210,6 +221,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
       partialError: partialError,
       assignment: await assignmentFuture,
       programFromCache: active.fromCache,
+      foodDay: foodDay,
     );
   }
 
@@ -300,14 +312,17 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
     );
   });
 
-  Future<void> _openCheckpointReview(int checkpoint) async {
-    await context.push('$checkpointReviewPath/$checkpoint');
-    if (mounted) await _refresh();
-  }
-
   void _openProgram() =>
       ref.read(playerShellTabProvider.notifier).state =
           PlayerShellTab.program.index;
+
+  void _openNutrition() =>
+      ref.read(playerShellTabProvider.notifier).state =
+          PlayerShellTab.nutrition.index;
+
+  void _openProgress() =>
+      ref.read(playerShellTabProvider.notifier).state =
+          PlayerShellTab.progress.index;
 
   void _logWorkout(
     ProgramDay day,
@@ -406,8 +421,10 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
                 onRefresh: _refresh,
                 onOpenExercise: _openExercise,
                 onOpenDrafts: _openDrafts,
-                onOpenCheckpointReview: _openCheckpointReview,
                 onOpenProgram: _openProgram,
+                onOpenNutrition: _openNutrition,
+                onOpenProgress: _openProgress,
+                now: ref.watch(clockProvider)(),
                 onLogWorkout: _logWorkout,
                 onShareLatest: _shareLatest,
                 trainedDays: <TrainedDay>[
@@ -437,12 +454,14 @@ class _HomeBody extends StatelessWidget {
     required this.onRefresh,
     required this.onOpenExercise,
     required this.onOpenDrafts,
-    required this.onOpenCheckpointReview,
     required this.onOpenProgram,
+    required this.onOpenNutrition,
+    required this.onOpenProgress,
     required this.onLogWorkout,
     required this.onShareLatest,
     required this.trainedDays,
     required this.pendingDrafts,
+    required this.now,
   });
 
   final MayosCopy copy;
@@ -454,21 +473,61 @@ class _HomeBody extends StatelessWidget {
   final Future<void> Function() onRefresh;
   final void Function(ProgramExercise exercise, int dayOrder) onOpenExercise;
   final VoidCallback onOpenDrafts;
-  final ValueChanged<int> onOpenCheckpointReview;
   final VoidCallback onOpenProgram;
+  final VoidCallback onOpenNutrition;
+  final VoidCallback onOpenProgress;
   final void Function(ProgramDay day, int? programVersion, int programWeekCount)
       onLogWorkout;
   final Future<void> Function(LatestSession session) onShareLatest;
   final List<TrainedDay> trainedDays;
   final int pendingDrafts;
+  final DateTime now;
 
+  /// Home answers "what do I do today" (#790): today's session first, then
+  /// short summaries that open their own tabs. A day with a weekly schedule
+  /// that does not include today is a rest day.
   @override
   Widget build(BuildContext context) {
-    final MayosThemeExtension c = MayosTheme.of(context);
-    final DateTime now = DateTime.now();
     final TrainingProgram? activeProgram = program;
     final ProgramDay? nextDay =
         activeProgram == null ? null : selectNextDay(activeProgram, trainedDays);
+    final List<int> weekdays = scheduledWeekdays(data.schedule);
+    final bool restDay = weekdays.isNotEmpty && !weekdays.contains(now.weekday);
+    final int? nextWeekday = weekdays.isEmpty
+        ? null
+        : nextScheduledWeekday(weekdays, now.add(const Duration(days: 1)));
+    final bool coachPreparing = assignment?.coachPreparingProgram == true;
+    final LatestSession? latest = data.latestSession;
+    final bool? latestIsToday = _recentSessionDay(latest, now);
+
+    final Widget sessionCard;
+    if (activeProgram == null || nextDay == null) {
+      sessionCard = coachPreparing
+          ? PreparingProgramBanner(assignment: assignment!)
+          : _BuildProgramCard(copy: copy, onOpenProgram: onOpenProgram);
+    } else if (restDay) {
+      sessionCard = _RestDayCard(
+        copy: copy,
+        today: now.weekday,
+        nextDay: nextDay,
+        nextWeekday: nextWeekday,
+        onPreview: onOpenProgram,
+      );
+    } else {
+      sessionCard = _NextSessionSection(
+        day: nextDay,
+        label: nextSessionLabel(data.schedule, now,
+            isArabic: displayCopyOf(context).isArabic),
+        onOpenExercise: onOpenExercise,
+        onOpenProgram: onOpenProgram,
+        onLogWorkout: () => onLogWorkout(
+          nextDay,
+          activeProgram.version,
+          activeProgram.weekCount,
+        ),
+        logEnabled: true,
+      );
+    }
 
     return RefreshIndicator(
       onRefresh: onRefresh,
@@ -476,209 +535,424 @@ class _HomeBody extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(MayosSpacing.lg, MayosSpacing.md,
             MayosSpacing.lg, MayosSpacing.xxl),
         children: <Widget>[
-          if (nextDay == null && activeProgram != null)
-            TourTarget(
-              id: 'home',
-              child: Text(
-                displayCopyOf(context).greetingFor(now),
-                style: MayosTypography.of(context).display.copyWith(
-                  fontSize: 34,
-                  color: c.textPrimary,
-                ),
-              ),
-            )
-          else if (nextDay == null)
-            Text(
-              displayCopyOf(context).greetingFor(now),
-              style: MayosTypography.of(context).display.copyWith(
-                fontSize: 34,
-                color: c.textPrimary,
-              ),
-            ),
           if (programFromCache) ...<Widget>[
-            const SizedBox(height: MayosSpacing.sm),
             _InlineNotice(message: displayCopyOf(context).savedProgramNote),
-          ] else if (data.partialError != null) ...<Widget>[
             const SizedBox(height: MayosSpacing.sm),
+          ] else if (data.partialError != null) ...<Widget>[
             _InlineNotice(message: copy.failureMessage(data.partialError!)),
+            const SizedBox(height: MayosSpacing.sm),
           ],
-          const SizedBox(height: MayosSpacing.xl),
-          _ProgramSection(
-            program: activeProgram,
-            assignment: assignment,
-            onOpenProgram: onOpenProgram,
-            copy: copy,
-          ),
+          // Reminders: shown only while they are available, off and not
+          // dismissed (the card decides).
+          const PushSettingsCard(compact: true),
+          // #743 places the rank, XP and streak strip here, above the session.
+          TourTarget(id: 'home', child: sessionCard),
+          if (latest != null && latestIsToday != null) ...<Widget>[
+            const SizedBox(height: MayosSpacing.sm),
+            _LastSessionRow(
+              label: copy.homeLastSession(latest.splitName, today: latestIsToday),
+              onShare: () => onShareLatest(latest),
+              languageCode: displayCopyOf(context).isArabic ? 'ar' : 'en',
+            ),
+          ],
           if (pendingDrafts > 0) ...<Widget>[
             const SizedBox(height: MayosSpacing.md),
             _DraftsBanner(count: pendingDrafts, onTap: onOpenDrafts),
           ],
-          if (data.unopenedCheckpointReview != null) ...<Widget>[
+          if (data.foodDay != null) ...<Widget>[
             const SizedBox(height: MayosSpacing.md),
-            _CheckpointReviewCard(
+            _NutritionTodayTile(
               copy: copy,
-              review: data.unopenedCheckpointReview!,
-              onTap: onOpenCheckpointReview,
+              day: data.foodDay!,
+              onTap: onOpenNutrition,
             ),
           ],
-          if (data.latestSession != null) ...<Widget>[
-            const PushSettingsCard(compact: true),
+          if (activeProgram != null) ...<Widget>[
             const SizedBox(height: MayosSpacing.md),
-            _LatestWorkoutCard(
-              session: data.latestSession!,
-              onShare: () => onShareLatest(data.latestSession!),
-              languageCode: displayCopyOf(context).isArabic ? 'ar' : 'en',
-            ),
-          ],
-          // No program means no next session to show: the Program tab owns the
-          // generate flow, and a training day cannot be derived without one.
-          if (nextDay != null) ...<Widget>[
-            const SizedBox(height: MayosSpacing.xl),
-            TourTarget(
-              id: 'home',
-              child: _NextSessionSection(
-                day: nextDay,
-                label: nextSessionLabel(data.schedule, now,
-                    isArabic: displayCopyOf(context).isArabic),
-                onOpenExercise: onOpenExercise,
-                onLogWorkout: () => onLogWorkout(
-                  nextDay,
-                  activeProgram?.version,
-                  activeProgram?.weekCount ?? 1,
-                ),
-                logEnabled: true,
+            if (coachPreparing) ...<Widget>[
+              PreparingProgramBanner(assignment: assignment!),
+              const SizedBox(height: MayosSpacing.sm),
+            ],
+            _ProgramLine(
+              label: copy.homeProgramLine(
+                activeProgram.programName,
+                activeProgram.currentWeek,
+                activeProgram.weekCount,
+                activeProgram.weeklyFrequency,
               ),
+              onTap: onOpenProgram,
             ),
           ],
-          const SizedBox(height: MayosSpacing.xl),
-          _VolumeSection(volume: data.volume),
-          const SizedBox(height: MayosSpacing.xl),
-          _RecordsSection(records: data.records),
+          const SizedBox(height: MayosSpacing.md),
+          _SummaryTiles(
+            copy: copy,
+            volume: data.volume,
+            records: data.records,
+            onTap: onOpenProgress,
+          ),
         ],
       ),
     );
   }
 }
 
-class _LatestWorkoutCard extends StatelessWidget {
-  const _LatestWorkoutCard({
-    required this.session,
-    required this.onShare,
-    required this.languageCode,
-  });
-
-  final LatestSession session;
-  final VoidCallback onShare;
-  final String languageCode;
-
-  @override
-  Widget build(BuildContext context) => MayosCard(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Text(languageCode == 'ar' ? 'أحدث تمرين' : 'Latest workout'),
-            const SizedBox(height: MayosSpacing.xs),
-            Text(session.splitName),
-            const SizedBox(height: MayosSpacing.sm),
-            MayosButton(
-              key: const ValueKey<String>('home.shareLatestWorkout'),
-              label: WorkoutCopy(languageCode).shareToStory,
-              icon: Icons.ios_share,
-              onPressed: onShare,
-            ),
-          ],
-        ),
-      );
+/// True for a session performed today, false for yesterday, null otherwise:
+/// the last-session row shows on the workout's day and the next one only.
+bool? _recentSessionDay(LatestSession? session, DateTime now) {
+  if (session == null) return null;
+  final String today = isoDateOf(now);
+  if (session.sessionDate == today) return true;
+  if (session.sessionDate == isoDateOf(now.subtract(const Duration(days: 1)))) {
+    return false;
+  }
+  return null;
 }
 
-class _CheckpointReviewCard extends StatelessWidget {
-  const _CheckpointReviewCard(
-      {required this.review, required this.onTap, required this.copy});
+class _BuildProgramCard extends StatelessWidget {
+  const _BuildProgramCard({required this.copy, required this.onOpenProgram});
 
-  final CheckpointReviewListItem review;
-  final ValueChanged<int> onTap;
   final MayosCopy copy;
+  final VoidCallback onOpenProgram;
 
   @override
   Widget build(BuildContext context) {
     final MayosThemeExtension c = MayosTheme.of(context);
     return MayosCard(
-      padding: EdgeInsets.zero,
-      child: ListTile(
-        key: const ValueKey<String>('dashboard.checkpoint-review'),
-        leading: Icon(Icons.emoji_events_outlined, color: c.accent),
-        title: Text(copy.checkpointReview),
-        subtitle: Text(
-            '${copy.checkpointLabel} ${review.checkpoint} · ${copy.openYourReview}'),
-        trailing: const Icon(Icons.chevron_right),
-        onTap: () => onTap(review.checkpoint),
+      padding: const EdgeInsets.all(MayosSpacing.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(copy.noActiveProgram,
+              style: MayosTypography.of(context)
+                  .sectionHeading
+                  .copyWith(color: c.textPrimary)),
+          const SizedBox(height: MayosSpacing.xs),
+          Text(
+            copy.generateProgramForNextSession,
+            style: MayosTypography.of(context)
+                .bodySecondary
+                .copyWith(color: c.textSecondary),
+          ),
+          const SizedBox(height: MayosSpacing.md),
+          MayosButton(
+            label: copy.goToProgram,
+            icon: Icons.auto_awesome,
+            onPressed: onOpenProgram,
+          ),
+        ],
       ),
     );
   }
 }
 
-class _ProgramSection extends StatelessWidget {
-  const _ProgramSection(
-      {required this.program,
-      required this.assignment,
-      required this.onOpenProgram,
-      required this.copy});
+class _RestDayCard extends StatelessWidget {
+  const _RestDayCard({
+    required this.copy,
+    required this.today,
+    required this.nextDay,
+    required this.nextWeekday,
+    required this.onPreview,
+  });
 
-  final TrainingProgram? program;
-  final Assignment? assignment;
-  final VoidCallback onOpenProgram;
   final MayosCopy copy;
+  final int today;
+  final ProgramDay nextDay;
+  final int? nextWeekday;
+  final VoidCallback onPreview;
 
   @override
   Widget build(BuildContext context) {
     final MayosThemeExtension c = MayosTheme.of(context);
-    final TrainingProgram? active = program;
-    final Assignment? currentAssignment = assignment;
-    final bool showPreparingProgram =
-        currentAssignment?.coachPreparingProgram == true;
-    final List<Widget> programContent = active == null
-        ? <Widget>[
-            Text(copy.noActiveProgram,
-                style: MayosTypography.of(context).sectionHeading
-                    .copyWith(color: c.textPrimary)),
-            const SizedBox(height: MayosSpacing.xs),
-            Text(
-              copy.generateProgramForNextSession,
-              style: MayosTypography.of(context).bodySecondary
-                  .copyWith(color: c.textSecondary),
-            ),
-            const SizedBox(height: MayosSpacing.md),
-            MayosButton(
-              label: copy.goToProgram,
-              icon: Icons.auto_awesome,
-              variant: MayosButtonVariant.secondary,
-              expand: false,
-              onPressed: onOpenProgram,
-            ),
-          ]
-        : <Widget>[
-            Text(
-              active.programName,
-              style: MayosTypography.of(context).pageHeading.copyWith(color: c.textPrimary),
-            ),
-            const SizedBox(height: MayosSpacing.xs),
-            Text(
-              '${active.splitType} · ${displayCopyOf(context).programFrequency(active.weeklyFrequency)}',
-              style: MayosTypography.of(context).bodySecondary
-                  .copyWith(color: c.textSecondary),
-            ),
-          ];
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        if (showPreparingProgram) ...<Widget>[
-          PreparingProgramBanner(
-            assignment: currentAssignment!,
+    final MayosTypography type = MayosTypography.of(context);
+    return MayosCard(
+      key: const ValueKey<String>('home.restDay'),
+      padding: const EdgeInsets.all(MayosSpacing.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Icon(Icons.bedtime_outlined, color: c.textSecondary),
+              const SizedBox(width: MayosSpacing.sm),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(copy.homeTodayLabel(today),
+                        style: type.caption.copyWith(color: c.textSecondary)),
+                    Text(copy.homeRestDay,
+                        style: type.pageHeading.copyWith(color: c.textPrimary)),
+                  ],
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: MayosSpacing.md),
+          Divider(height: MayosSpacing.lg, color: c.border),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(copy.nextSessionLabel(null),
+                        style: type.caption.copyWith(color: c.textSecondary)),
+                    Text(
+                      copy.homeNextDayOn(nextDay.dayName, nextWeekday),
+                      style: type.exerciseTitle.copyWith(color: c.textPrimary),
+                    ),
+                  ],
+                ),
+              ),
+              MayosButton(
+                label: copy.homePreview,
+                variant: MayosButtonVariant.secondary,
+                expand: false,
+                onPressed: onPreview,
+              ),
+            ],
+          ),
         ],
-        ...programContent,
+      ),
+    );
+  }
+}
+
+class _LastSessionRow extends StatelessWidget {
+  const _LastSessionRow({
+    required this.label,
+    required this.onShare,
+    required this.languageCode,
+  });
+
+  final String label;
+  final VoidCallback onShare;
+  final String languageCode;
+
+  @override
+  Widget build(BuildContext context) {
+    final MayosThemeExtension c = MayosTheme.of(context);
+    return Row(
+      children: <Widget>[
+        Expanded(
+          child: Text(
+            label,
+            style: MayosTypography.of(context)
+                .bodySecondary
+                .copyWith(color: c.textSecondary),
+          ),
+        ),
+        const SizedBox(width: MayosSpacing.sm),
+        MayosButton(
+          key: const ValueKey<String>('home.shareLatestWorkout'),
+          label: WorkoutCopy(languageCode).shareToStory,
+          icon: Icons.ios_share,
+          variant: MayosButtonVariant.secondary,
+          expand: false,
+          onPressed: onShare,
+        ),
       ],
+    );
+  }
+}
+
+class _NutritionTodayTile extends StatelessWidget {
+  const _NutritionTodayTile({
+    required this.copy,
+    required this.day,
+    required this.onTap,
+  });
+
+  final MayosCopy copy;
+  final FoodLogDay day;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final MayosThemeExtension c = MayosTheme.of(context);
+    final MayosTypography type = MayosTypography.of(context);
+    final num? kcalTarget = day.targets?['calories'] as num?;
+    final num? proteinTarget = day.targets?['protein_g'] as num?;
+    final double fraction = kcalTarget == null || kcalTarget <= 0
+        ? 0
+        : (day.totals.kcal / kcalTarget).clamp(0.0, 1.0);
+    return _HomeTile(
+      key: const ValueKey<String>('home.nutritionToday'),
+      onTap: onTap,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: Text(copy.homeNutritionToday,
+                    style: type.captionStrong.copyWith(color: c.textSecondary)),
+              ),
+              Icon(Icons.chevron_right, size: 20, color: c.textSecondary),
+            ],
+          ),
+          const SizedBox(height: MayosSpacing.xs),
+          Text(copy.homeCalories(day.totals.kcal, kcalTarget),
+              style: type.numericSmall.copyWith(color: c.textPrimary)),
+          if (kcalTarget != null) ...<Widget>[
+            const SizedBox(height: MayosSpacing.xs),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(3),
+              child: LinearProgressIndicator(
+                value: fraction,
+                minHeight: 6,
+                color: c.accent,
+                backgroundColor: c.surfaceSunken,
+              ),
+            ),
+            const SizedBox(height: MayosSpacing.xs),
+            Text(copy.homeProtein(day.totals.protein, proteinTarget),
+                style: type.bodySecondary.copyWith(color: c.textSecondary)),
+          ] else ...<Widget>[
+            const SizedBox(height: MayosSpacing.xxs),
+            Text(copy.homeSetNutritionTargets,
+                style: type.bodySecondary.copyWith(color: c.textSecondary)),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ProgramLine extends StatelessWidget {
+  const _ProgramLine({required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final MayosThemeExtension c = MayosTheme.of(context);
+    return _HomeTile(
+      key: const ValueKey<String>('home.programLine'),
+      onTap: onTap,
+      child: Row(
+        children: <Widget>[
+          Icon(Icons.article_outlined, size: 18, color: c.textSecondary),
+          const SizedBox(width: MayosSpacing.sm),
+          Expanded(
+            child: Text(
+              label,
+              style: MayosTypography.of(context)
+                  .body
+                  .copyWith(color: c.textPrimary),
+            ),
+          ),
+          Icon(Icons.chevron_right, size: 20, color: c.textSecondary),
+        ],
+      ),
+    );
+  }
+}
+
+class _SummaryTiles extends StatelessWidget {
+  const _SummaryTiles({
+    required this.copy,
+    required this.volume,
+    required this.records,
+    required this.onTap,
+  });
+
+  final MayosCopy copy;
+  final Map<String, double> volume;
+  final List<PersonalRecord> records;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final MayosThemeExtension c = MayosTheme.of(context);
+    final MayosTypography type = MayosTypography.of(context);
+    final List<MapEntry<String, double>> muscles = volume.entries
+        .where((MapEntry<String, double> entry) => entry.value > 0)
+        .toList(growable: false)
+      ..sort((MapEntry<String, double> a, MapEntry<String, double> b) =>
+          b.value.compareTo(a.value));
+    final double total =
+        volume.values.fold<double>(0, (double a, double b) => a + b);
+    final PersonalRecord? record = records.isEmpty ? null : records.first;
+    Widget tile(Key key, String title, String value, String? detail) => Expanded(
+          child: _HomeTile(
+            key: key,
+            onTap: onTap,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(title,
+                    style: type.captionStrong.copyWith(color: c.textSecondary)),
+                const SizedBox(height: MayosSpacing.xxs),
+                Directionality(
+                  textDirection: TextDirection.ltr,
+                  child: Text(value,
+                      style: type.numericSmall.copyWith(color: c.textPrimary)),
+                ),
+                if (detail != null)
+                  Text(detail,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: type.caption.copyWith(color: c.textSecondary)),
+              ],
+            ),
+          ),
+        );
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          tile(
+            const ValueKey<String>('home.weekTile'),
+            copy.thisWeek,
+            muscles.isEmpty ? copy.homeNoSetsYet : copy.countedSetsMetric(total),
+            muscles.isEmpty ? null : copy.homeMostTrained(muscles.first.key),
+          ),
+          const SizedBox(width: MayosSpacing.sm),
+          tile(
+            const ValueKey<String>('home.prTile'),
+            copy.homeLatestPr,
+            record == null
+                ? copy.homeNoPrYet
+                : PrRecordKind.fromRecordType(record.recordType) ==
+                        PrRecordKind.mostReps
+                    ? copy.personalRecordReps(record.reps)
+                    : '${_formatValue(record.value)} kg × ${record.reps}',
+            record?.name,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One tappable Home summary surface; every tile shares the card treatment.
+class _HomeTile extends StatelessWidget {
+  const _HomeTile({super.key, required this.onTap, required this.child});
+
+  final VoidCallback onTap;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final MayosThemeExtension c = MayosTheme.of(context);
+    return Material(
+      color: c.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: MayosRadii.mediumRadius,
+        side: BorderSide(color: c.border),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: MayosRadii.mediumRadius,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 44),
+          child: Padding(
+            padding: const EdgeInsets.all(MayosSpacing.md),
+            child: child,
+          ),
+        ),
+      ),
     );
   }
 }
@@ -688,13 +962,17 @@ class _NextSessionSection extends StatelessWidget {
     required this.day,
     required this.label,
     required this.onOpenExercise,
+    required this.onOpenProgram,
     required this.onLogWorkout,
     required this.logEnabled,
   });
 
+  static const int _shownExercises = 3;
+
   final ProgramDay day;
   final String label;
   final void Function(ProgramExercise exercise, int dayOrder) onOpenExercise;
+  final VoidCallback onOpenProgram;
   final VoidCallback onLogWorkout;
   final bool logEnabled;
 
@@ -717,16 +995,39 @@ class _NextSessionSection extends StatelessWidget {
           const SizedBox(height: MayosSpacing.xxs),
           Text(
             current.dayName,
-            style: MayosTypography.of(context).exerciseTitle.copyWith(
-              fontSize: 18,
+            style: MayosTypography.of(context).pageHeading.copyWith(
               color: c.textPrimary,
             ),
           ),
+          Text(
+            displayCopyOf(context).homeExerciseCount(current.exercises.length),
+            style: MayosTypography.of(context).bodySecondary
+                .copyWith(color: c.textSecondary),
+          ),
           const SizedBox(height: MayosSpacing.sm),
-          for (final ProgramExercise exercise in current.exercises)
+          for (final ProgramExercise exercise
+              in current.exercises.take(_shownExercises))
             _NextSessionExercise(
               exercise: exercise,
               onTap: () => onOpenExercise(exercise, current.dayOrder),
+            ),
+          if (current.exercises.length > _shownExercises)
+            InkWell(
+              key: const ValueKey<String>('home.moreExercises'),
+              onTap: onOpenProgram,
+              borderRadius: MayosRadii.smallRadius,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 44),
+                child: Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: Text(
+                    displayCopyOf(context).homeMoreExercises(
+                        current.exercises.length - _shownExercises),
+                    style: MayosTypography.of(context).bodySecondary
+                        .copyWith(color: c.textSecondary),
+                  ),
+                ),
+              ),
             ),
           if (current.hasCardio) ...<Widget>[
             const SizedBox(height: MayosSpacing.xs),
@@ -801,175 +1102,6 @@ class _NextSessionExercise extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-}
-
-class _VolumeSection extends StatelessWidget {
-  const _VolumeSection({required this.volume});
-
-  final Map<String, double> volume;
-
-  @override
-  Widget build(BuildContext context) {
-    final MayosThemeExtension c = MayosTheme.of(context);
-    final List<MapEntry<String, double>> muscles = volume.entries
-        .where((MapEntry<String, double> entry) => entry.value > 0)
-        .toList(growable: false)
-      ..sort((MapEntry<String, double> a, MapEntry<String, double> b) =>
-          b.value.compareTo(a.value));
-    final double total =
-        volume.values.fold<double>(0, (double a, double b) => a + b);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        MayosSectionHeader(title: displayCopyOf(context).thisWeek),
-        if (muscles.isEmpty)
-          Text(
-            displayCopyOf(context).noSetsLastWeek,
-            style:
-                MayosTypography.of(context).bodySecondary.copyWith(color: c.textSecondary),
-          )
-        else ...<Widget>[
-          Text(
-            displayCopyOf(context).countedSetsMetric(total),
-            style: MayosTypography.of(context).numericSmall.copyWith(color: c.textPrimary),
-          ),
-          const SizedBox(height: MayosSpacing.xxs),
-          Text(
-            displayCopyOf(context).countedSetsExplanation,
-            style: MayosTypography.of(context).caption.copyWith(color: c.textMuted),
-          ),
-          const SizedBox(height: MayosSpacing.md),
-          for (final MapEntry<String, double> entry in muscles)
-            _VolumeRow(
-              muscle: entry.key,
-              value: entry.value,
-              fraction: entry.value / muscles.first.value,
-            ),
-        ],
-      ],
-    );
-  }
-}
-
-class _VolumeRow extends StatelessWidget {
-  const _VolumeRow({
-    required this.muscle,
-    required this.value,
-    required this.fraction,
-  });
-
-  final String muscle;
-  final double value;
-  final double fraction;
-
-  @override
-  Widget build(BuildContext context) {
-    final MayosThemeExtension c = MayosTheme.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: MayosSpacing.sm),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Row(
-            children: <Widget>[
-              Expanded(
-                child: Text(
-                  muscle,
-                  style: MayosTypography.of(context).bodySecondary
-                      .copyWith(color: c.textPrimary),
-                ),
-              ),
-              Directionality(
-                textDirection: TextDirection.ltr,
-                child: Text(
-                  _formatValue(value),
-                  style: MayosTypography.of(context).numericSmall
-                      .copyWith(color: c.textSecondary),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: MayosSpacing.xs),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: SizedBox(
-              height: 6,
-              child: FractionallySizedBox(
-                alignment: AlignmentDirectional.centerStart,
-                widthFactor: fraction.clamp(0.0, 1.0),
-                child: DecoratedBox(
-                  decoration: BoxDecoration(color: c.accent),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _RecordsSection extends StatelessWidget {
-  const _RecordsSection({required this.records});
-
-  final List<PersonalRecord> records;
-
-  @override
-  Widget build(BuildContext context) {
-    final MayosThemeExtension c = MayosTheme.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        MayosSectionHeader(title: displayCopyOf(context).personalRecords),
-        if (records.isEmpty)
-          Text(
-            displayCopyOf(context).noPersonalRecords,
-            style:
-                MayosTypography.of(context).bodySecondary.copyWith(color: c.textSecondary),
-          )
-        else
-          for (final PersonalRecord record in records)
-            Padding(
-              padding: const EdgeInsets.only(bottom: MayosSpacing.sm),
-              child: Row(
-                children: <Widget>[
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        Text(
-                          record.name,
-                          style: MayosTypography.of(context).body
-                              .copyWith(color: c.textPrimary),
-                        ),
-                        Text(
-                          displayCopyOf(context)
-                              .personalRecordType(record.recordType),
-                          style: MayosTypography.of(context).caption
-                              .copyWith(color: c.textMuted),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Directionality(
-                    textDirection: TextDirection.ltr,
-                    child: Text(
-                      PrRecordKind.fromRecordType(record.recordType) ==
-                              PrRecordKind.mostReps
-                          ? displayCopyOf(context)
-                              .personalRecordReps(record.reps)
-                          : '${_formatValue(record.value)} kg × ${record.reps}',
-                      style: MayosTypography.of(context).numericSmall
-                          .copyWith(color: c.textPrimary),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-      ],
     );
   }
 }

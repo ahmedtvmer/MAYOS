@@ -2657,9 +2657,11 @@ class FakeMayosApi {
   /// Newest-first schedule versions, including a past edit (#30).
   static List<Map<String, dynamic>> _defaultScheduleVersions() =>
       <Map<String, dynamic>>[
+        // Every weekday by default, so Home shows the next session whatever
+        // day a test runs; rest-day tests set their own schedule (#790).
         <String, dynamic>{
           'schedule_id': 'schedule-2',
-          'weekdays': <int>[1, 3, 5],
+          'weekdays': <int>[1, 2, 3, 4, 5, 6, 7],
           'timezone': 'Europe/London',
           'effective_from': '2026-09-01',
           'created_at': '2026-08-25T10:00:00Z',

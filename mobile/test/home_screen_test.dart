@@ -2138,11 +2138,12 @@ void main() {
     // With no program there is no next session at all — not even a placeholder.
     expect(find.text('Next session'), findsNothing);
     expect(find.text('No training day is scheduled yet.'), findsNothing);
-    expect(find.text('No sets logged in the last 7 days.'), findsOneWidget);
-    expect(find.text('No personal records yet.'), findsOneWidget);
+    // The two summary tiles carry their own short empty states (#790).
+    expect(find.text('No sets yet'), findsOneWidget);
+    expect(find.text('None yet'), findsOneWidget);
   });
 
-  testWidgets('the Personal records shelf localizes most reps and its value',
+  testWidgets('the Latest PR tile localizes a most-reps value and names the exercise',
       (tester) async {
     for (final String language in <String>['en', 'ar']) {
       final FakeMayosApi fake = _signedInFake()
@@ -2160,10 +2161,7 @@ void main() {
         ];
       await _pumpHome(tester, fake, languageCode: language);
 
-      expect(
-        find.text(language == 'ar' ? 'أكبر عدد من التكرارات' : 'Most reps'),
-        findsOneWidget,
-      );
+      expect(find.text('Push-up'), findsOneWidget);
       expect(
           find.text(language == 'ar' ? '\u206612\u2069 تكرارًا' : '12 reps'),
           findsOneWidget);
@@ -2526,4 +2524,199 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+
+  // #790: Home answers "what do I do today".
+  group('simpler Home (#790)', () {
+    // Thursday 5 Nov 2026, the fake Food log's "today".
+    final DateTime thursday = DateTime(2026, 11, 5, 10);
+    final List<Override> thursdayClock = <Override>[
+      clockProvider.overrideWithValue(() => thursday),
+    ];
+
+    FakeMayosApi homeFake() {
+      final FakeMayosApi fake = _signedInFake()
+        ..whatsNewSeenRelease = currentFeatureRelease
+        ..latestSessionBody = <String, dynamic>{
+          'session_id': 'sess-y',
+          'session_date': '2026-11-04',
+          'split_name': 'Lower B',
+          'day_order': null,
+        };
+      fake.nutritionState['targets'] = <String, dynamic>{
+        'calories': 2200,
+        'protein_g': 160,
+        'carbs_g': 250,
+        'fat_g': 70,
+      };
+      fake.foodLogEntries['2026-11-05'] = <Map<String, dynamic>>[
+        <String, dynamic>{
+          'id': 'food-1',
+          'name': 'Rice',
+          'logged_time': '08:00',
+          'nutrients': <String, dynamic>{
+            'energy_kcal': 1450,
+            'protein_g': 90,
+            'carbohydrate_g': 200,
+            'fat_g': 40,
+          },
+        },
+      ];
+      return fake;
+    }
+
+    double top(WidgetTester tester, Finder finder) =>
+        tester.getTopLeft(finder.first).dy;
+
+    testWidgets('a training day shows the session first and the summaries below',
+        (WidgetTester tester) async {
+      final FakeMayosApi fake = homeFake()
+        ..checkpointReviewRows = <Map<String, dynamic>>[
+          <String, dynamic>{
+            'checkpoint': 2,
+            'period_start': '2026-10-01',
+            'period_end': '2026-10-31',
+            'rating': <Map<String, dynamic>>[],
+            'opened': false,
+          },
+        ];
+      await _pumpHome(tester, fake, extraOverrides: thursdayClock);
+      await _pumpUntilFound(tester, find.byKey(const ValueKey<String>('home.nutritionToday')));
+
+      final Finder session = find.text('Log workout');
+      final Finder last = find.text('Last session: Lower B · yesterday');
+      final Finder nutrition = find.byKey(const ValueKey<String>('home.nutritionToday'));
+      final Finder programLine = find.byKey(const ValueKey<String>('home.programLine'));
+      final Finder weekTile = find.byKey(const ValueKey<String>('home.weekTile'));
+      for (final Finder f in <Finder>[session, last, nutrition, programLine, weekTile]) {
+        expect(f, findsWidgets);
+      }
+      expect(top(tester, session), lessThan(top(tester, last)));
+      expect(top(tester, last), lessThan(top(tester, nutrition)));
+      expect(top(tester, nutrition), lessThan(top(tester, programLine)));
+      expect(top(tester, programLine), lessThan(top(tester, weekTile)));
+      expect(find.text('1,450 / 2,200 kcal'), findsOneWidget);
+      expect(find.text('Protein 90 / 160 g'), findsOneWidget);
+      expect(find.byKey(const ValueKey<String>('home.shareLatestWorkout')), findsOneWidget);
+      // The waiting review lives in Progress now, not on Home.
+      expect(find.byKey(const ValueKey<String>('dashboard.checkpoint-review')), findsNothing);
+      expect(find.text('Checkpoint review'), findsNothing);
+      // The old greeting and full sections are gone.
+      expect(find.text('Personal records'), findsNothing);
+    });
+
+    testWidgets('the session card lists three exercises and the rest as "+ N more"',
+        (WidgetTester tester) async {
+      final FakeMayosApi fake = homeFake();
+      await _pumpHome(tester, fake, extraOverrides: thursdayClock);
+      await _pumpUntilFound(tester, find.text('Log workout'));
+      final Finder more = find.byKey(const ValueKey<String>('home.moreExercises'));
+      if (more.evaluate().isNotEmpty) {
+        expect(find.textContaining(RegExp(r'^\+ \d+ more$')), findsOneWidget);
+        await tester.tap(more);
+        await tester.pump(const Duration(milliseconds: 300));
+        final ProviderContainer container =
+            ProviderScope.containerOf(tester.element(find.byType(MayosApp)));
+        expect(container.read(playerShellTabProvider), PlayerShellTab.program.index);
+      } else {
+        expect(find.textContaining(RegExp(r'^[123] exercises?$')), findsOneWidget);
+      }
+    });
+
+    testWidgets('a scheduled week without today shows a rest day and the next session',
+        (WidgetTester tester) async {
+      final FakeMayosApi fake = homeFake()
+        ..scheduleVersions = <Map<String, dynamic>>[
+          <String, dynamic>{
+            'schedule_id': 'schedule-mon',
+            'weekdays': <int>[1],
+            'timezone': 'Europe/London',
+            'effective_from': '2026-09-01',
+            'created_at': '2026-08-25T10:00:00Z',
+          },
+        ];
+      await _pumpHome(tester, fake, extraOverrides: thursdayClock);
+      await _pumpUntilFound(tester, find.byKey(const ValueKey<String>('home.restDay')));
+
+      expect(find.text('Rest day'), findsOneWidget);
+      expect(find.text('Today · Thu'), findsOneWidget);
+      expect(find.textContaining('· Mon'), findsOneWidget);
+      expect(find.text('Log workout'), findsNothing);
+      await tester.tap(find.text('Preview'));
+      await tester.pump(const Duration(milliseconds: 300));
+      final ProviderContainer container =
+          ProviderScope.containerOf(tester.element(find.byType(MayosApp)));
+      expect(container.read(playerShellTabProvider), PlayerShellTab.program.index);
+    });
+
+    testWidgets('the last-session row shows for two days only', (WidgetTester tester) async {
+      for (final (String date, String? label) in <(String, String?)>[
+        ('2026-11-05', 'Last session: Lower B · today'),
+        ('2026-11-04', 'Last session: Lower B · yesterday'),
+        ('2026-11-03', null),
+      ]) {
+        final FakeMayosApi fake = homeFake()
+          ..latestSessionBody = <String, dynamic>{
+            'session_id': 'sess-$date',
+            'session_date': date,
+            'split_name': 'Lower B',
+            'day_order': null,
+          };
+        await _pumpHome(tester, fake, extraOverrides: thursdayClock);
+        await _pumpUntilFound(tester, find.byKey(const ValueKey<String>('home.weekTile')));
+        if (label == null) {
+          expect(find.textContaining('Last session:'), findsNothing);
+          expect(find.byKey(const ValueKey<String>('home.shareLatestWorkout')), findsNothing);
+        } else {
+          expect(find.text(label), findsOneWidget);
+        }
+        await tester.pumpWidget(const SizedBox.shrink());
+      }
+    });
+
+    testWidgets('Nutrition and the summary tiles open their tabs', (WidgetTester tester) async {
+      final FakeMayosApi fake = homeFake();
+      await _pumpHome(tester, fake, extraOverrides: thursdayClock);
+      await _pumpUntilFound(tester, find.byKey(const ValueKey<String>('home.nutritionToday')));
+      final ProviderContainer container =
+          ProviderScope.containerOf(tester.element(find.byType(MayosApp)));
+
+      await tester.tap(find.byKey(const ValueKey<String>('home.nutritionToday')));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(container.read(playerShellTabProvider), PlayerShellTab.nutrition.index);
+
+      container.read(playerShellTabProvider.notifier).state = PlayerShellTab.home.index;
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.ensureVisible(find.byKey(const ValueKey<String>('home.prTile')));
+      await tester.tap(find.byKey(const ValueKey<String>('home.prTile')));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(container.read(playerShellTabProvider), PlayerShellTab.progress.index);
+    });
+
+    testWidgets('without Nutrition targets the tile asks to set them', (WidgetTester tester) async {
+      final FakeMayosApi fake = homeFake();
+      fake.nutritionState['targets'] = null;
+      await _pumpHome(tester, fake, extraOverrides: thursdayClock);
+      await _pumpUntilFound(tester, find.byKey(const ValueKey<String>('home.nutritionToday')));
+      expect(find.text('1,450 kcal'), findsOneWidget);
+      expect(find.text('Set Nutrition targets to see daily progress'), findsOneWidget);
+    });
+
+    for (final String language in <String>['en', 'ar']) {
+      for (final Size size in const <Size>[Size(360, 780), Size(1280, 900)]) {
+        testWidgets('Home lays out in $language at ${size.width.toInt()} px without overflow',
+            (WidgetTester tester) async {
+          final FakeMayosApi fake = homeFake();
+          await _pumpHome(tester, fake,
+              languageCode: language, size: size, extraOverrides: thursdayClock);
+          await _pumpUntilFound(tester, find.byKey(const ValueKey<String>('home.weekTile')));
+          expect(tester.takeException(), isNull);
+          if (language == 'ar') {
+            expect(find.text('التغذية اليوم'), findsOneWidget);
+            expect(find.text('آخر حصة: Lower B · أمس'), findsOneWidget);
+          }
+          await tester.pumpWidget(const SizedBox.shrink());
+        });
+      }
+    }
+  });
 }

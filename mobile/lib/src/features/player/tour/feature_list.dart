@@ -64,6 +64,17 @@ List<String> validateFeatureEntries(
 
 const List<FeatureEntry> featureList = <FeatureEntry>[
   FeatureEntry(
+    id: 'simpler_home',
+    titleEn: 'A simpler Home',
+    sentenceEn: "Home now opens on today's session, with your last workout to share and short Nutrition, Program, weekly sets and PR summaries below.",
+    titleAr: 'رئيسية أبسط',
+    sentenceAr: 'تبدأ الرئيسية الآن بحصة اليوم، مع آخر تمرين لمشاركته، وملخصات قصيرة للتغذية والبرنامج ومجموعات الأسبوع والأرقام القياسية.',
+    target: 'home',
+    location: TourShellTabLocation(tabIndex: 0),
+    release: 8,
+    audience: 'lifter',
+  ),
+  FeatureEntry(
     id: 'web_push',
     titleEn: 'Encouragement when it suits you',
     sentenceEn: 'Turn on training reminders, alerts and coach updates in the installed web app, with quiet hours you choose.',

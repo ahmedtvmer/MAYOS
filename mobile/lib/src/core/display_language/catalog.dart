@@ -443,6 +443,75 @@ class MayosCopy {
   String get goToProgram =>
       isArabic ? 'الانتقال إلى البرنامج التدريبي' : 'Go to Program';
   String get thisWeek => isArabic ? 'هذا الأسبوع' : 'This week';
+  // Home (#790).
+  static const List<String> _englishWeekdaysShort = <String>[
+    'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun',
+  ];
+  static const List<String> _arabicWeekdays = <String>[
+    'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت', 'الأحد',
+  ];
+  String weekdayShort(int weekday) =>
+      (isArabic ? _arabicWeekdays : _englishWeekdaysShort)[weekday - 1];
+  String homeTodayLabel(int weekday) =>
+      isArabic ? 'اليوم · ${weekdayShort(weekday)}' : 'Today · ${weekdayShort(weekday)}';
+  String homeExerciseCount(int count) {
+    if (!isArabic) return count == 1 ? '1 exercise' : '$count exercises';
+    if (count == 1) return 'تمرين واحد';
+    if (count == 2) return 'تمرينان';
+    return count <= 10 ? '${_ltr('$count')} تمارين' : '${_ltr('$count')} تمرينًا';
+  }
+  String homeMoreExercises(int count) =>
+      isArabic ? '+ ${_ltr('$count')} أخرى' : '+ $count more';
+  String get homeRestDay => isArabic ? 'يوم راحة' : 'Rest day';
+  String homeNextDayOn(String dayName, int? weekday) =>
+      weekday == null ? dayName : '$dayName · ${weekdayShort(weekday)}';
+  String get homePreview => isArabic ? 'معاينة' : 'Preview';
+  String homeLastSession(String splitName, {required bool today}) => isArabic
+      ? 'آخر حصة: $splitName · ${today ? 'اليوم' : 'أمس'}'
+      : 'Last session: $splitName · ${today ? 'today' : 'yesterday'}';
+  String get homeNutritionToday =>
+      isArabic ? 'التغذية اليوم' : 'Nutrition today';
+  String homeCalories(double eaten, num? target) {
+    final String value = _groupedWhole(eaten);
+    if (target == null) {
+      return isArabic ? '${_ltr(value)} سعرة' : '$value kcal';
+    }
+    final String goal = _groupedWhole(target.toDouble());
+    return isArabic ? '${_ltr('$value / $goal')} سعرة' : '$value / $goal kcal';
+  }
+  String homeProtein(double eaten, num? target) {
+    final String value = _groupedWhole(eaten);
+    if (target == null) {
+      return isArabic ? 'بروتين ${_ltr(value)} جم' : 'Protein $value g';
+    }
+    final String goal = _groupedWhole(target.toDouble());
+    return isArabic
+        ? 'بروتين ${_ltr('$value / $goal')} جم'
+        : 'Protein $value / $goal g';
+  }
+  String get homeSetNutritionTargets => isArabic
+      ? 'حدّد أهداف التغذية لترى تقدّمك اليومي'
+      : 'Set Nutrition targets to see daily progress';
+  String homeProgramLine(String name, int currentWeek, int weekCount, int weeklyFrequency) =>
+      weekCount > 1
+          ? (isArabic
+              ? '$name · الأسبوع ${_ltr('$currentWeek')} من ${_ltr('$weekCount')}'
+              : '$name · week $currentWeek of $weekCount')
+          : '$name · ${programFrequency(weeklyFrequency)}';
+  String homeMostTrained(String muscle) =>
+      isArabic ? 'الأكثر: $muscle' : 'Most: $muscle';
+  String get homeLatestPr => isArabic ? 'آخر رقم قياسي' : 'Latest PR';
+  String get homeNoPrYet => isArabic ? 'لا يوجد بعد' : 'None yet';
+  String get homeNoSetsYet => isArabic ? 'لا مجموعات بعد' : 'No sets yet';
+  static String _groupedWhole(double value) {
+    final String digits = value.round().abs().toString();
+    final StringBuffer out = StringBuffer(value < 0 ? '-' : '');
+    for (int i = 0; i < digits.length; i++) {
+      if (i > 0 && (digits.length - i) % 3 == 0) out.write(',');
+      out.write(digits[i]);
+    }
+    return out.toString();
+  }
   String get personalRecords =>
       isArabic ? 'الأرقام القياسية الشخصية' : 'Personal records';
   String get logWorkout => isArabic ? 'تسجيل حصة تدريبية' : 'Log workout';
