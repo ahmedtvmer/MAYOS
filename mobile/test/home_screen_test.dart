@@ -2394,7 +2394,7 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('home opens an unopened Checkpoint review and clears its card',
+  testWidgets('a waiting Checkpoint review shows the Progress dot, opens from Progress and clears the dot',
       (WidgetTester tester) async {
     final FakeMayosApi fake = _signedInFake()
       ..checkpointReviewRows = <Map<String, dynamic>>[
@@ -2425,11 +2425,16 @@ void main() {
         ProviderScope.containerOf(tester.element(find.byType(MayosApp)));
     final GoRouter router = container.read(routerProvider);
 
+    // Home no longer carries the card; the Progress tab dot points to it (#789, #790).
     expect(find.byKey(const ValueKey<String>('dashboard.checkpoint-review')),
-        findsOneWidget);
-    await tester.tap(
-      find.byKey(const ValueKey<String>('dashboard.checkpoint-review')),
-    );
+        findsNothing);
+    expect(container.read(pendingCheckpointReviewProvider), 10);
+    await tester.tap(find.byKey(const ValueKey<String>('player.nav.progress')));
+    await _pumpUntilFound(
+        tester, find.byKey(const ValueKey<String>('progress.checkpoint.10')));
+    await tester.ensureVisible(
+        find.byKey(const ValueKey<String>('progress.checkpoint.10')));
+    await tester.tap(find.byKey(const ValueKey<String>('progress.checkpoint.10')));
     await _pumpUntilFound(
       tester,
       find.byKey(const ValueKey<String>('checkpoint.review.title')),
@@ -2443,11 +2448,11 @@ void main() {
       findsOneWidget,
     );
 
+    // Opening the review clears the Progress dot.
+    expect(container.read(pendingCheckpointReviewProvider), isNull);
     router.pop();
     await tester.pumpAndSettle();
     expect(router.routerDelegate.state.uri.path, homePath);
-    expect(find.byKey(const ValueKey<String>('dashboard.checkpoint-review')),
-        findsNothing);
   });
 
   testWidgets('Arabic Checkpoint title keeps its ordinal and date range LTR',
@@ -2477,9 +2482,12 @@ void main() {
         'text_is_template': true,
       };
     await _pumpHome(tester, fake, languageCode: 'ar');
-    await tester.tap(
-      find.byKey(const ValueKey<String>('dashboard.checkpoint-review')),
-    );
+    await tester.tap(find.byKey(const ValueKey<String>('player.nav.progress')));
+    await _pumpUntilFound(
+        tester, find.byKey(const ValueKey<String>('progress.checkpoint.10')));
+    await tester.ensureVisible(
+        find.byKey(const ValueKey<String>('progress.checkpoint.10')));
+    await tester.tap(find.byKey(const ValueKey<String>('progress.checkpoint.10')));
     await _pumpUntilFound(
       tester,
       find.byKey(const ValueKey<String>('checkpoint.review.title')),
