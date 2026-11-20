@@ -425,12 +425,15 @@ void main() {
         );
         expect(find.text(MayosCopy('en').offlineSavedData), findsNothing);
         expect(find.byKey(const Key('login_username')), findsNothing);
-        await tester.scrollUntilVisible(find.text('99'), 250,
+        // The refreshed volume shows in Home's week tile (#790).
+        final Finder refreshed =
+            find.text(const MayosCopy('en').countedSetsMetric(99.0));
+        await tester.scrollUntilVisible(refreshed, 250,
           scrollable: find.descendant(
             of: find.byType(DashboardTab), matching: find.byType(Scrollable),
           ).first,
         );
-        expect(find.text('99'), findsOneWidget);
+        expect(refreshed, findsOneWidget);
         expect(
           fake.adapter.requests
               .where((FakeRequest request) => request.path == '/dashboard/volume')
