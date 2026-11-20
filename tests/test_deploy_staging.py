@@ -37,7 +37,8 @@ def staging_server(tmp_path):
     worker.write_text(
         STAGING.read_text(encoding="utf-8")
         .replace("/opt/mayos", root.as_posix())
-        .replace("/mnt/mayos-data/staging", data.as_posix()),
+        .replace("/mnt/mayos-data/staging", data.as_posix())
+        .replace("/usr/local/libexec/mayos", (tmp_path / "libexec").as_posix()),
         encoding="utf-8",
     )
     bin_dir = tmp_path / "bin"
@@ -347,6 +348,45 @@ def test_staging_up_bounds_build_checks_ready_and_keeps_two_images(staging_serve
     assert "builder prune" not in calls
     assert all(path.read_text(encoding="utf-8") == "production state\n" for path in production_files)
     assert not (root / "state" / "deploy.lock").exists()
+
+
+@pytest.mark.parametrize("installed", ["same", "outdated", "missing"])
+def test_staging_up_warns_when_the_autostop_timer_runs_an_outdated_copy(staging_server, installed):
+    """The timer's root-owned copy missed the #763 rename and never stopped staging."""
+    root, state, _, worker, _, env = staging_server
+    upload = state / "upload.abcdefgh"
+    (upload / "deploy").mkdir(parents=True)
+    (upload / "deploy" / "compose.staging.yaml").write_text("services: {}\n", encoding="utf-8")
+    (upload / "deploy" / "staging_server.bash").write_text("current script\n", encoding="utf-8")
+    (upload / "data").mkdir()
+    for name in ("processed_exercises.csv", "food_library.csv", "food_portions.csv"):
+        (upload / "data" / name).write_bytes(b"synthetic checkout fixture\n")
+    copy = worker.parent / "libexec" / "staging_server.bash"
+    if installed != "missing":
+        copy.parent.mkdir()
+        copy.write_text("current script\n" if installed == "same" else "old script\n", encoding="utf-8")
+    env["HAS_CONTAINER"] = "1"
+    result = subprocess.run(
+        ["bash", str(worker), "up", str(upload), "aaaaaaaaaaaa-20261108120000-1", "a" * 40],
+        env=env, text=True, capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr
+    if installed == "same":
+        assert "autostop timer" not in result.stderr
+    else:
+        assert "autostop timer runs an outdated" in result.stderr
+        deployed = state / "app" / "deploy" / "staging_server.bash"
+        assert f"sudo install -D -o root -g root -m 0644 {deployed.as_posix()} {copy.as_posix()}" in result.stderr
+    assert copy.exists() == (installed != "missing")
+    assert "Staging running: true" in result.stdout
+
+
+def test_staging_status_skips_the_copy_check_before_any_deploy(staging_server):
+    _, _, _, worker, _, env = staging_server
+    result = subprocess.run(["bash", str(worker), "status"], env=env, text=True, capture_output=True)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "Staging is off.\n"
+    assert result.stderr == ""
 
 
 @pytest.mark.parametrize("name", ["processed_exercises.csv", "food_library.csv", "food_portions.csv"])
