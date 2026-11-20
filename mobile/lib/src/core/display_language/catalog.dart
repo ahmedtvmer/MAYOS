@@ -44,12 +44,16 @@ class MayosCopy {
   String get progress => isArabic ? 'التقدم' : 'Progress';
   String get nutritionTab => nutrition.tab;
   String get assistant => isArabic ? 'المساعد' : 'Assistant';
+  String get aiAssistant => isArabic ? 'المساعد الذكي' : 'AI Assistant';
+  String get profileLabel => isArabic ? 'الملف الشخصي' : 'Profile';
+  String get checkpointReviewWaiting =>
+      isArabic ? 'مراجعة محطة التقدم جاهزة' : 'Checkpoint review ready';
   String get tourSkip => isArabic ? 'تخطي' : 'Skip';
   String get featureGuideTitle => isArabic ? 'دليل الميزات' : 'Feature guide';
   String get whatsNewTitle => isArabic ? 'ما الجديد' : "What's new";
   String whatsNewRelease(int release) => switch (release) {
         1 || 4 => isArabic ? 'أكتوبر 2026' : 'October 2026',
-        6 || 7 => isArabic ? 'نوفمبر 2026' : 'November 2026',
+        6 || 7 || 8 => isArabic ? 'نوفمبر 2026' : 'November 2026',
         _ => isArabic ? 'إصدار $release' : 'Release $release',
       };
   String get whatsNewProfile => whatsNewTitle;

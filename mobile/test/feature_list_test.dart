@@ -98,7 +98,7 @@ void main() {
     expect(entry.target, 'whats_new_assistant_why');
     expect(entry.location, const TourRouteLocation(chatPath));
     expect(entry.release, 7);
-    expect(currentFeatureRelease, 7);
+    expect(currentFeatureRelease, greaterThanOrEqualTo(7));
     expect(entry.audience, 'lifter');
   });
 
@@ -127,14 +127,14 @@ void main() {
     expect(entry.target, 'exercise_demo_media');
     expect(entry.location, const TourRouteLocation('/exercise/mayos:3'));
     expect(entry.release, 7);
-    expect(currentFeatureRelease, 7);
+    expect(currentFeatureRelease, greaterThanOrEqualTo(7));
     expect(entry.audience, 'lifter');
   });
 
   test('Meal setup and the planned meal table are discoverable in release 7', () {
     final FeatureEntry entry = featureList.singleWhere((FeatureEntry entry) => entry.id == 'meal_setup');
     expect(entry.release, 7);
-    expect(currentFeatureRelease, 7);
+    expect(currentFeatureRelease, greaterThanOrEqualTo(7));
     expect(entry.titleEn, 'Meal setup and Food restrictions');
     expect(entry.titleAr, 'إعداد الوجبات والقيود الغذائية');
     expect(entry.sentenceEn, isNotEmpty);
@@ -177,7 +177,7 @@ void main() {
     expect(entry.sentenceAr, isNotEmpty);
     expect(entry.target, 'assistant');
     expect(entry.location, const TourShellTabLocation(tabIndex: 0));
-    expect(currentFeatureRelease, 7);
+    expect(currentFeatureRelease, greaterThanOrEqualTo(7));
     expect(entry.audience, 'lifter');
   });
 

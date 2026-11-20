@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
+import 'package:mayos_mobile/src/core/ui/mayos_app_header.dart';
+import 'package:mayos_mobile/src/features/player/shell/player_shell.dart';
+import 'package:mayos_mobile/src/features/player/tour/feature_list.dart';
 import 'package:mayos_mobile/src/app.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/app_mode.dart';
@@ -120,13 +124,15 @@ void main() {
 
   testWidgets('notification clicks switch role and select the destination tab',
       (WidgetTester tester) async {
-    final fake = _signedInFake(coach: true)..whatsNewSeenRelease = 7;
+    final fake = _signedInFake(coach: true)
+      ..whatsNewSeenRelease = currentFeatureRelease;
     await _pumpApp(tester, fake, store: InMemoryThemeModeStore());
     final container = ProviderScope.containerOf(
         tester.element(find.byType(MayosApp)), listen: false);
     final router = container.read(routerProvider);
     for (final destination in <(String, int)>[
-      ('/home?push=program', 1), ('/home?push=nutrition', 2),
+      // Bar positions: Home, Program, AI Assistant, Nutrition, Progress (#789).
+      ('/home?push=program', 1), ('/home?push=nutrition', 3),
     ]) {
       router.go(destination.$1);
       await _pumpUntilFound(tester, find.text('Home'));
@@ -212,29 +218,146 @@ void main() {
     expect(dark.systemNavigationBarColor, MayosThemeExtension.dark.canvas);
   });
 
-  testWidgets('bottom navigation exposes Home, Program, Nutrition, and Progress',
-      (WidgetTester tester) async {
+  testWidgets(
+      'bottom navigation exposes Home, Program, AI Assistant, Nutrition and '
+      'Progress, and the header has the avatar and Settings', (WidgetTester tester) async {
     final FakeMayosApi fake = _signedInFake();
     await _pumpApp(tester, fake, store: InMemoryThemeModeStore());
 
     final MayosBottomNavigation nav = tester
         .widget<MayosBottomNavigation>(find.byType(MayosBottomNavigation));
-    // Progress and Nutrition are durable Player surfaces.
-    expect(nav.items.map((MayosNavItem i) => i.label),
-        <String>['Home', 'Program', 'Nutrition', 'Progress']);
+    expect(nav.items.map((MayosNavItem i) => i.label), <String>[
+      'Home',
+      'Program',
+      'AI Assistant',
+      'Nutrition',
+      'Progress',
+    ]);
+    expect(nav.index, 0);
     expect(find.text('Home'), findsOneWidget);
     expect(find.text('Program'), findsOneWidget);
+    expect(find.text('AI Assistant'), findsOneWidget);
     expect(find.text('Nutrition'), findsOneWidget);
     // The Progress tab also renders its own serif title, so the label may
     // appear more than once; the nav items list above is the authoritative check.
     expect(find.text('Progress'), findsWidgets);
-    // Header brand and clear affordances.
+    // Header: the brand, the profile avatar and Settings; the chat icon now
+    // lives only in the bottom bar (#789).
     expect(find.text('MAYOS'), findsOneWidget);
     expect(find.byIcon(Icons.settings_outlined), findsOneWidget);
-    expect(find.byIcon(Icons.chat_bubble_outline), findsOneWidget);
+    expect(find.byKey(PlayerShell.profileAvatarKey), findsOneWidget);
+    expect(find.text('AL'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(MayosAppHeader),
+        matching: find.byIcon(Icons.chat_bubble_outline),
+      ),
+      findsNothing,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(PlayerShell.assistantDestinationKey),
+        matching: find.byIcon(Icons.chat_bubble_outline),
+      ),
+      findsOneWidget,
+    );
     // No placeholder destinations.
     expect(find.text('Coach'), findsNothing);
     expect(find.text('Workout'), findsNothing);
+  });
+
+  testWidgets('AI Assistant opens the full-screen chat and keeps the tab',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _signedInFake()
+      ..whatsNewSeenRelease = currentFeatureRelease;
+    await _pumpApp(tester, fake, store: InMemoryThemeModeStore());
+    final ProviderContainer container = ProviderScope.containerOf(
+        tester.element(find.byType(MayosApp)), listen: false);
+    final GoRouter router = container.read(routerProvider);
+
+    await tester.tap(find.byKey(const ValueKey<String>('player.nav.program')));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(container.read(playerShellTabProvider), PlayerShellTab.program.index);
+
+    await tester.tap(find.byKey(PlayerShell.assistantDestinationKey));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(router.routeInformationProvider.value.uri.path, chatPath);
+    // The chat route has no bottom bar, and the shell kept Program.
+    expect(container.read(playerShellTabProvider), PlayerShellTab.program.index);
+
+    router.pop();
+    await _pumpUntilFound(tester, find.byType(MayosBottomNavigation));
+    expect(
+      tester.widget<MayosBottomNavigation>(find.byType(MayosBottomNavigation)).index,
+      1,
+    );
+  });
+
+  testWidgets('Nutrition and Progress sit after AI Assistant in the bar',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _signedInFake()
+      ..whatsNewSeenRelease = currentFeatureRelease;
+    await _pumpApp(tester, fake, store: InMemoryThemeModeStore());
+    final ProviderContainer container = ProviderScope.containerOf(
+        tester.element(find.byType(MayosApp)), listen: false);
+
+    await tester.tap(find.byKey(const ValueKey<String>('player.nav.nutrition')));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(container.read(playerShellTabProvider), PlayerShellTab.nutrition.index);
+    expect(
+      tester.widget<MayosBottomNavigation>(find.byType(MayosBottomNavigation)).index,
+      3,
+    );
+
+    await tester.tap(find.byKey(const ValueKey<String>('player.nav.progress')));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(container.read(playerShellTabProvider), PlayerShellTab.progress.index);
+    expect(
+      tester.widget<MayosBottomNavigation>(find.byType(MayosBottomNavigation)).index,
+      4,
+    );
+  });
+
+  testWidgets('the header avatar opens Profile', (WidgetTester tester) async {
+    final FakeMayosApi fake = _signedInFake()
+      ..whatsNewSeenRelease = currentFeatureRelease;
+    await _pumpApp(tester, fake, store: InMemoryThemeModeStore());
+    final ProviderContainer container = ProviderScope.containerOf(
+        tester.element(find.byType(MayosApp)), listen: false);
+
+    await tester.tap(find.byKey(PlayerShell.profileAvatarKey));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(
+      container.read(routerProvider).routeInformationProvider.value.uri.path,
+      profilePath,
+    );
+  });
+
+  testWidgets('the Progress tab shows a dot while a Checkpoint review waits',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _signedInFake()
+      ..whatsNewSeenRelease = currentFeatureRelease;
+    await _pumpApp(tester, fake, store: InMemoryThemeModeStore());
+    final ProviderContainer container = ProviderScope.containerOf(
+        tester.element(find.byType(MayosApp)), listen: false);
+
+    MayosNavItem progress() => tester
+        .widget<MayosBottomNavigation>(find.byType(MayosBottomNavigation))
+        .items
+        .last;
+    expect(progress().dot, isFalse);
+
+    container.read(pendingCheckpointReviewProvider.notifier).state = 2;
+    await tester.pump();
+    expect(progress().dot, isTrue);
+    expect(
+      find.bySemanticsLabel('Progress, Checkpoint review ready'),
+      findsOneWidget,
+    );
+
+    container.read(pendingCheckpointReviewProvider.notifier).state = null;
+    await tester.pump();
+    expect(progress().dot, isFalse);
   });
 
   testWidgets('Settings opens from the header and keeps entry points reachable',
