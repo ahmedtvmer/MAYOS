@@ -430,6 +430,13 @@ final StateProvider<int> playerShellTabProvider = StateProvider<int>(
   (ref) => PlayerShellTab.home.index,
 );
 
+/// The Checkpoint number of the Player's first unopened review, or null when
+/// none waits. Home and Progress set it from the reviews they already load,
+/// and opening that review clears it; the Progress tab shows a dot while it is
+/// set (#789).
+final StateProvider<int?> pendingCheckpointReviewProvider =
+    StateProvider<int?>((ref) => null);
+
 /// Carries My coach's committed Assignment response to mounted Player tabs
 /// without requiring a second API read.
 class PlayerAssignmentUpdate {

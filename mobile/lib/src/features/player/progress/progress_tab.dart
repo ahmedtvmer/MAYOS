@@ -98,6 +98,10 @@ class _ProgressTabState extends ConsumerState<ProgressTab>
       final List<CheckpointReviewListItem> reviews =
           await ref.read(apiClientProvider).checkpointReviews();
       if (!mounted) return;
+      ref.read(pendingCheckpointReviewProvider.notifier).state = reviews
+          .where((CheckpointReviewListItem review) => !review.opened)
+          .map((CheckpointReviewListItem review) => review.checkpoint)
+          .firstOrNull;
       setState(() {
         _checkpointReviews = reviews;
         _checkpointLoading = false;

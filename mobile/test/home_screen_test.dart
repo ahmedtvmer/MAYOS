@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:go_router/go_router.dart';
+import 'package:mayos_mobile/src/features/player/shell/player_shell.dart';
 import 'package:mayos_mobile/src/app.dart';
 import 'package:mayos_mobile/src/core/app_mode.dart';
 import 'package:mayos_mobile/src/core/active_workout.dart';
@@ -1014,7 +1015,7 @@ void main() {
       final Finder realControl = switch (id) {
         'home' => find.textContaining('Next session'),
         'program' => find.byKey(const ValueKey<String>('program_day_1_1')),
-        'assistant' => find.byTooltip('Assistant'),
+        'assistant' => find.descendant(of: find.byKey(PlayerShell.assistantDestinationKey), matching: find.byIcon(Icons.chat_bubble_outline)),
         'nutrition' => find.text('Set up Nutrition targets'),
         'progress' => find.text('Progress'),
         'profile' => find.text('Training profile').last,
@@ -1571,8 +1572,8 @@ void main() {
           'food_swap_requests' => find.byKey(const Key('food_swap_requests_history')),
           'web_push' =>
             find.text('Push notifications are available in the installed web app.'),
-          'assistant_meals' => find.byTooltip('Assistant'),
-          'assistant_personal_logs' => find.byTooltip('Assistant'),
+          'assistant_meals' || 'ai_assistant_tab' => find.descendant(of: find.byKey(PlayerShell.assistantDestinationKey), matching: find.byIcon(Icons.chat_bubble_outline)),
+          'assistant_personal_logs' => find.descendant(of: find.byKey(PlayerShell.assistantDestinationKey), matching: find.byIcon(Icons.chat_bubble_outline)),
           // The vote bar exists only under an assistant reply; with an empty
           // chat the composer carries the same TourTarget id (#748).
           'assistant_feedback' => find.byKey(const Key('assistant_feedback_vote_buttons')).evaluate().isNotEmpty
@@ -1768,8 +1769,8 @@ void main() {
           'food_swap_requests' => find.byKey(const Key('food_swap_requests_history')),
           'web_push' =>
             find.text('Push notifications are available in the installed web app.'),
-          'assistant_meals' => find.byTooltip('Assistant'),
-          'assistant_personal_logs' => find.byTooltip('Assistant'),
+          'assistant_meals' || 'ai_assistant_tab' => find.descendant(of: find.byKey(PlayerShell.assistantDestinationKey), matching: find.byIcon(Icons.chat_bubble_outline)),
+          'assistant_personal_logs' => find.descendant(of: find.byKey(PlayerShell.assistantDestinationKey), matching: find.byIcon(Icons.chat_bubble_outline)),
           // The vote bar exists only under an assistant reply; with an empty
           // chat the composer carries the same TourTarget id (#748).
           'assistant_feedback' => find.byKey(const Key('assistant_feedback_vote_buttons')).evaluate().isNotEmpty

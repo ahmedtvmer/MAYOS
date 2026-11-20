@@ -6,7 +6,7 @@ import 'tour_targets.dart';
 
 /// The shared Feature list used by the Tour and later discovery surfaces.
 const int tourCurrentVersion = 1;
-const int currentFeatureRelease = 7;
+const int currentFeatureRelease = 8;
 const int kReleaseShareCard = 3;
 const int kReleasePrCelebration = 3;
 const int kReleaseDurationCheck = 4;
@@ -70,6 +70,17 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
     titleAr: 'رئيسية أبسط',
     sentenceAr: 'تبدأ الرئيسية الآن بحصة اليوم، مع آخر تمرين لمشاركته، وملخصات قصيرة للتغذية والبرنامج ومجموعات الأسبوع والأرقام القياسية.',
     target: 'home',
+    location: TourShellTabLocation(tabIndex: 0),
+    release: 8,
+    audience: 'lifter',
+  ),
+  FeatureEntry(
+    id: 'ai_assistant_tab',
+    titleEn: 'AI Assistant in the bottom bar',
+    sentenceEn: 'Open the AI Assistant from the middle of the bottom bar; Checkpoint reviews now wait in Progress, marked with a dot.',
+    titleAr: 'المساعد الذكي في الشريط السفلي',
+    sentenceAr: 'افتح المساعد الذكي من منتصف الشريط السفلي؛ ومراجعات محطات التقدم تنتظرك الآن في التقدم مع نقطة تنبيه.',
+    target: 'assistant',
     location: TourShellTabLocation(tabIndex: 0),
     release: 8,
     audience: 'lifter',

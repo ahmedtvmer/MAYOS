@@ -180,6 +180,10 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
           break;
         }
       }
+      if (_isCurrentLoad(generation, accountId)) {
+        ref.read(pendingCheckpointReviewProvider.notifier).state =
+            unopenedCheckpointReview?.checkpoint;
+      }
     } on ApiException catch (error) {
       partialError ??= apiFailureMessage(error);
     }
