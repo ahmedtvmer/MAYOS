@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import html
 import json
+import logging
 import math
 import os
 import re
@@ -32,6 +33,7 @@ from svc.monitoring.tiles.outside import (
     _slug,
 )
 
+logger = logging.getLogger(__name__)
 MAX_ALERTS = 5
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS sentry_discord_alerts (
@@ -179,8 +181,10 @@ class SentryDiscordProvider:
     def _pending(self, client: httpx.Client, state: State) -> list[_Alert]:
         started = state[("", "started")]
         projects = list(dict.fromkeys(_slug(project.strip()) for project in self._projects))
+        # No statsPeriod: Sentry rejects an empty one with HTTP 400 (#797), and the
+        # lastSeen query already bounds the window to the startup cutoff.
         params = {"project": projects, "environment": self._environment, "limit": "100",
-                  "query": f"lastSeen:>{started.isoformat()}", "sort": "date", "statsPeriod": ""}
+                  "query": f"lastSeen:>{started.isoformat()}", "sort": "date"}
         pending: dict[str, _Alert] = {}
         for issue in _issues(client, self._org, params):
             project = _slug(issue["project"]["slug"])
@@ -221,6 +225,7 @@ class SentryDiscordProvider:
         if 200 <= status < 300:
             return
         self._restore(connection, alerts, state)
+        logger.warning("Sentry Discord alerts: Discord rejected an alert with HTTP %s", status)
         if status == 429:
             _record(connection, [("", "retry", datetime.now(UTC) + timedelta(seconds=delay))])
         raise ValueError("Discord rejected an alert")
@@ -241,7 +246,13 @@ class SentryDiscordProvider:
                 return ""
             with httpx.Client(base_url=host, timeout=REQUEST_TIMEOUT_SECONDS, follow_redirects=False,
                               headers={"Authorization": f"Bearer {self._token}"}) as client:
-                pending = self._pending(client, state)
+                try:
+                    pending = self._pending(client, state)
+                except httpx.HTTPStatusError as error:
+                    # Status code only: response bodies and URLs can carry private data.
+                    logger.warning("Sentry Discord alerts: Sentry issue read failed with HTTP %s",
+                                   error.response.status_code)
+                    raise
             for alert in pending[:MAX_ALERTS]:
                 self._send(connection, [alert], state, alert.content)
             if len(pending) > MAX_ALERTS:

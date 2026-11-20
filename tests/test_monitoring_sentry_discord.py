@@ -73,6 +73,9 @@ def fake_http(monkeypatch):
             assert request.url.host == "de.sentry.io"
             assert request.headers["authorization"] == f"Bearer {TOKEN}"
             assert request.extensions["timeout"]["read"] == outside.REQUEST_TIMEOUT_SECONDS
+            # Real Sentry rejects empty parameters, e.g. `Invalid statsPeriod: ''` (#797).
+            if any(value == "" for _name, value in request.url.params.multi_items()):
+                return httpx.Response(400, json={"detail": "Invalid parameter"})
             return sentry_response(request)
 
         class DiscordConnection:
@@ -151,6 +154,7 @@ def test_new_issue_posts_plain_title_count_and_safe_link_with_mentions_disabled(
     assert request.url.params.get_list("project") == ["mayos-api", "mayos-app"]
     assert request.url.params["environment"] == "production"
     assert request.url.params["query"] == f"lastSeen:>{START.isoformat()}"
+    assert "statsPeriod" not in request.url.params
 
 
 def test_regression_uses_activity_date_deduplicates_after_restart_and_allows_a_later_regression(
@@ -379,6 +383,28 @@ def test_success_and_failures_never_log_secrets_response_bodies_or_exception_tex
     assert all(secret not in caplog.text for secret in (TOKEN, WEBHOOK, WEBHOOK_TOKEN, "PRIVATE-BODY"))
     if failure == "success":
         assert len(network.posts) == 1
+
+
+@pytest.mark.parametrize(("sentry_status", "discord_status", "message"), [
+    (400, 204, "Sentry issue read failed with HTTP 400"),
+    (200, 500, "Discord rejected an alert with HTTP 500"),
+])
+def test_failed_refresh_logs_only_the_status_so_a_broken_alerter_is_visible(
+    alert_setup, workers, fake_http, caplog, sentry_status, discord_status, message,
+):
+    """#797: every refresh failed silently for weeks; a failure must leave a trace."""
+    private = f"{TOKEN} {WEBHOOK} PRIVATE-BODY"
+    caplog.set_level(logging.WARNING, logger=sentry_discord.__name__)
+    network = fake_http(
+        lambda request: httpx.Response(sentry_status, json=[_issue(1)] if sentry_status == 200 else {"detail": private}),
+        lambda request: httpx.Response(discord_status, text=private),
+    )
+    provider = sentry_discord.create_provider(alert_setup.app)
+    alert_setup.clock[0] = 1
+    _refresh(provider, workers)
+    assert message in caplog.text
+    assert all(secret not in caplog.text for secret in (TOKEN, WEBHOOK, WEBHOOK_TOKEN, "PRIVATE-BODY"))
+    assert len(network.posts) == (1 if sentry_status == 200 else 0)
 
 
 def test_ambiguous_post_failure_keeps_durable_claim_to_prevent_a_repeat_on_restart(
