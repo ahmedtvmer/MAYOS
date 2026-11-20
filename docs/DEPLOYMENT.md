@@ -1951,7 +1951,11 @@ sudo systemctl enable --now mayos-staging-autostop.timer
 Clone the checkout before enabling the path unit: it supplies the pull script
 the queue runner invokes, and does not exist until the first clone. The runner
 itself lives under `/usr/local/libexec`, outside the checkout that pull updates,
-and is changed only by the owner. The pull script uses `sudo docker` as required
+and is changed only by the owner. The same holds for the staging TTL copy of
+`staging_server.bash`: deploys never update it, so `staging up` and
+`staging status` warn when it differs from the deployed script and print the
+`sudo install` command that refreshes it. Rerun that command whenever the
+warning appears; a stale copy can silently never stop staging. The pull script uses `sudo docker` as required
 by ADR 072 and #590, so the service allows setuid and keeps `/usr` and `/etc`
 protected while leaving the deployment tree writable.
 

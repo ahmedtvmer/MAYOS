@@ -5,6 +5,7 @@ set -euo pipefail
 shopt -s inherit_errexit
 
 staging_state=/opt/mayos/state/staging
+staging_installed=/usr/local/libexec/mayos/staging_server.bash
 
 staging_require_setup() {
   [[ -f /opt/mayos/staging.env ]] || {
@@ -78,8 +79,21 @@ staging_deadline_epoch() {
   printf '%s\n' "$((started_epoch + ttl_seconds))"
 }
 
+staging_autostop_copy_check() {
+  # The TTL timer runs a root-owned copy that deploys cannot update. A stale
+  # copy silently never stops staging (it missed the #763 service rename), so
+  # say so whenever the deployed script differs from it.
+  local deployed="$staging_state/app/deploy/staging_server.bash"
+  [[ -f "$deployed" ]] || return 0
+  if ! cmp -s -- "$deployed" "$staging_installed"; then
+    printf 'Warning: the autostop timer runs an outdated %s, so staging may never auto-stop.\n' "$staging_installed" >&2
+    printf 'Fix it on the server as root: sudo install -D -o root -g root -m 0644 %s %s\n' "$deployed" "$staging_installed" >&2
+  fi
+}
+
 staging_status() {
   local container started_at stop_epoch
+  staging_autostop_copy_check
   container="$(staging_container)"
   if [[ -z "$container" ]]; then printf 'Staging is off.\n'; return; fi
   printf 'Staging running: %s\n' "$(sudo docker inspect --format '{{.State.Running}}' "$container")"
