@@ -1200,15 +1200,25 @@ def test_commit_status_is_stored_and_replayed_at_commit_time(api, monkeypatch):
     first = client.post("/workouts/sessions", headers=headers, json=payload)
     assert first.status_code == 201, first.text
     stored_status = first.json()["training_status"]
-    assert stored_status == {
-        "weekly_streak": 0,
+    # Since #743 one workout keeps the week, so this first workout starts a
+    # one-week streak; XP and rank ride along (#795).
+    assert {key: stored_status[key] for key in (
+        "weekly_streak", "week_start", "week_done", "week_target",
+        "mayos_workouts", "next_checkpoint", "workouts_to_next",
+        "longest_streak", "this_week_done", "week_paused",
+    )} == {
+        "weekly_streak": 1,
         "week_start": "2026-09-26",
         "week_done": 1,
         "week_target": 3,
         "mayos_workouts": 1,
         "next_checkpoint": 10,
         "workouts_to_next": 9,
+        "longest_streak": 1,
+        "this_week_done": True,
+        "week_paused": False,
     }
+    assert stored_status["xp_total"] == first.json()["xp"]["xp_total"]
 
     db.switch_user("p1")
     first_times = tuple(db.conn.execute(
@@ -1382,7 +1392,9 @@ def test_training_status_endpoint_keeps_in_progress_week_and_breaks_on_missed_pa
     assert current.json()["week_start"] == "2026-09-26"
     assert current.json()["week_done"] == 1
     assert current.json()["week_target"] == 2
-    assert current.json()["weekly_streak"] == 1
+    # One workout keeps a week (#743): the finished week of 19 Sep plus this
+    # week in progress, which already has a workout.
+    assert current.json()["weekly_streak"] == 2
 
     broken_headers, _ = _prepare_player(client, db, "brokenstreak")
     db.switch_user("brokenstreak")
@@ -1391,7 +1403,10 @@ def test_training_status_endpoint_keeps_in_progress_week_and_breaks_on_missed_pa
     _seed_status_workouts(db, "brokenstreak", ["2026-09-05", "2026-09-08", "2026-09-26"])
     broken = client.get("/dashboard/training-status", headers=broken_headers)
     assert broken.status_code == 200, broken.text
-    assert broken.json()["weekly_streak"] == 0
+    # Two finished weeks without a workout break it; this week's workout
+    # starts it again.
+    assert broken.json()["weekly_streak"] == 1
+    assert broken.json()["longest_streak"] == 1
 
 
 def test_training_status_excludes_imported_workout_history(api, monkeypatch):

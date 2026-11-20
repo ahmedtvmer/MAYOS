@@ -618,6 +618,15 @@ class AssignmentEndOut(BaseModel):
     ended_at: str
 
 
+class RankOut(BaseModel):
+    """One rank of the fixed ladder (#743)."""
+
+    id: str
+    name_en: str
+    name_ar: str
+    threshold: int
+
+
 class CoachRosterEntryOut(BaseModel):
     """One roster row: assignment identity plus the catalog-side urgency basis (ticket #118).
 
@@ -640,6 +649,9 @@ class CoachRosterEntryOut(BaseModel):
     pending_requests: int = 0
     last_workout_on: str | None = None
     program_name: str | None = None
+    rank: RankOut | None = None
+    weekly_streak: int | None = None
+    week_paused: bool | None = None
 
 
 class CoachAssignmentsOut(BaseModel):
@@ -1355,7 +1367,7 @@ class TrainingScheduleOut(BaseModel):
 
 
 class TrainingStatusOut(BaseModel):
-    """The player's Weekly streak and Checkpoint progress."""
+    """The player's Weekly streak, XP and rank, and Checkpoint progress."""
 
     weekly_streak: int
     week_start: str
@@ -1364,6 +1376,14 @@ class TrainingStatusOut(BaseModel):
     mayos_workouts: int
     next_checkpoint: int
     workouts_to_next: int
+    longest_streak: int = 0
+    this_week_done: bool = False
+    week_paused: bool = False
+    xp_total: int = 0
+    rank: RankOut
+    next_rank: RankOut | None = None
+    xp_into_rank: int = 0
+    xp_for_next_rank: int | None = None
 
 
 class TrainingScheduleUpdateIn(BaseModel):

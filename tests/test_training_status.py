@@ -1,4 +1,4 @@
-"""Pure Weekly streak and Checkpoint calculations (#220)."""
+"""Pure Weekly streak and Checkpoint calculations (#220; streak redefined in #743)."""
 
 from datetime import date
 
@@ -105,30 +105,64 @@ def test_no_schedule_uses_program_frequency_for_every_week():
     assert result.weekly_streak == 1
 
 
-def test_current_week_joins_when_met_but_does_not_break_while_in_progress():
-    met = _status(
-        today=date(2026, 9, 30),
-        performed=[date(2026, 9, 26), date(2026, 9, 29)],
-        frequency=2,
-    )
-    unmet = _status(
+def test_one_workout_keeps_a_week_and_the_week_in_progress_never_breaks_it():
+    # Since #743 a week counts with at least one workout, whatever the target.
+    one_this_week = _status(
         today=date(2026, 9, 30),
         performed=[date(2026, 9, 19), date(2026, 9, 22), date(2026, 9, 26)],
         frequency=2,
     )
-    assert (met.week_done, met.week_target, met.weekly_streak) == (2, 2, 1)
-    assert (unmet.week_done, unmet.week_target, unmet.weekly_streak) == (1, 2, 1)
-
-
-def test_unmet_completed_week_breaks_the_streak():
-    result = _status(
-        today=date(2026, 10, 9),
-        performed=[
-            date(2026, 9, 19), date(2026, 9, 22), date(2026, 9, 26), date(2026, 10, 3),
-        ],
+    none_yet = _status(
+        today=date(2026, 9, 30),
+        performed=[date(2026, 9, 19)],
         frequency=2,
     )
-    assert result.weekly_streak == 0
+    assert (one_this_week.week_done, one_this_week.weekly_streak) == (1, 2)
+    assert one_this_week.this_week_done is True
+    assert (none_yet.weekly_streak, none_yet.this_week_done) == (1, False)
+
+
+def test_a_finished_week_without_a_workout_breaks_the_streak():
+    result = _status(
+        today=date(2026, 10, 9),
+        performed=[date(2026, 9, 19), date(2026, 10, 3)],
+        frequency=2,
+    )
+    # The week of 26 Sep had no workout: only the current week counts.
+    assert result.weekly_streak == 1
+    assert result.longest_streak == 1
+
+
+def test_longest_streak_survives_a_break():
+    result = _status(
+        today=date(2026, 10, 23),
+        performed=[
+            date(2026, 9, 5), date(2026, 9, 12), date(2026, 9, 19),
+            date(2026, 10, 3), date(2026, 10, 17),
+        ],
+    )
+    assert result.weekly_streak == 1
+    assert result.longest_streak == 3
+
+
+def test_a_fully_paused_current_week_is_reported_and_skipped():
+    result = _status(
+        today=date(2026, 10, 5),
+        performed=[date(2026, 9, 26)],
+        pauses=[{"starts_on": "2026-10-03", "ends_on": "2026-10-09"}],
+    )
+    assert result.week_paused is True
+    assert result.weekly_streak == 1
+
+
+def test_a_fully_paused_week_between_workouts_neither_breaks_nor_extends():
+    result = _status(
+        today=date(2026, 10, 12),
+        performed=[date(2026, 9, 26), date(2026, 10, 10)],
+        pauses=[{"starts_on": "2026-10-03", "ends_on": "2026-10-09"}],
+    )
+    assert result.weekly_streak == 2
+    assert result.longest_streak == 2
 
 
 def test_extra_workouts_count_toward_done():

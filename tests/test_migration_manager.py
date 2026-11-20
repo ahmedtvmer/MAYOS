@@ -218,7 +218,7 @@ def test_v64_migrates_the_latest_player_meal_switch_choice(tmp_path, player_payl
     ).fetchall()
     assert rows == ([] if expected is None else [(expected,)])
     assert conn.execute("SELECT enabled,updated_at FROM nutrition_meal_preference").fetchall() == first
-    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION == 65
+    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION == 66
 
 
 def test_v47_scopes_existing_regeneration_decisions_to_design_v2():

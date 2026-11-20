@@ -35,6 +35,7 @@ from service import analytics
 from service import workout_analytics
 from service import stall_alerts, stalling
 from service import training_status as training_status_service
+from service import xp as xp_service
 from service import checkpoint_reviews as checkpoint_reviews_service
 from service import programs
 from service.schedule import latest_schedule_timezone, local_date_in, local_today, parse_iso_date
@@ -1208,8 +1209,15 @@ def commit_session(
         )
         # Warm the cache before BEGIN; resolve again under the write lock.
         ledger.get_active_program_view()
+        xp_today = local_today(db, ledger_id, ledger=ledger)
         with ledger.ledger_transaction():
             active_program = ledger.get_active_program_view()
+            # Award any history first, so this commit's response reports only
+            # its own XP and a rank-up it caused (#795).
+            xp_service.ensure_xp_current(
+                ledger, imported_workouts, xp_today, now_iso, active_program=active_program
+            )
+            xp_before = ledger.xp_total()
             body = _persist_session(
                 db,
                 ledger_id,
@@ -1239,6 +1247,7 @@ def commit_session(
             _record_checkpoint_review_for_commit(
                 ledger, body, imported_workouts, now_iso
             )
+            body["xp"] = xp_service.commit_xp_summary(ledger, session_id, xp_before)
             ledger.consume_deload_choice()
 
         if account_id:
@@ -1316,6 +1325,7 @@ def commit_logged_session(
         )
         # Warm outside the write transaction so a cache miss can be stored.
         ledger.get_active_program_view()
+        xp_today = local_today(db, ledger_id, ledger=ledger)
         committed_program = None
         try:
             with ledger.ledger_transaction():
@@ -1328,6 +1338,10 @@ def commit_logged_session(
                 program = ledger.get_active_program_view()
                 if program is None:
                     raise DayPlanNotFoundError(day_order)
+                xp_service.ensure_xp_current(
+                    ledger, imported_workouts, xp_today, now_iso, active_program=program
+                )
+                xp_before = ledger.xp_total()
                 active_version = program.version
                 resolved = resolve_sync_program(db, ledger, program, sync.program_version)
                 committed_program = resolved
@@ -1364,6 +1378,7 @@ def commit_logged_session(
                 _record_checkpoint_review_for_commit(
                     ledger, body, imported_workouts, now_iso
                 )
+                body["xp"] = xp_service.commit_xp_summary(ledger, session_id, xp_before)
                 ledger.record_session_commit(client_session_id, session_id, json.dumps(body), now_iso)
                 ledger.consume_deload_choice()
                 outcome = CommitOutcome(body, created=True)

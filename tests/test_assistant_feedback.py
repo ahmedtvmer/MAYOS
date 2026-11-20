@@ -521,7 +521,7 @@ def test_v65_migration_never_sends_preexisting_downvotes(api, monkeypatch):
             "WHERE feedback_id = ?",
             (feedback_id,),
         ).fetchone()[0]
-        assert get_ledger_schema_version(ledger.conn) == 65
+        assert get_ledger_schema_version(ledger.conn) >= 65
     assert stamped == 1
 
     # A new 👎 after the migration behaves as designed and is sent.

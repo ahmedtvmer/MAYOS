@@ -16,6 +16,9 @@ class RegistryCheckInsMixin:
         last_workout_on: str | None = None,
         program_name: str | None = None,
         stall_length: int | None = None,
+        rank_id: str | None = None,
+        weekly_streak: int | None = None,
+        week_paused: bool | None = None,
     ) -> None:
         """Records the latest catalog-side attendance summary for one assignment.
 
@@ -25,6 +28,8 @@ class RegistryCheckInsMixin:
         the player has never trained) and ``program_name`` the active program's
         display name (``None`` while the player has no program); an omitted or
         ``None`` value likewise preserves what an earlier evaluation recorded.
+        ``rank_id``, ``weekly_streak`` and ``week_paused`` cache the player's
+        rank and Weekly streak for the roster (#795); omitted values are kept.
         """
         self.ensure_account_schema()
         with self._catalog_lock:
@@ -32,15 +37,18 @@ class RegistryCheckInsMixin:
             cursor.execute(
                 "INSERT INTO roster_attendance"
                 " (assignment_id, current_missed_streak, stall_length, last_evaluated_at, timezone,"
-                " last_workout_on, program_name)"
-                " VALUES (?, COALESCE(?, 0), COALESCE(?, 0), ?, ?, ?, ?)"
+                " last_workout_on, program_name, rank_id, weekly_streak, week_paused)"
+                " VALUES (?, COALESCE(?, 0), COALESCE(?, 0), ?, ?, ?, ?, ?, ?, ?)"
                 " ON CONFLICT(assignment_id) DO UPDATE SET"
                 " current_missed_streak = COALESCE(?, roster_attendance.current_missed_streak),"
                 " stall_length = COALESCE(?, roster_attendance.stall_length),"
                 " last_evaluated_at = COALESCE(?, roster_attendance.last_evaluated_at),"
                 " timezone = COALESCE(excluded.timezone, roster_attendance.timezone),"
                 " last_workout_on = COALESCE(excluded.last_workout_on, roster_attendance.last_workout_on),"
-                " program_name = COALESCE(excluded.program_name, roster_attendance.program_name)",
+                " program_name = COALESCE(excluded.program_name, roster_attendance.program_name),"
+                " rank_id = COALESCE(excluded.rank_id, roster_attendance.rank_id),"
+                " weekly_streak = COALESCE(excluded.weekly_streak, roster_attendance.weekly_streak),"
+                " week_paused = COALESCE(excluded.week_paused, roster_attendance.week_paused)",
                 (
                     str(assignment_id),
                     int(current_missed_streak) if current_missed_streak is not None else None,
@@ -49,6 +57,9 @@ class RegistryCheckInsMixin:
                     timezone,
                     last_workout_on,
                     program_name,
+                    rank_id,
+                    int(weekly_streak) if weekly_streak is not None else None,
+                    (1 if week_paused else 0) if week_paused is not None else None,
                     int(current_missed_streak) if current_missed_streak is not None else None,
                     int(stall_length) if stall_length is not None else None,
                     now_iso,
@@ -284,7 +295,8 @@ class RegistryCheckInsMixin:
         with self._catalog_lock:
             cursor = self.catalog_conn.cursor()
             cursor.execute(
-                "SELECT a.assignment_id, r.last_workout_on, r.program_name"
+                "SELECT a.assignment_id, r.last_workout_on, r.program_name,"
+                " r.rank_id, r.weekly_streak, r.week_paused"
                 " FROM assignments a"
                 " LEFT JOIN roster_attendance r ON r.assignment_id = a.assignment_id"
                 " WHERE a.coach_account_id = ? AND a.status = 'active'",
@@ -294,6 +306,9 @@ class RegistryCheckInsMixin:
                 str(row[0]): {
                     "last_workout_on": str(row[1]) if row[1] else None,
                     "program_name": str(row[2]) if row[2] else None,
+                    "rank_id": str(row[3]) if row[3] else None,
+                    "weekly_streak": int(row[4]) if row[4] is not None else None,
+                    "week_paused": bool(row[5]) if row[5] is not None else None,
                 }
                 for row in cursor.fetchall()
             }
