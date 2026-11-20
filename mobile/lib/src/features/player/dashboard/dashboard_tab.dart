@@ -190,7 +190,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
     FoodLogDay? foodDay;
     try {
       foodDay = await api.foodLogDay();
-    } on ApiException {
+    } on Object {
       // The Nutrition tile is optional; Home stays usable without it.
     }
     try {

@@ -113,7 +113,7 @@ void main() {
     await _pumpUntilFound(tester, find.textContaining('Next session'));
 
     // Completion is reachable and home renders the player's program.
-    expect(find.text('Upper/Lower 4x'), findsOneWidget);
+    expect(find.textContaining('Upper/Lower 4x'), findsOneWidget);
 
     // Switch to the program tab and see the full automatic program.
     await tester.tap(find.text('Program'));

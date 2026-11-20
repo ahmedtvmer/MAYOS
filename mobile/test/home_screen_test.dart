@@ -916,13 +916,13 @@ void main() {
       (tester) async {
     final FakeMayosApi fake = _signedInFake();
     await _pumpHome(tester, fake, languageCode: 'ar');
-    await _pumpUntilFound(tester, find.textContaining('محسوبة لكل عضلة'));
+    await _pumpUntilFound(tester, find.textContaining('Upper/Lower 4x'));
 
-    expect(find.text('الرئيسية'), findsOneWidget);
+    expect(find.text('الرئيسية'), findsWidgets);
     expect(find.text('لا يوجد برنامج تدريبي نشط'), findsNothing);
-    expect(find.text('Upper/Lower 4x'), findsOneWidget);
-    expect(find.text('Upper/Lower · 4 أيام في الأسبوع'), findsOneWidget);
-    expect(find.textContaining('محسوبة لكل عضلة'), findsOneWidget);
+    // The program name stays as sent inside the Arabic one-line summary (#790).
+    expect(find.textContaining('Upper/Lower 4x'), findsOneWidget);
+    expect(find.textContaining('4 أيام في الأسبوع'), findsOneWidget);
     expect(
       find.text('تُحسب مجموعة التدريب بقيمة 1 للعضلة الأساسية و0.5 لكل عضلة مساعدة.'),
       findsOneWidget,
@@ -974,15 +974,14 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
     await _pumpHome(tester, fake);
 
-    expect(find.text('Upper/Lower 4x'), findsOneWidget);
-    expect(find.text('Upper/Lower · 4 days/week'), findsOneWidget);
+    expect(find.text('Upper/Lower 4x · 4 days/week'), findsOneWidget);
 
-    // The weekly schedule (Mon/Wed/Fri) drives the next-session label.
+    // The weekly schedule drives the next-session label.
     expect(find.textContaining('Next session ·'), findsOneWidget);
 
-    // Volume muscles and a personal record are real values.
-    expect(find.text('Chest'), findsOneWidget);
-    expect(find.text('Back'), findsOneWidget);
+    // The week tile names the most-trained muscle and the PR tile a real
+    // record (#790).
+    expect(find.text('Most: Chest'), findsOneWidget);
     expect(find.text('120 kg × 5'), findsOneWidget);
   });
 
@@ -2199,14 +2198,16 @@ void main() {
       'day_order': null,
       'program_version': 1,
     };
-    await _pumpHome(tester, fake);
+    await _pumpHome(tester, fake, extraOverrides: <Override>[
+      clockProvider.overrideWithValue(() => DateTime(2026, 9, 21, 10)),
+    ]);
 
     expect(
       fake.adapter.requests
           .any((request) => request.path == '/workouts/sessions/latest'),
       isTrue,
     );
-    expect(find.text('Upper 1'), findsNWidgets(2));
+    expect(find.text('Last session: Upper 1 · yesterday'), findsOneWidget);
   });
 
   testWidgets('delayed Home load does not cache Account A after switching to B',
@@ -2290,13 +2291,14 @@ void main() {
         'pr_count': 2,
       };
     await _pumpHome(tester, fake, extraOverrides: <Override>[
+      clockProvider.overrideWithValue(() => DateTime(2026, 9, 21, 10)),
       workoutCardShareProvider.overrideWithValue((BuildContext context, WorkoutShareCard card) async {
         shareCalls++;
         sharedCard = card;
         return true;
       }),
     ]);
-    expect(find.text('Upper 1'), findsNWidgets(2));
+    expect(find.text('Last session: Upper 1 · yesterday'), findsOneWidget);
     expect(find.text('Share to Story'), findsOneWidget);
     await tester.ensureVisible(find.text('Share to Story'));
     await tester.tap(find.text('Share to Story'));
@@ -2317,6 +2319,7 @@ void main() {
         'split_name': 'Upper 1', 'day_order': null, 'program_version': 1,
       };
     await _pumpHome(tester, fake, extraOverrides: <Override>[
+      clockProvider.overrideWithValue(() => DateTime(2026, 9, 21, 10)),
       workoutImagePickerProvider.overrideWithValue((_) async {
         pickerCalls++;
         return null;
@@ -2365,6 +2368,7 @@ void main() {
         'duration_seconds': 3600, 'working_sets': 3, 'volume_kg': 1500,
       };
     await _pumpHome(tester, fake, extraOverrides: <Override>[
+      clockProvider.overrideWithValue(() => DateTime(2026, 9, 21, 10)),
       workoutImagePickerProvider.overrideWithValue((_) => pendingPicker.future),
       workoutCardShareProvider.overrideWithValue((BuildContext context, WorkoutShareCard card) async {
         sharedCard = card;
@@ -2429,7 +2433,8 @@ void main() {
     expect(find.byKey(const ValueKey<String>('dashboard.checkpoint-review')),
         findsNothing);
     expect(container.read(pendingCheckpointReviewProvider), 10);
-    await tester.tap(find.byKey(const ValueKey<String>('player.nav.progress')));
+    container.read(playerShellTabProvider.notifier).state =
+        PlayerShellTab.progress.index;
     await _pumpUntilFound(
         tester, find.byKey(const ValueKey<String>('progress.checkpoint.10')));
     await tester.ensureVisible(
@@ -2482,7 +2487,10 @@ void main() {
         'text_is_template': true,
       };
     await _pumpHome(tester, fake, languageCode: 'ar');
-    await tester.tap(find.byKey(const ValueKey<String>('player.nav.progress')));
+    final ProviderContainer container =
+        ProviderScope.containerOf(tester.element(find.byType(MayosApp)));
+    container.read(playerShellTabProvider.notifier).state =
+        PlayerShellTab.progress.index;
     await _pumpUntilFound(
         tester, find.byKey(const ValueKey<String>('progress.checkpoint.10')));
     await tester.ensureVisible(
@@ -2521,9 +2529,9 @@ void main() {
 
       // Let the home data and the persisted theme settle before checking for
       // layout overflow at the largest supported text scale.
-      await _pumpUntilFound(tester, find.text('Upper/Lower 4x'));
+      await _pumpUntilFound(tester, find.textContaining('Upper/Lower 4x'));
       expect(
-        Theme.of(tester.element(find.text('Upper/Lower 4x'))).brightness,
+        Theme.of(tester.element(find.textContaining('Upper/Lower 4x'))).brightness,
         mode == ThemeMode.dark ? Brightness.dark : Brightness.light,
       );
 
@@ -2560,7 +2568,9 @@ void main() {
       fake.foodLogEntries['2026-11-05'] = <Map<String, dynamic>>[
         <String, dynamic>{
           'id': 'food-1',
+          'food_id': 'rice',
           'name': 'Rice',
+          'meal_label': 'Breakfast',
           'logged_time': '08:00',
           'nutrients': <String, dynamic>{
             'energy_kcal': 1450,

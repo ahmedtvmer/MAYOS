@@ -281,7 +281,7 @@ void main() {
 
     await tester.tap(find.byKey(PlayerShell.assistantDestinationKey));
     await tester.pump(const Duration(milliseconds: 300));
-    expect(router.routeInformationProvider.value.uri.path, chatPath);
+    expect(router.routerDelegate.state.uri.path, chatPath);
     // The chat route has no bottom bar, and the shell kept Program.
     expect(container.read(playerShellTabProvider), PlayerShellTab.program.index);
 
@@ -328,7 +328,7 @@ void main() {
     await tester.tap(find.byKey(PlayerShell.profileAvatarKey));
     await tester.pump(const Duration(milliseconds: 300));
     expect(
-      container.read(routerProvider).routeInformationProvider.value.uri.path,
+      container.read(routerProvider).routerDelegate.state.uri.path,
       profilePath,
     );
   });

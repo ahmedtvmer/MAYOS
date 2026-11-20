@@ -229,7 +229,7 @@ void main() {
         tester
             .widget<MayosBottomNavigation>(find.byType(MayosBottomNavigation))
             .index,
-        3,
+        4,
       );
       expect(
         find.text('Last 28 days · working sets per muscle'),
@@ -243,7 +243,7 @@ void main() {
         tester
             .widget<MayosNavigationRail>(find.byType(MayosNavigationRail))
             .index,
-        3,
+        4,
       );
       expect(
         find.text('Last 28 days · working sets per muscle'),
