@@ -108,10 +108,10 @@ small transparent pad, never edit pixels inside the mark or wordmark.
 - **Header / small placements.** The vertical lockup's baked wordmark is
   illegible at ~24dp, so the header uses the documented **clean text
   treatment**: `MayosBrandMark` (mark-only crop, white on dark / black on
-  light) at 24dp next to a letterspaced `MAYOS` wordmark set in the brand sans
-  (Inter) in the theme's primary text colour. The treatment is centred on the
-  screen width, independent of the right-aligned actions. Semantics label stays
-  "MAYOS".
+  light) at 22dp with a letterspaced `MAYOS` wordmark stacked **below** it,
+  never beside it, in the theme's primary text colour. The treatment is centred
+  on the screen width, independent of the right-aligned actions. Semantics
+  label stays "MAYOS".
 - The black variant's faint lower-edge artifacts are no longer shipped: the
   trimmed lockup/mark exclude them.
 
@@ -253,13 +253,19 @@ light status bar (`MayosWallpaper`), since the photo is always dark.
 
 ## Navigation and entry points
 
-- Bottom bar: **Home**, **Program**, and **Progress**. Progress ships because its
+- Bottom bar (Player, #789): **Home**, **Program**, **AI Assistant**,
+  **Nutrition**, **Progress**. AI Assistant opens the full-screen chat and is
+  not a shell tab. The selected destination gets a soft pill behind its icon
+  that slides between destinations (instant under reduced motion); no blur,
+  translucency or shadow. Progress shows a dot while a Checkpoint review waits.
+  The Coach bar uses the same component with its own tabs. Progress ships because its
   Strength and Volume views are derived from real persisted ledger data (#48):
   per-session estimated 1RM (kg) from `GET /dashboard/exercises/{id}/history`,
   and weighted working sets per muscle over a real 7/28/90-day window from
   `GET /dashboard/volume?days=N`. There is no Overview tab and no fabricated
   percentage, body metric, or readiness score.
-- Header: assistant chat and **Settings**.
+- Header: the profile avatar (initials; a coach account's C/P mode avatar)
+  and **Settings**.
 - Settings (`/settings`) is the single home for: Profile, Plan, Coaching
   assignment, coach profile / roster / alert center (coach capability) or
   **Enable coaching**, Assistant, Workout drafts (Android only), and Log out.

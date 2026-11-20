@@ -51,7 +51,18 @@ class _CheckpointReviewScreenState
           .read(apiClientProvider)
           .coachCheckpointReview(assignmentId, widget.checkpoint);
     }
-    return ref.read(apiClientProvider).checkpointReview(widget.checkpoint);
+    return ref
+        .read(apiClientProvider)
+        .checkpointReview(widget.checkpoint)
+        .then((CheckpointReview review) {
+      // Opening the Player's own review marks it read, so the Progress tab
+      // dot for it goes away (#789).
+      if (mounted &&
+          ref.read(pendingCheckpointReviewProvider) == widget.checkpoint) {
+        ref.read(pendingCheckpointReviewProvider.notifier).state = null;
+      }
+      return review;
+    });
   }
 
   Future<void> _retry() async {

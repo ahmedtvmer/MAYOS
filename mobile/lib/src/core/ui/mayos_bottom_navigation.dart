@@ -10,6 +10,10 @@ class MayosNavItem {
     required this.icon,
     required this.selectedIcon,
     this.badge = 0,
+    this.dot = false,
+    this.dotLabel,
+    this.key,
+    this.decorateIcon,
   });
 
   final String label;
@@ -19,11 +23,27 @@ class MayosNavItem {
   /// A count badge shown on the icon (0 hides it), used by the coach shell's
   /// new-alerts count (#119).
   final int badge;
+
+  /// A small unlabelled dot on the icon, e.g. the Player's Progress tab while a
+  /// Checkpoint review waits (#789). Ignored while [badge] shows a count.
+  final bool dot;
+
+  /// What the dot means, appended to the destination's semantics label.
+  final String? dotLabel;
+
+  /// Key on the tappable destination, for tests and tour lookups.
+  final Key? key;
+
+  /// Wraps the destination's icon, e.g. in a tour target, without the core UI
+  /// depending on the feature that does the wrapping.
+  final Widget Function(Widget icon)? decorateIcon;
 }
 
-/// A deliberately restrained bottom bar: a thin top border over the surface,
-/// two-or-more equal destinations, active state in MAYOS blue. Avoids the
-/// default Material pill indicator so the shell reads as MAYOS.
+/// A restrained bottom bar: a thin top border over the surface, equal
+/// destinations, and the selected one marked by a soft pill behind its icon
+/// that slides between destinations (#789). No blur, translucency or shadow,
+/// so it costs no more to draw than a plain bar; the slide is instant when the
+/// platform asks for reduced motion.
 class MayosBottomNavigation extends StatelessWidget {
   const MayosBottomNavigation({
     super.key,
@@ -31,6 +51,13 @@ class MayosBottomNavigation extends StatelessWidget {
     required this.index,
     required this.onSelected,
   });
+
+  /// Key on the sliding pill, exposed for layout tests.
+  static const Key indicatorKey = Key('mayos.bottomNav.indicator');
+
+  static const double _iconTop = 6;
+  static const double _pillWidth = 56;
+  static const double _pillHeight = 30;
 
   final List<MayosNavItem> items;
   final int index;
@@ -40,6 +67,9 @@ class MayosBottomNavigation extends StatelessWidget {
   Widget build(BuildContext context) {
     final MayosThemeExtension c = MayosTheme.of(context);
     final TextTheme text = Theme.of(context).textTheme;
+    final bool reduceMotion =
+        MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+    final bool rtl = Directionality.of(context) == TextDirection.rtl;
     return DecoratedBox(
       decoration: BoxDecoration(
         color: c.surface,
@@ -49,18 +79,48 @@ class MayosBottomNavigation extends StatelessWidget {
         top: false,
         child: SizedBox(
           height: MayosLayout.phoneBottomNavigationHeight,
-          child: Row(
-            children: <Widget>[
-              for (int i = 0; i < items.length; i++)
-                Expanded(
-                  child: _Destination(
-                    item: items[i],
-                    selected: i == index,
-                    onTap: () => onSelected(i),
-                    labelStyle: text,
+          child: LayoutBuilder(
+            builder: (BuildContext context, BoxConstraints constraints) {
+              final double cell = constraints.maxWidth / items.length;
+              final bool hasSelection = index >= 0 && index < items.length;
+              final int visual = rtl ? items.length - 1 - index : index;
+              return Stack(
+                children: <Widget>[
+                  if (hasSelection)
+                    AnimatedPositioned(
+                      key: indicatorKey,
+                      duration:
+                          reduceMotion ? Duration.zero : MayosMotion.fast,
+                      curve: MayosMotion.standard,
+                      top: _iconTop,
+                      left: cell * visual + (cell - _pillWidth) / 2,
+                      width: _pillWidth,
+                      height: _pillHeight,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: c.selectedSurface,
+                          borderRadius:
+                              BorderRadius.circular(_pillHeight / 2),
+                        ),
+                      ),
+                    ),
+                  Row(
+                    children: <Widget>[
+                      for (int i = 0; i < items.length; i++)
+                        Expanded(
+                          child: _Destination(
+                            key: items[i].key,
+                            item: items[i],
+                            selected: i == index,
+                            onTap: () => onSelected(i),
+                            labelStyle: text,
+                          ),
+                        ),
+                    ],
                   ),
-                ),
-            ],
+                ],
+              );
+            },
           ),
         ),
       ),
@@ -121,19 +181,28 @@ class MayosNavigationRail extends StatelessWidget {
     );
   }
 
+  static Widget _decorated(MayosNavItem item, Widget icon) =>
+      item.decorateIcon?.call(icon) ?? icon;
+
   List<NavigationRailDestination> _destinations(MayosThemeExtension c) =>
       <NavigationRailDestination>[
         for (final MayosNavItem item in items)
           NavigationRailDestination(
-            icon: _NavigationItemIcon(
-              item: item,
-              selected: false,
-              color: c.textMuted,
+            icon: _decorated(
+              item,
+              _NavigationItemIcon(
+                item: item,
+                selected: false,
+                color: c.textMuted,
+              ),
             ),
-            selectedIcon: _NavigationItemIcon(
-              item: item,
-              selected: true,
-              color: c.accent,
+            selectedIcon: _decorated(
+              item,
+              _NavigationItemIcon(
+                item: item,
+                selected: true,
+                color: c.accent,
+              ),
             ),
             label: Text(item.label),
           ),
@@ -142,6 +211,7 @@ class MayosNavigationRail extends StatelessWidget {
 
 class _Destination extends StatelessWidget {
   const _Destination({
+    super.key,
     required this.item,
     required this.selected,
     required this.onTap,
@@ -157,10 +227,16 @@ class _Destination extends StatelessWidget {
   Widget build(BuildContext context) {
     final MayosThemeExtension c = MayosTheme.of(context);
     final Color color = selected ? c.accent : c.textMuted;
+    final Widget icon =
+        _NavigationItemIcon(item: item, selected: selected, color: color);
+    final String semanticsLabel =
+        item.dot && item.badge == 0 && item.dotLabel != null
+            ? '${item.label}, ${item.dotLabel}'
+            : item.label;
     return Semantics(
       button: true,
       selected: selected,
-      label: item.label,
+      label: semanticsLabel,
       excludeSemantics: true,
       child: InkResponse(
         onTap: onTap,
@@ -168,22 +244,28 @@ class _Destination extends StatelessWidget {
         containedInkWell: true,
         highlightShape: BoxShape.rectangle,
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
           children: <Widget>[
-            _NavigationItemIcon(item: item, selected: selected, color: color),
+            const SizedBox(height: MayosBottomNavigation._iconTop),
+            SizedBox(
+              height: MayosBottomNavigation._pillHeight,
+              child: Center(child: item.decorateIcon?.call(icon) ?? icon),
+            ),
             const SizedBox(height: 3),
-            // With three destinations the cells are narrow and large text
-            // scales could wrap a label into a second line, overflowing the
-            // fixed bar height. Keep labels on one line and shrink to fit.
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(
-                item.label,
-                maxLines: 1,
-                softWrap: false,
-                style: labelStyle.labelSmall?.copyWith(
-                  color: color,
-                  fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+            // Five destinations make narrow cells, and large text scales could
+            // wrap or overflow a label. Keep it on one line in a fixed-height
+            // box and shrink it to fit both ways.
+            SizedBox(
+              height: 16,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  item.label,
+                  maxLines: 1,
+                  softWrap: false,
+                  style: labelStyle.labelSmall?.copyWith(
+                    color: color,
+                    fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                  ),
                 ),
               ),
             ),
@@ -208,6 +290,22 @@ class _NavigationItemIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final MayosThemeExtension c = MayosTheme.of(context);
+    final Widget glyph = AnimatedSwitcher(
+      duration: MayosMotion.fast,
+      child: Icon(
+        selected ? item.selectedIcon : item.icon,
+        key: ValueKey<bool>(selected),
+        size: MayosIconSizes.navigation,
+        color: color,
+      ),
+    );
+    if (item.badge == 0 && item.dot) {
+      return Badge(
+        smallSize: 8,
+        backgroundColor: c.accent,
+        child: glyph,
+      );
+    }
     return Badge(
       isLabelVisible: item.badge > 0,
       label: Directionality(
@@ -215,15 +313,7 @@ class _NavigationItemIcon extends StatelessWidget {
         child: Text('${item.badge}'),
       ),
       backgroundColor: c.danger,
-      child: AnimatedSwitcher(
-        duration: MayosMotion.fast,
-        child: Icon(
-          selected ? item.selectedIcon : item.icon,
-          key: ValueKey<bool>(selected),
-          size: MayosIconSizes.navigation,
-          color: color,
-        ),
-      ),
+      child: glyph,
     );
   }
 }

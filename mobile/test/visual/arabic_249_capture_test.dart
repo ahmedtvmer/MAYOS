@@ -9,6 +9,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mayos_mobile/src/features/player/shell/player_shell.dart';
 import 'package:mayos_mobile/src/app.dart';
 import 'package:mayos_mobile/src/core/active_workout.dart';
 import 'package:mayos_mobile/src/core/analytics_client.dart';
@@ -366,7 +367,7 @@ Future<void> _captureHomeAndChat(
   final _CaptureFixture chatFixture = _CaptureFixture(configuration);
   await chatFixture.seedChat();
   await _startApp(tester, chatFixture);
-  await tester.tap(find.byTooltip('المساعد'));
+  await tester.tap(find.byKey(PlayerShell.assistantDestinationKey));
   await _pumpUntilFound(tester, find.byKey(const Key('chat_composer')));
   expect(tester.takeException(), isNull);
   final Uint8List chatImage =

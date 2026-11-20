@@ -14,6 +14,8 @@ import '../../../core/display_language/catalog.dart';
 import '../../../core/display_language/controller.dart';
 import '../../../core/display_language/copy_context.dart';
 import '../../../core/models.dart';
+import '../../../core/theme/mayos_theme.dart';
+import '../../../core/theme/mayos_typography.dart';
 import '../../../core/ui/mayos_bottom_navigation.dart';
 import '../../../core/ui/mayos_button.dart';
 import '../../../core/ui/mayos_scaffold.dart';
@@ -44,6 +46,13 @@ import '../tour/whats_new_screen.dart';
 class PlayerShell extends ConsumerStatefulWidget {
   const PlayerShell({super.key, this.pushTab});
 
+  /// Key on the bar's AI Assistant destination.
+  static const Key assistantDestinationKey =
+      ValueKey<String>('player.nav.assistant');
+
+  /// Key on the header's profile avatar (non-coach accounts).
+  static const Key profileAvatarKey = ValueKey<String>('player.header.profile');
+
   final String? pushTab;
 
   @override
@@ -51,28 +60,65 @@ class PlayerShell extends ConsumerStatefulWidget {
 }
 
 class _PlayerShellState extends ConsumerState<PlayerShell> {
-  List<MayosNavItem> _items(MayosCopy copy) => <MayosNavItem>[
+  /// The bar's destinations. AI Assistant sits in the middle but is not a
+  /// shell tab: it opens the full-screen chat (#789), so bar positions map onto
+  /// [PlayerShellTab] through [_tabForDestination] / [_destinationForTab].
+  List<MayosNavItem> _items(MayosCopy copy, {required bool reviewWaiting}) =>
+      <MayosNavItem>[
         MayosNavItem(
+          key: const ValueKey<String>('player.nav.home'),
           label: copy.home,
           icon: Icons.home_outlined,
           selectedIcon: Icons.home,
         ),
         MayosNavItem(
+          key: const ValueKey<String>('player.nav.program'),
           label: copy.program,
           icon: Icons.article_outlined,
           selectedIcon: Icons.article,
         ),
         MayosNavItem(
+          key: PlayerShell.assistantDestinationKey,
+          label: copy.aiAssistant,
+          icon: Icons.chat_bubble_outline,
+          selectedIcon: Icons.chat_bubble,
+          decorateIcon: (Widget icon) =>
+              TourTarget(id: 'assistant', child: icon),
+        ),
+        MayosNavItem(
+          key: const ValueKey<String>('player.nav.nutrition'),
           label: copy.nutritionTab,
           icon: Icons.restaurant_menu_outlined,
           selectedIcon: Icons.restaurant_menu,
         ),
         MayosNavItem(
+          key: const ValueKey<String>('player.nav.progress'),
           label: copy.progress,
           icon: Icons.insights_outlined,
           selectedIcon: Icons.insights,
+          dot: reviewWaiting,
+          dotLabel: copy.checkpointReviewWaiting,
         ),
       ];
+
+  static const int _assistantDestination = 2;
+
+  static int _destinationForTab(int tab) =>
+      tab < _assistantDestination ? tab : tab + 1;
+
+  static int _tabForDestination(int destination) =>
+      destination < _assistantDestination ? destination : destination - 1;
+
+  void _onDestinationSelected(int destination) {
+    if (destination == _assistantDestination) {
+      // The chat stays a full-screen route; the shell keeps the tab the
+      // Player came from (#789).
+      context.push(chatPath);
+      return;
+    }
+    ref.read(playerShellTabProvider.notifier).state =
+        _tabForDestination(destination);
+  }
 
   /// Set once this shell visit has offered Resume / Discard, so the prompt
   /// appears at most once per opening of the app (#123).
@@ -475,22 +521,20 @@ class _PlayerShellState extends ConsumerState<PlayerShell> {
         id: 'brand_mayos',
         child: MayosAppHeader(
           actions: <Widget>[
-            TourTarget(
-              id: 'assistant',
-              child: IconButton(
-                tooltip: copy.assistant,
-                onPressed: () => context.push(chatPath),
-                icon: const Icon(Icons.chat_bubble_outline),
+            // A coach account's avatar is the C/P mode button (#119); every
+            // other account gets an initials avatar that opens Profile (#789).
+            if (isCoach)
+              const ModeAvatarButton()
+            else
+              _ProfileAvatarButton(
+                username: account.traineeId,
+                label: copy.profileLabel,
               ),
-            ),
             IconButton(
               tooltip: settingsLabel,
               onPressed: () => context.push(settingsPath),
               icon: const Icon(Icons.settings_outlined),
             ),
-            // A coach account carries the C/P mode badge in Player mode too
-            // (#119); non-coach accounts render nothing here.
-            if (isCoach) const ModeAvatarButton(),
           ],
         ),
       ),
@@ -505,10 +549,12 @@ class _PlayerShellState extends ConsumerState<PlayerShell> {
             ],
           ),
       bottomBar: MayosBottomNavigation(
-        items: _items(copy),
-        index: index,
-        onSelected: (int selected) =>
-            ref.read(playerShellTabProvider.notifier).state = selected,
+        items: _items(
+          copy,
+          reviewWaiting: ref.watch(pendingCheckpointReviewProvider) != null,
+        ),
+        index: _destinationForTab(index),
+        onSelected: _onDestinationSelected,
       ),
     );
   }
@@ -517,6 +563,48 @@ class _PlayerShellState extends ConsumerState<PlayerShell> {
   void dispose() {
     _observedRouter?.routerDelegate.removeListener(_onRouteChanged);
     super.dispose();
+  }
+}
+
+/// The header's initials avatar for a non-coach account; it opens Profile.
+class _ProfileAvatarButton extends StatelessWidget {
+  const _ProfileAvatarButton({required this.username, required this.label});
+
+  final String username;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final MayosThemeExtension c = MayosTheme.of(context);
+    final String initials = username
+        .substring(0, username.length < 2 ? username.length : 2)
+        .toUpperCase();
+    return Semantics(
+      button: true,
+      label: label,
+      excludeSemantics: true,
+      child: InkWell(
+        key: PlayerShell.profileAvatarKey,
+        customBorder: const CircleBorder(),
+        onTap: () => context.push(profilePath),
+        child: SizedBox(
+          width: 48,
+          height: 48,
+          child: Center(
+            child: CircleAvatar(
+              radius: 17,
+              backgroundColor: c.accentSubtle,
+              child: Text(
+                initials,
+                style: MayosTypography.of(context)
+                    .avatarInitials
+                    .copyWith(color: c.accent),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
