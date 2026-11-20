@@ -331,6 +331,10 @@ void main() {
       container.read(routerProvider).routerDelegate.state.uri.path,
       profilePath,
     );
+    // Let Profile's own load and debounce timers finish before teardown.
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 5));
   });
 
   testWidgets('the Progress tab shows a dot while a Checkpoint review waits',

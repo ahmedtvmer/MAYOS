@@ -40,6 +40,9 @@ import '../tour/tour_targets.dart';
 class DashboardTab extends ConsumerStatefulWidget {
   const DashboardTab({super.key});
 
+  /// Key on Home's scrolling list, for tests that scroll to lower tiles.
+  static const Key listKey = ValueKey<String>('home.list');
+
   @override
   ConsumerState<DashboardTab> createState() => _DashboardTabState();
 }
@@ -536,6 +539,7 @@ class _HomeBody extends StatelessWidget {
     return RefreshIndicator(
       onRefresh: onRefresh,
       child: ListView(
+        key: DashboardTab.listKey,
         padding: const EdgeInsets.fromLTRB(MayosSpacing.lg, MayosSpacing.md,
             MayosSpacing.lg, MayosSpacing.xxl),
         children: <Widget>[

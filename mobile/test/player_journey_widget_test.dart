@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mayos_mobile/src/features/player/dashboard/dashboard_tab.dart';
 import 'package:mayos_mobile/src/app.dart';
 import 'package:mayos_mobile/src/core/app_mode.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
@@ -112,7 +113,18 @@ void main() {
     await tester.tap(find.byKey(const Key('rest_alert_permission_not_now')));
     await _pumpUntilFound(tester, find.textContaining('Next session'));
 
-    // Completion is reachable and home renders the player's program.
+    // Completion is reachable and home renders the player's program (its
+    // one-line summary sits lower on Home since #790).
+    await tester.scrollUntilVisible(
+      find.textContaining('Upper/Lower 4x'),
+      200,
+      scrollable: find
+          .descendant(
+            of: find.byKey(DashboardTab.listKey),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
     expect(find.textContaining('Upper/Lower 4x'), findsOneWidget);
 
     // Switch to the program tab and see the full automatic program.

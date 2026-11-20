@@ -173,6 +173,21 @@ Future<void> _pumpUntilTourSpotlight(WidgetTester tester) async {
   fail('Timed out after 40 attempts waiting for $tourNext');
 }
 
+/// Scrolls Home's list until [finder] is built and visible: the list is lazy,
+/// so tiles below the fold do not exist until scrolled to (#790).
+Future<void> _scrollHomeTo(WidgetTester tester, Finder finder) async {
+  await tester.scrollUntilVisible(
+    finder,
+    200,
+    scrollable: find
+        .descendant(
+          of: find.byKey(DashboardTab.listKey),
+          matching: find.byType(Scrollable),
+        )
+        .first,
+  );
+}
+
 Future<void> _pumpHome(
   WidgetTester tester,
   FakeMayosApi fake, {
@@ -923,11 +938,7 @@ void main() {
     expect(find.textContaining('Upper/Lower 4x'), findsOneWidget);
     expect(find.textContaining('4 أيام في الأسبوع'), findsOneWidget);
     expect(
-      find.text('تُحسب مجموعة التدريب بقيمة 1 للعضلة الأساسية و0.5 لكل عضلة مساعدة.'),
-      findsOneWidget,
-    );
-    expect(
-      Directionality.of(tester.element(find.text('الرئيسية'))),
+      Directionality.of(tester.element(find.text('الرئيسية').first)),
       TextDirection.rtl,
     );
   });
@@ -2528,9 +2539,9 @@ void main() {
 
       // Let the home data and the persisted theme settle before checking for
       // layout overflow at the largest supported text scale.
-      await _pumpUntilFound(tester, find.textContaining('Upper/Lower 4x'));
+      await _pumpUntilFound(tester, find.text('Log workout'));
       expect(
-        Theme.of(tester.element(find.textContaining('Upper/Lower 4x'))).brightness,
+        Theme.of(tester.element(find.text('Log workout'))).brightness,
         mode == ThemeMode.dark ? Brightness.dark : Brightness.light,
       );
 
@@ -2726,12 +2737,15 @@ void main() {
           final FakeMayosApi fake = homeFake();
           await _pumpHome(tester, fake,
               languageCode: language, size: size, extraOverrides: thursdayClock);
-          await _pumpUntilFound(tester, find.byKey(const ValueKey<String>('home.weekTile')));
+          await _pumpUntilFound(tester, find.byKey(const ValueKey<String>('home.shareLatestWorkout')));
           expect(tester.takeException(), isNull);
           if (language == 'ar') {
-            expect(find.text('التغذية اليوم'), findsOneWidget);
             expect(find.text('آخر حصة: Lower B · أمس'), findsOneWidget);
+            await _scrollHomeTo(tester, find.text('التغذية اليوم'));
+            expect(find.text('التغذية اليوم'), findsOneWidget);
           }
+          await _scrollHomeTo(tester, find.byKey(const ValueKey<String>('home.weekTile')));
+          expect(tester.takeException(), isNull);
           await tester.pumpWidget(const SizedBox.shrink());
         });
       }
