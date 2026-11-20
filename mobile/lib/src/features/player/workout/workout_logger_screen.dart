@@ -53,6 +53,7 @@ import 'unusual_workout_duration.dart';
 import 'pr_celebration.dart';
 import 'web_workout_committer.dart';
 import '../tour/tour_targets.dart';
+import '../xp/xp_widgets.dart';
 
 // The frozen previous working set and the cell weight format live beside the
 // Active workout (`core/active_workout.dart`); the cell/hint mapping, the
@@ -359,6 +360,10 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
   WorkoutSummary? _summary;
   String? _summaryDraftId;
   int? _checkpointNumber;
+
+  /// The saved workout's XP from the commit response (#796); null before a
+  /// save and for a draft that syncs later.
+  WorkoutXp? _workoutXp;
   CheckpointReview? _checkpointReview;
   bool _saving = false;
   bool _finishInFlight = false;
@@ -1486,6 +1491,9 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
         }
         _checkpointNumber = reachedCheckpoint ?? _checkpointNumber;
         _checkpointReview = checkpointReview;
+        if (result.status == WebWorkoutCommitStatus.committed) {
+          _workoutXp = WorkoutXp.tryParse(result.response?['xp']);
+        }
         switch (result.status) {
           case WebWorkoutCommitStatus.committed:
             _summaryAction = _SummaryAction.done;
@@ -1617,6 +1625,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
       _summaryDraftId = null;
       _checkpointNumber = null;
       _checkpointReview = null;
+      _workoutXp = null;
       _error = null;
       _summaryAction = _SummaryAction.save;
     });
@@ -2657,6 +2666,15 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
           ],
           if (_checkpointNumber != null) ...<Widget>[
             _checkpointCelebration(),
+            const SizedBox(height: MayosSpacing.md),
+          ],
+          if (action == _SummaryAction.done) ...<Widget>[
+            // XP from the commit response; a draft gets its XP when it syncs
+            // (#796).
+            if (_workoutXp case final WorkoutXp xp)
+              WorkoutXpCard(xp: xp)
+            else
+              _MessageLine(xpCopyOf(context).xpAfterSync, danger: false),
             const SizedBox(height: MayosSpacing.md),
           ],
           _buildStats(summary),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../player/xp/xp_widgets.dart';
 
 import '../../core/api_client.dart';
 import '../../core/refetch_on_reconnect.dart';
@@ -393,6 +394,11 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
                     style: MayosTypography.of(context).caption
                         .copyWith(color: c.textSecondary),
                   ),
+                  // The player's rank and Weekly streak, read-only (#796).
+                  if (entry.rank != null || entry.weeklyStreak != null) ...<Widget>[
+                    const SizedBox(height: MayosSpacing.xs),
+                    CoachRankChips(entry: entry),
+                  ],
                   if (chips.isNotEmpty) ...<Widget>[
                     const SizedBox(height: MayosSpacing.xs),
                     Wrap(
@@ -589,13 +595,23 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
               _followUpUrgency(context, entry),
               Text(coachCopyOf(context).rosterNextFollowUp(entry.nextFollowUpOn)),
             ],
-            subtitle: Text(
-              coachCopyOf(context).rosterSubtitle(
-                lastWorkout: entry.lastWorkoutOn,
-                program: entry.programName,
-              ),
-              style: MayosTypography.of(context).caption
-                  .copyWith(color: colors.textSecondary),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Text(
+                  coachCopyOf(context).rosterSubtitle(
+                    lastWorkout: entry.lastWorkoutOn,
+                    program: entry.programName,
+                  ),
+                  style: MayosTypography.of(context).caption
+                      .copyWith(color: colors.textSecondary),
+                ),
+                if (entry.rank != null || entry.weeklyStreak != null) ...<Widget>[
+                  const SizedBox(height: MayosSpacing.xxs),
+                  CoachRankChips(entry: entry),
+                ],
+              ],
             ),
             onTap: () => context.go(
               coachAssignmentLocation(entry.assignmentId),

@@ -885,6 +885,9 @@ class CoachRosterEntry {
     this.pendingRequests = 0,
     this.lastWorkoutOn,
     this.programName,
+    this.rank,
+    this.weeklyStreak,
+    this.weekPaused,
   });
 
   factory CoachRosterEntry.fromJson(Map<String, dynamic> json) =>
@@ -902,7 +905,16 @@ class CoachRosterEntry {
         pendingRequests: (json['pending_requests'] as num?)?.toInt() ?? 0,
         lastWorkoutOn: json['last_workout_on'] as String?,
         programName: json['program_name'] as String?,
+        rank: PlayerRank.tryParse(json['rank']),
+        weeklyStreak: (json['weekly_streak'] as num?)?.toInt(),
+        weekPaused: json['week_paused'] as bool?,
       );
+
+  /// The player's rank and Weekly streak, read-only for the coach (#796);
+  /// null until the first attendance evaluation after the upgrade.
+  final PlayerRank? rank;
+  final int? weeklyStreak;
+  final bool? weekPaused;
 
   final String assignmentId;
   final String playerUsername;
@@ -2493,6 +2505,109 @@ class TrainingSchedule {
   final List<ScheduledPause> pauses;
 }
 
+/// One rank of the fixed ladder (#743): named only, never numbered.
+class PlayerRank {
+  const PlayerRank({
+    required this.id,
+    required this.nameEn,
+    required this.nameAr,
+    required this.threshold,
+  });
+
+  static PlayerRank? tryParse(dynamic json) {
+    if (json is! Map<String, dynamic>) return null;
+    final dynamic id = json['id'];
+    final dynamic threshold = json['threshold'];
+    if (id is! String || threshold is! num) return null;
+    return PlayerRank(
+      id: id,
+      nameEn: json['name_en'] as String? ?? id,
+      nameAr: json['name_ar'] as String? ?? id,
+      threshold: threshold.toInt(),
+    );
+  }
+
+  final String id;
+  final String nameEn;
+  final String nameAr;
+  final int threshold;
+
+  String name(bool isArabic) => isArabic ? nameAr : nameEn;
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'id': id,
+        'name_en': nameEn,
+        'name_ar': nameAr,
+        'threshold': threshold,
+      };
+
+  @override
+  bool operator ==(Object other) =>
+      other is PlayerRank && other.id == id && other.threshold == threshold;
+
+  @override
+  int get hashCode => Object.hash(id, threshold);
+}
+
+/// The fixed rank ladder, mirrored from the service for the Rank sheet (#743).
+const List<PlayerRank> playerRankLadder = <PlayerRank>[
+  PlayerRank(id: 'rookie', nameEn: 'Rookie', nameAr: 'مبتدئ', threshold: 0),
+  PlayerRank(id: 'regular', nameEn: 'Regular', nameAr: 'منتظم', threshold: 80),
+  PlayerRank(id: 'committed', nameEn: 'Committed', nameAr: 'ملتزم', threshold: 240),
+  PlayerRank(id: 'dedicated', nameEn: 'Dedicated', nameAr: 'مثابر', threshold: 600),
+  PlayerRank(id: 'veteran', nameEn: 'Veteran', nameAr: 'محترف', threshold: 1200),
+  PlayerRank(id: 'elite', nameEn: 'Elite', nameAr: 'نخبة', threshold: 2400),
+  PlayerRank(id: 'legend', nameEn: 'Legend', nameAr: 'أسطورة', threshold: 4000),
+];
+
+/// The XP block of a workout commit response (#795): this workout's
+/// breakdown (every rule, unmet ones at 0), the new total and any rank-up.
+class WorkoutXp {
+  const WorkoutXp({
+    required this.counted,
+    required this.awarded,
+    required this.breakdown,
+    required this.xpTotal,
+    required this.rank,
+    this.nextRank,
+    this.xpIntoRank = 0,
+    this.xpForNextRank,
+    this.rankUp,
+  });
+
+  static WorkoutXp? tryParse(dynamic json) {
+    if (json is! Map<String, dynamic>) return null;
+    final PlayerRank? rank = PlayerRank.tryParse(json['rank']);
+    final dynamic lines = json['breakdown'];
+    if (rank == null || lines is! List<dynamic>) return null;
+    return WorkoutXp(
+      counted: json['counted'] == true,
+      awarded: (json['awarded'] as num?)?.toInt() ?? 0,
+      breakdown: <({String kind, int xp})>[
+        for (final dynamic line in lines)
+          if (line is Map<String, dynamic> && line['kind'] is String)
+            (kind: line['kind'] as String, xp: (line['xp'] as num?)?.toInt() ?? 0),
+      ],
+      xpTotal: (json['xp_total'] as num?)?.toInt() ?? 0,
+      rank: rank,
+      nextRank: PlayerRank.tryParse(json['next_rank']),
+      xpIntoRank: (json['xp_into_rank'] as num?)?.toInt() ?? 0,
+      xpForNextRank: (json['xp_for_next_rank'] as num?)?.toInt(),
+      rankUp: PlayerRank.tryParse(json['rank_up']),
+    );
+  }
+
+  final bool counted;
+  final int awarded;
+  final List<({String kind, int xp})> breakdown;
+  final int xpTotal;
+  final PlayerRank rank;
+  final PlayerRank? nextRank;
+  final int xpIntoRank;
+  final int? xpForNextRank;
+  final PlayerRank? rankUp;
+}
+
 /// `GET /dashboard/training-status` and the status carried by a workout commit.
 class TrainingStatus {
   const TrainingStatus({
@@ -2503,6 +2618,14 @@ class TrainingStatus {
     required this.mayosWorkouts,
     required this.nextCheckpoint,
     required this.workoutsToNext,
+    this.longestStreak = 0,
+    this.thisWeekDone = false,
+    this.weekPaused = false,
+    this.xpTotal = 0,
+    this.rank,
+    this.nextRank,
+    this.xpIntoRank = 0,
+    this.xpForNextRank,
   });
 
   factory TrainingStatus.fromJson(Map<String, dynamic> json) {
@@ -2518,8 +2641,29 @@ class TrainingStatus {
       mayosWorkouts: _requiredInt(json, 'mayos_workouts'),
       nextCheckpoint: _requiredInt(json, 'next_checkpoint'),
       workoutsToNext: _requiredInt(json, 'workouts_to_next'),
+      // XP and rank (#795) are optional so a status cached before the
+      // upgrade still loads.
+      longestStreak: (json['longest_streak'] as num?)?.toInt() ?? 0,
+      thisWeekDone: json['this_week_done'] == true,
+      weekPaused: json['week_paused'] == true,
+      xpTotal: (json['xp_total'] as num?)?.toInt() ?? 0,
+      rank: PlayerRank.tryParse(json['rank']),
+      nextRank: PlayerRank.tryParse(json['next_rank']),
+      xpIntoRank: (json['xp_into_rank'] as num?)?.toInt() ?? 0,
+      xpForNextRank: (json['xp_for_next_rank'] as num?)?.toInt(),
     );
   }
+
+  final int longestStreak;
+  final bool thisWeekDone;
+  final bool weekPaused;
+  final int xpTotal;
+
+  /// Null only for a status cached before XP existed (#795).
+  final PlayerRank? rank;
+  final PlayerRank? nextRank;
+  final int xpIntoRank;
+  final int? xpForNextRank;
 
   final int weeklyStreak;
   final String weekStart;
@@ -2537,6 +2681,14 @@ class TrainingStatus {
         'mayos_workouts': mayosWorkouts,
         'next_checkpoint': nextCheckpoint,
         'workouts_to_next': workoutsToNext,
+        'longest_streak': longestStreak,
+        'this_week_done': thisWeekDone,
+        'week_paused': weekPaused,
+        'xp_total': xpTotal,
+        if (rank != null) 'rank': rank!.toJson(),
+        if (nextRank != null) 'next_rank': nextRank!.toJson(),
+        'xp_into_rank': xpIntoRank,
+        if (xpForNextRank != null) 'xp_for_next_rank': xpForNextRank,
       };
 
   static int _requiredInt(Map<String, dynamic> json, String key) {

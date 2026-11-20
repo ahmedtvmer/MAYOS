@@ -34,6 +34,7 @@ import '../tour/feature_list.dart';
 import '../tour/tour_controller.dart';
 import '../tour/tour_targets.dart';
 import '../tour/whats_new_screen.dart';
+import '../xp/xp_widgets.dart';
 
 /// The player navigation shell.
 ///
@@ -144,6 +145,31 @@ class _PlayerShellState extends ConsumerState<PlayerShell> {
 
   void _onRouteChanged() {
     if (mounted) setState(() {});
+    _maybeShowRankUp();
+  }
+
+  bool _rankUpShowing = false;
+
+  /// Shows a pending rank-up once the Player is back on Home (#796), so the
+  /// celebration follows the saved summary rather than covering it.
+  void _maybeShowRankUp() {
+    if (_rankUpShowing || ref.read(pendingRankUpProvider) == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted || _rankUpShowing) return;
+      final PlayerRank? rank = ref.read(pendingRankUpProvider);
+      final String path =
+          GoRouter.of(context).routeInformationProvider.value.uri.path;
+      if (rank == null || path != homePath || ref.read(tourControllerProvider) != null) {
+        return;
+      }
+      _rankUpShowing = true;
+      ref.read(pendingRankUpProvider.notifier).state = null;
+      try {
+        await showRankUp(context, rank: rank, status: ref.read(trainingStatusProvider));
+      } finally {
+        _rankUpShowing = false;
+      }
+    });
   }
 
   @override
@@ -483,6 +509,10 @@ class _PlayerShellState extends ConsumerState<PlayerShell> {
     ref.listen<ActiveWorkoutState>(
       activeWorkoutControllerProvider,
       (_, ActiveWorkoutState next) => _offerResume(next),
+    );
+    ref.listen<PlayerRank?>(
+      pendingRankUpProvider,
+      (_, PlayerRank? next) => _maybeShowRankUp(),
     );
     final Account? account =
         ref.watch(authControllerProvider).session?.account;
