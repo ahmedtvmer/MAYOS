@@ -64,6 +64,17 @@ List<String> validateFeatureEntries(
 
 const List<FeatureEntry> featureList = <FeatureEntry>[
   FeatureEntry(
+    id: 'simpler_home',
+    titleEn: 'A simpler Home',
+    sentenceEn: "Home now opens on today's session, with your last workout to share and short Nutrition, Program, weekly sets and PR summaries below.",
+    titleAr: 'رئيسية أبسط',
+    sentenceAr: 'تبدأ الرئيسية الآن بحصة اليوم، مع آخر تمرين لمشاركته، وملخصات قصيرة للتغذية والبرنامج ومجموعات الأسبوع والأرقام القياسية.',
+    target: 'home',
+    location: TourShellTabLocation(tabIndex: 0),
+    release: 8,
+    audience: 'lifter',
+  ),
+  FeatureEntry(
     id: 'ai_assistant_tab',
     titleEn: 'AI Assistant in the bottom bar',
     sentenceEn: 'Open the AI Assistant from the middle of the bottom bar; Checkpoint reviews now wait in Progress, marked with a dot.',

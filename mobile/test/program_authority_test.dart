@@ -884,6 +884,8 @@ void main() {
   testWidgets('saving the schedule leaves the training-days setting untouched',
       (tester) async {
     final FakeMayosApi fake = _playerFake();
+    // Start from a Mon/Wed/Fri schedule; the fake's default covers every day.
+    fake.scheduleVersions.first['weekdays'] = <int>[1, 3, 5];
     await _pumpApp(tester, fake);
     await _openProfile(tester);
 

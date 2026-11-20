@@ -175,11 +175,22 @@ void main() {
         ));
         final MayosCopy copy = MayosCopy(language);
         await _pumpUntilFound(tester, find.text(copy.offlineSavedData));
-        await _pumpUntilFound(tester, find.text('Upper/Lower 4x'));
+        // The program's one-line summary sits below the session card (#790).
+        await _pumpUntilFound(tester, find.byKey(DashboardTab.listKey));
+        await tester.scrollUntilVisible(
+          find.textContaining('Upper/Lower 4x'),
+          200,
+          scrollable: find
+              .descendant(
+                of: find.byKey(DashboardTab.listKey),
+                matching: find.byType(Scrollable),
+              )
+              .first,
+        );
 
         expect(find.text(copy.offlineSavedData), findsOneWidget);
         expect(find.text(copy.home), findsWidgets);
-        expect(find.text('Upper/Lower 4x'), findsWidgets);
+        expect(find.textContaining('Upper/Lower 4x'), findsWidgets);
         expect(find.byKey(const Key('login_username')), findsNothing);
         final ProviderContainer container = ProviderScope.containerOf(
           tester.element(find.byType(MayosApp)),
@@ -246,13 +257,24 @@ void main() {
         ));
         final MayosCopy copy = MayosCopy(language);
         await _pumpUntilFound(tester, find.text(copy.serviceUnavailable));
-        await _pumpUntilFound(tester, find.text('Upper/Lower 4x'));
+        // The program's one-line summary sits below the session card (#790).
+        await _pumpUntilFound(tester, find.byKey(DashboardTab.listKey));
+        await tester.scrollUntilVisible(
+          find.textContaining('Upper/Lower 4x'),
+          200,
+          scrollable: find
+              .descendant(
+                of: find.byKey(DashboardTab.listKey),
+                matching: find.byType(Scrollable),
+              )
+              .first,
+        );
 
         expect(find.text(copy.serviceUnavailable), findsOneWidget);
         expect(find.text(copy.offlineSavedData), findsNothing);
         expect(find.text(copy.offlineBanner), findsNothing);
         expect(find.text(copy.home), findsWidgets);
-        expect(find.text('Upper/Lower 4x'), findsWidgets);
+        expect(find.textContaining('Upper/Lower 4x'), findsWidgets);
         expect(find.byKey(const Key('login_username')), findsNothing);
         final ProviderContainer container = ProviderScope.containerOf(
           tester.element(find.byType(MayosApp)),
@@ -403,12 +425,15 @@ void main() {
         );
         expect(find.text(MayosCopy('en').offlineSavedData), findsNothing);
         expect(find.byKey(const Key('login_username')), findsNothing);
-        await tester.scrollUntilVisible(find.text('99'), 250,
+        // The refreshed volume shows in Home's week tile (#790).
+        final Finder refreshed =
+            find.text(const MayosCopy('en').countedSetsMetric(99.0));
+        await tester.scrollUntilVisible(refreshed, 250,
           scrollable: find.descendant(
             of: find.byType(DashboardTab), matching: find.byType(Scrollable),
           ).first,
         );
-        expect(find.text('99'), findsOneWidget);
+        expect(refreshed, findsOneWidget);
         expect(
           fake.adapter.requests
               .where((FakeRequest request) => request.path == '/dashboard/volume')

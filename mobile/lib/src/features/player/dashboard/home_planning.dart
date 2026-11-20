@@ -237,3 +237,9 @@ List<int> _sortedWeekdays(TrainingSchedule? schedule) {
   }
   return List<int>.of(raw)..sort();
 }
+
+/// The schedule's training weekdays (1=Mon..7=Sun), sorted; empty without a
+/// schedule. Home treats a scheduled week that leaves today out as a rest day
+/// (#790).
+List<int> scheduledWeekdays(TrainingSchedule? schedule) =>
+    _sortedWeekdays(schedule);

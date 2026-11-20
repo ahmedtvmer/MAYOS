@@ -549,7 +549,7 @@ void main() {
     expect(find.textContaining('95 kg × 5 @ RIR 2'), findsWidgets);
   });
 
-  testWidgets('bottom navigation exposes all four Player destinations',
+  testWidgets('bottom navigation exposes the five Player destinations',
       (WidgetTester tester) async {
     final FakeMayosApi fake = _signedInFake();
     await _pumpApp(tester, fake);
@@ -557,7 +557,7 @@ void main() {
     final MayosBottomNavigation nav = tester
         .widget<MayosBottomNavigation>(find.byType(MayosBottomNavigation));
     expect(nav.items.map((MayosNavItem item) => item.label),
-        <String>['Home', 'Program', 'Nutrition', 'Progress']);
+        <String>['Home', 'Program', 'AI Assistant', 'Nutrition', 'Progress']);
   });
 
   testWidgets('progress has no overflow at 360x640 and text scale 2.0',

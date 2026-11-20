@@ -113,7 +113,7 @@ Future<void> _pumpChat(
       size: size,
       languageCode: languageCode);
   await tester
-      .tap(find.byTooltip(languageCode == 'ar' ? 'المساعد' : 'Assistant'));
+      .tap(find.byIcon(Icons.chat_bubble_outline).first);
   await _pumpUntilFound(tester, find.byKey(const Key('chat_composer')));
 }
 
