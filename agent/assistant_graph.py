@@ -120,6 +120,38 @@ OUTPUT_LIMIT_RESPONSE = "I reached the response limit. Ask me to continue if you
 # Target the first visible prefix at a word boundary near 40 characters.
 _FIRST_VISIBLE_PREFIX_TARGET = 40
 _FIRST_VISIBLE_PREFIX_START = 39
+# Each answer round holds its first characters until the round is known not
+# to be a tool-call round, so a pre-tool preamble («خليني أشوف…», "Let me
+# check…") is never shown or saved (#423 option b, #802).
+_TOOL_PREAMBLE_HOLD_CHARS = 160
+# Arabic-Indic and extended Arabic-Indic digits are shown as Western digits
+# in every reply (#802).
+_WESTERN_DIGITS = str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹", "01234567890123456789")
+
+# A message that only confirms, thanks or closes the topic (#802). Matched in
+# full after normalization, so anything with a request in it is not one.
+_ACK_ARABIC_PHRASES = (
+    "كله تمام", "تمام كده", "كده تمام", "تمام كدا", "كدا تمام", "تمام", "اوكي", "اوك", "ماشي",
+    "حلو", "جميل", "ممتاز", "شكرا جزيلا", "شكرا", "متشكر", "متشكرين", "مشكور", "تسلم", "تسلمي",
+    "الله يسلمك", "جاهز للتمرين", "جاهز لتمرين", "جاهز للتمرينه", "انا جاهز", "جاهز", "جاهزه",
+    "راجعته", "راجعتها", "راجعت", "خلاص", "فهمت", "تمام فهمت", "كويس", "عظيم", "يلا",
+)
+_ACK_ENGLISH_PHRASES = (
+    "thank you so much", "thank you", "thanks a lot", "thanks", "thx", "ok", "okay", "k",
+    "great", "cool", "nice", "perfect", "awesome", "got it", "all good", "sounds good",
+    "looks good", "i'm ready", "im ready", "ready to train", "ready", "i checked",
+    "checked", "all set", "will do", "noted",
+)
+RE_ARABIC_ACKNOWLEDGEMENT = re.compile(
+    r"(?:و?\s*(?:" + "|".join(sorted((re.escape(p) for p in _ACK_ARABIC_PHRASES), key=len, reverse=True)) + r")\s*)+"
+)
+RE_ENGLISH_ACKNOWLEDGEMENT = re.compile(
+    r"(?:(?:and\s+)?(?:" + "|".join(sorted((re.escape(p) for p in _ACK_ENGLISH_PHRASES), key=len, reverse=True))
+    + r")\s*)+",
+    re.IGNORECASE,
+)
+ARABIC_ACKNOWLEDGEMENT_RESPONSE = "تمام، بالتوفيق في تمرينك. لو احتجت أي حاجة أنا هنا."
+ENGLISH_ACKNOWLEDGEMENT_RESPONSE = "Great, enjoy your session. I'm here if you need anything."
 ARABIC_SWAP_CLARIFICATION_RESPONSE = "أنهي تمرين عايز تغيّره؟"
 ARABIC_ACTION_CLARIFICATION_RESPONSE = (
     "مش لاقي اليوم أو التمرين ده في برنامجك. ممكن تحدد يوم أو تمرين موجود؟"
@@ -329,13 +361,15 @@ _GENERIC_EXERCISE_TARGET_WORDS = frozenset(
     {"a", "an", "the", "one", "two", "three", "first", "second", "third"}
 )
 ARABIC_SWAP_VERBS = r"(?:أ?بدل|أ?غير|استبدل)"
+# A short confirmation may open a swap request: «تمام بس بدل …», «ماشي، غير …» (#802).
+ARABIC_SWAP_LEAD_IN = r"(?:(?:تمام|ماشي|اوكي|أوكي|طيب|خلاص)\s*[،,]?\s*(?:بس\s+|و\s*)?)?"
 RE_ARABIC_SWAP_REQUEST = re.compile(
-    r"(?:^|[.!?؟;؛]\s*)(?:من فضلك\s+|لو سمحت\s+)?"
+    r"(?:^|[.!?؟;؛]\s*)" + ARABIC_SWAP_LEAD_IN + r"(?:من فضلك\s+|لو سمحت\s+)?"
     r"(?:(?:عايز|عاوز|عايزة|عاوزة|محتاج|محتاجة)\s+)?"
     rf"{ARABIC_SWAP_VERBS}(?:\s+لي)?(?:\s|$)"
 )
 RE_ARABIC_NAMED_SWAP = re.compile(
-    r"^\s*(?:(?:من\s+فضلك|لو\s+سمحت)\s+)?"
+    r"^\s*" + ARABIC_SWAP_LEAD_IN + r"(?:(?:من\s+فضلك|لو\s+سمحت)\s+)?"
     r"(?:(?:عايز|عاوز|عايزة|عاوزة|محتاج|محتاجة)\s+)?"
     rf"{ARABIC_SWAP_VERBS}(?:\s+لي)?\s+(?P<source>.+?)\s+"
     r"(?:ب(?:ـ|ال)?|\b(?:for|with|instead\s+of|to)\b)\s*"
@@ -1152,6 +1186,31 @@ def _clinical_candidate_metadata(
     is_clinical, clinical_score = evaluate_clinical_semantic_guard(candidate, threshold=0.70)
     if is_clinical:
         return {"semantic_score": round(clinical_score, 3)}
+    return None
+
+
+def _acknowledgement_response(query: str, messages: Sequence[BaseMessage]) -> str | None:
+    """A short reply to a message that only confirms or closes the topic (#802).
+
+    Never when the previous assistant turn asked something: then "تمام" or
+    "ok" answers that question and the turn goes on as usual.
+    """
+    previous = next(
+        (message for message in reversed(messages[:-1]) if isinstance(message, AIMessage)),
+        None,
+    )
+    if previous is not None and str(previous.content).rstrip().endswith(("?", "؟")):
+        return None
+    text = re.sub(r"[!.,،؛;:؟?\s\U0001F300-\U0001FAFF\u2600-\u27BF]+", " ", query).strip()
+    if not text:
+        return None
+    if ARABIC_SCRIPT_RE.search(text):
+        normalized = normalize_arabic_text(text)
+        if RE_ARABIC_ACKNOWLEDGEMENT.fullmatch(normalized):
+            return ARABIC_ACKNOWLEDGEMENT_RESPONSE
+        return None
+    if RE_ENGLISH_ACKNOWLEDGEMENT.fullmatch(text):
+        return ENGLISH_ACKNOWLEDGEMENT_RESPONSE
     return None
 
 
@@ -3354,6 +3413,10 @@ def router_node(state: AssistantState, config: dict[str, Any] | None = None) -> 
         and len(RE_CLAUSE_SPLIT.split(query)) == 1
     ):
         return {"intent": "exercise_history", "intent_metadata": {"raw_query": history_followup}, "active_intents": []}
+
+    acknowledgement = _acknowledgement_response(query, messages)
+    if acknowledgement:
+        return {"intent": "telemetry_intercept", "intent_metadata": {"response_content": acknowledgement}, "active_intents": []}
 
     name_response = _name_response(state, _graph_context(config)[0])
     if name_response:
@@ -5869,7 +5932,7 @@ class _PlayerStreamOutput:
             if not cleaned:
                 continue
             # Partial lead and unsafe matches remain inside the scrubber until safe.
-            self.pending_output += cleaned
+            self.pending_output += cleaned.translate(_WESTERN_DIGITS)
             release_end = self._visible_prefix_end()
             if release_end:
                 visible_text = self.pending_output[:release_end]
@@ -5879,6 +5942,12 @@ class _PlayerStreamOutput:
                 yield visible_text
 
     def _visible_prefix_end(self) -> int:
+        if (
+            not self.first_visible_released
+            and len(self.pending_output) < _TOOL_PREAMBLE_HOLD_CHARS
+        ):
+            # Not yet known to be a text-only round: hold it (#423 option b).
+            return 0
         sentence_end = _last_complete_sentence_end(self.pending_output)
         if sentence_end:
             return sentence_end
@@ -5892,7 +5961,7 @@ class _PlayerStreamOutput:
     def finish_answer(self, limited: bool) -> Generator[str, None, None]:
         cleaned = self.scrubber.finish()
         if cleaned:
-            self.pending_output += cleaned
+            self.pending_output += cleaned.translate(_WESTERN_DIGITS)
         if limited:
             # An early clause cannot be withdrawn after it reaches the Player.
             # Keep it, discard any unfinished continuation, and append the limit notice.

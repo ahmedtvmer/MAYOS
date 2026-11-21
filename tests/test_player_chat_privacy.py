@@ -944,7 +944,7 @@ def test_tool_bound_chat_fetches_profile_and_program_only_after_parallel_calls(
                     {"name": "get_active_program", "args": {}, "id": "program-call"},
                 ]
             ),
-            "Your goal and training age are recorded. Leg Day trains quads.",
+            "Your goal and training age are recorded. Leg Day trains quads. Keep the squat pattern first while you are fresh, then finish with the accessory work at a steady pace.",
         ],
         chunk_size=14,
     )
@@ -959,7 +959,7 @@ def test_tool_bound_chat_fetches_profile_and_program_only_after_parallel_calls(
         body = response.read().decode("utf-8")
         assert response.status_code == 200
 
-    assert _done_content(body) == "Your goal and training age are recorded. Leg Day trains quads."
+    assert _done_content(body) == "Your goal and training age are recorded. Leg Day trains quads. Keep the squat pattern first while you are fresh, then finish with the accessory work at a steady pace."
     assert [name for name in model.calls[0]["tools"]] == [
         "get_player_profile",
         "get_active_program",
@@ -1613,7 +1613,8 @@ def test_unyielded_text_before_tool_call_is_discarded(api, monkeypatch):
     assert "I can't see those session figures yet." in token_text
 
 
-def test_yielded_text_before_tool_call_is_not_retracted(api, monkeypatch):
+def test_text_before_a_tool_call_is_never_shown(api, monkeypatch):
+    # #423 option (b), #802: a pre-tool preamble is withheld, not shown.
     _force_free_form_coaching_intent(monkeypatch)
     client, _db = api
     headers = _authed(_register(client, "tool-round-yielded-text")["access_token"])
@@ -1640,7 +1641,7 @@ def test_yielded_text_before_tool_call_is_not_retracted(api, monkeypatch):
         for line in body.splitlines()
         if line.startswith("data: ") and '"token"' in line
     )
-    assert "Your profile is ready." in token_text
+    assert "Your profile is ready." not in token_text
     assert "Your saved profile is ready." in token_text
 
 
@@ -1678,12 +1679,12 @@ def test_http_stream_emits_before_model_requests_final_chunk(api, monkeypatch):
             return self
 
         def stream(self, _messages):
-            yield AIMessageChunk(content="First sentence. ")
+            yield AIMessageChunk(content='First sentence keeps going long enough to pass the opening hold that withholds a possible tool-call preamble, so the Player sees it while the model is still writing. ')
             self.second_chunk_requested_after_first_token = first_token_sent.wait(timeout=5.0)
             yield AIMessageChunk(content="Second sentence.")
 
         async def astream(self, _messages):
-            yield AIMessageChunk(content="First sentence. ")
+            yield AIMessageChunk(content='First sentence keeps going long enough to pass the opening hold that withholds a possible tool-call preamble, so the Player sees it while the model is still writing. ')
             # Wait for the ASGI send, not just the model-queue acknowledgement (#630).
             # The event is a threading.Event; keep its wait off the model's event loop.
             self.second_chunk_requested_after_first_token = await asyncio.to_thread(
@@ -1707,7 +1708,7 @@ def test_http_stream_emits_before_model_requests_final_chunk(api, monkeypatch):
         if line.startswith("data: ") and '"token"' in line
     )
     assert model.second_chunk_requested_after_first_token
-    assert token_text == "First sentence. Second sentence."
+    assert token_text == 'First sentence keeps going long enough to pass the opening hold that withholds a possible tool-call preamble, so the Player sees it while the model is still writing. Second sentence.'
 
 
 def test_partial_profile_update_does_not_expose_storage_defaults(api, monkeypatch):
@@ -3605,14 +3606,14 @@ def test_clinical_chat_records_injury_and_clarifies_only_area_replies(api, monke
     assert client.get("/profile/injuries", headers=headers).json()[0]["clarification_pending"] is True
 
     with client.stream(
-        "POST", "/chat/messages", headers=headers, json={"content": "Thanks."}
+        "POST", "/chat/messages", headers=headers, json={"content": "How long should I rest between sets?"}
     ) as response:
         body = response.read().decode("utf-8")
         assert response.status_code == 200
     assert _done_content(body) == "CHAT MODEL RAN"
 
     with client.stream(
-        "POST", "/chat/messages", headers=headers, json={"content": "Thanks."}
+        "POST", "/chat/messages", headers=headers, json={"content": "How long should I rest between sets?"}
     ) as response:
         body = response.read().decode("utf-8")
         assert response.status_code == 200
@@ -3621,7 +3622,7 @@ def test_clinical_chat_records_injury_and_clarifies_only_area_replies(api, monke
     )
 
     with client.stream(
-        "POST", "/chat/messages", headers=headers, json={"content": "Thanks."}
+        "POST", "/chat/messages", headers=headers, json={"content": "How long should I rest between sets?"}
     ) as response:
         body = response.read().decode("utf-8")
         assert response.status_code == 200
@@ -3693,7 +3694,7 @@ def test_pending_injury_clarification_expires_after_one_unrelated_turn(api, monk
     assert _done_content(body) == assistant_graph.CLINICAL_SAFEGUARD_RESPONSE
 
     with client.stream(
-        "POST", "/chat/messages", headers=headers, json={"content": "Thanks."}
+        "POST", "/chat/messages", headers=headers, json={"content": "How long should I rest between sets?"}
     ) as response:
         body = response.read().decode("utf-8")
         assert response.status_code == 200
@@ -3709,7 +3710,7 @@ def test_pending_injury_clarification_expires_after_one_unrelated_turn(api, monk
     assert client.get("/profile/injuries", headers=headers).json()[0]["clarification_pending"] is False
 
     with client.stream(
-        "POST", "/chat/messages", headers=headers, json={"content": "Thanks."}
+        "POST", "/chat/messages", headers=headers, json={"content": "How long should I rest between sets?"}
     ) as response:
         body = response.read().decode("utf-8")
         assert response.status_code == 200
@@ -3857,7 +3858,7 @@ def test_pending_injury_ordinary_area_chat_does_not_attach_area(api, monkeypatch
     assert record["clarification_pending"] is True
 
     with client.stream(
-        "POST", "/chat/messages", headers=headers, json={"content": "Thanks."}
+        "POST", "/chat/messages", headers=headers, json={"content": "How long should I rest between sets?"}
     ) as response:
         body = response.read().decode("utf-8")
         assert response.status_code == 200
@@ -3867,7 +3868,7 @@ def test_pending_injury_ordinary_area_chat_does_not_attach_area(api, monkeypatch
     assert record["clarification_pending"] is False
 
     with client.stream(
-        "POST", "/chat/messages", headers=headers, json={"content": "Thanks."}
+        "POST", "/chat/messages", headers=headers, json={"content": "How long should I rest between sets?"}
     ) as response:
         body = response.read().decode("utf-8")
         assert response.status_code == 200
@@ -4058,7 +4059,7 @@ def test_physician_followup_appends_without_swallowing_chat_and_reasks_for_area_
     )
 
     with client.stream(
-        "POST", "/chat/messages", headers=headers, json={"content": "Thanks."}
+        "POST", "/chat/messages", headers=headers, json={"content": "How long should I rest between sets?"}
     ) as response:
         body = response.read().decode("utf-8")
         assert response.status_code == 200
@@ -4141,7 +4142,7 @@ def test_physician_followup_only_skips_a_reply_ending_with_a_question_mark(
 
     with client.stream(
         "POST", "/chat/messages", headers=second_headers,
-        json={"content": "Thanks."},
+        json={"content": "How long should I rest between sets?"},
     ) as response:
         body = response.read().decode("utf-8")
         assert response.status_code == 200

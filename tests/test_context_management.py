@@ -417,7 +417,7 @@ def test_magicmock_ledger_cannot_hijack_injury_status_chat(graph):
 def test_magicmock_pending_clarification_does_not_hijack_unrelated_chat(graph):
     ledger = MagicMock()
     result = graph.router_node(
-        state("Thanks."),
+        state("How long should I rest between sets?"),
         {"configurable": {"ledger": ledger, "store": MagicMock()}},
     )
     assert result["intent"] == "coaching_qa"

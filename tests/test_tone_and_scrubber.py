@@ -98,7 +98,14 @@ def test_finish_limit_keeps_only_complete_sentences_before_notice(graph):
     assert request["response_content"] == request["messages"][-1].content == expected
 
 
-def test_complete_sentence_is_visible_before_generation_finishes(graph):
+@pytest.fixture
+def no_preamble_hold(graph, monkeypatch):
+    """These tests cover first-release mechanics on their own; the opening
+    hold that withholds a pre-tool preamble (#802) is tested separately."""
+    monkeypatch.setattr(graph, "_TOOL_PREAMBLE_HOLD_CHARS", 0)
+
+
+def test_complete_sentence_is_visible_before_generation_finishes(graph, no_preamble_hold):
     raw = "Use controlled reps. Keep the next repetition smooth."
     first_sentence = "Use controlled reps. "
     graph.llm.reset([raw])
@@ -125,7 +132,7 @@ def test_complete_sentence_is_visible_before_generation_finishes(graph):
         ),
     ],
 )
-def test_first_clean_clause_streams_before_sentence_ends_in_english_and_arabic(graph, raw, first):
+def test_first_clean_clause_streams_before_sentence_ends_in_english_and_arabic(graph, no_preamble_hold, raw, first):
     graph.llm.reset([raw])
     graph.llm.chunk_size = 1
     request = state("How many squat reps?")
@@ -148,7 +155,7 @@ def test_first_clean_clause_streams_before_sentence_ends_in_english_and_arabic(g
         ("Use 2,5 kg, then keep the pace steady for each working set.", "Use 2,5 kg"),
     ],
 )
-def test_numeric_separators_do_not_trigger_first_release(graph, raw, first):
+def test_numeric_separators_do_not_trigger_first_release(graph, no_preamble_hold, raw, first):
     graph.llm.reset([raw])
     graph.llm.chunk_size = 1
     request = state("How many squat reps?")
@@ -178,7 +185,7 @@ def test_numeric_separators_do_not_trigger_first_release(graph, raw, first):
         ),
     ],
 )
-def test_clause_punctuation_without_following_space_does_not_trigger_first_release(graph, raw, fragment):
+def test_clause_punctuation_without_following_space_does_not_trigger_first_release(graph, no_preamble_hold, raw, fragment):
     graph.llm.reset([raw])
     graph.llm.chunk_size = 1
     request = state("How many squat reps?")
@@ -191,7 +198,7 @@ def test_clause_punctuation_without_following_space_does_not_trigger_first_relea
     assert output == request["response_content"] == request["messages"][-1].content
 
 
-def test_first_clean_prefix_releases_at_a_word_boundary_near_40_characters(graph):
+def test_first_clean_prefix_releases_at_a_word_boundary_near_40_characters(graph, no_preamble_hold):
     raw = "Build strength with steady repetitions and smooth movement across every workout."
     graph.llm.reset([raw])
     graph.llm.chunk_size = 1
@@ -239,7 +246,7 @@ def test_early_stream_never_shows_banned_leads_trails_or_unsafe_medical_text(gra
         "Use controlled reps , then keep a steady tempo",
     ],
 )
-def test_limited_stream_keeps_released_clause_and_discards_unfinished_continuation(graph, content):
+def test_limited_stream_keeps_released_clause_and_discards_unfinished_continuation(graph, no_preamble_hold, content):
     raw = AIMessage(
         content=content,
         response_metadata={"finish_reason": "length"},
