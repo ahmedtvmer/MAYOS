@@ -64,6 +64,17 @@ List<String> validateFeatureEntries(
 
 const List<FeatureEntry> featureList = <FeatureEntry>[
   FeatureEntry(
+    id: 'xp_ranks',
+    titleEn: 'XP, ranks and your weekly streak',
+    sentenceEn: 'Earn XP for training the way your plan says, climb from Rookie to Legend, and keep a weekly streak with one workout a week.',
+    titleAr: 'XP والرتب وسلسلتك الأسبوعية',
+    sentenceAr: 'اكسب XP عندما تتدرب كما تقول خطتك، وارتقِ من مبتدئ إلى أسطورة، وحافظ على سلسلتك الأسبوعية بتمرين واحد في الأسبوع.',
+    target: 'home',
+    location: TourShellTabLocation(tabIndex: 0),
+    release: 8,
+    audience: 'lifter',
+  ),
+  FeatureEntry(
     id: 'simpler_home',
     titleEn: 'A simpler Home',
     sentenceEn: "Home now opens on today's session, with your last workout to share and short Nutrition, Program, weekly sets and PR summaries below.",

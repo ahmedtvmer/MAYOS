@@ -46,6 +46,8 @@ void main() {
   final DateTime currentWeek = DateTime(2026, 9, 30, 12);
 
   test('projects the in-progress weekly streak and Checkpoint online', () {
+    // Since #743 a week counts with one workout: this week already had one,
+    // so this workout keeps the streak where it is.
     expect(
       _englishLines(projectTrainingStatusSummary(
         status: _status(),
@@ -53,7 +55,7 @@ void main() {
         now: currentWeek,
       )),
       <String>[
-        'Weekly streak: 3 weeks',
+        'Weekly streak: 2 weeks',
         'This week: 2 of 2 done',
         '1 workout to your 10th',
       ],
@@ -87,18 +89,29 @@ void main() {
         now: currentWeek,
       ));
       expect(lines, <String>[
-        'Weekly streak: 3 weeks',
+        'Weekly streak: 2 weeks',
         'This week: 3 of 3 done',
         'Your 10th workout!',
       ]);
     },
   );
 
+  test("the week's first workout extends the streak", () {
+    expect(
+      _englishLines(projectTrainingStatusSummary(
+        status: _status(weeklyStreak: 2, weekDone: 0),
+        drafts: const <WorkoutDraft>[],
+        now: currentWeek,
+      )).first,
+      'Weekly streak: 3 weeks',
+    );
+  });
+
   test('formats singular streak and checkpoint ordinals', () {
     expect(
       _englishLines(projectTrainingStatusSummary(
         status: _status(
-          weeklyStreak: 1,
+          weeklyStreak: 0,
           weekDone: 0,
           weekTarget: 3,
           mayosWorkouts: 24,

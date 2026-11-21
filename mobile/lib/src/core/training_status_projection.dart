@@ -111,13 +111,11 @@ int _pendingThisWeek(List<WorkoutDraft> drafts, String weekStart) =>
       return performed != null && _weekStartIso(performed) == weekStart;
     }).length;
 
+/// Since #743 a week keeps the Weekly streak with one workout: this workout
+/// extends it only when it is the week's first (counting unsynced drafts).
 int _projectedStreak(TrainingStatus status, int projectedDone) {
-  if (status.weekTarget == 0 ||
-      status.weekDone >= status.weekTarget ||
-      projectedDone < status.weekTarget) {
-    return status.weeklyStreak;
-  }
-  return status.weeklyStreak + 1;
+  final int before = projectedDone - 1;
+  return before == 0 ? status.weeklyStreak + 1 : status.weeklyStreak;
 }
 
 TrainingStatusSummaryLine _checkpointLine(int mayosWorkouts) {

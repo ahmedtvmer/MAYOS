@@ -356,6 +356,26 @@ final Provider<WorkoutCacheStore> workoutCacheStoreProvider =
       : InMemoryWorkoutCacheStore(),
 );
 
+/// A rank a workout commit reached, waiting for its celebration on Home
+/// (#796). Set from the commit response's `xp.rank_up`, cleared when shown.
+final StateProvider<PlayerRank?> pendingRankUpProvider =
+    StateProvider<PlayerRank?>((ref) => null);
+
+/// Accepts one committed workout's response: the training status cache, and a
+/// rank-up for the celebration (#796). Both save paths use it: the web direct
+/// commit and a draft synced later.
+Future<void> acceptWorkoutCommit(
+  Ref ref,
+  String accountId,
+  Map<String, dynamic> response,
+) async {
+  final PlayerRank? rankUp = WorkoutXp.tryParse(response['xp'])?.rankUp;
+  if (rankUp != null) {
+    ref.read(pendingRankUpProvider.notifier).state = rankUp;
+  }
+  await ref.read(trainingStatusProvider.notifier).acceptCommit(accountId, response);
+}
+
 /// Last-known server training status, loaded at app start and persisted with
 /// the Android workout cache for the Finish summary (#220).
 final StateNotifierProvider<TrainingStatusController, TrainingStatus?>
@@ -584,9 +604,8 @@ final ChangeNotifierProvider<DraftSyncService> draftSyncServiceProvider =
     api: ref.watch(apiClientProvider),
     store: ref.watch(draftStoreProvider),
     analytics: ref.watch(analyticsClientProvider),
-    onCommit: (String accountId, Map<String, dynamic> response) => ref
-        .read(trainingStatusProvider.notifier)
-        .acceptCommit(accountId, response),
+    onCommit: (String accountId, Map<String, dynamic> response) =>
+        acceptWorkoutCommit(ref, accountId, response),
   );
   ref.listen<AuthState>(authControllerProvider, (
     AuthState? previous,
@@ -732,8 +751,7 @@ final Provider<WebWorkoutCommitter> webWorkoutCommitterProvider =
   (ref) => WebWorkoutCommitter(
     api: ref.watch(apiClientProvider),
     controller: ref.watch(activeWorkoutControllerProvider.notifier),
-    onCommit: (String accountId, Map<String, dynamic> response) => ref
-        .read(trainingStatusProvider.notifier)
-        .acceptCommit(accountId, response),
+    onCommit: (String accountId, Map<String, dynamic> response) =>
+        acceptWorkoutCommit(ref, accountId, response),
   ),
 );

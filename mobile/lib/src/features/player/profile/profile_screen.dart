@@ -27,6 +27,7 @@ import '../../../providers.dart';
 import '../../../router.dart';
 import '../tour/tour_targets.dart';
 import '../tour/tour_controller.dart';
+import '../xp/xp_widgets.dart';
 import '../onboarding/onboarding_widgets.dart'
     show isFieldAnswerValid, optionLabel;
 
@@ -1065,6 +1066,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
+        // Rank, XP and both streaks at the top of Profile (#796).
+        if (ref.watch(trainingStatusProvider) case final TrainingStatus status
+            when status.rank != null) ...<Widget>[
+          RankProfileCard(
+            status: status,
+            onTap: () => showRankSheet(context, status),
+          ),
+          const SizedBox(height: MayosSpacing.md),
+        ],
         TourTarget(
           id: 'profile',
           child: MayosSectionHeader(

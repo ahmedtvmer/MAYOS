@@ -31,6 +31,7 @@ import 'home_planning.dart';
 import '../../shared/install_prompt.dart';
 import '../../settings/push_settings_card.dart';
 import '../tour/tour_targets.dart';
+import '../xp/xp_widgets.dart';
 
 /// The player Home tab: current program, the next ordered session, real
 /// seven-day volume and recent personal records, with honest empty states.
@@ -432,6 +433,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
                 onOpenNutrition: _openNutrition,
                 onOpenProgress: _openProgress,
                 now: ref.watch(clockProvider)(),
+                trainingStatus: ref.watch(trainingStatusProvider),
                 onLogWorkout: _logWorkout,
                 onShareLatest: _shareLatest,
                 trainedDays: <TrainedDay>[
@@ -469,6 +471,7 @@ class _HomeBody extends StatelessWidget {
     required this.trainedDays,
     required this.pendingDrafts,
     required this.now,
+    this.trainingStatus,
   });
 
   final MayosCopy copy;
@@ -489,6 +492,10 @@ class _HomeBody extends StatelessWidget {
   final List<TrainedDay> trainedDays;
   final int pendingDrafts;
   final DateTime now;
+
+  /// Rank, XP and Weekly streak for the strip above the session (#796);
+  /// null until the first status read, and for a status cached before XP.
+  final TrainingStatus? trainingStatus;
 
   /// Home answers "what do I do today" (#790): today's session first, then
   /// short summaries that open their own tabs. A day with a weekly schedule
@@ -553,7 +560,15 @@ class _HomeBody extends StatelessWidget {
           // Reminders: shown only while they are available, off and not
           // dismissed (the card decides).
           const PushSettingsCard(compact: true),
-          // #743 places the rank, XP and streak strip here, above the session.
+          // Rank, XP and Weekly streak, directly above the session (#796).
+          if (trainingStatus case final TrainingStatus status
+              when status.rank != null) ...<Widget>[
+            XpStatusStrip(
+              status: status,
+              onTap: () => showRankSheet(context, status),
+            ),
+            const SizedBox(height: MayosSpacing.md),
+          ],
           TourTarget(id: 'home', child: sessionCard),
           if (latest != null && latestIsToday != null) ...<Widget>[
             const SizedBox(height: MayosSpacing.sm),
@@ -954,7 +969,7 @@ class _HomeTile extends StatelessWidget {
         onTap: onTap,
         borderRadius: MayosRadii.mediumRadius,
         child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 44),
+          constraints: const BoxConstraints(minHeight: 48),
           child: Padding(
             padding: const EdgeInsets.all(MayosSpacing.md),
             child: child,
@@ -1025,7 +1040,8 @@ class _NextSessionSection extends StatelessWidget {
               onTap: onOpenProgram,
               borderRadius: MayosRadii.smallRadius,
               child: ConstrainedBox(
-                constraints: const BoxConstraints(minHeight: 44),
+                // Android's tap-target guideline is 48 dp (#790 follow-up).
+                constraints: const BoxConstraints(minHeight: 48),
                 child: Align(
                   alignment: AlignmentDirectional.centerStart,
                   child: Text(

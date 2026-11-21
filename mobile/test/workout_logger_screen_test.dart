@@ -3095,7 +3095,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
     await _finishAndOpenSummary(tester);
 
-    expect(find.text('Weekly streak: 3 weeks'), findsOneWidget);
+    expect(find.text('Weekly streak: 2 weeks'), findsOneWidget);
     expect(find.text('This week: 2 of 2 done'), findsOneWidget);
     expect(find.text('1 workout to your 10th'), findsOneWidget);
 
@@ -3115,7 +3115,7 @@ void main() {
       },
     });
     await tester.pump();
-    expect(find.text('Weekly streak: 3 weeks'), findsOneWidget);
+    expect(find.text('Weekly streak: 2 weeks'), findsOneWidget);
     expect(find.text('This week: 2 of 2 done'), findsOneWidget);
     expect(find.text('1 workout to your 10th'), findsOneWidget);
   });
@@ -3157,7 +3157,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
     await _finishAndOpenSummary(tester);
 
-    expect(find.text('Weekly streak: 3 weeks'), findsOneWidget);
+    expect(find.text('Weekly streak: 2 weeks'), findsOneWidget);
     expect(find.text('This week: 3 of 3 done'), findsOneWidget);
     expect(find.text('Your 10th workout!'), findsOneWidget);
     expect(find.byKey(const ValueKey<String>('logger.summary.checkpoint')),
