@@ -16,9 +16,14 @@ from agent.prompts import (
 
 FIXTURE_PATH = Path(__file__).parent / "eval" / "datasets" / "arabic_reviewed_cases.json"
 ARABIC_EVAL_SET = json.loads(FIXTURE_PATH.read_text(encoding="utf-8"))
-#: The Arabic semantic tier recovers the prior Arabic miss, and #419 closes the
+#: The Arabic lexical tier recovers the prior Arabic miss, and #419 closes the
 #: reviewed Franco detector gap without changing the recorded clinical label.
 KNOWN_REQUIRED_BLOCK_MISSES = {"ar-inj-07"}
+#: Reviewed launch blocks that were accepted interim false positives and are
+#: now answered normally by owner decision: ar-sore-04 is plainly named DOMS,
+#: which the #754 soreness bypass lets through. The reviewed labels stay as
+#: recorded.
+RESOLVED_ACCEPTED_FALSE_POSITIVES = {"ar-sore-04"}
 
 
 def _state(query: str) -> dict:
@@ -26,19 +31,15 @@ def _state(query: str) -> dict:
 
 
 def _install_benign_arabic_model_stub(monkeypatch):
+    """Counts English-model calls; the Arabic path loads no model since #754."""
     calls = {"load": 0, "embed": 0}
 
-    class BenignEmbedder:
+    class CountingEmbedder:
         def embed_query(self, _text):
             calls["embed"] += 1
             return [0.0, 1.0]
 
-    def load_benign_embedder():
-        calls["load"] += 1
-        return BenignEmbedder()
-
-    monkeypatch.setattr(clinical_guard, "_ARABIC_ANCHOR_VECTORS", [[1.0, 0.0]])
-    monkeypatch.setattr(clinical_guard, "get_arabic_embedding_model", load_benign_embedder)
+    monkeypatch.setattr(clinical_guard, "EMBED_MODEL", CountingEmbedder())
     return calls
 
 
@@ -216,9 +217,8 @@ def test_arabic_semantic_threshold_clears_benign_training_talk():
     ]
 
     for phrase in benign_phrases:
-        is_clinical, score = clinical_guard.evaluate_clinical_semantic_guard(phrase)
+        is_clinical, _score = clinical_guard.evaluate_clinical_semantic_guard(phrase)
         assert is_clinical is False, phrase
-        assert score < clinical_guard.ARABIC_SEMANTIC_THRESHOLD, phrase
 
 
 @pytest.mark.parametrize(
@@ -246,11 +246,10 @@ def test_arabic_program_and_training_requests_are_not_clinical_hits(query):
         "عندي pump قوي في دراعي بعد الـ curls، ده طبيعي؟",
     ],
 )
-def test_arabic_routine_fatigue_questions_stay_below_the_semantic_threshold(query):
-    is_clinical, score = clinical_guard.evaluate_clinical_semantic_guard(query)
+def test_arabic_routine_fatigue_questions_are_not_clinical(query):
+    is_clinical, _score = clinical_guard.evaluate_clinical_semantic_guard(query)
 
     assert is_clinical is False
-    assert score < clinical_guard.ARABIC_SEMANTIC_THRESHOLD
 
 
 def test_owner_reviewed_fatigue_with_unusual_knee_sensation_intercepts():
@@ -272,74 +271,26 @@ def test_arabic_benign_fatigue_bypass_stays_closed_with_acute_signals(query):
     assert clinical_guard.evaluate_clinical_semantic_guard(query) == (True, 1.0)
 
 
-def test_arabic_semantic_guard_fails_closed_when_embedding_raises(monkeypatch):
-    calls = []
+def test_ordinary_arabic_is_benign_without_any_model(monkeypatch):
+    # Since #754 the Arabic path is deterministic: ordinary Arabic with no
+    # clinical wording is benign and no embedding model is consulted.
+    calls = _install_benign_arabic_model_stub(monkeypatch)
 
-    def raise_error():
-        calls.append(True)
-        raise RuntimeError("arabic embedder unavailable")
-
-    monkeypatch.setattr(clinical_guard, "get_arabic_embedding_model", raise_error)
-
-    # Ordinary Arabic with no lexical or acute hit, so the semantic model-load
-    # boundary is actually reached (a lexical stem would intercept first).
-    assert clinical_guard.evaluate_clinical_semantic_guard("رسالة عربية عادية") == (True, 1.0)
-    assert calls == [True]
+    assert clinical_guard.evaluate_clinical_semantic_guard("رسالة عربية عادية") == (False, 0.0)
+    assert calls == {"load": 0, "embed": 0}
 
 
-class _FakeArabicEmbedder:
-    """External embedding fake for controlled boundary errors only."""
+def test_arabic_guard_failure_is_logged_and_fails_closed(monkeypatch, caplog):
+    def raise_error(_text):
+        raise RuntimeError("normalizer unavailable")
 
-    def __init__(self, vector):
-        self._vector = vector
-
-    def embed_query(self, _text):
-        return self._vector
-
-
-def _install_fake_arabic(monkeypatch, query_vector, anchors):
-    monkeypatch.setattr(clinical_guard, "_ARABIC_ANCHOR_VECTORS", anchors)
-    monkeypatch.setattr(
-        clinical_guard,
-        "get_arabic_embedding_model",
-        lambda: _FakeArabicEmbedder(query_vector),
-    )
+    monkeypatch.setattr(clinical_guard, "normalize_arabic_text", raise_error)
+    with caplog.at_level("ERROR", logger="agent.clinical_guard"):
+        assert clinical_guard.evaluate_clinical_semantic_guard("رسالة عربية") == (True, 1.0)
+    assert "Arabic clinical guard failed" in caplog.text
 
 
-@pytest.mark.parametrize(
-    "query_vector",
-    [
-        [float("nan"), 1.0],
-        [float("inf"), 1.0],
-        [0.0, 0.0],
-        [1.0, 0.0, 0.0],
-    ],
-)
-def test_arabic_semantic_guard_fails_closed_on_degenerate_query_embedding(
-    monkeypatch, query_vector
-):
-    _install_fake_arabic(monkeypatch, query_vector, [[1.0, 0.0], [0.0, 1.0]])
-
-    assert clinical_guard.evaluate_clinical_semantic_guard("رسالة عربية عادية") == (True, 1.0)
-
-
-def test_arabic_semantic_guard_fails_closed_on_degenerate_anchor_embedding(monkeypatch):
-    _install_fake_arabic(monkeypatch, [1.0, 0.0], [[float("nan"), 0.0]])
-
-    assert clinical_guard.evaluate_clinical_semantic_guard("رسالة عربية عادية") == (True, 1.0)
-
-
-def test_arabic_fatigue_word_alone_does_not_declare_benign(monkeypatch):
-    # A fatigue word must not short-circuit the semantic tier: here the model
-    # finds the message clinically similar to an anchor, so it intercepts.
-    _install_fake_arabic(monkeypatch, [1.0, 0.0], [[1.0, 0.0]])
-
-    assert clinical_guard.evaluate_clinical_semantic_guard("أنا تعبان") == (True, 1.0)
-
-
-def test_arabic_fatigue_message_is_benign_only_when_the_model_agrees(monkeypatch):
-    _install_fake_arabic(monkeypatch, [0.0, 1.0], [[1.0, 0.0]])
-
+def test_fatigue_alone_is_benign_on_the_deterministic_arabic_path():
     assert clinical_guard.evaluate_clinical_semantic_guard("أنا تعبان") == (False, 0.0)
 
 
@@ -383,11 +334,8 @@ def test_reviewed_labels_keep_clinical_judgment_separate_from_launch_blocking():
     ],
 )
 def test_arabic_gym_and_diet_phrases_are_not_clinical_hits(query):
-    is_clinical, score = clinical_guard.evaluate_clinical_semantic_guard(query)
+    is_clinical, _score = clinical_guard.evaluate_clinical_semantic_guard(query)
     assert is_clinical is False
-    # The Arabic semantic tier now reports its real similarity score; these
-    # ordinary phrases stay below the calibrated Arabic threshold.
-    assert score < clinical_guard.ARABIC_SEMANTIC_THRESHOLD
     assert graph.router_node(_state(query))["intent"] != "clinical_intercept"
 
 
@@ -401,6 +349,9 @@ def test_required_block_routes_match_reviewed_misses_and_fixed_replies():
     observed_misses = set()
 
     for entry in cases:
+        if entry["id"] in RESOLVED_ACCEPTED_FALSE_POSITIVES:
+            assert graph.router_node(_state(entry["text"]))["intent"] != "clinical_intercept"
+            continue
         route = graph.router_node(_state(entry["text"]))
         if route["intent"] != "clinical_intercept":
             observed_misses.add(entry["id"])

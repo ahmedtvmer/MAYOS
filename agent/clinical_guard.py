@@ -1,14 +1,16 @@
 # agent/clinical_guard.py
 import heapq
+import logging
 import re
-import threading
 
 import numpy as np
-from core.embeddings import get_arabic_embedding_model, get_embedding_model
+from core.embeddings import get_embedding_model
 from core.injuries import INJURY_BODY_AREA_LABELS
 from core.arabic import normalize_arabic_text
 
 # ONNX Runtime is CPU-only; MODEL_DEVICE remains accepted as a config no-op.
+logger = logging.getLogger(__name__)
+
 EMBED_MODEL = get_embedding_model()
 
 ARABIC_SCRIPT_RE = re.compile(r"[\u0600-\u06ff]")
@@ -72,10 +74,11 @@ def _arabic_stem_pattern(stems) -> re.Pattern[str]:
     }
     latin_stems = {stem for stem in stems if not ARABIC_SCRIPT_RE.search(stem)}
     suffixes = "|".join(_ARABIC_PRONOUN_SUFFIXES)
-    return re.compile("|".join((
+    # Join only non-empty alternatives: an empty one would match every text.
+    return re.compile("|".join(part for part in (
         _bounded_clinical_stems(arabic_stems, _ARABIC_LETTERS, suffixes),
         _bounded_clinical_stems(latin_stems, "A-Za-z", suffixes),
-    )))
+    ) if part))
 
 
 _ARABIC_STEMS = sorted(
@@ -83,6 +86,10 @@ _ARABIC_STEMS = sorted(
     key=lambda stem: (-len(stem), stem),
 )
 _ARABIC_STEM_PATTERN = _arabic_stem_pattern(_ARABIC_STEMS)
+_ARABIC_CATEGORY_PATTERNS = {
+    category: _arabic_stem_pattern(stems)
+    for category, stems in ARABIC_CLINICAL_STEMS.items()
+}
 
 _ARABIC_BODY_PART_WORDS = sorted(
     {
@@ -103,6 +110,99 @@ _ARABIC_BODY_PART_WORDS = sorted(
 _ARABIC_BODY_PART_PATTERN = "|".join(
     re.escape(word) for word in _ARABIC_BODY_PART_WORDS
 )
+# A body part near "isn't right", "something's wrong", "can't move" or "is
+# bothering me": the keyword-free way Players report an injury (#754). These
+# are normalized forms (hamza and taa marbuta folded).
+_ARABIC_ABNORMAL_STATE_PATTERN = re.compile(
+    r"(?:مش|مو|غير|ليس)\s+(?:مظبوط|مظبوطه|طبيعي|طبيعيه|مريح|مريحه|سليم|سليمه)"
+    r"|(?<![\u0621-\u064a])(?:فيه|في|فيها|عندي)?\s*حاجه\s+(?:غلط|مش\s+مظبوطه?|مش\s+طبيعيه?)"
+    r"|(?:مش|مو|ما)\s+(?:قادر|قادره|عارف|عارفه)\s+(?:احرك|اتحرك|افرد|اثني|ارفع|انزل|اقف|امشي|ادور|اقعد)"
+    r"|(?:لا|لم)\s+(?:استطيع|اقدر|اقدرش)\s+(?:تحريك|ثني|فرد|رفع|الحركه|التحرك|المشي)"
+    r"|(?:بيضايقني|بتضايقني|مضايقني|مضايقاني|يزعجني|تزعجني|بيتعبني\s+من\s+ساعه)"
+)
+_ARABIC_BODY_TOKEN_PATTERN = re.compile(
+    rf"{_ARABIC_CLITIC_PREFIX}(?:{_ARABIC_BODY_PART_PATTERN})"
+    rf"(?:{'|'.join(_ARABIC_PRONOUN_SUFFIXES)})?"
+)
+_ARABIC_BODY_WINDOW_TOKENS = 5
+
+
+_ARABIC_OWN_BODY_SUFFIXES = ("ي", "ه", "ها", "نا", "ك", "ني")
+_ARABIC_BODY_PREPOSITIONS = {"في", "ف", "فى", "ب"}
+
+
+def _is_own_body_token(tokens: list[str], index: int) -> bool:
+    """A body part the Player names as their own: "my knee", or "in the knee".
+
+    A bare body noun such as «يوم الرجل» (leg day) is a training label, not
+    a report about the Player's body (#754).
+    """
+    token = tokens[index].strip("،,.؟?!")
+    match = _ARABIC_BODY_TOKEN_PATTERN.fullmatch(token)
+    if match is None:
+        return False
+    if token.startswith(("بال", "فال", "وبال", "وفال")):
+        return True
+    if index > 0 and tokens[index - 1].strip("،,.؟?!") in _ARABIC_BODY_PREPOSITIONS:
+        return True
+    for word in sorted(_ARABIC_BODY_PART_WORDS, key=len, reverse=True):
+        if word in token:
+            tail = token[token.index(word) + len(word):]
+            return word.endswith("ي") or tail in _ARABIC_OWN_BODY_SUFFIXES
+    return False
+
+
+def _arabic_body_abnormal_hit(normalized: str) -> bool:
+    """The Player's own body part within five words of an abnormal-state phrase."""
+    tokens = normalized.split()
+    body_indexes = [
+        index for index in range(len(tokens)) if _is_own_body_token(tokens, index)
+    ]
+    if not body_indexes:
+        return False
+    for match in _ARABIC_ABNORMAL_STATE_PATTERN.finditer(normalized):
+        start = len(normalized[: match.start()].split())
+        end = start + len(match.group(0).split()) - 1
+        if any(start - _ARABIC_BODY_WINDOW_TOKENS <= index <= end + _ARABIC_BODY_WINDOW_TOKENS
+               for index in body_indexes):
+            return True
+    return False
+
+
+# Normal post-training muscle soreness (DOMS): benign only when the message
+# names it plainly, its only clinical words are pain words, and it names no
+# joint, mirroring the English fatigue bypass (#754).
+_ARABIC_SORENESS_PATTERN = re.compile(
+    r"\bdoms\b|شد\s+عضلي|تكسير|متكسر|متكسره|تاني\s+يوم|بعد\s+التمرين\s+بيوم"
+    r"|زي\s+كل\s+مره|الالم\s+العضلي\s+المتاخر|الم\s+العضلات\s+المتاخر",
+    re.IGNORECASE,
+)
+_ARABIC_JOINT_PATTERN = re.compile(
+    rf"(?<![{_ARABIC_LETTERS}]){_ARABIC_CLITIC_PREFIX}"
+    r"(?:ركب|ركبه|ركبت|ركبتي|كتف|كتفي|اكتاف|كوع|كوعي|مرفق|رسغ|معصم|كاحل|ضهر|ظهر|ضهري|ظهري"
+    r"|رقبه|رقبت|رقبتي|ورك|وركي|حوض|مفصل|مفاصل|عمود\s+فقري)"
+    rf"(?:{'|'.join(_ARABIC_PRONOUN_SUFFIXES)})?(?![{_ARABIC_LETTERS}])"
+)
+
+
+def _arabic_lexical_categories(normalized: str) -> set[str]:
+    return {
+        category
+        for category, pattern in _ARABIC_CATEGORY_PATTERNS.items()
+        if pattern.search(normalized)
+    }
+
+
+def _arabic_benign_soreness(normalized: str, query: str) -> bool:
+    return (
+        _arabic_lexical_categories(normalized) <= {"pain"}
+        and bool(_ARABIC_SORENESS_PATTERN.search(normalized) or _ARABIC_SORENESS_PATTERN.search(query))
+        and not _ARABIC_JOINT_PATTERN.search(normalized)
+        and not _ARABIC_UNKNOWN_BODY_SENSATION_PATTERN.search(normalized)
+        and not (RE_TRAUMA_SENSATIONS.search(query) or RE_ACUTE_PAIN_SIGNALS.search(query))
+    )
+
+
 _ARABIC_FEELING_VERB_PATTERN = r"[وف]?(?:حاسس|حاسه|بحس|احس|حسيت)"
 _ARABIC_STRANGE_SENSATION_PATTERN = r"(?:حاجه|احساس)\s+(?:غريب|غريبه|مش\s+طبيعيه?|مش\s+مظبوطه?)"
 _ARABIC_UNKNOWN_BODY_SENSATION_PATTERN = re.compile(
@@ -267,7 +367,8 @@ RE_TRAUMA_SENSATIONS = re.compile(
 RE_ACUTE_PAIN_SIGNALS = re.compile(
     r"(?<![A-Za-z0-9_])(?:pain|painful|hurt(?:s|ing)?|(?:(?:head|back|tooth)?ache(?:s)?|ach(?:ing))|sharp|shooting|radiat(?:ing|es|ed)|numb|numbness|"
     r"tingling|pins\s+and\s+needles|pop(?:ping|ped)?|tear(?:ing|s)?|torn|tore|ripping|"
-    r"grinding|clicking|pinch(?:ed)?|crunch(?:ing)?|dislocat\w*|impingement|giving\s+way|"
+    r"grinding|clicking|pinch(?:ed)?|crunching|crunch(?:es|ed)?\s+(?:sound|noise)|(?:a|the)\s+crunch\s+in|"
+    r"dislocat\w*|impingement|giving\s+way|"
     r"electric|shock|glass|swollen|swelling|unstable|instability)(?![A-Za-z0-9_])",
     re.IGNORECASE,
 )
@@ -282,42 +383,6 @@ def cosine_similarity(v1: list[float], v2: list[float]) -> float:
     if norm1 == 0.0 or norm2 == 0.0:
         return 0.0
     return float(np.dot(v1, v2) / (norm1 * norm2))
-
-
-def _validated_embedding(vector, label: str) -> np.ndarray:
-    """Return a finite, non-zero 1-D embedding or raise so the path fails closed."""
-    array = np.asarray(vector, dtype=np.float64)
-    if array.ndim != 1 or array.size == 0:
-        raise ValueError(f"Arabic {label} embedding is not a 1-D vector: shape {array.shape}.")
-    if not np.all(np.isfinite(array)):
-        raise ValueError(f"Arabic {label} embedding contains non-finite values.")
-    if float(np.linalg.norm(array)) == 0.0:
-        raise ValueError(f"Arabic {label} embedding is the zero vector.")
-    return array
-
-
-def _max_anchor_similarity(query_vector, anchors) -> float:
-    """Max cosine to the clinical anchors, validating every embedding first.
-
-    A degenerate query (NaN, wrong shape, zero vector) or anchor, or a
-    non-finite similarity, raises so ``_arabic_semantic_guard`` fails closed
-    instead of returning benign.
-    """
-    query = _validated_embedding(query_vector, "query")
-    if not anchors:
-        raise ValueError("No Arabic clinical anchor vectors are available.")
-    best = -1.0
-    for anchor in anchors:
-        anchor_vector = _validated_embedding(anchor, "anchor")
-        if anchor_vector.shape[0] != query.shape[0]:
-            raise ValueError("Arabic query and anchor embeddings differ in dimension.")
-        similarity = float(
-            np.dot(query, anchor_vector) / (np.linalg.norm(query) * np.linalg.norm(anchor_vector))
-        )
-        if not np.isfinite(similarity):
-            raise ValueError("Arabic anchor similarity is non-finite.")
-        best = max(best, similarity)
-    return best
 
 
 CLINICAL_ANCHOR_DESCRIPTIONS: list[str] = [
@@ -335,80 +400,40 @@ CLINICAL_ANCHOR_VECTORS: list[list[float]] = [
     EMBED_MODEL.embed_query(desc) for desc in CLINICAL_ANCHOR_DESCRIPTIONS
 ]
 
-#: Arabic clinical anchor descriptions for the separate multilingual-e5-small
-#: model (ADR 081). These are MAYOS-authored renderings of the English anchors
-#: above; they are internal model prompts, not player-facing text, and remain
-#: owner-unreviewed until the owner approves the Arabic wording.
-ARABIC_CLINICAL_ANCHOR_DESCRIPTIONS: list[str] = [
-    "أحسست كأن شيئًا يتمزق أو يتقطع بعمق داخل ألياف العضلة أثناء التمدد.",
-    "تنميل أو وخز أو إحساس ببرودة شديدة ينتشر إلى الأصابع أو الأطراف.",
-    "ألم حارق عميق أو إحساس بزجاج ساخن أو صعقة كهربائية حادة داخل محفظة المفصل.",
-    "المفصل يبدو غير ثابت أو غير مستقر أو كأن العظم ينزلق من مكانه.",
-    "ألم خفيف مستمر يشبه وجع الأسنان بعمق داخل العظم أو محفظة الورك.",
-    "صوت طحن أو فرقعة أو طقطقة مسموعة مصحوبة بضعف فوري في المفصل.",
-    "فقدان مفاجئ للسيطرة على الحركة أو العضو يفلت منك أو عدم القدرة على تحمل الوزن.",
-    "انحشار حاد في المفصل يتبعه فقدان فوري للشد وتورم موضعي.",
-]
-
-#: The e5 similarity scores for Arabic are compressed, so this tier is a
-#: high-precision backstop rather than the carrier of the reviewed intercepts.
-#: The reviewed instability case (ar-inj-07, 0.8888) is caught by the lexical
-#: tier instead, and ordinary Arabic training talk reaches 0.885 (for example an
-#: exercise-swap request at 0.8853 and "bench stretches my shoulder" at 0.8837),
-#: so 0.90 sits above the measured benign ceiling with margin. This is a
-#: tunable operating point, not a safety certification; extending recall for
-#: unseen paraphrases means extending the deterministic tiers.
-ARABIC_SEMANTIC_THRESHOLD = 0.90
-
-_ARABIC_ANCHOR_LOCK = threading.Lock()
-_ARABIC_ANCHOR_VECTORS: list[list[float]] | None = None
-
-
-def _arabic_anchor_vectors() -> list[list[float]]:
-    """Return the Arabic anchor vectors, loading the e5 model on first use."""
-    global _ARABIC_ANCHOR_VECTORS
-    if _ARABIC_ANCHOR_VECTORS is None:
-        with _ARABIC_ANCHOR_LOCK:
-            if _ARABIC_ANCHOR_VECTORS is None:
-                model = get_arabic_embedding_model()
-                _ARABIC_ANCHOR_VECTORS = [
-                    model.embed_query(desc) for desc in ARABIC_CLINICAL_ANCHOR_DESCRIPTIONS
-                ]
-    return _ARABIC_ANCHOR_VECTORS
-
 
 def _arabic_lexical_hit(normalized: str) -> bool:
     return bool(
         _ARABIC_UNKNOWN_BODY_SENSATION_PATTERN.search(normalized)
         or _ARABIC_STEM_PATTERN.search(normalized)
+        or _arabic_body_abnormal_hit(normalized)
     )
 
 
 def _arabic_semantic_guard(query: str) -> tuple[bool, float]:
-    """Layered Arabic path: lexical stems, acute signals, then e5 similarity.
+    """The Arabic path: deterministic tiers only (#754).
 
-    Every Arabic-script message is screened here; a Latin script or an English
-    exercise name must never divert Arabic symptom text to the English tiers.
-    Code-switched messages combine the English acute-signal detection with the
-    Arabic screening instead of substituting one for the other. Fails closed:
-    any normalization, model-load, validation or inference error counts as a
-    possible injury so the caller intercepts instead of reaching coaching.
+    Arabic clinical wording (stems, a body part near an abnormal-state phrase,
+    an unknown sensation in a body part) or an English acute signal
+    intercepts; plainly named muscle soreness with no joint or escalation is
+    benign. The multilingual e5 similarity tier no longer intercepts on its
+    own: its scores for ordinary training talk (up to 0.896) overlapped
+    keyword-free injury reports (0.82-0.89) around its 0.90 cutoff, so it
+    produced false triggers and caught nothing the word lists missed. Fails
+    closed: any normalization error counts as a possible injury.
     """
     try:
         normalized = normalize_arabic_text(query)
         if _arabic_lexical_hit(normalized):
+            if _arabic_benign_soreness(normalized, query):
+                return False, 0.0
             return True, 1.0
         if RE_TRAUMA_SENSATIONS.search(query) or RE_ACUTE_PAIN_SIGNALS.search(query):
             return True, 1.0
-
-        model = get_arabic_embedding_model()
-        anchors = _arabic_anchor_vectors()
-        query_vector = model.embed_query(query)
-        max_similarity = _max_anchor_similarity(query_vector, anchors)
-        # Fatigue terms never bypass the semantic threshold to declare benign.
-        return (max_similarity >= ARABIC_SEMANTIC_THRESHOLD), max_similarity
+        return False, 0.0
     except Exception:
-        # The Arabic path is required to fail closed on every error.
+        # The Arabic path is required to fail closed on every error; log it so
+        # an outage can be told apart from a real hit (#754).
+        logger.exception("Arabic clinical guard failed; failing closed")
         return True, 1.0
 
 
@@ -416,8 +441,26 @@ _CLINICAL_LEXICAL_TOKENS = re.compile(
     r"(?<![A-Za-z0-9_])(?:injur(?:y|ies|ed)|strain(?:ed)?|sprain(?:ed)?|fractur(?:e|ed)|broken|"
     r"pain(?:ful)?|hurt(?:s|ing)?|(?:(?:head|back|tooth)?ache(?:s)?|ach(?:ing))|sharp|pop|popping|tear|tearing|torn|tore|numb|numbness|tingling|"
     r"joint|shoulder|knee|elbow|hip|wrist|pec|tendon|disc|spine|hernia|swollen|swell|swelling|"
-    r"shooting|radiating|grinding|clicking|pinch|pinched|crunch|crunching|dislocat|impingement|"
+    r"shooting|radiating|grinding|clicking|pinch|pinched|crunching|dislocat|impingement|"
     r"glass|giving\s+way|loose|slipping|electric|shock|ripping)(?![A-Za-z0-9_])",
+    re.IGNORECASE,
+)
+
+_ENGLISH_BODY = (
+    r"(?:knees?|shoulders?|(?:lower\s+|upper\s+)?back|neck|wrists?|elbows?|hips?|ankles?|"
+    r"hamstrings?|quads?|calf|calves|groin|chest|pecs?|biceps?|triceps?|forearms?|feet|foot|"
+    r"toes?|fingers?|thumbs?|hands?|arms?|legs?|glutes?|spine|ribs?|traps?|rotator\s+cuff|"
+    r"achilles|tendons?|joints?)"
+)
+#: Keyword-free injury reports: a body part that is "bothering me", "feels
+#: off", a tweak, something that "went" in a body part, or a body part the
+#: Player can't move (#754).
+RE_ENGLISH_INJURY_PHRASES = re.compile(
+    rf"\btweak(?:ed|ing)?\s+(?:my\s+)?(?:\w+\s+)?{_ENGLISH_BODY}\b"
+    rf"|\b{_ENGLISH_BODY}\b[^.?!]{{0,40}}?\b(?:bothering|bugging|acting\s+up|giving\s+me\s+trouble|"
+    rf"feels?\s+(?:off|wrong|weird|strange)|gives?\s+out|giving\s+out)\b"
+    rf"|\b(?:something|it)\s+in\s+my\s+{_ENGLISH_BODY}\s+(?:went|gave|snapped|shifted|popped)\b"
+    rf"|\bcan['’]?t\s+(?:bend|straighten|lift|raise|turn|rotate|move|put\s+weight\s+on)\s+my\s+{_ENGLISH_BODY}\b",
     re.IGNORECASE,
 )
 
@@ -441,15 +484,19 @@ def has_deterministic_clinical_signal(query: str) -> bool:
             RE_TRAUMA_SENSATIONS.search(query)
             or RE_ACUTE_PAIN_SIGNALS.search(query)
             or _EXPLICIT_CLINICAL_MENTIONS.search(query)
+            or RE_ENGLISH_INJURY_PHRASES.search(query)
         )
     return bool(
         RE_TRAUMA_SENSATIONS.search(query)
         or RE_ACUTE_PAIN_SIGNALS.search(query)
         or _EXPLICIT_CLINICAL_MENTIONS.search(query)
+        or RE_ENGLISH_INJURY_PHRASES.search(query)
     )
 
 
 def _english_semantic_guard(query: str, threshold: float = 0.70) -> tuple[bool, float]:
+    if RE_ENGLISH_INJURY_PHRASES.search(query):
+        return True, 1.0
     has_acute_signal = bool(RE_TRAUMA_SENSATIONS.search(query) or RE_ACUTE_PAIN_SIGNALS.search(query))
     if RE_BENIGN_FATIGUE.search(query) and not has_acute_signal:
         return False, 0.0
@@ -467,7 +514,7 @@ def _english_semantic_guard(query: str, threshold: float = 0.70) -> tuple[bool, 
 def evaluate_clinical_semantic_guard(query: str, threshold: float = 0.70) -> tuple[bool, float]:
     """Return the clinical decision; ``threshold`` applies only to English.
 
-    Arabic uses ``ARABIC_SEMANTIC_THRESHOLD`` after its lexical and acute tiers.
+    Arabic uses its deterministic tiers only (#754).
     Code-switched messages screen both languages: the Arabic result decides, and
     when it reports benign the English tier also runs so trailing English injury
     prose after Arabic text cannot slip through on a technicality.
@@ -480,6 +527,7 @@ def evaluate_clinical_semantic_guard(query: str, threshold: float = 0.70) -> tup
             english_is_clinical, english_score = _english_semantic_guard(query, threshold)
         except Exception:
             # The English screen must fail closed exactly like the Arabic one.
+            logger.exception("English clinical guard failed on a mixed message; failing closed")
             return True, 1.0
         if english_is_clinical:
             return True, max(score, english_score)
