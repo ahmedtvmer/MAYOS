@@ -434,8 +434,15 @@ A scheduled training day that no workout satisfied within its grace period. One 
 A run of consecutive missed expected days, measured over the sequence of expected days. Paused and non-expected days are skipped and neither break nor extend it. It drives coach alerts.
 
 **Weekly streak**:
-A run of consecutive weeks, starting Saturday in the player's timezone, in each of which the player completed at least as many workouts as they had expected training days, or as their program's weekly frequency when they keep no Training schedule. Fully paused weeks neither break nor extend it, and the week in progress never breaks it. It is the player-facing counterpart of the Missed-day streak.
+A run of consecutive weeks, starting Saturday in the player's timezone, in each of which the player completed at least one workout. Fully paused weeks neither break nor extend it, and the week in progress never breaks it. The player's longest streak is kept beside it. A finished week that keeps it earns XP. The Checkpoint review's Consistency part measures expected workouts completed instead (ADR 121).
 _Arabic_: أسابيع الالتزام المتتالية
+
+**XP**:
+Points a player earns for training the way their plan says: completing a planned workout, doing its prescribed sets, keeping effort within its targets, setting personal records, logging Cardio and keeping the Weekly streak. Going heavier or harder earns nothing extra, deload workouts earn full XP, only one workout a day counts, imported history earns none, and XP never decreases (ADR 121).
+
+**Rank**:
+A named level reached by total XP: Rookie, Regular, Committed, Dedicated, Veteran, Elite, Legend. Ranks have no numbers and are never compared between players.
+_Arabic_: الرتبة (مبتدئ، منتظم، ملتزم، مثابر، محترف، نخبة، أسطورة)
 
 **Weekly volume**:
 A player's working sets per muscle group over the last 7 days, each set counting fully toward its exercise's target muscle and partly toward its secondary muscles. Warm-up sets never count.

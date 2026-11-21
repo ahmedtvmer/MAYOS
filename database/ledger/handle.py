@@ -39,6 +39,7 @@ from database.ledger.schedule import LedgerScheduleMixin
 from database.ledger.training_program import LedgerTrainingProgramMixin
 from database.ledger.volume_reviews import LedgerVolumeReviewsMixin
 from database.ledger.workouts import LedgerWorkoutsMixin
+from database.ledger.xp import LedgerXpMixin
 
 
 class TrainingLedger(
@@ -46,6 +47,7 @@ class TrainingLedger(
     LedgerTrainingProgramMixin,
     LedgerVolumeReviewsMixin,
     LedgerWorkoutsMixin,
+    LedgerXpMixin,
     LedgerCheckpointReviewsMixin,
     LedgerScheduleMixin,
     LedgerProfileMixin,

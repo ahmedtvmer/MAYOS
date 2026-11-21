@@ -1,14 +1,15 @@
-"""Weekly streak and Checkpoint progress for a player's training history."""
+"""Weekly streak, XP/rank and Checkpoint progress for a player's training history."""
 
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from service._base import ledger_scope
-from service.attendance import is_expected_day
+from service import xp as xp_service
+from service.attendance import is_expected_day, pause_covers
 from service.schedule import local_date_in, timezone_for_versions
 
 CHECKPOINTS = (10, 25, 50, 100)
@@ -23,11 +24,17 @@ class TrainingStatus:
     mayos_workouts: int
     next_checkpoint: int
     workouts_to_next: int
+    longest_streak: int = 0
+    this_week_done: bool = False
+    week_paused: bool = False
+    xp: dict[str, Any] | None = None
 
     def as_dict(self) -> dict[str, Any]:
         """The stable API and commit-response representation."""
         values = asdict(self)
         values["week_start"] = self.week_start.isoformat()
+        xp = values.pop("xp")
+        values.update(xp if xp is not None else xp_service.rank_progress(0))
         return values
 
 
@@ -107,20 +114,45 @@ def _week_done(week_start: date, performed_dates: list[date]) -> int:
     return sum(week_start <= day < week_start + timedelta(days=7) for day in performed_dates)
 
 
-def _past_week_streak(facts: TrainingStatusFacts, performed_dates: list[date]) -> int:
+def week_fully_paused(week_start: date, pauses: list[dict[str, Any]]) -> bool:
+    """True when a pause covers every day of the Saturday-to-Friday week."""
+    return all(pause_covers(pauses, week_start + timedelta(days=offset)) for offset in range(7))
+
+
+def _streaks(facts: TrainingStatusFacts, performed_dates: list[date]) -> tuple[int, int]:
+    """The current and longest Weekly streak (#743).
+
+    A week extends the streak when it has at least one completed workout. A
+    fully paused week neither breaks nor extends it, and the week in progress
+    never breaks it (it extends it once it has a workout).
+    """
     if not performed_dates:
-        return 0
-    first_week = saturday_week_start(performed_dates[0])
-    week = saturday_week_start(facts.local_today) - timedelta(days=7)
-    streak = 0
+        return 0, 0
+    workout_weeks = {saturday_week_start(day) for day in performed_dates}
+    first_week = min(workout_weeks)
+    current_week = saturday_week_start(facts.local_today)
+
+    current = 0
+    week = current_week - timedelta(days=7)
     while week >= first_week:
-        target = _week_target(week, facts)
-        if target > 0:
-            if _week_done(week, performed_dates) < target:
-                break
-            streak += 1
+        if week in workout_weeks:
+            current += 1
+        elif not week_fully_paused(week, facts.pauses):
+            break
         week -= timedelta(days=7)
-    return streak
+    if current_week in workout_weeks:
+        current += 1
+
+    longest = run = 0
+    week = first_week
+    while week <= current_week:
+        if week in workout_weeks:
+            run += 1
+            longest = max(longest, run)
+        elif week != current_week and not week_fully_paused(week, facts.pauses):
+            run = 0
+        week += timedelta(days=7)
+    return current, max(longest, current)
 
 
 def compute_training_status(facts: TrainingStatusFacts) -> TrainingStatus:
@@ -129,9 +161,7 @@ def compute_training_status(facts: TrainingStatusFacts) -> TrainingStatus:
     current_week = saturday_week_start(facts.local_today)
     week_done = _week_done(current_week, performed_dates)
     week_target = _week_target(current_week, facts)
-    streak = _past_week_streak(facts, performed_dates)
-    if week_target > 0 and week_done >= week_target:
-        streak += 1
+    streak, longest = _streaks(facts, performed_dates)
 
     count = max(0, int(facts.mayos_workouts))
     checkpoint = next_checkpoint_for(count)
@@ -143,6 +173,9 @@ def compute_training_status(facts: TrainingStatusFacts) -> TrainingStatus:
         mayos_workouts=count,
         next_checkpoint=checkpoint,
         workouts_to_next=checkpoint - count,
+        longest_streak=longest,
+        this_week_done=week_done > 0,
+        week_paused=week_fully_paused(current_week, facts.pauses),
     )
 
 
@@ -176,7 +209,12 @@ def get_training_status(
     imported_workouts: int | None = None,
     active_program: Any | None = None,
 ) -> TrainingStatus:
-    """Loads ledger and import facts, then computes status without writing."""
+    """Loads ledger and import facts, brings XP up to date, then computes status.
+
+    The only write is the idempotent XP catch-up (#795): sessions and finished
+    weeks not yet awarded are awarded once, so a status read after an upgrade
+    backfills XP for existing history.
+    """
     if imported_workouts is None:
         imported_workouts = imported_workout_count(db, account_id)
     with ledger_scope(db, ledger, ledger_id) as open_ledger:
@@ -193,14 +231,19 @@ def _status_for_ledger(
     performed_dates = ledger.list_performed_dates()
     program = active_program if active_program is not None else ledger.get_active_program_view()
     timezone = timezone_for_versions(versions, "UTC")
+    local_today = local_date_in(datetime.now(UTC), timezone)
     facts = TrainingStatusFacts(
         versions=versions,
         pauses=ledger.list_training_pauses(ledger_id),
         performed_dates=performed_dates,
         weekly_frequency=int(program.weekly_frequency) if program is not None else 0,
-        local_today=local_date_in(datetime.now(UTC), timezone),
+        local_today=local_today,
         mayos_workouts=mayos_workout_count(
             len(performed_dates), imported_workouts
         ),
     )
-    return compute_training_status(facts)
+    xp_service.ensure_xp_current(
+        ledger, imported_workouts, local_today, active_program=program
+    )
+    status = compute_training_status(facts)
+    return replace(status, xp=xp_service.rank_progress(ledger.xp_total()))

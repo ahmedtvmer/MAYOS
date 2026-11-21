@@ -34,6 +34,7 @@ from service.coach_notices import (
 )
 from service.schedule import local_date_in, timezone_for_versions
 from service import stall_alerts
+from service import training_status as training_status_service
 from service import coach_analytics
 from service import analytics as analytics_service
 from service.messages import coach_alert_message
@@ -167,8 +168,21 @@ def evaluate_assignment(db: Any, assignment: dict[str, Any], now: datetime | Non
         )
         return {"evaluated": False, "skipped": True, "alerts_created": 0, "alerts_resolved": 0, "streak": 0}
 
+    # Read the import record before opening the ledger (catalog lock order).
+    imported_workouts = training_status_service.imported_workout_count(db, player_account_id)
     with db.open_ledger(ledger_id) as ledger:
         performed = ledger.list_performed_dates()
+        # The roster shows the player's rank and Weekly streak from this
+        # catalog cache, so listing it never mounts a ledger (#795).
+        status = training_status_service.get_training_status(
+            db, ledger_id, account_id=player_account_id, ledger=ledger,
+            imported_workouts=imported_workouts,
+        )
+        roster_rank = {
+            "rank_id": status.xp["rank"]["id"] if status.xp else None,
+            "weekly_streak": status.weekly_streak,
+            "week_paused": status.week_paused,
+        }
         evaluation = evaluate_ledger_attendance(ledger, assignment, ledger_id, now)
         # Read while the ledger is open; the roster row then carries the name
         # catalog-side so listing it never mounts the ledger again (#120).
@@ -181,6 +195,7 @@ def evaluate_assignment(db: Any, assignment: dict[str, Any], now: datetime | Non
             now_iso,
             last_workout_on=last_workout_on,
             program_name=program_name,
+            **roster_rank,
         )
         return {"evaluated": True, "skipped": False, "alerts_created": 0, "alerts_resolved": 0, "streak": 0}
 
@@ -233,6 +248,7 @@ def evaluate_assignment(db: Any, assignment: dict[str, Any], now: datetime | Non
         timezone=evaluation.timezone,
         last_workout_on=last_workout_on,
         program_name=program_name,
+        **roster_rank,
     )
     return {
         "evaluated": True,

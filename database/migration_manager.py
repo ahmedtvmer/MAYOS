@@ -20,7 +20,7 @@ from utils.equipment_access import (
 logger = MayosLogger().get_logger(__name__)
 
 # Current target schema version for all user ledgers
-CURRENT_LEDGER_SCHEMA_VERSION: int = 65
+CURRENT_LEDGER_SCHEMA_VERSION: int = 66
 
 MEAL_SETUP_DDL: tuple[str, ...] = (
     "CREATE TABLE IF NOT EXISTS meal_setup ("
@@ -1485,6 +1485,19 @@ def _migrate_v64_to_v65(conn: sqlite3.Connection) -> None:
     )
 
 
+def _migrate_v65_to_v66(conn: sqlite3.Connection) -> None:
+    """Adds XP awards and processed-session marks (issues #743, #795).
+
+    The tables start empty: existing workouts are awarded lazily on the next
+    read or commit, because excluding imported history needs the catalog's
+    import record, which a ledger migration cannot read.
+    """
+    from database.ledger.xp import XP_DDL
+
+    for statement in XP_DDL:
+        conn.execute(statement)
+
+
 def get_ledger_schema_version(conn: sqlite3.Connection) -> int:
     """Reads the current user_version PRAGMA from the SQLite connection."""
     cursor = conn.cursor()
@@ -1646,6 +1659,7 @@ MIGRATION_REGISTRY: dict[int, MigrationCallable] = {
     62: _migrate_v62_to_v63,
     63: _migrate_v63_to_v64,
     64: _migrate_v64_to_v65,
+    65: _migrate_v65_to_v66,
 }
 
 

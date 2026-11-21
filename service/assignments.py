@@ -23,6 +23,7 @@ from typing import Any, Callable
 
 from database.registry.assignments import EndedAssignmentSnapshot
 from service import missed_day_alerts
+from service import xp as xp_service
 from service import analytics as analytics_service
 from service import nutrition_alerts
 from service._base import ledger_scope
@@ -602,6 +603,11 @@ def list_coach_assignments(
                 "pending_requests": int(pending_requests.get(row["assignment_id"], 0)),
                 "last_workout_on": workout.get("last_workout_on"),
                 "program_name": workout.get("program_name"),
+                # Rank and Weekly streak come from the catalog cache the
+                # attendance evaluation writes; null until the first one (#795).
+                "rank": xp_service.rank_by_id(workout.get("rank_id")),
+                "weekly_streak": workout.get("weekly_streak"),
+                "week_paused": workout.get("week_paused"),
             }
         )
     rows.sort(key=lambda entry: roster_urgency_key(entry, today))
