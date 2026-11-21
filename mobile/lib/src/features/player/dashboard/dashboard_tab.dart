@@ -969,7 +969,7 @@ class _HomeTile extends StatelessWidget {
         onTap: onTap,
         borderRadius: MayosRadii.mediumRadius,
         child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 44),
+          constraints: const BoxConstraints(minHeight: 48),
           child: Padding(
             padding: const EdgeInsets.all(MayosSpacing.md),
             child: child,
@@ -1040,7 +1040,8 @@ class _NextSessionSection extends StatelessWidget {
               onTap: onOpenProgram,
               borderRadius: MayosRadii.smallRadius,
               child: ConstrainedBox(
-                constraints: const BoxConstraints(minHeight: 44),
+                // Android's tap-target guideline is 48 dp (#790 follow-up).
+                constraints: const BoxConstraints(minHeight: 48),
                 child: Align(
                   alignment: AlignmentDirectional.centerStart,
                   child: Text(
