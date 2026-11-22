@@ -6,7 +6,7 @@ import 'tour_targets.dart';
 
 /// The shared Feature list used by the Tour and later discovery surfaces.
 const int tourCurrentVersion = 1;
-const int currentFeatureRelease = 8;
+const int currentFeatureRelease = 9;
 const int kReleaseShareCard = 3;
 const int kReleasePrCelebration = 3;
 const int kReleaseDurationCheck = 4;
@@ -63,6 +63,18 @@ List<String> validateFeatureEntries(
 }
 
 const List<FeatureEntry> featureList = <FeatureEntry>[
+  FeatureEntry(
+    id: 'program_edit_keeps_changes',
+    titleEn: 'Day edits that keep your changes',
+    sentenceEn: "Editing a day with back-off sets now saves, and if a change can't be saved, your edits stay open with the exercise named.",
+    titleAr: 'تعديلات اليوم تحتفظ بتغييراتك',
+    sentenceAr: 'تعديل يوم فيه مجموعات خفض الحمل يُحفظ الآن، وإذا تعذّر حفظ تغيير تبقى تعديلاتك مفتوحة مع اسم التمرين.',
+    target: 'whats_new_add_exercises',
+    location: TourShellTabLocation(tabIndex: 1),
+    release: 9,
+    audience: 'lifter',
+    requiresProgramControl: true,
+  ),
   FeatureEntry(
     id: 'xp_ranks',
     titleEn: 'XP, ranks and your weekly streak',

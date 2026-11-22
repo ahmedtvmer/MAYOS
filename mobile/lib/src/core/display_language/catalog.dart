@@ -216,6 +216,9 @@ class MayosCopy {
   String get programEditSaved => isArabic
       ? 'تم تحديث اليوم التدريبي في برنامجك.'
       : 'Training day updated in your program.';
+  String programEditExerciseRefused(String name, String reason) => isArabic
+      ? 'تعذّر حفظ $name: $reason'
+      : "Couldn't save $name: $reason";
   String get programEditChanged => isArabic
       ? 'تغير برنامجك أثناء التعديل. لم تُحفظ تغييراتك.'
       : 'Your program changed while you were editing. Your changes were not saved.';

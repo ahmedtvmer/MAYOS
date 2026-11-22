@@ -982,23 +982,65 @@ class _ProgramTabState extends ConsumerState<ProgramTab>
 
   Future<void> _editProgramDay(ProgramDay day, int? expectedVersion) async {
     if (_editingProgramDay || expectedVersion == null) return;
-    final List<ProgramEditExerciseEntry>? exercises =
-        await ProgramDayEditDialog.show(context, day);
-    if (exercises == null || !mounted) return;
+    await ProgramDayEditDialog.show(
+      context,
+      day,
+      onSave: (List<ProgramEditExerciseEntry> exercises) =>
+          _saveProgramDayEdit(day, expectedVersion, exercises),
+    );
+  }
+
+  /// Saves from inside the edit dialog. A refused edit keeps the dialog open
+  /// with the Player's changes and names the refused exercise (#787); only a
+  /// changed program or lost authority closes it, because the day must reload.
+  Future<ProgramDaySaveOutcome> _saveProgramDayEdit(
+    ProgramDay day,
+    int expectedVersion,
+    List<ProgramEditExerciseEntry> exercises,
+  ) async {
     setState(() {
       _editingProgramDay = true;
       _actionError = null;
     });
     try {
-      await _submitProgramDayEdit(day, expectedVersion, exercises);
+      final bool saved =
+          await _submitProgramDayEdit(day, expectedVersion, exercises);
+      return saved
+          ? const ProgramDaySaveOutcome.close()
+          : const ProgramDaySaveOutcome.keepEditing();
     } on ApiException catch (error) {
-      await _handleProgramEditFailure(error);
+      if (error.errorCode == 'program_changed' ||
+          error.errorCode == 'coach_controlled') {
+        await _handleProgramEditFailure(error);
+        return const ProgramDaySaveOutcome.close();
+      }
+      if (!mounted) return const ProgramDaySaveOutcome.keepEditing();
+      return ProgramDaySaveOutcome.keepEditing(
+        _programEditRefusalText(error, exercises),
+      );
     } finally {
       if (mounted) setState(() => _editingProgramDay = false);
     }
   }
 
-  Future<void> _submitProgramDayEdit(
+  String _programEditRefusalText(
+    ApiException error,
+    List<ProgramEditExerciseEntry> exercises,
+  ) {
+    final MayosCopy copy = displayCopyOf(context);
+    final String reason = copy.failureMessage(mutationFailureMessage(error));
+    final Object? position = error.serverDetails?['exercise_position'];
+    if (position is int && position >= 0 && position < exercises.length) {
+      return copy.programEditExerciseRefused(
+        exercises[position].exercise.exerciseName,
+        reason,
+      );
+    }
+    return reason;
+  }
+
+  /// Returns false when the Player backs out of the volume warning.
+  Future<bool> _submitProgramDayEdit(
     ProgramDay day,
     int expectedVersion,
     List<ProgramEditExerciseEntry> exercises,
@@ -1011,7 +1053,7 @@ class _ProgramTabState extends ConsumerState<ProgramTab>
       expectedActiveVersion: expectedVersion,
       exercises: exercises,
     );
-    if (!mounted) return;
+    if (!mounted) return false;
     if (warnings.isNotEmpty) {
       final MayosCopy copy = displayCopyOf(context);
       final bool saveAnyway = await showDialog<bool>(
@@ -1040,7 +1082,7 @@ class _ProgramTabState extends ConsumerState<ProgramTab>
             ),
           ) ??
           false;
-      if (!saveAnyway || !mounted) return;
+      if (!saveAnyway || !mounted) return false;
     }
     final TrainingProgram updated = await api.editProgramDay(
               dayName: day.dayName,
@@ -1049,7 +1091,7 @@ class _ProgramTabState extends ConsumerState<ProgramTab>
               expectedActiveVersion: expectedVersion,
               exercises: exercises,
             );
-    if (!mounted) return;
+    if (!mounted) return true;
     final String? accountId = _accountId;
     if (accountId != null) {
       unawaited(cacheActiveProgram(
@@ -1064,6 +1106,7 @@ class _ProgramTabState extends ConsumerState<ProgramTab>
       ..showSnackBar(SnackBar(
         content: Text(displayCopyOf(context).programEditSaved),
       ));
+    return true;
   }
 
   Future<void> _handleProgramEditFailure(ApiException error) async {

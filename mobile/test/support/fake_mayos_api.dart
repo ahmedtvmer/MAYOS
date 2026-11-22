@@ -413,6 +413,8 @@ class FakeMayosApi {
   bool? coachPreparingProgram;
   bool substitutionVersionConflict = false;
   bool programEditVersionConflict = false;
+  // When set, `POST /programs/active/edits` refuses with this 400 body.
+  Map<String, dynamic>? programEditRefusal;
   // When true `GET /programs/active` returns an empty body (no active program).
   bool noActiveProgram = false;
   List<Map<String, dynamic>> volumeReviewPayload = <Map<String, dynamic>>[];
@@ -5135,6 +5137,9 @@ class FakeMayosApi {
         'detail': 'The program changed since this edit was opened.',
         'code': 'program_changed',
       });
+    }
+    if (programEditRefusal != null) {
+      return FakeResponse(400, programEditRefusal!);
     }
     final Map<String, dynamic> payload =
         Map<String, dynamic>.from(request.body);
