@@ -782,12 +782,15 @@ def _provider_name(api_base: str) -> str:
 
 
 def _base_commit() -> str:
+    """The checked-out commit, or MAYOS_BASE_COMMIT where git is unavailable
+    (a copied tree with no .git, such as the test-server container)."""
     try:
-        return subprocess.run(
+        commit = subprocess.run(
             ["git", "rev-parse", "HEAD"], cwd=BASE_DIR, check=True, capture_output=True, text=True
         ).stdout.strip()
     except (OSError, subprocess.CalledProcessError):
-        return ""
+        commit = ""
+    return commit or os.environ.get("MAYOS_BASE_COMMIT", "").strip()
 
 
 def _attempt_to_dict(attempt: AttemptMeasurement) -> dict[str, Any]:
