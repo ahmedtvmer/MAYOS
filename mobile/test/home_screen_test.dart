@@ -1567,6 +1567,9 @@ void main() {
           'cable_y_raise_demo' => find.byKey(
               container.read(tourTargetRegistryProvider)['exercise_demo_media']!.key,
             ),
+          'exercise_alternatives' => find.byKey(
+              container.read(tourTargetRegistryProvider)['program']!.key,
+            ),
           'weak_points' => find.byKey(const Key('profile_weak_points_section')),
           'assistant_why' || 'assistant_volume' || 'assistant_exercise_lookup' =>
             find.byKey(const Key('chat_composer')),
@@ -1763,6 +1766,9 @@ void main() {
         final Finder realControl = switch (entry.id) {
           'cable_y_raise_demo' => find.byKey(
               container.read(tourTargetRegistryProvider)['exercise_demo_media']!.key,
+            ),
+          'exercise_alternatives' => find.byKey(
+              container.read(tourTargetRegistryProvider)['program']!.key,
             ),
           'weak_points' => find.byKey(const Key('profile_weak_points_section')),
           'assistant_why' || 'assistant_volume' || 'assistant_exercise_lookup' =>
