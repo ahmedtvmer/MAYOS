@@ -23,13 +23,16 @@ class FakeS3Client:
         self.calls: list[tuple[str, str, str]] = []
         self.body: io.BytesIO | None = None
         self.error: Exception | None = None
+        self.head_length = 16
+        self.get_bytes = b"fake-image-bytes"
+        self.get_length: int | None = None
 
     def head_object(self, *, Bucket, Key):
         self.calls.append(("head", Bucket, Key))
         if self.error is not None:
             raise self.error
         return {
-            "ContentLength": 16,
+            "ContentLength": self.head_length,
             "ETag": '"fixture-etag"',
             "LastModified": datetime(2026, 1, 1, 12, 0, tzinfo=UTC),
         }
@@ -38,8 +41,27 @@ class FakeS3Client:
         self.calls.append(("get", Bucket, Key))
         if self.error is not None:
             raise self.error
-        self.body = io.BytesIO(b"fake-image-bytes")
-        return {"Body": self.body, "ContentLength": 16}
+        self.body = io.BytesIO(self.get_bytes)
+        return {
+            "Body": self.body,
+            "ContentLength": len(self.get_bytes) if self.get_length is None else self.get_length,
+            "ETag": '"fixture-etag"',
+            "LastModified": datetime(2026, 1, 1, 12, 0, tzinfo=UTC),
+        }
+
+
+class TimingOutBody(io.BytesIO):
+    """Returns the first chunk, then times out like a stalled R2 read."""
+
+    def __init__(self, first: bytes):
+        super().__init__(first)
+        self._served = False
+
+    def read(self, size=-1):
+        if self._served:
+            raise TimeoutError("read timed out")
+        self._served = True
+        return super().read(size)
 
 
 @pytest.fixture(autouse=True)
@@ -92,10 +114,8 @@ def test_media_streams_private_r2_object_with_validators(monkeypatch, client, pa
     assert response.headers["etag"] == '"fixture-etag"'
     assert response.headers["last-modified"] == "Thu, 01 Jan 2026 12:00:00 GMT"
     assert response.headers["x-content-type-options"] == "nosniff"
-    assert s3.calls == [
-        ("head", "private-bucket", key),
-        ("get", "private-bucket", key),
-    ]
+    # A plain request needs no HEAD: the GET supplies body, length and validators (#799).
+    assert s3.calls == [("get", "private-bucket", key)]
     assert s3.body is not None and s3.body.closed
 
 
@@ -114,7 +134,73 @@ def test_conditional_requests_return_304_without_streaming_body(monkeypatch, cli
     assert by_etag.content == by_date.content == b""
     assert by_etag.headers["etag"] == first.headers["etag"]
     assert by_etag.headers["cache-control"] == media.MEDIA_CACHE_CONTROL
-    assert [operation for operation, _, _ in s3.calls] == ["head", "get", "head", "head"]
+    assert [operation for operation, _, _ in s3.calls] == ["get", "head", "head"]
+
+
+def test_a_changed_object_after_a_conditional_head_streams_with_get_headers(monkeypatch, client):
+    s3 = FakeS3Client()
+    _configure_r2(monkeypatch, s3)
+
+    response = client.get("/media/images/demo.jpg", headers={"If-None-Match": '"older-etag"'})
+
+    assert response.status_code == 200
+    assert [operation for operation, _, _ in s3.calls] == ["head", "get"]
+    assert response.content == b"fake-image-bytes"
+
+
+def test_response_length_comes_from_the_get_not_the_head(monkeypatch, client):
+    """#799: HEAD and GET can describe different object versions."""
+    s3 = FakeS3Client()
+    s3.head_length = 999
+    s3.get_bytes = b"replaced-object"
+    _configure_r2(monkeypatch, s3)
+
+    response = client.get("/media/images/demo.jpg", headers={"If-None-Match": '"older-etag"'})
+
+    assert response.status_code == 200
+    assert response.headers["content-length"] == str(len(b"replaced-object"))
+    assert response.content == b"replaced-object"
+
+
+@pytest.mark.parametrize("short_body", ["ends_early", "times_out"])
+def test_a_short_r2_body_logs_one_warning_and_aborts_without_runtime_error(
+    monkeypatch, client, caplog, short_body
+):
+    s3 = FakeS3Client()
+    _configure_r2(monkeypatch, s3)
+    if short_body == "ends_early":
+        s3.get_bytes = b"fake-ima"
+        s3.get_length = 16
+    else:
+        original_get = s3.get_object
+
+        def timing_out_get(**kwargs):
+            remote = original_get(**kwargs)
+            remote["Body"] = s3.body = TimingOutBody(b"fake-ima")
+            remote["ContentLength"] = 16
+            return remote
+
+        s3.get_object = timing_out_get
+    stream = media._stream_body("images/demo.jpg", s3.get_object(Bucket="b", Key="k")["Body"], 16)
+
+    with caplog.at_level("WARNING", logger=media.logger.name):
+        with pytest.raises(media.ReportedStreamAbort):
+            b"".join(stream)
+
+    warnings = [record for record in caplog.records if record.name == media.logger.name]
+    assert len(warnings) == 1
+    assert "images/demo.jpg" in warnings[0].getMessage()
+    assert "8 of 16 bytes" in warnings[0].getMessage()
+    assert s3.body.closed
+
+
+def test_a_reported_stream_abort_is_not_sent_to_sentry():
+    from svc.error_tracking import before_send
+
+    error = media.ReportedStreamAbort("images/demo.jpg")
+    assert before_send({"exception": {}}, {"exc_info": (type(error), error, None)}) is None
+    other = RuntimeError("Response content shorter than Content-Length")
+    assert before_send({"exception": {}}, {"exc_info": (type(other), other, None)}) is not None
 
 
 def test_media_requests_use_bounded_timeouts_and_one_retry(monkeypatch, client):
@@ -162,7 +248,7 @@ def test_media_route_returns_404_without_local_fallback_for_missing_r2_object(mo
 
     assert response.status_code == 404
     assert response.json() == {"detail": "Media not found."}
-    assert s3.calls == [("head", "private-bucket", "media/images/missing.jpg")]
+    assert s3.calls == [("get", "private-bucket", "media/images/missing.jpg")]
 
 
 @pytest.mark.parametrize("provider_error", [BotoCoreError(), TimeoutError("provider timed out")])

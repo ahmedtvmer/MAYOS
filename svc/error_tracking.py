@@ -22,8 +22,19 @@ def anonymous_account_id(account_id: str) -> str:
     return digest
 
 
+class ReportedStreamAbort(Exception):
+    """Ends a response stream that already logged its own warning (#799).
+
+    Raising it aborts the connection, so the client sees a failed download
+    instead of a short body; it is not sent to Sentry a second time.
+    """
+
+
 def before_send(event: dict[str, Any], hint: dict[str, Any]) -> dict[str, Any] | None:
     """Allow only stack locations, safe routing metadata and anonymous identity."""
+    exc_info = hint.get("exc_info") if isinstance(hint, dict) else None
+    if exc_info and isinstance(exc_info[1], ReportedStreamAbort):
+        return None
     request = event.get("request")
     if isinstance(request, dict):
         safe_request: dict[str, Any] = {}
