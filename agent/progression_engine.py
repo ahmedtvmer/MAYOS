@@ -143,7 +143,7 @@ def get_weekly_muscle_volume(db: DatabaseManager, days_lookback: int = 7) -> dic
     cutoff_date = (datetime.now(UTC) - timedelta(days=days_lookback)).isoformat()[:10]
 
     cursor.execute(
-        f"""
+        """
         SELECT ws.exercise_id
         FROM workout_sets ws
         JOIN workout_sessions s ON ws.session_id = s.id
