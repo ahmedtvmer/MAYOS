@@ -1570,7 +1570,8 @@ void main() {
           'weak_points' => find.byKey(const Key('profile_weak_points_section')),
           'assistant_why' || 'assistant_volume' || 'assistant_exercise_lookup' =>
             find.byKey(const Key('chat_composer')),
-          'add_exercises' => find.byKey(const Key('program_edit_day_1')),
+          'add_exercises' || 'program_edit_keeps_changes' =>
+            find.byKey(const Key('program_edit_day_1')),
           'edit_program_chat' => find.byKey(const Key('chat_composer_bar')),
           'movements_to_avoid' => find.byKey(const Key('profile_movement_restrictions_section')),
           'brand-mayos' => find.byKey(MayosAppHeader.brandKey),
@@ -1767,7 +1768,8 @@ void main() {
           'weak_points' => find.byKey(const Key('profile_weak_points_section')),
           'assistant_why' || 'assistant_volume' || 'assistant_exercise_lookup' =>
             find.byKey(const Key('chat_composer')),
-          'add_exercises' => find.byKey(const Key('program_edit_day_1')),
+          'add_exercises' || 'program_edit_keeps_changes' =>
+            find.byKey(const Key('program_edit_day_1')),
           'edit_program_chat' => find.byKey(const Key('chat_composer_bar')),
           'movements_to_avoid' => find.byKey(const Key('profile_movement_restrictions_section')),
           'brand-mayos' => find.byKey(MayosAppHeader.brandKey),
