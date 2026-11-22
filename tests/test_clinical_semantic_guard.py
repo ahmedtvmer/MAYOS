@@ -20,19 +20,15 @@ class FixedEmbedder:
 
 
 def _force_clinical_similarity(monkeypatch, *, arabic):
-    if arabic:
-        monkeypatch.setattr(
-            clinical_guard,
-            "get_arabic_embedding_model",
-            lambda: FixedEmbedder([1.0, 0.0]),
-        )
-        monkeypatch.setattr(clinical_guard, "_ARABIC_ANCHOR_VECTORS", [[1.0, 0.0]])
-    else:
-        monkeypatch.setattr(
-            clinical_guard,
-            "EMBED_MODEL",
-            FixedEmbedder(clinical_guard.CLINICAL_ANCHOR_VECTORS[0]),
-        )
+    # Since #754 the Arabic path is deterministic; a code-switched message
+    # with no Arabic clinical wording falls through to the English similarity
+    # tier, so forcing that tier covers both languages.
+    del arabic
+    monkeypatch.setattr(
+        clinical_guard,
+        "EMBED_MODEL",
+        FixedEmbedder(clinical_guard.CLINICAL_ANCHOR_VECTORS[0]),
+    )
 
 
 @pytest.mark.parametrize(
@@ -212,12 +208,6 @@ def test_issue_738_glued_symptom_inflections_intercept_below_semantic_threshold(
     query, fresh_store, monkeypatch
 ):
     assert clinical_guard.has_deterministic_clinical_signal(query)
-    monkeypatch.setattr(
-        clinical_guard,
-        "get_arabic_embedding_model",
-        lambda: FixedEmbedder([0.85, 0.526782687642637]),
-    )
-    monkeypatch.setattr(clinical_guard, "_ARABIC_ANCHOR_VECTORS", [[1.0, 0.0]])
     result = router_node(
         {"messages": [HumanMessage(content=query)], "telemetry_context": ""},
         {"configurable": {"ledger": fresh_store.ledger, "store": fresh_store}},
