@@ -1017,3 +1017,21 @@ def test_arabic_progress_status_reaches_the_player(fresh_store, monkeypatch):
     assert "تحسن" in response
     assert "مش اتجاه طويل المدى" in response
     assert model.calls == []
+
+
+def test_a_swap_that_starts_with_tamam_still_swaps(fresh_store, monkeypatch):
+    # #802: «تمام» before a request is not a closing message.
+    before = _seed_program(
+        fresh_store,
+        exercise_names=["Preacher Curl (Barbell)", "barbell bench press", "barbell row"],
+    )
+    monkeypatch.setattr("agent.assistant_graph.llm", ScriptedChatModel([{"intent": "coaching_qa"}]))
+    state = _turn("تمام بس بدل Preacher Curl (Barbell) بـ Incline Curl (Dumbbell)")
+
+    "".join(stream_assistant_turn(state, ledger=fresh_store.ledger, store=fresh_store))
+
+    after = fresh_store.ledger.get_active_program()
+    names = [exercise.exercise_name for exercise in after.days[0].exercises]
+    assert state["intent"] == "exercise_substitution"
+    assert after.version == before.version + 1
+    assert "Incline Curl (Dumbbell)" in names

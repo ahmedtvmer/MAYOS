@@ -371,6 +371,8 @@ def test_phase2_streaming_generator_qa(fresh_store, monkeypatch):
     }
 
     monkeypatch.setattr("agent.assistant_graph.llm", model)
+    # Sentence-level release on its own; the #802 opening hold has its own tests.
+    monkeypatch.setattr("agent.assistant_graph._TOOL_PREAMBLE_HOLD_CHARS", 0)
     generator = stream_assistant_turn(state, ledger=fresh_store.ledger, store=fresh_store)
     first = next(generator)
     # Complete sentences stream as soon as their boundary is known, so a capped
