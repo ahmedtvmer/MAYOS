@@ -447,7 +447,9 @@ void main() {
             matching: find.byType(ExerciseLoggingCard))
         .first;
     await _settlePictures(tester);
-    expect(media.requestCount('images/bicep_curl.jpg'), 1);
+    // One request for the preview screen opened by the pick (#803), one for
+    // the card.
+    expect(media.requestCount('images/bicep_curl.jpg'), 2);
     expect(
       find.descendant(of: added, matching: find.byIcon(Icons.fitness_center)),
       findsNothing,
