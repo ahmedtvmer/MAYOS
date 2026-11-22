@@ -1588,6 +1588,9 @@ void main() {
           'assistant_feedback' => find.byKey(const Key('assistant_feedback_vote_buttons')).evaluate().isNotEmpty
               ? find.byKey(const Key('assistant_feedback_vote_buttons'))
               : find.byKey(const Key('chat_composer_bar')),
+          'reverse_curl_forearms' => find.byKey(
+              container.read(tourTargetRegistryProvider)['program']!.key,
+            ),
           _ => find.text(entry.titleEn),
         };
         expect(realControl, findsOneWidget, reason: entry.id);
@@ -1785,6 +1788,9 @@ void main() {
           'assistant_feedback' => find.byKey(const Key('assistant_feedback_vote_buttons')).evaluate().isNotEmpty
               ? find.byKey(const Key('assistant_feedback_vote_buttons'))
               : find.byKey(const Key('chat_composer_bar')),
+          'reverse_curl_forearms' => find.byKey(
+              container.read(tourTargetRegistryProvider)['program']!.key,
+            ),
           _ => find.text(entry.titleEn),
         };
         expect(realControl, findsOneWidget, reason: entry.id);
