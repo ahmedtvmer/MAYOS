@@ -38,6 +38,7 @@ import '../../../core/workout_equipment.dart';
 import '../../../core/workout_storage.dart';
 import '../../../providers.dart';
 import '../../../router.dart';
+import '../exercise/exercise_detail_screen.dart';
 import '../exercise_picker_dialog.dart';
 import 'active_workout_controller.dart';
 import 'draft_sync_service.dart';
@@ -71,15 +72,24 @@ import '../xp/xp_widgets.dart';
 /// can never push the bottom bar (or the keypad) off the screen.
 const double _kMessageSlotMaxHeightFraction = 1 / 3;
 
-/// The logger's shared route for linked exercises and warm-up movements.
-void openLoggerExerciseDetail(
+/// The logger's way into the shared exercise screen for linked exercises and
+/// warm-up movements. A working exercise offers its Alternatives tab, whose
+/// "Swap this exercise" resolves to [ExerciseDetailResult.swap] so the
+/// logger runs its existing Replace exercise flow (#803).
+Future<ExerciseDetailResult?> openLoggerExerciseDetail(
   BuildContext context, {
   required String exerciseId,
   int? dayOrder,
+  bool offerSwap = false,
 }) {
-  final String path = '$exerciseDetailPath/${Uri.encodeComponent(exerciseId)}';
-  context.push(
-    dayOrder == null ? '$path?library=1' : '$path?day=$dayOrder',
+  return openExerciseDetail(
+    context,
+    exerciseId,
+    ExerciseDetailOptions(
+      dayOrder: dayOrder,
+      showProgram: dayOrder != null,
+      offer: offerSwap ? ExerciseDetailOffer.swap : ExerciseDetailOffer.none,
+    ),
   );
 }
 
@@ -1933,10 +1943,10 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
                 onOpenDetail: workout.warmupMovements[i].exerciseId == null ||
                         workout.warmupMovements[i].exerciseId!.isEmpty
                     ? null
-                    : () => openLoggerExerciseDetail(
+                    : () => unawaited(openLoggerExerciseDetail(
                           context,
                           exerciseId: workout.warmupMovements[i].exerciseId!,
-                        ),
+                        )),
               ),
             MayosSectionHeader(
               key: const ValueKey<String>('logger.exercises.section'),
@@ -2031,11 +2041,11 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
               linkedExerciseId.isEmpty ||
               exercise.isCoachExercise
           ? null
-          : () => openLoggerExerciseDetail(
-                context,
-                exerciseId: linkedExerciseId,
-                dayOrder: exercise.unplanned ? null : workout.dayOrder,
-              ),
+          : () => unawaited(_openWorkingExerciseDetail(
+                exerciseIndex,
+                linkedExerciseId,
+                exercise.unplanned ? null : workout.dayOrder,
+              )),
       onRemove: exercise.unplanned && !isReplacement
           ? () => unawaited(_onRemoveExercise(exerciseIndex))
           : null,
@@ -2111,6 +2121,24 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
       }
     }
     return null;
+  }
+
+  /// The shared exercise screen for a working exercise; its "Swap this
+  /// exercise" runs the existing Replace exercise flow (#803).
+  Future<void> _openWorkingExerciseDetail(
+    int exerciseIndex,
+    String exerciseId,
+    int? dayOrder,
+  ) async {
+    final ExerciseDetailResult? result = await openLoggerExerciseDetail(
+      context,
+      exerciseId: exerciseId,
+      dayOrder: dayOrder,
+      offerSwap: true,
+    );
+    if (result == ExerciseDetailResult.swap && mounted) {
+      await _onReplaceExercise(exerciseIndex);
+    }
   }
 
   /// **Replace exercise** (#162/#171): pick a catalog entry, persist the

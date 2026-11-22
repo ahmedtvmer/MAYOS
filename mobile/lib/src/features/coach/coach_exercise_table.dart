@@ -1,5 +1,6 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../core/display_language/catalog.dart';
 import '../../core/display_language/coach_copy.dart';
@@ -10,14 +11,17 @@ import '../../core/theme/mayos_spacing.dart';
 import '../../core/theme/mayos_theme.dart';
 import '../../core/theme/mayos_typography.dart';
 import '../../core/ui/mayos_table_frame.dart';
-import '../../router.dart';
+import '../player/exercise/exercise_detail_screen.dart';
 import '../player/workout/logger_card_widgets.dart'
     show ExerciseCatalogThumbnail;
 
+/// Coach mode of the shared exercise screen: no program, no player history.
+const ExerciseDetailOptions coachExerciseDetailOptions =
+    ExerciseDetailOptions(showProgram: false, showHistory: false);
+
 void openCoachExerciseDetail(BuildContext context, String exerciseId) {
-  context.push(
-    '$exerciseDetailPath/${Uri.encodeComponent(exerciseId)}?coach=1&library=1',
-  );
+  unawaited(
+      openExerciseDetail(context, exerciseId, coachExerciseDetailOptions));
 }
 
 String? coachCatalogExerciseId(String? exerciseId) {

@@ -15,10 +15,11 @@ import '../../core/theme/mayos_spacing.dart';
 import '../../core/theme/mayos_theme.dart';
 import '../../core/theme/mayos_typography.dart';
 import '../../core/ui/mayos_button.dart';
-import '../../core/ui/mayos_settings_tile.dart';
 import '../../core/ui/mayos_text_field.dart';
 import '../../providers.dart';
 import '../../shared/exercise_filter_bar.dart';
+import 'exercise/exercise_detail_screen.dart';
+import 'workout/logger_card_widgets.dart' show ExerciseCatalogThumbnail;
 
 const double kExercisePickerDialogWidth = 360;
 
@@ -312,10 +313,11 @@ class _ExercisePickerDialogState extends ConsumerState<ExercisePickerDialog>
                       ),
                       for (final SuggestedSubstitute item
                           in _visibleSuggestions)
-                        MayosSettingsTile(
-                          icon: Icons.swap_horiz,
-                          title: item.exerciseName,
-                          onTap: () => _selectExercise((
+                        ExercisePickerRow(
+                          exerciseId: item.exerciseId,
+                          name: item.exerciseName,
+                          imagePath: item.imagePath,
+                          onTap: () => _previewExercise((
                             ExerciseCatalogEntry(
                               id: item.exerciseId,
                               name: item.exerciseName,
@@ -325,10 +327,12 @@ class _ExercisePickerDialogState extends ConsumerState<ExercisePickerDialog>
                         ),
                     ],
                     for (final ExerciseCatalogEntry entry in visible)
-                      MayosSettingsTile(
-                        icon: Icons.fitness_center,
-                        title: entry.name,
-                        onTap: () => _selectExercise((entry, _showAllEquipment)),
+                      ExercisePickerRow(
+                        exerciseId: entry.id,
+                        name: entry.name,
+                        imagePath: entry.imagePath,
+                        onTap: () =>
+                            _previewExercise((entry, _showAllEquipment)),
                       ),
                   ],
                 ),
@@ -353,12 +357,83 @@ class _ExercisePickerDialogState extends ConsumerState<ExercisePickerDialog>
     );
   }
 
+  /// Opens the shared exercise screen as a preview; "Use this exercise"
+  /// makes exactly the selection a tap used to make, and Back changes
+  /// nothing (#803).
+  Future<void> _previewExercise((ExerciseCatalogEntry, bool) selection) async {
+    final ExerciseDetailResult? result = await openExerciseDetail(
+      context,
+      selection.$1.id,
+      const ExerciseDetailOptions(
+        showProgram: false,
+        offer: ExerciseDetailOffer.use,
+      ),
+    );
+    if (result == ExerciseDetailResult.use && mounted) {
+      _selectExercise(selection);
+    }
+  }
+
   void _selectExercise((ExerciseCatalogEntry, bool) selection) {
     if (widget.allowShowAllEquipment) {
       Navigator.of(context).pop(selection);
     } else {
       Navigator.of(context).pop(selection.$1);
     }
+  }
+}
+
+/// One candidate in an exercise picker (player and coach): its picture, its
+/// name and an optional subtitle; tapping opens the preview (#803).
+class ExercisePickerRow extends StatelessWidget {
+  const ExercisePickerRow({
+    super.key,
+    required this.exerciseId,
+    required this.name,
+    required this.imagePath,
+    required this.onTap,
+    this.subtitle,
+  });
+
+  final String exerciseId;
+  final String name;
+  final String? imagePath;
+  final String? subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final MayosThemeExtension c = MayosTheme.of(context);
+    return InkWell(
+      key: ValueKey<String>('exercise.picker.$exerciseId'),
+      borderRadius: BorderRadius.circular(12),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: MayosSpacing.xs),
+        child: Row(
+          children: <Widget>[
+            ExerciseCatalogThumbnail(imagePath: imagePath),
+            const SizedBox(width: MayosSpacing.sm),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(name, style: MayosTypography.of(context).body),
+                  if (subtitle != null)
+                    Text(
+                      subtitle!,
+                      style: MayosTypography.of(context)
+                          .caption
+                          .copyWith(color: c.textSecondary),
+                    ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right, color: c.textMuted),
+          ],
+        ),
+      ),
+    );
   }
 }
 

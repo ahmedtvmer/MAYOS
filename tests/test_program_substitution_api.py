@@ -126,6 +126,33 @@ def _make_player_with_program(client, db, program=None):
     return headers
 
 
+def test_active_program_labels_suggested_substitutes_for_the_alternatives_tab(api):
+    """#803: muscle, equipment and picture are read-time labels, never stored."""
+    from agent.ProgramState import SuggestedSubstitute
+
+    client, db = api
+    program = _program()
+    bench = program.days[0].exercises[1].model_copy(
+        update={"suggested_substitutes": [SuggestedSubstitute(exercise_id="ohp", exercise_name="Overhead Press")]}
+    )
+    program.days[0].exercises[1] = bench
+    headers = _make_player_with_program(client, db, program)
+
+    response = client.get("/programs/active", headers=headers)
+
+    assert response.status_code == 200, response.text
+    substitute = response.json()["days"][0]["exercises"][1]["suggested_substitutes"][0]
+    assert substitute == {
+        "exercise_id": "ohp",
+        "exercise_name": "Overhead Press",
+        "primary_muscle": "Shoulders",
+        "equipment": "dumbbell",
+        "image_path": "ohp.png",
+    }
+    stored = db.ledger.get_active_program().days[0].exercises[1].suggested_substitutes[0]
+    assert stored.model_dump() == {"exercise_id": "ohp", "exercise_name": "Overhead Press"}
+
+
 def test_substitution_changes_only_named_slot_and_keeps_old_version(api):
     client, db = api
     headers = _make_player_with_program(client, db)

@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 CURRENT_TOUR_VERSION = 1
-CURRENT_FEATURE_RELEASE = 8
+CURRENT_FEATURE_RELEASE = 9
 
 _ANALYTICS_ALLOWED_SQL = (
     "COALESCE((SELECT analytics_allowed FROM account_analytics_preferences "

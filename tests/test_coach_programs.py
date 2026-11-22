@@ -2434,6 +2434,10 @@ def test_multi_day_program_draft_round_trips_every_field_through_publish(api):
             # This Player-read projection is derived from the catalog and is
             # not part of the Coach's persisted publication response.
             exercise.pop("notes_are_technique", None)
+            # So are the Alternatives tab's substitute labels (#803).
+            for substitute in exercise.get("suggested_substitutes", []):
+                for label in ("primary_muscle", "equipment", "image_path"):
+                    substitute.pop(label, None)
     assert active_days == days
 
 

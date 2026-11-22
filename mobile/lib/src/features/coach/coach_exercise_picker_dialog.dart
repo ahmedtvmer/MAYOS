@@ -16,10 +16,12 @@ import '../../core/refetch_on_reconnect.dart';
 import '../../core/theme/mayos_spacing.dart';
 import '../../core/theme/mayos_typography.dart';
 import '../../core/ui/mayos_button.dart';
-import '../../core/ui/mayos_settings_tile.dart';
 import '../../core/ui/mayos_text_field.dart';
 import '../../providers.dart';
 import '../../shared/exercise_filter_bar.dart';
+import '../player/exercise/exercise_detail_screen.dart';
+import '../player/exercise_picker_dialog.dart' show ExercisePickerRow;
+import 'coach_exercise_table.dart' show coachExerciseDetailOptions;
 
 class CoachExercisePickerDialog extends ConsumerStatefulWidget {
   const CoachExercisePickerDialog({
@@ -219,9 +221,27 @@ class _CoachExercisePickerDialogState
           exercises: _results,
           yourExerciseLabel: copy.yourExercise,
           onSelected: (ExerciseCatalogEntry exercise) =>
-              Navigator.of(context).pop(exercise),
+              unawaited(_previewExercise(exercise)),
         ),
       );
+
+  /// The shared exercise screen in coach mode as a preview; "Use this
+  /// exercise" picks it as a tap used to. A coach's own exercise has no
+  /// library page, so it is picked straight away (#803).
+  Future<void> _previewExercise(ExerciseCatalogEntry exercise) async {
+    if (exercise.isCoachExercise) {
+      Navigator.of(context).pop(exercise);
+      return;
+    }
+    final ExerciseDetailResult? result = await openExerciseDetail(
+      context,
+      exercise.id,
+      coachExerciseDetailOptions.copyWithOffer(ExerciseDetailOffer.use),
+    );
+    if (result == ExerciseDetailResult.use && mounted) {
+      Navigator.of(context).pop(exercise);
+    }
+  }
 
   Widget _searchField(MayosCopy copy) => MayosTextField(
         controller: _query,
@@ -294,9 +314,10 @@ class _ExerciseSearchResults extends StatelessWidget {
         shrinkWrap: true,
         children: exercises
             .map(
-              (ExerciseCatalogEntry exercise) => MayosSettingsTile(
-                icon: Icons.fitness_center,
-                title: exercise.name,
+              (ExerciseCatalogEntry exercise) => ExercisePickerRow(
+                exerciseId: exercise.id,
+                name: exercise.name,
+                imagePath: exercise.imagePath,
                 subtitle: exercise.isCoachExercise ? yourExerciseLabel : null,
                 onTap: () => onSelected(exercise),
               ),
