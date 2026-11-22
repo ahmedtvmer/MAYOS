@@ -541,6 +541,36 @@ def test_generated_staples_do_not_use_known_wrong_name_matches(monkeypatch):
     )
 
 
+@pytest.mark.parametrize("preference", [None, "Full Body"])
+@pytest.mark.parametrize("frequency", [3, 4, 5])
+def test_the_first_forearm_exercise_is_a_reverse_curl(frequency, preference):
+    """#788: a reverse curl leads forearm work; wrist curls come second.
+
+    The Full Body choice spreads muscle groups by load, so it is checked too.
+    """
+    program = _generate("male", frequency, preference)
+    forearm = [
+        exercise
+        for day in program.days
+        for exercise in day.exercises
+        if exercise.slot_key in {"forearm_wrist", "forearm_reverse"}
+    ]
+    assert forearm, "Forearm work missing"
+    assert forearm[0].slot_key == "forearm_reverse"
+    assert forearm[0].exercise_id == "80"  # Reverse Curl (Barbell), the first staple
+    assert all(exercise.slot_key == "forearm_wrist" for exercise in forearm[1:])
+
+
+def test_forearm_staples_fit_their_slots():
+    from agent.focus_muscles import FOCUS_EXTRA_TABLE
+
+    assert FOCUS_EXTRA_TABLE["forearms"]["main_slot"] == "forearm_reverse"
+    assert SLOT_STAPLES["forearm_reverse"] == ("80", "451", "382", "206")
+    assert SLOT_STAPLES["forearm_wrist"][0] == "1412"
+    assert SLOT_SPECS["forearm_reverse"].primary_actions == ("Elbow Flexion",)
+    assert "Wrist Extension" in SLOT_SPECS["forearm_wrist"].primary_actions
+
+
 def test_no_duplicate_exercises_within_a_day():
     program = _generate("male", 4)
     for day in program.days:
@@ -703,14 +733,14 @@ def test_five_day_ppl_upper_lower_has_balanced_volume():
         "triceps_overhead",
     ]
     assert slots_by_day["Upper"] == [
-        "flat_press", "vertical_pull", "horizontal_row", "forearm_wrist",
+        "flat_press", "vertical_pull", "horizontal_row", "forearm_reverse",
         "biceps_preacher", "triceps_pushdown",
     ]
     assert slots_by_day["Lower"] == [
         "quad_compound", "adductors", "ham_curl", "glute_thrust", "calf", "abs",
     ]
     assert slots_by_day["Pull"] == [
-        "vertical_pull", "rear_delts", "shrug", "biceps_alt", "forearm_reverse",
+        "vertical_pull", "rear_delts", "shrug", "biceps_alt", "forearm_wrist",
     ]
     assert {
         day.day_name for day in program.days

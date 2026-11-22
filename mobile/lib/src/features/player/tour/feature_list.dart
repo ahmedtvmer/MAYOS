@@ -6,7 +6,7 @@ import 'tour_targets.dart';
 
 /// The shared Feature list used by the Tour and later discovery surfaces.
 const int tourCurrentVersion = 1;
-const int currentFeatureRelease = 8;
+const int currentFeatureRelease = 9;
 const int kReleaseShareCard = 3;
 const int kReleasePrCelebration = 3;
 const int kReleaseDurationCheck = 4;
@@ -63,6 +63,17 @@ List<String> validateFeatureEntries(
 }
 
 const List<FeatureEntry> featureList = <FeatureEntry>[
+  FeatureEntry(
+    id: 'reverse_curl_forearms',
+    titleEn: 'Reverse curls for forearms',
+    sentenceEn: 'New programs start forearm work with a reverse curl, and reverse curls now count as forearm work, not biceps.',
+    titleAr: 'الكيرل العكسي للساعدين',
+    sentenceAr: 'البرامج الجديدة تبدأ تمارين الساعدين بالكيرل العكسي، ويُحسب الكيرل العكسي الآن تمرينًا للساعدين وليس للعضلة ذات الرأسين.',
+    target: 'program',
+    location: TourShellTabLocation(tabIndex: 1),
+    release: 9,
+    audience: 'lifter',
+  ),
   FeatureEntry(
     id: 'xp_ranks',
     titleEn: 'XP, ranks and your weekly streak',
