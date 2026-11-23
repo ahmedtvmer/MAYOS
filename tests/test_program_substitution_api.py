@@ -812,7 +812,7 @@ def test_program_edit_adds_calves_with_their_movement_class_rest(api):
     assert added["rest_seconds"] == 105
 
 
-def test_program_edit_changes_first_group_sets_and_retains_backoff_sets(api):
+def test_program_edit_takes_removed_sets_from_the_last_group(api):
     client, db = api
     program = _program()
     original = program.days[0].exercises[0]
@@ -838,8 +838,9 @@ def test_program_edit_changes_first_group_sets_and_retains_backoff_sets(api):
 
     assert response.status_code == 200, response.text
     exercise = response.json()["days"][0]["exercises"][0]
-    assert exercise["target_sets"] == 2
-    assert [group["sets"] for group in exercise["set_groups"]] == [2, 2]
+    # #824: the change lands on the last group; the first group is kept.
+    assert exercise["target_sets"] == 3
+    assert [group["sets"] for group in exercise["set_groups"]] == [3, 1]
 
 
 def test_legacy_program_row_without_groups_reads_as_one_group_through_api(api):

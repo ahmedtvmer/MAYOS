@@ -3027,13 +3027,6 @@ class ProgramExercise {
               total + ((group['sets'] as num?)?.toInt() ?? 0),
         );
 
-  /// Sets in the groups after the first: the back-offs a top-set edit keeps.
-  int get backoffSetCount => setGroups.skip(1).fold<int>(
-        0,
-        (int total, Map<String, dynamic> group) =>
-            total + ((group['sets'] as num?)?.toInt() ?? 0),
-      );
-
   bool get hasNotes => notes != null && notes!.isNotEmpty;
 
   bool get hasWarmupSets => warmupSets > 0;
