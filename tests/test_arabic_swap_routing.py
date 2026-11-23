@@ -150,9 +150,18 @@ def test_issue_738_day_qualified_swap_validates_target_and_updates_program(
     assert "Pull" in response
 
 
-def test_issue_738_arabic_day_swap_does_not_find_source_on_another_day(
-    fresh_store, monkeypatch
+@pytest.mark.parametrize(
+    "query",
+    [
+        "swap Preacher Curl (Barbell) for Incline Curl (Dumbbell) on Pull day",
+        "بدل Preacher Curl (Barbell) بـ Incline Curl (Dumbbell) يوم Pull",
+    ],
+    ids=["english", "arabic"],
+)
+def test_issue_762_day_swap_falls_back_to_the_day_with_the_source(
+    fresh_store, monkeypatch, query
 ):
+    """#762 (owner decision a): both languages swap on the day that has the exercise and name it."""
     before = _seed_program_days(
         fresh_store,
         {
@@ -161,20 +170,20 @@ def test_issue_738_arabic_day_swap_does_not_find_source_on_another_day(
         },
     )
     monkeypatch.setattr("agent.assistant_graph.llm", ScriptedChatModel())
-    state = _turn(
-        "\u0628\u062f\u0644 Preacher Curl (Barbell) \u0628\u0640 Incline Curl (Dumbbell) \u064a\u0648\u0645 Pull"
+    state = _turn(query)
+
+    response = "".join(
+        stream_assistant_turn(state, ledger=fresh_store.ledger, store=fresh_store)
     )
 
-    list(stream_assistant_turn(state, ledger=fresh_store.ledger, store=fresh_store))
-
     after = fresh_store.ledger.get_active_program()
-    assert state["intent"] == "arabic_swap_clarification"
-    assert state["program_updated"] is False
-    assert after.version == before.version
-    assert any(ex.exercise_name == "Preacher Curl (Barbell)" for ex in after.days[1].exercises)
-    assert "Incline Curl (Dumbbell)" not in {
-        ex.exercise_name for day in after.days for ex in day.exercises
-    }
+    push_names = [exercise.exercise_name for exercise in after.days[1].exercises]
+    assert state["intent"] == "exercise_substitution"
+    assert state["program_updated"] is True
+    assert after.version == before.version + 1
+    assert "Incline Curl (Dumbbell)" in push_names
+    assert "Preacher Curl (Barbell)" not in push_names
+    assert "Push" in response
 
 
 def test_issue_738_arabic_day_swap_selects_the_named_pull_day(
