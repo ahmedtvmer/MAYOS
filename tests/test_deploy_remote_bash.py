@@ -47,6 +47,7 @@ upload_build_input() { record upload_build_input; }
 set_image_tag() { record set_image_tag; }
 build_image() { record build_image; return "${BUILD_RESULT:-0}"; }
 compose_up() { record compose_up; }
+ensure_running_history() { record ensure_running_history; }
 check_readiness() { record check_readiness; return "$READINESS_RESULT"; }
 start_companion_services() { record start_companion_services; }
 remember_image() { record remember_image; }
