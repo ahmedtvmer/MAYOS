@@ -240,65 +240,71 @@ void main() {
     },
   );
 
-  testWidgets(
-      'Latest session table fills desktop cards and widens Action and Sets',
-      (WidgetTester tester) async {
-    await loadInterTestFont();
-    final FakeMayosApi fake = _coachFake();
-    _setExercise(fake);
-    await _pumpApp(
-      tester,
-      fake,
-      logicalSize: const Size(1440, 1600),
-    );
+  group('Latest session table', () {
+    // Loading a font sends a "fonts changed" notice that schedules one more
+    // frame. Loading it here, outside the test body, lets the test's first
+    // pump run that frame instead of leaving it pending at the end (#821).
+    setUpAll(loadInterTestFont);
 
-    for (final double width in <double>[1440, 1920]) {
-      tester.view.physicalSize = Size(width * 2, 3200);
-      tester.view.devicePixelRatio = 2;
-      await tester.pump(const Duration(milliseconds: 100));
-      final Finder frame = find.byType(CoachExerciseTableFrame).first;
-      final Finder card = find.ancestor(
-        of: frame,
-        matching: find.byType(MayosCard),
-      ).first;
-      final Rect frameRect = tester.getRect(frame);
-      final Rect cardRect = tester.getRect(card);
-      expect(
-        frameRect.right,
-        closeTo(
-          cardRect.right -
-              MayosSpacing.md -
-              MayosBorderWidths.hairline,
-          1,
-        ),
-      );
-      final Finder actionValue = find.descendant(
-        of: frame,
-        matching: find.text('Shoulder Horizontal Adduction'),
-      );
-      expect(actionValue, findsOneWidget);
-      final Text actionLabel = tester.widget<Text>(actionValue);
-      final double actionLineHeight =
-          actionLabel.style!.fontSize! * actionLabel.style!.height!;
-      expect(
-        tester.renderObject<RenderParagraph>(actionValue).textSize.height,
-        closeTo(actionLineHeight, 0.5),
+    testWidgets(
+        'fills desktop cards and widens Action and Sets',
+        (WidgetTester tester) async {
+      final FakeMayosApi fake = _coachFake();
+      _setExercise(fake);
+      await _pumpApp(
+        tester,
+        fake,
+        logicalSize: const Size(1440, 1600),
       );
 
-      final Finder header = find.descendant(
-        of: frame,
-        matching: find.byType(MayosTableHeader),
-      ).first;
-      double headerWidth(String label) => tester.getSize(
-            find.descendant(of: header, matching: find.text(label)),
-          ).width;
-      expect(headerWidth('Exercise'), greaterThan(290));
-      expect(headerWidth('Action'), 260);
-      expect(headerWidth('Sets'), 95);
-      expect(headerWidth('Reps'), 70);
-      expect(headerWidth('Volume (kg)'), 120);
-      expect(tester.takeException(), isNull);
-    }
+      for (final double width in <double>[1440, 1920]) {
+        tester.view.physicalSize = Size(width * 2, 3200);
+        tester.view.devicePixelRatio = 2;
+        await tester.pump(const Duration(milliseconds: 100));
+        final Finder frame = find.byType(CoachExerciseTableFrame).first;
+        final Finder card = find.ancestor(
+          of: frame,
+          matching: find.byType(MayosCard),
+        ).first;
+        final Rect frameRect = tester.getRect(frame);
+        final Rect cardRect = tester.getRect(card);
+        expect(
+          frameRect.right,
+          closeTo(
+            cardRect.right -
+                MayosSpacing.md -
+                MayosBorderWidths.hairline,
+            1,
+          ),
+        );
+        final Finder actionValue = find.descendant(
+          of: frame,
+          matching: find.text('Shoulder Horizontal Adduction'),
+        );
+        expect(actionValue, findsOneWidget);
+        final Text actionLabel = tester.widget<Text>(actionValue);
+        final double actionLineHeight =
+            actionLabel.style!.fontSize! * actionLabel.style!.height!;
+        expect(
+          tester.renderObject<RenderParagraph>(actionValue).textSize.height,
+          closeTo(actionLineHeight, 0.5),
+        );
+
+        final Finder header = find.descendant(
+          of: frame,
+          matching: find.byType(MayosTableHeader),
+        ).first;
+        double headerWidth(String label) => tester.getSize(
+              find.descendant(of: header, matching: find.text(label)),
+            ).width;
+        expect(headerWidth('Exercise'), greaterThan(290));
+        expect(headerWidth('Action'), 260);
+        expect(headerWidth('Sets'), 95);
+        expect(headerWidth('Reps'), 70);
+        expect(headerWidth('Volume (kg)'), 120);
+        expect(tester.takeException(), isNull);
+      }
+    });
   });
 
   testWidgets(
