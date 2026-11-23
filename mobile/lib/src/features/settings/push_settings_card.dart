@@ -41,15 +41,21 @@ class _PushSettingsCardState extends ConsumerState<PushSettingsCard> {
       _accountId != null &&
       ref.read(authControllerProvider).session?.account.accountId == _accountId;
 
-  Future<void> _load() async {
+  /// Reads the push status, from the session cache unless [refresh] (#756).
+  Future<void> _load({bool refresh = false}) async {
     try {
       _device = pushDeviceState();
       _dismissed =
           ref.read(browserKeyValueStoreProvider).getItem(_dismissKey) == '1';
-      final status = await ref
-          .read(apiClientProvider)
-          .pushStatus(_device['device_id'] as String);
+      final String deviceId = _device['device_id'] as String;
+      final cached = ref.read(pushStatusCacheProvider);
+      final Map<String, dynamic> status =
+          !refresh && cached != null && cached.deviceId == deviceId
+              ? cached.status
+              : await ref.read(apiClientProvider).pushStatus(deviceId);
       if (!_ownsAccount) return;
+      ref.read(pushStatusCacheProvider.notifier).state =
+          (deviceId: deviceId, status: status);
       setState(() {
         _status = status;
         _failed = false;
@@ -76,7 +82,7 @@ class _PushSettingsCardState extends ConsumerState<PushSettingsCard> {
         prefs['timezone'] = _device['timezone'] ?? prefs['timezone'];
         await ref.read(apiClientProvider).savePushPreferences(prefs);
       }
-      await _load();
+      await _load(refresh: true);
     } on Object {
       if (_ownsAccount) setState(() => _failed = true);
     } finally {
@@ -94,7 +100,7 @@ class _PushSettingsCardState extends ConsumerState<PushSettingsCard> {
           .read(apiClientProvider)
           .deletePushSubscription(_device['device_id'] as String);
       await disablePushDevice();
-      await _load();
+      await _load(refresh: true);
     } on Object {
       if (_ownsAccount) setState(() => _failed = true);
     } finally {
@@ -114,7 +120,7 @@ class _PushSettingsCardState extends ConsumerState<PushSettingsCard> {
     });
     try {
       await ref.read(apiClientProvider).savePushPreferences(prefs);
-      await _load();
+      await _load(refresh: true);
     } on Object {
       if (_ownsAccount) setState(() => _failed = true);
     } finally {
