@@ -75,6 +75,17 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
     audience: 'lifter',
   ),
   FeatureEntry(
+    id: 'meal_switch_reasons',
+    titleEn: 'Why planned meals are off',
+    sentenceEn: "When planned meals can't be built, the Meals switch stays off and says what is missing: your targets, reviewed Staple foods or practical portions.",
+    titleAr: 'سبب إيقاف الوجبات المخططة',
+    sentenceAr: 'عندما يتعذر إنشاء الوجبات المخططة، يبقى مفتاح الوجبات متوقفًا ويوضح ما ينقص: أهدافك، أو أطعمة أساسية معتمدة، أو حصص عملية.',
+    target: 'meal_setup',
+    location: TourShellTabLocation(tabIndex: 2),
+    release: 9,
+    audience: 'lifter',
+  ),
+  FeatureEntry(
     id: 'one_row_of_working_sets',
     titleEn: 'One row of working sets',
     sentenceEn: 'New programs give each exercise one row of working sets, and an exercise trained before a related compound stops 2 reps short of failure.',

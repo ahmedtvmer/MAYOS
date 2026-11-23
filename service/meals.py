@@ -23,10 +23,11 @@ def read(ledger, today):
     state = nutrition.read(ledger, today=today)
     if state["state"] != "ready":
         active = ledger.get_active_nutrition_plan()
-        payload = json.loads(active["meals_json"]) if active and active["meals_json"] else None
         return {
             "status": "unavailable", "reason": "targets", "meals": [],
-            "enabled": meal_switch_enabled(ledger, active, payload) if active else False,
+            # A switch with no meals under it is never reported on (#845); a
+            # saved Player or Coach choice stays in the preference and payload.
+            "enabled": False,
             "plan_version_id": active["id"] if active else None,
             "author": active["author"] if active else None,
         }
@@ -53,6 +54,10 @@ def read(ledger, today):
     result = {**variant, **context, "targets_changed": bool(payload and payload.get("targets_changed", False))}
     result["meals"] = meals_with_food_macros(result["meals"])
     result["day_totals"] = variant.get("totals")
+    # An unavailable read reports the switch off even for default-on (#845), while
+    # the saved preference and meals_json keep an explicit Player or Coach choice.
+    if result["status"] == "unavailable":
+        result["enabled"] = False
     return result
 
 

@@ -36,10 +36,12 @@ class _NutritionMealSettingsRowsState
 
   bool get _coachControls =>
       _meals?.author == 'Coach' || _meals?.canEnable == false;
+  bool get _unavailable => _meals?.status == 'unavailable';
+  bool get _enabled => !_unavailable && (_pendingEnabled ?? _meals?.enabled ?? false);
   bool get _canToggle =>
       _meals != null &&
       !_coachControls &&
-      (_meals!.status != 'unavailable' || _meals!.enabled) &&
+      !_unavailable &&
       !_loading &&
       !_loadFailed &&
       !_changing;
@@ -103,7 +105,7 @@ class _NutritionMealSettingsRowsState
     if (_meals?.status == 'unavailable')
       return copy.mealsUnavailable(_meals!.reason);
     if (_coachControls) return copy.mealsUnavailable('coach');
-    return _meals?.enabled == true ? copy.mealsOn : copy.mealsOff;
+    return _enabled ? copy.mealsOn : copy.mealsOff;
   }
 
   @override
@@ -132,7 +134,7 @@ class _NutritionMealSettingsRowsState
                   label: copy.meals,
                   child: Switch(
                     key: const Key('meals_switch'),
-                    value: _pendingEnabled ?? _meals?.enabled ?? false,
+                    value: _enabled,
                     onChanged: _canToggle ? _changeEnabled : null,
                   ),
                 ),
