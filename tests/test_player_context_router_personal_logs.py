@@ -10,8 +10,12 @@ from agent import assistant_graph, context_router, player_tools
 from service import nutrition
 from tests.fakes.chat_model import ScriptedChatModel
 from tests.test_player_chat_privacy import (
-    api, _authed, _done_content, _force_free_form_coaching_intent, _register,
-)  # noqa: F401
+    api,  # noqa: F401 (pytest fixture)
+    _authed,
+    _done_content,
+    _force_free_form_coaching_intent,
+    _register,
+)
 
 
 TODAY = date(2026, 11, 16)
