@@ -155,19 +155,6 @@ class _ProgramDayEditDialogState extends State<ProgramDayEditDialog> {
             _increaseSetButton(context, entry),
           ],
         ),
-        if (exercise.setGroups.length > 1)
-          Align(
-            alignment: AlignmentDirectional.centerEnd,
-            child: Padding(
-              padding: const EdgeInsetsDirectional.only(end: 16),
-              child: Text(
-                displayCopyOf(context).programBackoffSetsKept(
-                  exercise.backoffSetCount,
-                ),
-                style: MayosTypography.of(context).caption,
-              ),
-            ),
-          ),
         if (index < _exercises.length - 1) const Divider(height: 1),
       ],
     );
@@ -202,8 +189,8 @@ class _ProgramDayEditDialogState extends State<ProgramDayEditDialog> {
     return IconButton(
       key: Key('program_edit_decrease_${entry.sourceIndex}'),
       tooltip: copy.decreaseProgramExerciseSets(exercise.exerciseName),
-      onPressed: exercise.backoffSetCount >= 4 ||
-              entry.prescribedSets <= exercise.backoffSetCount + 1
+      // Any exercise can go down to one set; no row is locked (#824).
+      onPressed: entry.prescribedSets <= 1
           ? null
           : () => _changeSetCount(entry, entry.prescribedSets - 1),
       icon: const Icon(Icons.remove),

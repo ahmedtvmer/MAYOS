@@ -2006,7 +2006,7 @@ void main() {
     expect(fake.programEditRequests, isEmpty);
   });
 
-  testWidgets('grouped day edit changes first group and keeps back-offs read-only',
+  testWidgets('grouped day edit lowers to one set with no locked rows (#824)',
       (WidgetTester tester) async {
     final FakeMayosApi fake = _signedInFake()
       ..programVersion = 1
@@ -2035,15 +2035,14 @@ void main() {
 
     await tester.tap(find.byKey(const Key('program_edit_day_1')));
     await tester.pumpAndSettle();
-    expect(find.text('2 back-off sets stay as prescribed'), findsOneWidget);
-    await tester.tap(find.byKey(const Key('program_edit_decrease_0')));
-    await tester.pump();
-    expect(find.bySemanticsLabel('Bench Press: 4 working sets'), findsOneWidget);
-    await tester.tap(find.byKey(const Key('program_edit_decrease_0')));
-    await tester.pump();
-    expect(find.bySemanticsLabel('Bench Press: 3 working sets'), findsOneWidget);
+    expect(find.textContaining('back-off'), findsNothing);
+    for (final int sets in <int>[4, 3, 2, 1]) {
+      await tester.tap(find.byKey(const Key('program_edit_decrease_0')));
+      await tester.pump();
+      expect(find.bySemanticsLabel('Bench Press: $sets ${sets == 1 ? 'working set' : 'working sets'}'), findsOneWidget);
+    }
     expect(tester.widget<IconButton>(find.byKey(const Key('program_edit_decrease_0'))).onPressed, isNull);
-    expect(find.text('2 back-off sets stay as prescribed'), findsOneWidget);
+    expect(find.textContaining('back-off'), findsNothing);
     await tester.tap(find.byKey(const Key('program_edit_save_button')));
     await tester.pumpAndSettle();
 
@@ -2051,7 +2050,7 @@ void main() {
       <String, dynamic>{
         'source_index': 0,
         'exercise_id': 'bench_press',
-        'target_sets': 3,
+        'target_sets': 1,
       },
     ]);
   });

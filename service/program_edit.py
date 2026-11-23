@@ -294,16 +294,13 @@ def _validate_program_edit(
     ):
         return _failure(ProgramEditErrorCode.EXERCISE_NOT_ON_DAY)
     for position, item in enumerate(requested_exercises):
+        # Total working sets, 1 to 4 (or the current total when higher); no
+        # set group is locked (#824).
         maximum_sets = 4
-        minimum_sets = 1
         if item.source_index >= 0:
             current = current_exercises[item.source_index]
             maximum_sets = max(maximum_sets, program_exercise_working_sets(current))
-            minimum_sets += sum(
-                int(group.get("sets", 0))
-                for group in (current.get("set_groups") or [])[1:]
-            )
-        if item.target_sets < minimum_sets or item.target_sets > maximum_sets:
+        if item.target_sets < 1 or item.target_sets > maximum_sets:
             return _failure(ProgramEditErrorCode.INVALID_SET_COUNT, exercise_position=position)
     return None
 
@@ -332,13 +329,33 @@ def _apply_program_edit(
         exercise_copy = deepcopy(current_exercises[requested.source_index])
         groups = exercise_copy.get("set_groups") or []
         if groups:
-            backoff_sets = sum(int(group.get("sets", 0)) for group in groups[1:])
-            groups[0]["sets"] = requested.target_sets - backoff_sets
+            groups = _resize_set_groups(groups, requested.target_sets)
             exercise_copy["set_groups"] = groups
             exercise_copy["target_sets"] = groups[0]["sets"]
         else:
             exercise_copy["target_sets"] = requested.target_sets
         prepared.day["exercises"].append(exercise_copy)
+
+
+def _resize_set_groups(groups: list[dict[str, Any]], target_sets: int) -> list[dict[str, Any]]:
+    """Changes an exercise's total sets at its last set group (#824).
+
+    Added sets join the last group. Removed sets come off the last group, which
+    is dropped when it empties, so earlier groups stay as prescribed while any
+    of their sets remain.
+    """
+    groups = [dict(group) for group in groups]
+    change = target_sets - sum(int(group.get("sets", 0)) for group in groups)
+    if change > 0:
+        groups[-1]["sets"] = int(groups[-1].get("sets", 0)) + change
+    while change < 0:
+        last_sets = int(groups[-1].get("sets", 0))
+        if last_sets + change > 0 or len(groups) == 1:
+            groups[-1]["sets"] = last_sets + change
+            break
+        change += last_sets
+        groups.pop()
+    return groups
 
 
 def _prepare_added_prescriptions(db: Any, ledger: Any, day: dict[str, Any], requested: list[ProgramEditExercise]) -> None:
