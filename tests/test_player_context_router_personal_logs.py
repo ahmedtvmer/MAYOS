@@ -634,6 +634,57 @@ PERSONAL_ROUTING_MATRIX = [
 ]
 
 
+# #747: advice that names the Player's own log, both interval boundaries, and
+# Arabic factual "if". TODAY is Monday 2026-11-16; the Saturday week began on the 14th.
+_WEEK_TO_YESTERDAY = {"end_day": "yesterday", "days": 2}
+_RANGE_14_TO_15 = {"end_day": "2026-11-15", "days": 2}
+ISSUE_747_CASES = [
+    ("general_knowledge", "today", None, None, language, question)
+    for language, question in [
+        ("en", "How many carbs do I need before my cardio session?"),
+        ("msa", "كم كربوهيدرات أحتاج قبل جلسة الكارديو؟"),
+        ("eg", "محتاج كام كارب قبل الكارديو بتاعي؟"),
+        ("en", "How many meals does my food log support?"),
+        ("eg", "سجل أكلي بيدعم كام وجبة؟"),
+        ("msa", "كم وجبة يدعم سجل وجباتي؟"),
+    ]
+] + [
+    # Needing something to reach a saved target is still a retrieval question.
+    ("target_achievement", "today", "get_player_food_log", {"day": "today"}, language, question)
+    for language, question in [
+        ("en", "How much protein do I need to hit my protein target today?"),
+        ("eg", "فاضل لي كام بروتين محتاج النهارده؟"),
+        ("msa", "كم بروتين أحتاج حتى أحقق هدفي من البروتين اليوم؟"),
+    ]
+] + [
+    ("intake_recall", "this_week", "get_player_nutrition_trend", _WEEK_TO_YESTERDAY, language, question)
+    for language, question in [
+        ("en", "How much protein did I eat this week up to yesterday?"),
+        ("eg", "أكلت كام بروتين الأسبوع ده لحد امبارح؟"),
+        ("msa", "كم بروتين تناولت هذا الأسبوع حتى أمس؟"),
+    ]
+] + [
+    ("intake_recall", "date_range", "get_player_nutrition_trend", _RANGE_14_TO_15, language, question)
+    for language, question in [
+        ("en", "How much protein did I eat between 2026-11-14 and 2026-11-15?"),
+        ("eg", "أكلت كام بروتين بين 2026-11-14 و 2026-11-15؟"),
+        ("msa", "كم بروتين تناولت من 2026-11-14 إلى 2026-11-15؟"),
+    ]
+] + [
+    ("targets_only", "date_range", "get_player_nutrition", _RANGE_14_TO_15, "en",
+     "What were my nutrition targets between 2026-11-14 and 2026-11-15?"),
+    ("cardio_performed", "date_range", "get_player_cardio", _RANGE_14_TO_15, "en",
+     "How much cardio did I do between 2026-11-14 and 2026-11-15?"),
+] + [
+    ("target_achievement", "today", "get_player_food_log", {"day": "today"}, language, question)
+    for language, question in [
+        ("eg", "هل تعرف إذا كنت حققت هدفي من البروتين اليوم؟"),
+        ("msa", "هل يمكنك أن تتحقق مما إذا كنت حققت هدفي من البروتين اليوم؟"),
+        ("eg", "شوف لو حققت هدفي من البروتين النهارده"),
+    ]
+]
+PERSONAL_ROUTING_MATRIX += ISSUE_747_CASES
+
 @pytest.mark.parametrize(
     ("intent", "period", "expected_reader", "expected_args", "language", "question"),
     PERSONAL_ROUTING_MATRIX,
@@ -671,13 +722,16 @@ def test_issue_735_personal_log_routes_each_intent_and_period(
     if expected_args and "days" in expected_args:
         [result] = [json.loads(message.content) for message in routed.messages
                     if isinstance(message, ToolMessage)]
-        start = (TODAY - timedelta(days=expected_args["days"] - 1)).isoformat()
+        # A window ends on its end_day when one is named (#747), otherwise today.
+        end_day = expected_args.get("end_day")
+        end = {"yesterday": TODAY - timedelta(days=1), None: TODAY}.get(end_day) or date.fromisoformat(end_day)
+        start = (end - timedelta(days=expected_args["days"] - 1)).isoformat()
         if expected_reader in {"get_player_nutrition_trend", "get_player_nutrition"}:
-            assert result["start_date"] == start and result["end_date"] == TODAY.isoformat()
+            assert result["start_date"] == start and result["end_date"] == end.isoformat()
             assert len(result["days"]) == expected_args["days"]
         else:
             assert result["window"]["start_date"] == start
-            assert result["window"]["end_date"] == TODAY.isoformat()
+            assert result["window"]["end_date"] == end.isoformat()
 
 
 @pytest.mark.parametrize(("question", "reader"), [

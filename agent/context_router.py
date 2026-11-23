@@ -7,6 +7,7 @@ import re
 import unicodedata
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import date, timedelta
 from typing import Any
 
 from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
@@ -156,7 +157,21 @@ _HYPOTHETICAL_CONTEXT = re.compile(
     r"(?<!\w)(?:(?:لو|اذا)(?!\s+سمحت)|بافتراض|افترض|تخيل|في\s+حالة)(?!\w)", re.I,
 )
 _FACT_CHECK_IF = re.compile(
-    r"\b(?:(?:tell|show)(?:\s+me)?|check|see|confirm|verify|know|find\s+out)\s+if\b", re.I,
+    r"\b(?:(?:tell|show)(?:\s+me)?|check|see|confirm|verify|know|find\s+out)\s+if\b|"
+    # Arabic asks about a fact the same way: "هل تعرف إذا…", "شوف لو…", "تحقق مما إذا…" (#747).
+    r"(?<!\w)(?:تعرف|تعرفي|تقدر\s+تقولي|قولي|قول\s+لي|شوف|شوفلي|بص|اعرف|اتاكد|تاكد|تتاكد|"
+    r"تحقق|تتحقق|راجع|اخبرني)\s+(?:(?:مما|ما)\s+)?(?:اذا|لو)(?!\w)", re.I,
+)
+# Advice about what the Player needs, or what a feature supports, asks for no
+# saved records even when it names the Player's own log (#747, ADR 016).
+_NEED_ADVICE = re.compile(
+    r"\b(?:do|would|will|should)\s+i\s+need\b|"
+    r"\b(?:does|can|will|would)\s+(?:my\s+)?(?:food\s+)?log\s+(?:support|allow|handle|hold|take|fit)\b|"
+    r"(?<!\w)(?:احتاج|محتاج|محتاجه|يلزمني|بيدعم|يدعم|بيسمح|يسمح|يستوعب|بيستوعب)(?!\w)", re.I,
+)
+_REACH_MY_TARGET = re.compile(
+    r"\bto\s+(?:hit|reach|meet)\s+my\s+(?:\w+\s+)?(?:targets?|goals?)\b|"
+    r"(?<!\w)(?:عشان|علشان|لكي|حتى|حتي)\s+(?:اوصل|احقق|ابلغ)(?!\w)", re.I,
 )
 _LOG_READ_DECLINED = re.compile(
     r"\b(?:do\s+not|don\s+t|never)\s+(?:read|load|look\s+up|check|show|use|review|retrieve)\b|"
@@ -191,6 +206,18 @@ _FOOD_LOG_YESTERDAY = re.compile(
     re.IGNORECASE,
 )
 _FOOD_LOG_DATE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
+# Two dates joined as a range: "between A and B", "from A to B", "بين A و B", "من A لحد B" (#747).
+_DATE_RANGE = re.compile(
+    r"(?:\bbetween|\bfrom|(?<!\w)بين|(?<!\w)من)\s+(?P<start>\d{4}-\d{2}-\d{2})\s+"
+    r"(?:and|to|through|until|till|-|و|الى|إلى|لحد|حتى|لغاية)\s*(?P<end>\d{4}-\d{2}-\d{2})",
+    re.IGNORECASE,
+)
+# A week or window that stops before today: "up to yesterday", "لحد امبارح" (#747).
+_UP_TO_YESTERDAY = re.compile(
+    r"\b(?:up\s+to|until|till|through|thru)\s+(?:and\s+including\s+)?yesterday\b|"
+    r"(?<!\w)(?:لحد|حتى|حتي|الى|لغاية|لغايه)\s+(?:امبارح|مبارح|امس|البارح)(?!\w)",
+    re.IGNORECASE,
+)
 _FOOD_LOG_TODAY = re.compile(
     r"\b(?:today|tonight)\b|(?<!\w)(?:النهارده|النهاردة|اليوم)(?!\w)", re.IGNORECASE,
 )
@@ -211,7 +238,7 @@ _PERSONAL_LOG_ROUTING_TABLE = {
     "cardio_performed": {"day": "get_player_cardio", "range": "get_player_cardio"},
     "cardio_prescribed": {"day": "get_active_program", "range": "get_active_program"},
 }
-_RANGE_PERIODS = {"this_week", "last_n_days"}
+_RANGE_PERIODS = {"this_week", "last_n_days", "date_range"}
 _EXTRA_MUSCLES = {
     "biceps": ("bi", "باي", "الباي"),
     "triceps": ("tri", "تراي", "التراي"),
@@ -480,12 +507,16 @@ def _context_calls(scopes: Sequence[dict[str, str]]) -> list[dict[str, Any]]:
 def _is_question(text: str, original_text: str) -> bool:
     return bool(
         _QUESTION.search(text) or _PERSONAL_QUESTION.search(text)
+        # "شوف لو…" asks about a fact like "check if…" (#747).
+        or _FACT_CHECK_IF.search(text)
         or re.search(r"[?؟]", original_text)
     )
 
 
 def _resolve_personal_log_period(text: str, original_text: str) -> str:
     # A range may name today, yesterday or a date as its endpoint.
+    if _DATE_RANGE.search(original_text):
+        return "date_range"
     if _FOOD_LOG_THIS_WEEK.search(text):
         return "this_week"
     if _FOOD_LOG_LAST_N_DAYS.search(text):
@@ -554,6 +585,10 @@ def _personal_log_excluded(text: str) -> bool:
     )
     if hypothetical_intake or _LOG_READ_DECLINED.search(text):
         return True
+    if _NEED_ADVICE.search(text) and not (
+            _NUTRITION_TARGET.search(text) or _NUTRITION_REMAINING.search(text)
+            or _FIRST_PERSON_TARGET_QUESTION.search(text) or _REACH_MY_TARGET.search(text)):
+        return True
     prescribed_cardio = (_PERSONAL_PROGRAM.search(text)
                         and re.search(r"\bcardio\s+should\s+i\s+(?:do|perform)\b", text)
                         and not _FOOD_LOG_QUESTION.search(text))
@@ -586,8 +621,20 @@ def _personal_log_args(reader: str, period: str, original_text: str, ledger: Any
     if reader not in {"get_player_nutrition_trend", "get_player_cardio", "get_player_nutrition"}:
         return {}
     # Inclusive windows: one day, a partial Saturday week, or an explicit rolling range.
+    if period == "date_range":
+        # Both boundaries are kept: the window ends on the later date (#747).
+        match = _DATE_RANGE.search(original_text)
+        first, last = sorted(
+            (date.fromisoformat(match.group("start")), date.fromisoformat(match.group("end")))
+        )
+        return {"end_day": last.isoformat(), "days": min((last - first).days + 1, 14)}
     if period == "this_week":
         today = player_tools.player_local_date(ledger, ledger.ledger_id)
+        if _UP_TO_YESTERDAY.search(text):
+            # "This week up to yesterday" stops before today (#747).
+            yesterday = today - timedelta(days=1)
+            days = max((yesterday - saturday_week_start(today)).days + 1, 1)
+            return {"end_day": "yesterday", "days": days}
         return {"days": (today - saturday_week_start(today)).days + 1}
     if period == "last_n_days":
         match = _FOOD_LOG_LAST_N_DAYS.search(_normalize(original_text))

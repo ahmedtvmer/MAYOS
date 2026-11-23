@@ -97,11 +97,15 @@ class PlayerNutritionArgs(BaseModel):
     offset: int = Field(default=0, ge=0)
     day: str | None = None
     days: int | None = Field(default=None, ge=1, le=14)
+    end_day: str | None = Field(
+        default=None,
+        description="today, yesterday or YYYY-MM-DD: the window of days ends on this day",
+    )
 
     @model_validator(mode="after")
     def require_one_period(self):
-        if self.day is not None and self.days is not None:
-            raise ValueError("Choose day or days, not both")
+        if self.day is not None and (self.days is not None or self.end_day is not None):
+            raise ValueError("Choose day, or days with an optional end_day, not both")
         return self
 
 
@@ -109,6 +113,10 @@ class NutritionTrendArgs(BaseModel):
     """A short recent Player-local daily Food log and target trend."""
 
     days: int = Field(default=14, ge=1, le=14)
+    end_day: str | None = Field(
+        default=None,
+        description="today, yesterday or YYYY-MM-DD: the window of days ends on this day",
+    )
 
 
 class CardioArgs(BaseModel):
@@ -117,6 +125,10 @@ class CardioArgs(BaseModel):
     offset: int = Field(default=0, ge=0)
     days: int = Field(default=14, ge=1, le=14)
     day: str | None = Field(default=None, description="today, yesterday or YYYY-MM-DD; overrides days")
+    end_day: str | None = Field(
+        default=None,
+        description="today, yesterday or YYYY-MM-DD: the window of days ends on this day",
+    )
 
 
 class ChatHistorySearchArgs(BaseModel):
@@ -384,12 +396,25 @@ def _invalid_recent_date(today: date) -> dict[str, Any]:
             "today": today.isoformat()}
 
 
+def _recent_window(end_day: str | None, days: int, today: date) -> tuple[date, date]:
+    """An inclusive window of ``days`` ending on ``end_day`` (default today) (#747).
+
+    Both ends must fall inside the recent Player-local window.
+    """
+    end = _recent_player_day(end_day, today) if end_day is not None else today
+    start = end - timedelta(days=days - 1)
+    _recent_player_day(start.isoformat(), today)
+    return start, end
+
+
 def _read_saved_nutrition_targets(ledger: Any, args: PlayerNutritionArgs, today: date) -> dict[str, Any]:
     try:
-        end = _recent_player_day(args.day, today) if args.day is not None else today
+        start, end = (
+            _recent_window(args.day, 1, today) if args.day is not None
+            else _recent_window(args.end_day, args.days or 1, today)
+        )
     except ValueError:
         return _invalid_recent_date(today)
-    start = end - timedelta(days=(args.days or 1) - 1)
     if screening_blocks_targets(ledger):
         # A positive screening withholds every day's targets; say so instead
         # of "no_data", as the unscoped read does (#757).
@@ -421,16 +446,19 @@ def _nutrition_trend_day(ledger: Any, day: date) -> dict[str, Any]:
 
 def _read_player_nutrition_trend(ledger: Any, args: NutritionTrendArgs) -> dict[str, Any]:
     today = player_local_date(ledger, ledger.ledger_id)
-    start = today - timedelta(days=args.days - 1)
-    days = [_nutrition_trend_day(ledger, today - timedelta(days=offset))
+    try:
+        start, end = _recent_window(args.end_day, args.days, today)
+    except ValueError:
+        return _invalid_recent_date(today)
+    days = [_nutrition_trend_day(ledger, end - timedelta(days=offset))
             for offset in range(args.days - 1, -1, -1)]
     response = {
         "status": "ok" if any(day["totals"] is not None for day in days) else "no_data",
-        "start_date": start.isoformat(), "end_date": today.isoformat(), "days": days,
+        "start_date": start.isoformat(), "end_date": end.isoformat(), "days": days,
     }
     encoded = json.dumps(response, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     return response if len(encoded) <= MAX_TOOL_RESULT_BYTES else {
-        "status": "truncated", "start_date": start.isoformat(), "end_date": today.isoformat(),
+        "status": "truncated", "start_date": start.isoformat(), "end_date": end.isoformat(),
     }
 
 
@@ -522,11 +550,11 @@ def _cardio_session_page(
 
 def _read_player_cardio(ledger: Any, args: CardioArgs) -> dict[str, Any]:
     today = player_local_date(ledger, ledger.ledger_id)
+    days = 1 if args.day is not None else args.days
     try:
-        end = _recent_player_day(args.day, today) if args.day is not None else today
+        _start, end = _recent_window(args.day if args.day is not None else args.end_day, days, today)
     except ValueError:
         return {**_invalid_recent_date(today), "next_offset": None}
-    days = 1 if args.day is not None else args.days
     sessions = _recent_cardio_sessions(ledger, end, days)
     summary = _cardio_summary(end, sessions, days)
     summary["today"] = today.isoformat()
