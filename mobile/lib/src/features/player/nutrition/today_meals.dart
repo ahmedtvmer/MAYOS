@@ -14,6 +14,8 @@ import '../../../providers.dart';
 import 'food_swap_requests.dart';
 import 'food_swap_sheet.dart';
 import 'nutrition_tile.dart';
+import '../../../core/connectivity_message.dart';
+import '../../../core/display_language/copy_context.dart';
 
 class TodayMeals extends ConsumerStatefulWidget {
   const TodayMeals({
@@ -93,7 +95,7 @@ class _TodayMealsState extends ConsumerState<TodayMeals> {
       }
     } on ApiException catch (error) {
       if (mounted && request == _request)
-        setState(() => _error = error.message);
+        setState(() => _error = displayCopyOf(context).failureMessage(apiFailureMessage(error)));
     } finally {
       if (mounted && request == _request) setState(() => _busy = false);
     }
@@ -113,7 +115,7 @@ class _TodayMealsState extends ConsumerState<TodayMeals> {
       setState(() => _loggedSlots.add(slot));
       widget.onLogged();
     } on ApiException catch (error) {
-      if (mounted) setState(() => _error = error.message);
+      if (mounted) setState(() => _error = displayCopyOf(context).failureMessage(apiFailureMessage(error)));
     } finally {
       if (mounted) setState(() => _busy = false);
     }

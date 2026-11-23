@@ -6,6 +6,8 @@ import '../../../core/refetch_on_reconnect.dart';
 import '../../../core/display_language/controller.dart';
 import '../../../core/display_language/food_log_copy.dart';
 import '../../../providers.dart';
+import '../../../core/connectivity_message.dart';
+import '../../../core/display_language/copy_context.dart';
 
 class CopyFoodMealButton extends ConsumerStatefulWidget {
   const CopyFoodMealButton(
@@ -63,7 +65,7 @@ class _CopyFoodMealButtonState extends ConsumerState<CopyFoodMealButton>
           await ref.read(apiClientProvider).yesterdayFoodMeals(day);
       if (mounted && widget.day == day) setState(() => _meals = meals);
     } on ApiException catch (error) {
-      if (mounted && widget.day == day) setState(() => _error = error.message);
+      if (mounted && widget.day == day) setState(() => _error = displayCopyOf(context).failureMessage(apiFailureMessage(error)));
     }
   }
 
@@ -78,7 +80,7 @@ class _CopyFoodMealButtonState extends ConsumerState<CopyFoodMealButton>
       if (mounted)
         setState(() {
           _busy = false;
-          _error = error.message;
+          _error = displayCopyOf(context).failureMessage(apiFailureMessage(error));
         });
       return;
     }
@@ -153,7 +155,7 @@ class _CopyMealSheetState extends ConsumerState<_CopyMealSheet> {
       if (mounted)
         setState(() {
           _saving = false;
-          _error = error.message;
+          _error = displayCopyOf(context).failureMessage(apiFailureMessage(error));
         });
     }
   }

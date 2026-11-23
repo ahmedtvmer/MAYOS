@@ -7,6 +7,8 @@ import '../../../core/display_language/food_log_copy.dart';
 import '../../../core/food_log_models.dart';
 import '../../../providers.dart';
 import 'food_nutrient_fields.dart';
+import '../../../core/connectivity_message.dart';
+import '../../../core/display_language/copy_context.dart';
 
 class QuickAddScreen extends ConsumerStatefulWidget {
   const QuickAddScreen({required this.day, required this.mealLabel,
@@ -67,7 +69,7 @@ class _QuickAddScreenState extends ConsumerState<QuickAddScreen> {
         Navigator.of(context).pop(true);
       }
     } on ApiException catch (error) {
-      if (mounted) setState(() { _saving = false; _error = error.message; });
+      if (mounted) setState(() { _saving = false; _error = displayCopyOf(context).failureMessage(apiFailureMessage(error)); });
     }
   }
 

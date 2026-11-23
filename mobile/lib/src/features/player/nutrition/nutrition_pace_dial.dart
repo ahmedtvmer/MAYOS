@@ -6,6 +6,8 @@ import '../../../core/display_language/controller.dart';
 import '../../../core/display_language/nutrition_copy.dart';
 import '../../../core/models.dart';
 import '../../../providers.dart';
+import '../../../core/connectivity_message.dart';
+import '../../../core/display_language/copy_context.dart';
 
 class NutritionPaceDial extends ConsumerStatefulWidget {
   const NutritionPaceDial({required this.plan, this.initialGoal, super.key});
@@ -48,7 +50,7 @@ class _NutritionPaceDialState extends ConsumerState<NutritionPaceDial> {
           .previewNutrition(_selected.$1, _selected.$2);
       if (mounted) setState(() { _preview = value; _loading = false; });
     } on ApiException catch (error) {
-      if (mounted) setState(() { _error = error.message; _loading = false; });
+      if (mounted) setState(() { _error = displayCopyOf(context).failureMessage(apiFailureMessage(error)); _loading = false; });
     }
   }
 
@@ -64,7 +66,7 @@ class _NutritionPaceDialState extends ConsumerState<NutritionPaceDial> {
           .saveNutritionGoal(_selected.$1, _selected.$2, screening: screening);
       if (mounted) Navigator.of(context).pop(saved);
     } on ApiException catch (error) {
-      if (mounted) setState(() { _error = error.message; _saving = false; });
+      if (mounted) setState(() { _error = displayCopyOf(context).failureMessage(apiFailureMessage(error)); _saving = false; });
     }
   }
 
