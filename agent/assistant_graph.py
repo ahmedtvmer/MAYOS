@@ -1755,9 +1755,14 @@ def _arabic_swap_source(
     day = _resolve_arabic_day(program, intent.target_day) if intent.target_day else None
     if intent.target_day and day is None:
         return None
-    return _resolve_arabic_source(
+    match = _resolve_arabic_source(
         program, intent.source_exercise, requested_day=day.day_name if day else None
     )
+    if match is None and day is not None:
+        # Same rule as English (#762, owner decision): when the named day lacks
+        # the exercise, swap it on the day where it is; the reply names that day.
+        match = _resolve_arabic_source(program, intent.source_exercise)
+    return match
 
 
 def _arabic_swap_metadata(
