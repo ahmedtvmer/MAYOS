@@ -794,9 +794,14 @@ def state_for_day(ledger: Any, entry_date: date) -> dict[str, Any] | None:
     return state
 
 
-def _selected_day_state(ledger: Any, entry_date: date) -> tuple[Any, dict[str, Any]] | None:
+def screening_blocks_targets(ledger: Any) -> bool:
+    """True when the saved nutrition screening has a positive answer."""
     screening = ledger.get_nutrition_screening()
-    if screening and any(json.loads(screening[0]).values()):
+    return bool(screening and any(json.loads(screening[0]).values()))
+
+
+def _selected_day_state(ledger: Any, entry_date: date) -> tuple[Any, dict[str, Any]] | None:
+    if screening_blocks_targets(ledger):
         return None
     plan = ledger.get_nutrition_plan_before(_nutrition_day_end(ledger, entry_date))
     if plan is None:

@@ -1,5 +1,6 @@
 # agent/assistant_graph.py
 import asyncio
+import json
 import logging
 import math
 import queue
@@ -15,7 +16,14 @@ from pathlib import Path
 from typing import Annotated, Any, Dict, Literal
 
 from dotenv import load_dotenv
-from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import (
+    AIMessage,
+    AIMessageChunk,
+    BaseMessage,
+    HumanMessage,
+    SystemMessage,
+    ToolMessage,
+)
 from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
 from pydantic import BaseModel, Field
@@ -6364,6 +6372,39 @@ def _invoke_player_tool_loop(
         _record_context_retrieval(context, model_fetched_more)
 
 
+def _split_preread_tool_calls(
+    messages: list[Any], tool_calls: list[dict[str, Any]]
+) -> tuple[dict[str, ToolMessage], list[dict[str, Any]]]:
+    """Reuses this turn's context pre-read for an identical model tool call (#757).
+
+    The context router adds whole tool results (never trimmed) under
+    ``context-*`` ids. A model call with the same tool name and arguments gets
+    that result again under its own id instead of a second read; every other
+    call is returned to be run.
+    """
+    def key(call: dict[str, Any]) -> tuple[str, str]:
+        return str(call.get("name")), json.dumps(call.get("args") or {}, sort_keys=True, default=str)
+
+    results = {message.tool_call_id: message for message in messages if isinstance(message, ToolMessage)}
+    preread = {
+        key(call): results[call["id"]]
+        for message in messages
+        for call in (getattr(message, "tool_calls", None) or [])
+        if str(call.get("id", "")).startswith("context-") and call.get("id") in results
+    }
+    reused: dict[str, ToolMessage] = {}
+    remaining: list[dict[str, Any]] = []
+    for call in tool_calls:
+        earlier = preread.get(key(call))
+        if earlier is None:
+            remaining.append(call)
+        else:
+            reused[call["id"]] = ToolMessage(
+                content=earlier.content, tool_call_id=call["id"], name=call.get("name")
+            )
+    return reused, remaining
+
+
 def _ensure_tool_call_ids(tool_calls: list[dict[str, Any]]) -> None:
     for index, call in enumerate(tool_calls):
         if not call.get("id"):
@@ -6839,13 +6880,23 @@ def stream_assistant_turn(
                 response_message = streamed_answer.message.model_copy(
                     update={"tool_calls": streamed_answer.tool_calls}
                 )
-                tool_messages, round_metrics = run_player_tool_calls(
-                    streamed_answer.tool_calls,
-                    tools=tools,
-                    definitions=definitions,
-                    language=_tool_reply_language(state),
-                    status_callback=status_callback,
+                reused, remaining = _split_preread_tool_calls(
+                    model_messages, streamed_answer.tool_calls
                 )
+                tool_messages, round_metrics = (
+                    run_player_tool_calls(
+                        remaining,
+                        tools=tools,
+                        definitions=definitions,
+                        language=_tool_reply_language(state),
+                        status_callback=status_callback,
+                    )
+                    if remaining else ([], [])
+                )
+                by_id = {**{message.tool_call_id: message for message in tool_messages}, **reused}
+                tool_messages = [
+                    by_id[call["id"]] for call in streamed_answer.tool_calls if call["id"] in by_id
+                ]
                 tool_messages = cap_tool_results_for_prompt(
                     [*model_messages, response_message], tool_messages
                 )
