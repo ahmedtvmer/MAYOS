@@ -171,7 +171,7 @@ _NEED_ADVICE = re.compile(
 )
 _REACH_MY_TARGET = re.compile(
     r"\bto\s+(?:hit|reach|meet)\s+my\s+(?:\w+\s+)?(?:targets?|goals?)\b|"
-    r"(?<!\w)(?:عشان|علشان|لكي|حتى)\s+(?:اوصل|احقق|ابلغ)(?!\w)", re.I,
+    r"(?<!\w)(?:عشان|علشان|لكي|حتى|حتي)\s+(?:اوصل|احقق|ابلغ)(?!\w)", re.I,
 )
 _LOG_READ_DECLINED = re.compile(
     r"\b(?:do\s+not|don\s+t|never)\s+(?:read|load|look\s+up|check|show|use|review|retrieve)\b|"
@@ -215,7 +215,7 @@ _DATE_RANGE = re.compile(
 # A week or window that stops before today: "up to yesterday", "لحد امبارح" (#747).
 _UP_TO_YESTERDAY = re.compile(
     r"\b(?:up\s+to|until|till|through|thru)\s+(?:and\s+including\s+)?yesterday\b|"
-    r"(?<!\w)(?:لحد|حتى|الى|لغاية|لغايه)\s+(?:امبارح|مبارح|امس|البارح)(?!\w)",
+    r"(?<!\w)(?:لحد|حتى|حتي|الى|لغاية|لغايه)\s+(?:امبارح|مبارح|امس|البارح)(?!\w)",
     re.IGNORECASE,
 )
 _FOOD_LOG_TODAY = re.compile(
@@ -507,6 +507,8 @@ def _context_calls(scopes: Sequence[dict[str, str]]) -> list[dict[str, Any]]:
 def _is_question(text: str, original_text: str) -> bool:
     return bool(
         _QUESTION.search(text) or _PERSONAL_QUESTION.search(text)
+        # "شوف لو…" asks about a fact like "check if…" (#747).
+        or _FACT_CHECK_IF.search(text)
         or re.search(r"[?؟]", original_text)
     )
 
