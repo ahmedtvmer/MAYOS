@@ -414,6 +414,7 @@ void main() {
         'Personalization',
         'Assistant style',
         'Assistant',
+        'Notifications',
         'Account',
       ]) {
         await _expectVisible(tester, label);

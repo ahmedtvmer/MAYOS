@@ -455,6 +455,16 @@ final StateProvider<int> playerShellTabProvider = StateProvider<int>(
 /// and opening that review clears it; the Progress tab shows a dot while it is
 /// set (#789). It resets when the account changes, so one account's waiting
 /// review never shows a dot for another (#794).
+/// The last web push status read for this device, kept for the session so
+/// opening Settings again does not fetch it again (#756). Push actions in
+/// Settings refresh it; it resets when the account changes.
+final StateProvider<({String deviceId, Map<String, dynamic> status})?>
+    pushStatusCacheProvider =
+    StateProvider<({String deviceId, Map<String, dynamic> status})?>((ref) {
+  _resetOnAccountChange(ref, () => ref.controller.state = null);
+  return null;
+});
+
 final StateProvider<int?> pendingCheckpointReviewProvider =
     StateProvider<int?>((ref) {
   _resetOnAccountChange(ref, () => ref.controller.state = null);
