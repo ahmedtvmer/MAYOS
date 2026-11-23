@@ -37,9 +37,18 @@ CLOUD_MODEL_REGISTRY = {
     },
     "coach": {
         "model_env": "COACH_MODEL",
-        "default_model": "deepseek-ai/DeepSeek-V4-Flash",
+        # Unset or empty COACH_MODEL follows the player model (LLM_MODEL).
+        "follows_role": "production",
         "max_tokens_env": "COACH_MAX_TOKENS",
         "default_max_tokens": 512,
+        "streaming": True,
+    },
+    "program": {
+        "model_env": "PROGRAM_MODEL",
+        # Unset or empty PROGRAM_MODEL follows the player model (LLM_MODEL).
+        "follows_role": "production",
+        "max_tokens_env": "LLM_MAX_TOKENS",
+        "default_max_tokens": PLAYER_CHAT_REPLY_MAX_OUTPUT_TOKENS,
         "streaming": True,
     },
 }
@@ -62,6 +71,7 @@ _llm_instance: Any = None
 _judge_llm_instance: Any = None
 _coach_llm_instance: Any = None
 _coach_import_llm_instance: Any = None
+_program_llm_instance: Any = None
 _model_build_lock = threading.Lock()
 
 
@@ -75,7 +85,15 @@ def _cloud_api_base() -> str:
 
 def _cloud_model_id(model_type: str) -> str:
     config = CLOUD_MODEL_REGISTRY[model_type]
-    return os.getenv(config["model_env"], config["default_model"]).strip()
+    # Empty-means-unset so a deployment passing COACH_MODEL= (docker-compose
+    # default) or PROGRAM_MODEL= follows the player model like an unset var.
+    model_id = os.getenv(config["model_env"], "").strip()
+    if model_id:
+        return model_id
+    follows_role = config.get("follows_role")
+    if follows_role:
+        return _cloud_model_id(follows_role)
+    return config["default_model"]
 
 
 def configured_model_ids() -> frozenset[str]:
@@ -158,12 +176,22 @@ def _parse_extra_body(raw_extra_body: str, env_name: str) -> dict[str, Any]:
     return parsed
 
 
+def _thinking_off_extra_body() -> dict[str, Any]:
+    return {"chat_template_kwargs": {"enable_thinking": False}}
+
+
+def _is_qwen_model_id(model_id: str) -> bool:
+    """Qwen family test, same as ``tests/eval/parity_gate.py`` ``_model_family``."""
+    return "qwen" in model_id.casefold()
+
+
 def _extra_body(model_type: str) -> dict[str, Any] | None:
     settings = {
         "production": ("LLM_EXTRA_BODY", None),
+        "program": ("PROGRAM_EXTRA_BODY", None),
         "coach": ("COACH_EXTRA_BODY", None),
         **{
-            role: ("JUDGE_EXTRA_BODY", {"chat_template_kwargs": {"enable_thinking": False}})
+            role: ("JUDGE_EXTRA_BODY", _thinking_off_extra_body())
             for role in JUDGE_MODEL_ROLES
         },
     }
@@ -171,12 +199,22 @@ def _extra_body(model_type: str) -> dict[str, Any] | None:
         raise ValueError(f"Unknown model_type '{model_type}'. Choose from {list(settings)}")
     name, default = settings[model_type]
     raw_body = os.getenv(name, "").strip()
+    if not raw_body and model_type == "program":
+        # Program generation used the player model before #811, so deployments
+        # expressed its body through LLM_EXTRA_BODY; keep that inheritance.
+        name = "LLM_EXTRA_BODY"
+        raw_body = os.getenv(name, "").strip()
     if raw_body:
         return _parse_extra_body(raw_body, name) or None
     if model_type in JUDGE_MODEL_ROLES and os.getenv("LLM_ENABLE_THINKING", "").strip().lower() in {
         "1", "true", "yes", "on"
     }:
         return None
+    if default is None and _is_qwen_model_id(_cloud_model_id(model_type)):
+        # Qwen3 chat templates default to thinking mode; player, coach, and
+        # program requests keep it off exactly like the judges (#811). An
+        # explicitly set extra body above still wins untouched.
+        return _thinking_off_extra_body()
     return default
 
 
@@ -255,7 +293,12 @@ def get_coach_import_llm() -> Any:
 
 def _get_model(role: str) -> Any:
     global _llm_instance, _judge_llm_instance, _coach_llm_instance
-    instance_name = {"production": "_llm_instance", "judge": "_judge_llm_instance", "coach": "_coach_llm_instance"}[role]
+    instance_name = {
+        "production": "_llm_instance",
+        "judge": "_judge_llm_instance",
+        "coach": "_coach_llm_instance",
+        "program": "_program_llm_instance",
+    }[role]
     instance = globals()[instance_name]
     if instance is not None:
         return instance
@@ -277,6 +320,10 @@ def get_judge_llm() -> Any:
 
 def get_coach_llm() -> Any:
     return _get_model("coach")
+
+
+def get_program_llm() -> Any:
+    return _get_model("program")
 
 
 def structured_output_model(model: Any) -> Any:
@@ -313,6 +360,10 @@ def unload_coach_llm() -> None:
     _unload_model("_coach_import_llm_instance")
 
 
+def unload_program_llm() -> None:
+    _unload_model("_program_llm_instance")
+
+
 class _LazyModelProxy:
     def __init__(self, getter: Any, role: str, loaded_name: str) -> None:
         self._getter = getter
@@ -335,6 +386,7 @@ class _LazyModelProxy:
 llm = _LazyModelProxy(get_llm, "player", "_llm_instance")
 judge_llm = _LazyModelProxy(get_judge_llm, "judge", "_judge_llm_instance")
 coach_llm = _LazyModelProxy(get_coach_llm, "coach", "_coach_llm_instance")
+program_llm = _LazyModelProxy(get_program_llm, "program", "_program_llm_instance")
 
 
 __all__ = [
@@ -347,11 +399,14 @@ __all__ = [
     "get_coach_llm",
     "get_judge_llm",
     "get_llm",
+    "get_program_llm",
     "judge_llm",
     "llm",
     "model_identity",
+    "program_llm",
     "structured_output_model",
     "unload_coach_llm",
     "unload_judge_llm",
     "unload_llm",
+    "unload_program_llm",
 ]

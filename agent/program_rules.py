@@ -44,7 +44,7 @@ from utils.equipment_access import (
     map_equipment_access,
 )
 from utils.env_flags import env_flag
-from utils.model_downloader import llm, structured_output_model
+from utils.model_downloader import program_llm, structured_output_model
 from utils import player_output_budgets
 from core.movement_restrictions import (
     is_movement_restricted,
@@ -439,7 +439,7 @@ def _parsed_dynamic_split_plan(structured_response: Any) -> DynamicSplitPlan | N
 def _dynamic_split_plan_options() -> dict[str, Any]:
     reasoning_enabled = (
         env_flag("PROGRAM_GENERATION_REASONING_ENABLED")
-        and getattr(llm, "model_name", None) == "deepseek-ai/DeepSeek-V4-Flash"
+        and getattr(program_llm, "model_name", None) == "deepseek-ai/DeepSeek-V4-Flash"
     )
     options = {
         "include_raw": True,
@@ -452,7 +452,7 @@ def _dynamic_split_plan_options() -> dict[str, Any]:
     }
     if reasoning_enabled:
         # Function-call arguments are parsed separately from DeepSeek's reasoning field.
-        extra_body = dict(getattr(llm, "extra_body", None) or {})
+        extra_body = dict(getattr(program_llm, "extra_body", None) or {})
         extra_body["thinking"] = {"type": "enabled"}
         options["extra_body"] = extra_body
     return options
@@ -482,7 +482,7 @@ def resolve_split(
             update={"split_reason_code": SPLIT_UNSUPPORTED_FREQUENCY}
         )
 
-    structured_llm = structured_output_model(llm).with_structured_output(
+    structured_llm = structured_output_model(program_llm).with_structured_output(
         DynamicSplitPlan,
         **_dynamic_split_plan_options(),
     )

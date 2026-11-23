@@ -588,7 +588,7 @@ def _configure_measurement_environment() -> None:
 def _wire_measurement_model(targets: Any, model: Any) -> None:
     targets.assistant_graph.llm = model
     targets.fitness_abbreviations.llm = model
-    targets.program_rules.llm = model
+    targets.program_rules.program_llm = model
     targets.model_downloader.get_llm = lambda: model
 
 

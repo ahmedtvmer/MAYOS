@@ -237,14 +237,14 @@ def _capture_split_plan_call(
 def _resolve_split_with_model(model: Any, case: dict[str, Any], inference_call: Any) -> Any:
     from agent import program_rules
 
-    original_model = program_rules.llm
-    program_rules.llm = model
+    original_model = program_rules.program_llm
+    program_rules.program_llm = model
     try:
         return program_rules.resolve_split(
             case["frequency"], case["request"], case["gender"], inference_call=inference_call
         )
     finally:
-        program_rules.llm = original_model
+        program_rules.program_llm = original_model
 
 
 def _generate_split_program(plan: Any, case: dict[str, Any], store: Any) -> dict[str, Any]:

@@ -13,6 +13,7 @@ def _reset_models():
     md._llm_instance = None
     md._judge_llm_instance = None
     md._coach_llm_instance = None
+    md._program_llm_instance = None
 
 
 @pytest.fixture(autouse=True)
@@ -67,6 +68,126 @@ def test_cloud_model_ids_are_env_overridable(monkeypatch):
     assert md.get_llm().model_name == "Qwen/Qwen3.5-4B-NonReasoning"
     assert md.get_llm().max_tokens == 321
     assert md._build_cloud_llm("coach").model_name == "deepseek-ai/custom-coach"
+
+
+def test_unset_or_empty_coach_and_program_models_follow_the_player_model(monkeypatch):
+    monkeypatch.setenv("LLM_API_KEY", "sk-test")
+    monkeypatch.setenv("LLM_MODEL", "Qwen/Qwen3.8-Flash")
+    for name in ("COACH_MODEL", "PROGRAM_MODEL"):
+        monkeypatch.delenv(name, raising=False)
+
+    assert md.model_identity("coach") == ("Qwen/Qwen3.8-Flash", "openai")
+    assert md.model_identity("program") == ("Qwen/Qwen3.8-Flash", "openai")
+
+    monkeypatch.setenv("COACH_MODEL", "   ")
+    monkeypatch.setenv("PROGRAM_MODEL", "")
+    assert md.model_identity("coach") == ("Qwen/Qwen3.8-Flash", "openai")
+    assert md.model_identity("program") == ("Qwen/Qwen3.8-Flash", "openai")
+
+    monkeypatch.setenv("COACH_MODEL", "deepseek-ai/DeepSeek-V4-Flash")
+    monkeypatch.setenv("PROGRAM_MODEL", "zai-org/GLM-5.3")
+    assert md.model_identity("coach") == ("deepseek-ai/DeepSeek-V4-Flash", "openai")
+    assert md.model_identity("program") == ("zai-org/GLM-5.3", "openai")
+
+
+def test_unset_player_model_keeps_deepseek_for_every_following_role(monkeypatch):
+    monkeypatch.setenv("LLM_API_KEY", "sk-test")
+    for name in ("LLM_MODEL", "COACH_MODEL", "PROGRAM_MODEL"):
+        monkeypatch.delenv(name, raising=False)
+
+    assert md.model_identity("production") == ("deepseek-ai/DeepSeek-V4-Flash", "openai")
+    assert md.model_identity("coach") == ("deepseek-ai/DeepSeek-V4-Flash", "openai")
+    assert md.model_identity("program") == ("deepseek-ai/DeepSeek-V4-Flash", "openai")
+
+
+def test_configured_model_ids_use_resolved_following_role_ids(monkeypatch):
+    monkeypatch.setenv("LLM_API_KEY", "sk-test")
+    monkeypatch.setenv("LLM_MODEL", "custom/player")
+    monkeypatch.setenv("JUDGE_MODEL", "custom/judge")
+    monkeypatch.setenv("JUDGE_SECONDARY_MODEL", "other/secondary")
+    for name in ("COACH_MODEL", "PROGRAM_MODEL"):
+        monkeypatch.delenv(name, raising=False)
+
+    assert md.configured_model_ids() == {
+        "custom/player",
+        "custom/judge",
+        "other/secondary",
+    }
+
+
+def test_program_role_matches_production_request_settings(monkeypatch):
+    monkeypatch.setenv("LLM_API_KEY", "sk-test")
+    for name in ("LLM_MAX_TOKENS", "PROGRAM_MODEL"):
+        monkeypatch.delenv(name, raising=False)
+
+    program = md._build_cloud_llm("program")
+    production = md._build_cloud_llm("production")
+    assert (program.model_name, program.max_tokens, program.streaming) == (
+        production.model_name,
+        production.max_tokens,
+        production.streaming,
+    )
+
+
+def test_deepseek_roles_send_no_default_extra_body(monkeypatch):
+    monkeypatch.setenv("LLM_API_KEY", "sk-test")
+    for name in (
+        "LLM_MODEL", "COACH_MODEL", "PROGRAM_MODEL", "LLM_EXTRA_BODY",
+        "COACH_EXTRA_BODY", "PROGRAM_EXTRA_BODY", "LLM_ENABLE_THINKING",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    thinking_off = {"chat_template_kwargs": {"enable_thinking": False}}
+    assert md._build_cloud_llm("production").extra_body is None
+    assert md._build_cloud_llm("coach").extra_body is None
+    assert md._build_cloud_llm("program").extra_body is None
+    assert md._build_cloud_llm("judge").extra_body == thinking_off
+
+
+def test_qwen_player_coach_and_program_disable_thinking_by_default(monkeypatch):
+    monkeypatch.setenv("LLM_API_KEY", "sk-test")
+    monkeypatch.setenv("LLM_MODEL", "Qwen/Qwen3.8-Flash")
+    for name in (
+        "COACH_MODEL", "PROGRAM_MODEL", "LLM_EXTRA_BODY",
+        "COACH_EXTRA_BODY", "PROGRAM_EXTRA_BODY", "LLM_ENABLE_THINKING",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    thinking_off = {"chat_template_kwargs": {"enable_thinking": False}}
+    assert md._build_cloud_llm("production").extra_body == thinking_off
+    assert md._build_cloud_llm("coach").extra_body == thinking_off
+    assert md._build_cloud_llm("program").extra_body == thinking_off
+
+
+def test_explicit_extra_body_beats_the_qwen_thinking_default(monkeypatch):
+    monkeypatch.setenv("LLM_API_KEY", "sk-test")
+    monkeypatch.setenv("LLM_MODEL", "Qwen/Qwen3.8-Flash")
+    monkeypatch.setenv("LLM_EXTRA_BODY", '{"chat_template_kwargs": {"enable_thinking": true}}')
+    monkeypatch.setenv("COACH_EXTRA_BODY", '{"coach": true}')
+
+    player_body = md._build_cloud_llm("production").extra_body
+    assert player_body == {"chat_template_kwargs": {"enable_thinking": True}}
+    # A set COACH_EXTRA_BODY wins unchanged even with thinking on.
+    assert md._build_cloud_llm("coach").extra_body == {"coach": True}
+    # The program role inherits LLM_EXTRA_BODY (it used the player model
+    # before #811); an explicit body beats the Qwen thinking-off default.
+    assert md._build_cloud_llm("program").extra_body == player_body
+
+    monkeypatch.setenv("PROGRAM_EXTRA_BODY", '{"program": true}')
+    assert md._build_cloud_llm("program").extra_body == {"program": True}
+
+
+def test_program_role_inherits_the_player_extra_body_for_deepseek(monkeypatch):
+    monkeypatch.setenv("LLM_API_KEY", "sk-test")
+    monkeypatch.delenv("PROGRAM_MODEL", raising=False)
+    monkeypatch.delenv("PROGRAM_EXTRA_BODY", raising=False)
+    monkeypatch.setenv("LLM_EXTRA_BODY", '{"player": true}')
+
+    # DeepSeek program requests stay identical to the pre-#811 player-model path.
+    assert md._build_cloud_llm("program").extra_body == {"player": True}
+
+    monkeypatch.setenv("PROGRAM_EXTRA_BODY", '{"program": true}')
+    assert md._build_cloud_llm("program").extra_body == {"program": True}
 
 
 def test_hosted_judge_max_tokens_env_override(monkeypatch):
@@ -137,6 +258,7 @@ def test_extra_body_invalid_json_raises(monkeypatch, raw, message):
         ("JUDGE_EXTRA_BODY", "judge"),
         ("JUDGE_EXTRA_BODY", "judge_secondary"),
         ("COACH_EXTRA_BODY", "coach"),
+        ("PROGRAM_EXTRA_BODY", "program"),
     ],
 )
 def test_extra_body_non_object_json_raises(monkeypatch, setting, role):

@@ -564,8 +564,14 @@ async def run_inference(
 
 
 def unload_all() -> None:
-    from utils.model_downloader import unload_coach_llm, unload_judge_llm, unload_llm
+    from utils.model_downloader import (
+        unload_coach_llm,
+        unload_judge_llm,
+        unload_llm,
+        unload_program_llm,
+    )
 
     unload_llm()
     unload_judge_llm()
     unload_coach_llm()
+    unload_program_llm()
