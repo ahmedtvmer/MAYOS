@@ -496,3 +496,18 @@ def test_staging_autostop_units_are_installed_alongside_queue_units():
         assert f"deploy/systemd/{name} /etc/systemd/system/" in docs
     assert "deploy/staging_server.bash /usr/local/libexec/mayos/staging_server.bash" in docs
     assert "systemctl enable --now mayos-staging-autostop.timer" in docs
+
+
+
+def test_staging_keeps_its_sentry_key_so_the_sentry_start_up_code_runs_843():
+    """Staging must run the Sentry init path production runs (#843).
+
+    Compose may override other settings, but never blank ``SENTRY_DSN``: the
+    key comes from staging.env (the separate mayos-api-staging project) and
+    events are labelled as staging.
+    """
+    compose = yaml.safe_load((Path(__file__).parents[1] / "deploy" / "compose.staging.yaml").read_text(encoding="utf-8"))
+    service = compose["services"]["api-staging"]
+    assert "/opt/mayos/staging.env" in service["env_file"]
+    assert "SENTRY_DSN" not in service["environment"]
+    assert service["environment"]["SENTRY_ENVIRONMENT"] == "staging"
