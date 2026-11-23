@@ -9,6 +9,8 @@ import '../../../core/meal_setup_models.dart';
 import '../../../providers.dart';
 import '../tour/tour_targets.dart';
 import 'food_search_screen.dart';
+import '../../../core/connectivity_message.dart';
+import '../../../core/display_language/copy_context.dart';
 
 class MealSetupEntry extends ConsumerWidget {
   const MealSetupEntry({super.key});
@@ -80,7 +82,7 @@ class _MealSetupScreenState extends ConsumerState<MealSetupScreen> {
     } on ApiException catch (error) {
       if (mounted)
         setState(() {
-          _error = error.message;
+          _error = displayCopyOf(context).failureMessage(apiFailureMessage(error));
           _loading = false;
         });
     }
@@ -102,7 +104,7 @@ class _MealSetupScreenState extends ConsumerState<MealSetupScreen> {
     } on ApiException catch (error) {
       if (mounted)
         setState(() {
-          _error = error.message;
+          _error = displayCopyOf(context).failureMessage(apiFailureMessage(error));
           _saving = false;
         });
     }

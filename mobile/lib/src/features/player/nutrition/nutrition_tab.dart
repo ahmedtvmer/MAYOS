@@ -16,6 +16,8 @@ import '../tour/tour_targets.dart';
 import 'nutrition_pace_dial.dart';
 import 'food_log_day_view.dart';
 import 'nutrition_targets_view.dart';
+import '../../../core/connectivity_message.dart';
+import '../../../core/display_language/copy_context.dart';
 
 class NutritionTab extends ConsumerStatefulWidget {
   const NutritionTab({this.targetsOnly = false, super.key});
@@ -67,7 +69,7 @@ class _NutritionTabState extends ConsumerState<NutritionTab>
     } on ApiException catch (error) {
       if (mounted)
         setState(() {
-          _error = error.message;
+          _error = displayCopyOf(context).failureMessage(apiFailureMessage(error));
           _loading = false;
         });
     }
@@ -101,7 +103,7 @@ class _NutritionTabState extends ConsumerState<NutritionTab>
     } on ApiException catch (error) {
       if (mounted)
         setState(() {
-          _error = error.message;
+          _error = displayCopyOf(context).failureMessage(apiFailureMessage(error));
           _saving = false;
         });
     }
@@ -160,7 +162,7 @@ class _NutritionTabState extends ConsumerState<NutritionTab>
     } on ApiException catch (error) {
       if (mounted)
         setState(() {
-          _error = error.message;
+          _error = displayCopyOf(context).failureMessage(apiFailureMessage(error));
           _saving = false;
         });
     }
@@ -183,7 +185,7 @@ class _NutritionTabState extends ConsumerState<NutritionTab>
     } on ApiException catch (error) {
       if (mounted)
         setState(() {
-          _error = error.message;
+          _error = displayCopyOf(context).failureMessage(apiFailureMessage(error));
           _saving = false;
         });
     }
@@ -202,7 +204,7 @@ class _NutritionTabState extends ConsumerState<NutritionTab>
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text('${copy.waterUpdateFailed}: ${error.message}')),
+              content: Text('${copy.waterUpdateFailed}: ${displayCopyOf(context).failureMessage(apiFailureMessage(error))}')),
         );
       }
     } finally {
@@ -473,7 +475,7 @@ class _NutritionTabState extends ConsumerState<NutritionTab>
     } on ApiException catch (error) {
       if (mounted)
         setState(() {
-          _error = error.message;
+          _error = displayCopyOf(context).failureMessage(apiFailureMessage(error));
           _saving = false;
         });
     }
@@ -492,7 +494,7 @@ class _NutritionTabState extends ConsumerState<NutritionTab>
     } on ApiException catch (error) {
       if (mounted)
         setState(() {
-          _error = error.message;
+          _error = displayCopyOf(context).failureMessage(apiFailureMessage(error));
           _saving = false;
         });
     }

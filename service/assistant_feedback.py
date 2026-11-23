@@ -139,7 +139,13 @@ def _redact_text(text: str, terms: list[str]) -> str:
     # and kept so "وعمر" redacts the name while keeping the particle:
     # "و[redacted]".
     for term in sorted(set(terms), key=len, reverse=True):
-        if len(term) < 2:
+        if not term:
+            continue
+        if len(term) == 1:
+            # A one-letter preferred name (#755) matches only as its own word
+            # with the same case and no attached particle, so "A" does not
+            # redact the article "a" and "و" alone is never treated as a name.
+            text = re.sub(r"(?<!\w)" + re.escape(term) + r"(?!\w)", "[redacted]", text)
             continue
         text = re.sub(
             r"(?<!\w)((?:وال|فال|بال|كال|لل|ال|[وفبلك])*)" + re.escape(term) + r"(?!\w)",

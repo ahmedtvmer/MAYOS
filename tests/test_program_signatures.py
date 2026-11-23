@@ -888,7 +888,7 @@ def test_generated_rationale_distinguishes_used_and_equipment_skipped_staples(fr
         "code": "rir.test_set_rule",
         "params": {
             "experience_level": "intermediate", "target_rir": 1.0,
-            "test_set_rir": 2.0, "test_set_count": 1,
+            "test_set_rir": 2.0, "test_set_count": 0,
             "test_set_counts_toward_weekly_sets": True,
         },
     }

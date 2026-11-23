@@ -9,7 +9,7 @@ position.pre_exhaust, position.follows_pre_exhaust,
 position.after_pre_exhaust_block, position.main_progressed_lift,
 position.beginner_compound_first, position.stabilizer_safety;
 sets.coach_dose, sets.recovery_cut; reps.movement_class,
-reps.rep_preference; rir.experience_level, rir.test_set_rule; rest.movement_class; warmup.template;
+reps.rep_preference; rir.experience_level, rir.test_set_rule, rir.before_related_compound; rest.movement_class; warmup.template;
 sets.player_edit;
 cardio.fat_loss_finisher, cardio.coach_option; day_order.full_body_distributed,
 day_order.full_body_glute_priority,
@@ -68,6 +68,7 @@ SETS_PLAYER_EDIT = "sets.player_edit"
 REPS_MOVEMENT_CLASS = "reps.movement_class"
 REPS_PREFERENCE = "reps.rep_preference"
 RIR_TEST_SET_RULE = "rir.test_set_rule"
+RIR_BEFORE_RELATED_COMPOUND = "rir.before_related_compound"
 REST_MOVEMENT_CLASS = "rest.movement_class"
 WARMUP_TEMPLATE = "warmup.template"
 CARDIO_FAT_LOSS_FINISHER = "cardio.fat_loss_finisher"
@@ -277,7 +278,7 @@ def exercise_rationale(
                     "experience_level": options.experience_level,
                     "target_rir": 10 - target_rpe_for_experience(prescription.spec, options.experience_level),
                     "test_set_rir": test_set_rir_for_experience(options.experience_level),
-                    "test_set_count": 1 if prescription.working_sets > 1 else 0,
+                    "test_set_count": 0,
                     "test_set_counts_toward_weekly_sets": True,
                 },
             },

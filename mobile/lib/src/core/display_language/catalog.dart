@@ -196,9 +196,6 @@ class MayosCopy {
     return 'تمارين اللياقة: ${minutes == null ? 'غير محددة' : arabicCountPhrase(minutes, ArabicCountNoun.minute)}';
   }
   String get rirPerSetGroup => isArabic ? 'حسب مجموعة التدريب' : 'By set group';
-  String programBackoffSetsKept(int count) => isArabic
-      ? 'تبقى مجموعات خفض الحمل كما هي (${_ltr('$count')})'
-      : '$count back-off sets stay as prescribed';
   String removeExerciseNamed(String name) =>
       isArabic ? 'إزالة $name' : 'Remove $name';
   String decreaseProgramExerciseSets(String name) => isArabic

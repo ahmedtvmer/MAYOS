@@ -397,3 +397,18 @@ def test_each_curated_bound_overrides_only_its_category_default(bounds, expected
         assert all(meal["foods"][1]["grams"] in expected for meal in generated["meals"])
     else:
         assert generated == {"status": "unavailable", "reason": "portions", "meals": []}
+
+
+@pytest.mark.parametrize("targets", [
+    None,
+    "not a dict",
+    {},
+    {"calories": 2000},
+    {"calories": 2000, "protein_g": None, "carbs_g": None, "fat_g": None},
+    {"calories": 0, "protein_g": 0, "carbs_g": 0, "fat_g": 0},
+], ids=["none", "non-dict", "empty", "missing-macros", "none-macros", "zero"])
+def test_missing_or_zero_macro_targets_ask_for_targets_without_crashing(targets):
+    """#753: no macro targets reads as 'set your targets', not the staples/portions message."""
+    request = replace(_request(), targets=targets)
+
+    assert generate_meals(request) == {"status": "unavailable", "reason": "targets", "meals": []}

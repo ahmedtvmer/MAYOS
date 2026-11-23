@@ -1,3 +1,5 @@
+import pytest
+
 from agent.ProgramState import (
     PersistedProgramDaySchema,
     PersistedProgramExerciseSchema,
@@ -174,30 +176,66 @@ def test_program_edit_set_limit_applies_to_total_groups(fresh_store):
     assert "code" not in result
     saved = ledger.get_active_program().days[0].exercises[0]
     assert sum(group.sets for group in saved.set_groups) == 4
-    assert saved.set_groups[0].sets == 2
-    assert saved.set_groups[1].sets == 2
+    # Added sets join the last row (#824).
+    assert [group.sets for group in saved.set_groups] == [1, 3]
 
 
-def test_program_edit_rejects_total_below_backoff_sets_plus_one(fresh_store):
-    db = fresh_store
-    ledger = db.ledger
+def _grouped_day(db, ledger, groups):
     row = db.catalog_conn.execute("SELECT id, name FROM exercises ORDER BY id LIMIT 1").fetchone()
     exercise = PersistedProgramExerciseSchema(exercise_id=str(row[0]), exercise_name=str(row[1]),
-        target_sets=1, target_reps_min=8, target_reps_max=12,
-        set_groups=[{"sets": 1, "reps_min": 8, "reps_max": 12, "target_rir": 2},
-                    {"sets": 3, "reps_min": 8, "reps_max": 12, "target_rir": 2}])
+        target_sets=groups[0], target_reps_min=8, target_reps_max=12,
+        set_groups=[{"sets": sets, "reps_min": 8, "reps_max": 12, "target_rir": 2} for sets in groups])
     day = PersistedProgramDaySchema(day_name="Edit", day_order=1, exercises=[exercise])
     ledger.save_training_program(PersistedProgramSchema(program_name="Edit", split_type="Full Body", weekly_frequency=1, days=[day]).model_dump())
-    active = ledger.get_active_program()
+    return str(row[0])
 
-    response = edit_active_program_day(db, ledger, ProgramEdit(day_name="Edit", expected_active_version=active.version,
-        exercises=[ProgramEditExercise(0, str(row[0]), 3)], player_account_id=TEST_PLAYER_ID,
+
+def _edit_sets(db, ledger, exercise_id, target_sets):
+    return edit_active_program_day(db, ledger, ProgramEdit(day_name="Edit", expected_active_version=ledger.get_active_program().version,
+        exercises=[ProgramEditExercise(0, exercise_id, target_sets)], player_account_id=TEST_PLAYER_ID,
         actor=ProgramAnalyticsActor(TEST_PLAYER_ID, "player"), day_order=1))
 
+
+@pytest.mark.parametrize("target_sets,expected_groups", [
+    (3, [1, 1, 1]), (2, [1, 1]), (1, [1]),
+])
+def test_program_edit_lowers_a_grouped_exercise_from_its_last_row(fresh_store, target_sets, expected_groups):
+    """#824: no row is locked; removed sets come off the last row, which drops when empty."""
+    db = fresh_store
+    ledger = db.ledger
+    exercise_id = _grouped_day(db, ledger, [1, 1, 2])
+
+    response = _edit_sets(db, ledger, exercise_id, target_sets)
+
+    assert "code" not in response
+    saved = ledger.get_active_program().days[0].exercises[0]
+    assert [group.sets for group in saved.set_groups] == expected_groups
+    assert saved.target_sets == expected_groups[0]
+
+
+def test_program_edit_lowers_a_generated_two_set_exercise_to_one_row(fresh_store):
+    db = fresh_store
+    ledger = db.ledger
+    exercise_id = _grouped_day(db, ledger, [1, 1])
+
+    assert "code" not in _edit_sets(db, ledger, exercise_id, 1)
+    assert [group.sets for group in ledger.get_active_program().days[0].exercises[0].set_groups] == [1]
+
+
+@pytest.mark.parametrize("target_sets", [0, 5])
+def test_program_edit_refuses_sets_outside_one_to_four(fresh_store, target_sets):
+    db = fresh_store
+    ledger = db.ledger
+    exercise_id = _grouped_day(db, ledger, [1, 3])
+    version = ledger.get_active_program().version
+
+    response = _edit_sets(db, ledger, exercise_id, target_sets)
+
     assert response["code"] == "invalid_set_count"
+    assert ledger.get_active_program().version == version
 
 
-def test_program_edit_adds_one_set_exercise_beside_a_backoff_exercise(fresh_store):
+def test_program_edit_adds_one_set_exercise_beside_a_grouped_exercise(fresh_store):
     """#787: the grouped exercise is sent as its total, so the added 1-set exercise saves."""
     db = fresh_store
     ledger = db.ledger
@@ -219,8 +257,8 @@ def test_program_edit_adds_one_set_exercise_beside_a_backoff_exercise(fresh_stor
             exercises=[ProgramEditExercise(0, str(rows[0][0]), grouped_sets), ProgramEditExercise(-1, added_id, 1)],
             player_account_id=TEST_PLAYER_ID, actor=ProgramAnalyticsActor(TEST_PLAYER_ID, "player"), day_order=1))
 
-    # What the app used to send: the first group's sets (1), read as a total below 1 + 2 back-offs.
-    refused = edit(1)
+    # A total above the 1–4 range is refused and names the exercise (#787, #824).
+    refused = edit(5)
     assert refused["code"] == "invalid_set_count"
     assert refused["exercise_position"] == 0
     assert ledger.get_active_program().version == active.version
@@ -233,7 +271,7 @@ def test_program_edit_adds_one_set_exercise_beside_a_backoff_exercise(fresh_stor
     assert sum(group.sets for group in saved[1].set_groups) == 1
 
 
-def test_program_edit_total_cap_does_not_turn_backoffs_into_seven_sets(fresh_store):
+def test_program_edit_total_cap_does_not_turn_grouped_sets_into_seven(fresh_store):
     db = fresh_store
     ledger = db.ledger
     rows = db.catalog_conn.execute("SELECT id, name FROM exercises ORDER BY id LIMIT 2").fetchall()
@@ -303,7 +341,8 @@ def test_program_edit_can_lower_existing_five_sets_but_not_raise_to_six(fresh_st
         actor=ProgramAnalyticsActor(TEST_PLAYER_ID, "player"), day_order=1))
     assert "code" not in lowered
     saved = ledger.get_active_program().days[0].exercises[0]
-    assert [group.sets for group in saved.set_groups] == [2, 2]
+    # The removed set comes off the last group (#824).
+    assert [group.sets for group in saved.set_groups] == [3, 1]
 
 
 def test_program_edit_added_rationale_records_computed_prescription(fresh_store, editable_catalog_rows):
@@ -376,10 +415,11 @@ def test_program_edit_warning_uses_unchanged_edited_week(fresh_store, monkeypatc
     active = ledger.get_active_program()
 
     response = edit_active_program_day(db, ledger, ProgramEdit(day_name="Full A", expected_active_version=active.version,
-        exercises=[ProgramEditExercise(index, str(row[0]), 3) for index, row in enumerate(rows[1:])],
+        exercises=[ProgramEditExercise(index, str(row[0]), 4 if index == 0 else 3) for index, row in enumerate(rows[1:])],
         player_account_id=TEST_PLAYER_ID, actor=ProgramAnalyticsActor(TEST_PLAYER_ID, "player"), week_order=2, day_order=1))
 
-    assert response["volume_warnings"] == [{"muscle": "biceps", "weekly_sets": 12, "ceiling": 8}]
+    # The edited week's total (one set added), not week 1's.
+    assert response["volume_warnings"] == [{"muscle": "biceps", "weekly_sets": 13, "ceiling": 8}]
 
 
 def test_program_edit_rejects_more_than_ten_exercises(fresh_store):
@@ -395,3 +435,38 @@ def test_program_edit_rejects_more_than_ten_exercises(fresh_store):
         exercises=[ProgramEditExercise(-1, str(row[0]), 2) for row in rows[:11]],
         player_account_id=TEST_PLAYER_ID, actor=ProgramAnalyticsActor(TEST_PLAYER_ID, "player"), day_order=1))
     assert result["code"] == "day_limit"
+
+
+class _CreditLedger:
+    """Every exercise counts fully toward the muscle named by its id prefix."""
+
+    def volume_review_exercise_credits(self, ids):
+        return {exercise_id: {exercise_id.split("-")[0]: {"credit": 1.0}} for exercise_id in ids}
+
+
+def _week(*exercises):
+    return {"days": [{"day_name": "A", "day_order": 1, "exercises": [
+        {"exercise_id": exercise_id, "target_sets": sets} for exercise_id, sets in exercises
+    ]}]}
+
+
+@pytest.mark.parametrize("before,after,expected", [
+    # Lat pulldown added beside hamstrings and shoulders already above 8: no warning for them.
+    ((("hamstrings-1", 5), ("hamstrings-2", 5), ("shoulders-1", 9)),
+     (("hamstrings-1", 5), ("hamstrings-2", 5), ("shoulders-1", 9), ("lats-1", 3)), []),
+    # From below the ceiling to above it: warns for that muscle.
+    ((("quads-1", 4), ("quads-2", 3)), (("quads-1", 4), ("quads-2", 3), ("quads-3", 2)),
+     [{"muscle": "quads", "weekly_sets": 9, "ceiling": 8}]),
+    # Already above and raised further: warns.
+    ((("quads-1", 9),), (("quads-1", 10),), [{"muscle": "quads", "weekly_sets": 10, "ceiling": 8}]),
+    # Lowered but still above: no warning.
+    ((("quads-1", 10),), (("quads-1", 9),), []),
+])
+def test_volume_warning_names_only_muscles_the_edit_raised_above_the_ceiling(before, after, expected):
+    from service.program_edit import _volume_warnings
+
+    warnings = _volume_warnings(
+        _CreditLedger(), _week(*after), {"training_age_years": 0}, 1, before=_week(*before),
+    )
+
+    assert warnings == expected

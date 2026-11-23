@@ -13,6 +13,8 @@ import '../../../core/theme/mayos_spacing.dart';
 import '../../../core/theme/mayos_theme.dart';
 import '../../../providers.dart';
 import 'food_restriction_badge.dart';
+import '../../../core/connectivity_message.dart';
+import '../../../core/display_language/copy_context.dart';
 
 class FoodSwapSheet extends ConsumerStatefulWidget {
   const FoodSwapSheet({required this.target, super.key});
@@ -71,7 +73,7 @@ class _FoodSwapSheetState extends ConsumerState<FoodSwapSheet> {
         setState(() => _candidates = candidates);
     } on ApiException catch (error) {
       if (mounted && request == _request)
-        setState(() => _error = error.message);
+        setState(() => _error = displayCopyOf(context).failureMessage(apiFailureMessage(error)));
     } finally {
       if (mounted && request == _request) setState(() => _loading = false);
     }
@@ -89,7 +91,7 @@ class _FoodSwapSheetState extends ConsumerState<FoodSwapSheet> {
           .swapPlannedFood(widget.target, _selected!.food.id);
       if (mounted) Navigator.of(context).pop(true);
     } on ApiException catch (error) {
-      if (mounted) setState(() => _error = error.message);
+      if (mounted) setState(() => _error = displayCopyOf(context).failureMessage(apiFailureMessage(error)));
     } finally {
       if (mounted) setState(() => _saving = false);
     }

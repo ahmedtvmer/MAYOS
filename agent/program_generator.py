@@ -35,7 +35,6 @@ from agent.program_blueprints import (
     resolve_sets_family,
     slot_working_sets,
     target_rpe_for_experience,
-    test_set_rir_for_experience,
     warmup_sets_for_load_class,
 )
 from agent.program_rules import (
@@ -405,16 +404,11 @@ def _build_program_exercise(
 def _generated_set_groups(prescription: ExercisePrescription) -> list[ProgramSetGroupSchema]:
     rep_min, rep_max = apply_rep_preference(prescription.spec.reps, prescription.rep_preference)
     working_rir = 10 - target_rpe_for_experience(prescription.spec, prescription.experience_level)
-    # One set uses working effort; two or more include one calibration set.
-    counts_and_rir = [(prescription.working_sets, working_rir)]
-    if prescription.working_sets > 1:
-        counts_and_rir = [
-            (1, test_set_rir_for_experience(prescription.experience_level)),
-            (prescription.working_sets - 1, working_rir),
-        ]
+    # One row of working sets; no Test set (#823, ADR 102 amendment).
     return [
-        ProgramSetGroupSchema(sets=count, reps_min=rep_min, reps_max=rep_max, target_rir=rir)
-        for count, rir in counts_and_rir
+        ProgramSetGroupSchema(
+            sets=prescription.working_sets, reps_min=rep_min, reps_max=rep_max, target_rir=working_rir
+        )
     ]
 
 

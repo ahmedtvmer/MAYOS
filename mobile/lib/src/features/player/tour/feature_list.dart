@@ -64,11 +64,22 @@ List<String> validateFeatureEntries(
 
 const List<FeatureEntry> featureList = <FeatureEntry>[
   FeatureEntry(
+    id: 'one_row_of_working_sets',
+    titleEn: 'One row of working sets',
+    sentenceEn: 'New programs give each exercise one row of working sets, and an exercise trained before a related compound stops 2 reps short of failure.',
+    titleAr: 'صف واحد من المجموعات الأساسية',
+    sentenceAr: 'البرامج الجديدة تعطي كل تمرين صفًا واحدًا من المجموعات الأساسية، والتمرين الذي يسبق تمرينًا مركبًا لنفس العضلة يتوقف قبل الفشل بتكرارين.',
+    target: 'program',
+    location: TourShellTabLocation(tabIndex: 1),
+    release: 9,
+    audience: 'lifter',
+  ),
+  FeatureEntry(
     id: 'program_edit_keeps_changes',
     titleEn: 'Day edits that keep your changes',
-    sentenceEn: "Editing a day with back-off sets now saves, and if a change can't be saved, your edits stay open with the exercise named.",
+    sentenceEn: "Give each exercise 1 to 4 sets when you edit a day, and if a change can't be saved, your edits stay open with the exercise named.",
     titleAr: 'تعديلات اليوم تحتفظ بتغييراتك',
-    sentenceAr: 'تعديل يوم فيه مجموعات خفض الحمل يُحفظ الآن، وإذا تعذّر حفظ تغيير تبقى تعديلاتك مفتوحة مع اسم التمرين.',
+    sentenceAr: 'اختر من مجموعة واحدة إلى أربع مجموعات لكل تمرين عند تعديل اليوم، وإذا تعذّر حفظ تغيير تبقى تعديلاتك مفتوحة مع اسم التمرين.',
     target: 'whats_new_add_exercises',
     location: TourShellTabLocation(tabIndex: 1),
     release: 9,
