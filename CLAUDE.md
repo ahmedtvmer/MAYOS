@@ -10,7 +10,7 @@ These apply to Claude Code sessions acting as orchestrator. Where they differ fr
   ```
   node C:/Users/Thomas/.claude/skills/opencode-delegate/scripts/relay.mjs --brief <brief> --model opencode-go/glm-5.3-flash --cd F:/MAYOS-<worktree> --timeout 2h --out-dir <dir>
   ```
-- **Second implementer** (owner choice, 2026-11-19, "for now"): OpenCode Go `opencode-go/deepseek-v4.1-flash`, alongside GLM. Use the OpenCode Go model, not `opencode/deepseek-v4.1-flash-free`, so private code stays off the free tier. A new ticket can go to either model; correction rounds stay with the model and session that wrote the ticket. Same relay command with `--model opencode-go/deepseek-v4.1-flash`.
+- **GLM only** (owner choice, 2026-11-23): do not use DeepSeek or any other implementer model. Never use a free-tier `opencode/*-free` model.
 - **Correction rounds** resume the implementer's own session instead of starting fresh, so it keeps its context. Send only a delta brief. The session id (`ses_…`) is in the run's `result.json`:
   ```
   node C:/Users/Thomas/.claude/skills/opencode-delegate/scripts/relay.mjs --brief <delta-brief> --session <ses_id> --model opencode-go/glm-5.3-flash --cd F:/MAYOS-<worktree> --timeout 2h --out-dir <dir>
@@ -18,14 +18,17 @@ These apply to Claude Code sessions acting as orchestrator. Where they differ fr
 - **Review** (owner choice, 2026-11-19): the orchestrator reviews every diff itself. There is no second-model or debate review; Kimi and `/debate-review` are no longer part of the flow.
   - Each finding is graded P1/P2 (blocking) or P3 (nonblocking). The review ends with "Overall: merge" or "Overall: fix first".
   - The server tests are the real gate. Review judges what tests can't: acceptance criteria, scope, weakened tests, privacy and safety.
-- Both implementers are Flash-tier models. Keep each brief to one specific task with the context it needs. Split large tickets into server and app parts. Check diffs more strictly against every acceptance criterion, and watch for tests being weakened instead of code being fixed.
+- The implementer is a Flash-tier model. Keep each brief to one specific task with the context it needs. Split large tickets into server and app parts. Check diffs more strictly against every acceptance criterion, and watch for tests being weakened instead of code being fixed.
 - Every brief says that tests must not run locally. The first line of the report must still be `ROLE: implementer #<ticket>`.
 - **Numbers in every brief.** Each brief names the exact ledger migration version and Feature list release to use: the next free version on the branch's master base, and the unshipped release from `docs/agents/issue-tracker.md`. No placeholder or no-op migrations: a no-op step can stamp a database past another branch's real migration, so that migration never runs. If another branch lands first, the orchestrator renumbers at merge.
 - **Usage limits.** If an implementer run stops on a provider usage limit, resume the same session with `--session <ses_id>` once the limit resets, without asking. If the reset is more than a few hours away, tell Thomas the reset time and ask whether to wait or switch model.
 
 ### Orchestrator limits
 
-- The orchestrator never writes the fix itself, even when the implementer struggles. It may resolve merge conflicts and write its own tooling scripts.
+- **Who writes the code** (owner choice, 2026-11-23):
+  - GLM takes clearly specified tickets, so they run in parallel while the orchestrator reviews other work.
+  - The orchestrator writes design-heavy or cross-cutting work, and quick fixes where a brief would take longer than the code.
+  - The server tests gate both. The orchestrator may also resolve merge conflicts and write its own tooling scripts.
 - Tests run only on the test server (`deploy@169.58.154.182`, via WSL), one server run at a time.
 
 ### Ticket flow (owner-agreed, 2026-11-17)
