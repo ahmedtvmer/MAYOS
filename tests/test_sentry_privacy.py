@@ -120,3 +120,15 @@ def test_anonymous_id_is_stable_and_secret_keyed(monkeypatch):
     monkeypatch.setenv("ANONYMOUS_ID_SECRET", "secret-two")
     assert anonymous_account_id("account-123") != first
     assert "account-123" not in first
+
+
+def test_sentry_sdk_stays_below_the_major_version_that_rejects_our_init_options():
+    """sentry-sdk 3 removed ``send_default_pii``; a production build that pulled
+    it crashed the API on start while staging, with no DSN, never ran the init
+    (2026-11-23 rollback). Every install path keeps the same ``<3`` cap."""
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    for name in ("requirements.txt", "requirements-fly.txt", "pyproject.toml", "uv.lock"):
+        text = (root / name).read_text(encoding="utf-8")
+        assert "sentry-sdk[fastapi]>=2.0.0,<3" in text or 'specifier = ">=2.0.0,<3"' in text, name
