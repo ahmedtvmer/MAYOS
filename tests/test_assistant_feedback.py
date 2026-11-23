@@ -1469,3 +1469,12 @@ def test_redaction_matches_names_as_whole_words():
     # An unrelated Arabic word that merely contains the same letters stays:
     # the trailing word char blocks the match.
     assert _redact_text("العمرة قريبة.", ["عمر"]) == "العمرة قريبة."
+
+
+def test_redaction_masks_a_one_letter_preferred_name_as_its_own_word():
+    # #755: a 1-character preferred name is redacted where it stands alone,
+    # with the same case, and never inside a word or as the article "a".
+    assert _redact_text("J, a set for Jo and J.", ["J"]) == "[redacted], a set for Jo and [redacted]."
+    assert _redact_text("A good plan, A.", ["A"]) == "[redacted] good plan, [redacted]."
+    assert _redact_text("add a set", ["A"]) == "add a set"
+    assert _redact_text("سأل م عن البرنامج", ["م"]) == "سأل [redacted] عن البرنامج"
