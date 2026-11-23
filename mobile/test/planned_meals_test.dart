@@ -559,50 +559,113 @@ void main() {
     },
   );
 
-  testWidgets('meal table stays readable at 1.5x text scale', (
-    WidgetTester tester,
-  ) async {
-    tester.view.physicalSize = const Size(360, 900);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    final FakeMayosApi fake = _fake();
-    fake.plannedMealsState = <String, dynamic>{
-      ...fake.plannedMealsState,
-      'status': 'ready',
-      'targets': <String, dynamic>{
-        'calories': 2400,
-        'protein_g': 150,
-        'carbs_g': 250,
-        'fat_g': 70,
-      },
-      'day_totals': <String, dynamic>{
-        'calories': 180,
-        'protein_g': 45,
-        'carbs_g': 0,
-        'fat_g': 0,
-      },
-      'meals': fake.generatedMeals,
-    };
-    await tester.pumpWidget(
-      _app(
-        fake,
-        'en',
-        Brightness.light,
-        SingleChildScrollView(child: TodayMeals(onLogged: () {})),
-        textScaler: TextScaler.linear(1.5),
-      ),
-    );
-    await tester.pumpAndSettle();
+  for (final (String language, Brightness brightness) in <(String, Brightness)>[
+    ('en', Brightness.light),
+    ('ar', Brightness.dark),
+  ]) {
+    testWidgets('meal table stays readable at 1.5x text scale ($language, ${brightness.name})', (
+      WidgetTester tester,
+    ) async {
+      tester.view.physicalSize = const Size(360, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final FakeMayosApi fake = _fake();
+      fake.plannedMealsState = <String, dynamic>{
+        ...fake.plannedMealsState,
+        'status': 'ready',
+        'targets': <String, dynamic>{
+          'calories': 2400,
+          'protein_g': 150,
+          'carbs_g': 250,
+          'fat_g': 70,
+        },
+        'day_totals': <String, dynamic>{
+          'calories': 180,
+          'protein_g': 45,
+          'carbs_g': 0,
+          'fat_g': 0,
+        },
+        'meals': fake.generatedMeals,
+      };
+      await tester.pumpWidget(
+        _app(
+          fake,
+          language,
+          brightness,
+          // Arabic lays the table out right-to-left (#753).
+          Directionality(
+            textDirection: language == 'ar' ? TextDirection.rtl : TextDirection.ltr,
+            child: SingleChildScrollView(child: TodayMeals(onLogged: () {})),
+          ),
+          textScaler: TextScaler.linear(1.5),
+        ),
+      );
+      await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('planned_meals_row_header')), findsOneWidget);
-    expect(
-      find.byKey(const Key('planned_meals_row_day_total')),
-      findsOneWidget,
-    );
-    expect(find.byKey(const Key('planned_meals_row_target')), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
+      expect(find.byKey(const Key('planned_meals_row_header')), findsOneWidget);
+      expect(
+        find.byKey(const Key('planned_meals_row_day_total')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('planned_meals_row_target')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets(
+    'food rows sit indented, numbers are labelled and a logged meal is muted (#753)',
+    (WidgetTester tester) async {
+      final SemanticsHandle semantics = tester.ensureSemantics();
+      final FakeMayosApi fake = _fake();
+      fake.plannedMealsState = <String, dynamic>{
+        ...fake.plannedMealsState,
+        'status': 'ready',
+        'plan_version_id': 2,
+        'meals': <Map<String, dynamic>>[
+          for (final String slot in <String>['breakfast', 'lunch'])
+            <String, dynamic>{...fake.generatedMeals.single, 'slot': slot},
+        ],
+      };
+      await tester.pumpWidget(
+        _app(
+          fake,
+          'en',
+          Brightness.light,
+          SingleChildScrollView(child: TodayMeals(onLogged: () {})),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      Finder firstText(String key) => find
+          .descendant(of: find.byKey(Key(key)), matching: find.byType(Text))
+          .first;
+      final double mealStart =
+          tester.getTopLeft(firstText('planned_meals_food_meal_breakfast')).dx;
+      final double foodStart =
+          tester.getTopLeft(firstText('planned_meals_food_food_breakfast_0')).dx;
+      expect(foodStart - mealStart, 16);
+
+      expect(find.bySemanticsLabel(RegExp(r'^Protein: ')), findsWidgets);
+      expect(find.bySemanticsLabel(RegExp(r'^kcal: ')), findsWidgets);
+
+      await tester.ensureVisible(find.byKey(const Key('log_planned_breakfast')));
+      await tester.tap(find.byKey(const Key('log_planned_breakfast')));
+      await tester.pumpAndSettle();
+      final Color muted = Theme.of(
+        tester.element(find.byType(TodayMeals)),
+      ).colorScheme.onSurfaceVariant;
+      expect(
+        tester.widget<Text>(firstText('planned_meals_food_meal_breakfast')).style?.color,
+        muted,
+      );
+      expect(
+        tester.widget<Text>(firstText('planned_meals_food_meal_lunch')).style?.color,
+        isNot(muted),
+      );
+      semantics.dispose();
+    },
+  );
 
   testWidgets(
     'Meals switch under Targets enables meals and refreshes Today on return',

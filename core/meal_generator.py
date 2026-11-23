@@ -178,7 +178,9 @@ def generate_meals(request):
     if any(not isfinite(targets[key]) or targets[key] < 0 for key in TARGET_KEYS):
         raise ValueError("Meal targets must be finite and non-negative.")
     if not any(targets[key] for key in TARGET_KEYS[1:]):
-        return {"status": "unavailable", "reason": "portions", "meals": []}
+        # No macro targets to portion against: the Player needs targets first,
+        # not different staples (#753).
+        return {"status": "unavailable", "reason": "targets", "meals": []}
     shares = slot_targets(request, targets)
     candidates, reason = _day_candidates(request, shares)
     if reason:
