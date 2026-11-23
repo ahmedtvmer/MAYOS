@@ -20,6 +20,7 @@ import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/features/coach/program_import_files.dart';
 import 'package:mayos_mobile/src/features/coach/program_import_screen.dart';
 import 'package:mayos_mobile/src/features/coach/coach_exercise_table.dart';
+import 'package:mayos_mobile/src/features/player/exercise/exercise_detail_screen.dart';
 import 'package:mayos_mobile/src/features/player/workout/logger_card_widgets.dart'
     show ExerciseCatalogThumbnail;
 import 'package:mayos_mobile/src/providers.dart';
@@ -28,6 +29,7 @@ import 'support/coach_layout_harness.dart';
 import 'support/fake_api_adapter.dart';
 import 'support/fake_media_http.dart';
 import 'support/fake_mayos_api.dart';
+import 'support/picker_preview.dart';
 import 'support/test_fonts.dart';
 
 const List<String> _programActionKeys = <String>[
@@ -279,6 +281,13 @@ Future<void> _selectCatalogExercise(
   await tester.tap(find.byKey(const Key('coach_exercise_search')));
   await _pumpUntilFound(tester, find.text(name));
   await tester.tap(find.text(name).last);
+  await tester.pumpAndSettle();
+  // The coach picker previews in the same shared screen, coach mode (#803).
+  final ExerciseDetailScreen preview =
+      tester.widget<ExerciseDetailScreen>(find.byType(ExerciseDetailScreen));
+  expect(preview.showHistory, isFalse);
+  expect(preview.offer, ExerciseDetailOffer.use);
+  await usePreviewedExercise(tester);
 }
 
 Future<Map<String, dynamic>> _swapAndInsertDraftExercises(
@@ -646,6 +655,7 @@ Future<Map<String, dynamic>> _editProgramDraftAcrossPhoneActions(
   await _pumpUntilFound(tester, find.byIcon(Icons.fitness_center));
   await tester.tap(find.byIcon(Icons.fitness_center).last);
   await tester.pumpAndSettle();
+  await usePreviewedExercise(tester);
 
   await _tapExerciseMove(tester, 2, 'up', phone: phone);
   await _tapExerciseMove(tester, 1, 'up', phone: phone);
@@ -4419,6 +4429,7 @@ void main() {
     await tester.tap(find.text('Search').last);
     await _pumpUntilFound(tester, find.text('Bench Press'));
     await tester.tap(find.text('Bench Press').last);
+    await usePreviewedExercise(tester);
     await _pumpUntilFound(
         tester, find.byKey(const Key('program_draft_sets_0_0')));
     await tester.tap(
@@ -4519,6 +4530,7 @@ void main() {
     await tester.tap(find.text('Search').last);
     await _pumpUntilFound(tester, find.text('Bench Press'));
     await tester.tap(find.text('Bench Press').last);
+    await usePreviewedExercise(tester);
     await _pumpUntilFound(
         tester, find.byKey(const Key('program_draft_reps_0_0')));
     await tester.tap(find.byKey(const Key('program_draft_publish')));

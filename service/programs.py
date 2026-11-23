@@ -59,6 +59,17 @@ def coach_controls_program(assignment: dict[str, Any] | None, program: Any) -> b
     return program.created_at is not None and program.created_at >= assignment["started_at"]
 
 
+def _label_suggested_substitutes(exercise: dict[str, Any], db: Any) -> None:
+    """Add the muscle, equipment and picture the Alternatives tab shows (#803)."""
+    for substitute in exercise.get("suggested_substitutes") or []:
+        entry = db.get_exercise_library_entry(str(substitute.get("exercise_id", "")))
+        if entry is None:
+            continue
+        substitute["primary_muscle"] = entry.get("primary_muscle") or entry.get("target_muscle")
+        substitute["equipment"] = entry.get("equipment")
+        substitute["image_path"] = entry.get("image_path")
+
+
 def with_library_equipment(program: Any, db: Any) -> dict[str, Any]:
     """Return a program payload whose exercises carry library equipment.
 
@@ -86,6 +97,7 @@ def with_library_equipment(program: Any, db: Any) -> dict[str, Any]:
                 exercise["notes_are_technique"] = bool(
                     technique.strip() and notes.strip() == technique.strip()
                 )
+                _label_suggested_substitutes(exercise, db)
     payload["weeks"] = weeks
     payload["days"] = flatten_program_days(weeks)
     source_template_id = payload.get("source_template_id")

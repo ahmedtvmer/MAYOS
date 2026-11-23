@@ -1187,6 +1187,14 @@ class MayosCopy {
   String get overview => isArabic ? 'نظرة عامة' : 'Overview';
   String get technique => isArabic ? 'الأسلوب' : 'Technique';
   String get history => isArabic ? 'السجل' : 'History';
+  String get alternatives => isArabic ? 'البدائل' : 'Alternatives';
+  String get swapThisExercise =>
+      isArabic ? 'تبديل هذا التمرين' : 'Swap this exercise';
+  String get useThisExercise =>
+      isArabic ? 'استخدم هذا التمرين' : 'Use this exercise';
+  String get noSuggestedAlternatives => isArabic
+      ? 'لا توجد بدائل مقترحة لهذا التمرين. يمكنك البحث في المكتبة عند التبديل.'
+      : 'No suggested alternatives for this exercise. You can search the library when you swap.';
   String get setsAndReps => isArabic ? 'المجموعات × التكرارات' : 'Sets × reps';
   String get intensity => isArabic ? 'الشدة' : 'Intensity';
   String get rest => isArabic ? 'الراحة' : 'Rest';

@@ -30,6 +30,7 @@ import '../workout/active_workout_prompt.dart';
 import 'home_planning.dart';
 import '../../shared/install_prompt.dart';
 import '../../settings/push_settings_card.dart';
+import '../exercise/exercise_detail_screen.dart';
 import '../tour/tour_targets.dart';
 import '../xp/xp_widgets.dart';
 
@@ -283,7 +284,11 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
   }
 
   void _openExercise(ProgramExercise exercise, int dayOrder) {
-    context.push('$exerciseDetailPath/${exercise.exerciseId}?day=$dayOrder');
+    unawaited(openExerciseDetail(
+      context,
+      exercise.exerciseId,
+      ExerciseDetailOptions(dayOrder: dayOrder),
+    ));
   }
 
   void _openDrafts() => context.push(workoutsPath);

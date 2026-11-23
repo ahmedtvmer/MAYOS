@@ -4948,6 +4948,8 @@ class FakeMayosApi {
                       <String, String>{
                         'exercise_id': 'incline_db_press',
                         'exercise_name': 'Incline DB Press',
+                        'primary_muscle': 'Upper Chest',
+                        'equipment': 'dumbbell',
                       },
                     ],
                   },

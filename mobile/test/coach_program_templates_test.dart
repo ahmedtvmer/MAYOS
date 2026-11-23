@@ -11,6 +11,7 @@ import 'package:mayos_mobile/src/features/coach/coach_template_assignment_screen
 import 'package:mayos_mobile/src/providers.dart';
 
 import 'support/fake_mayos_api.dart';
+import 'support/picker_preview.dart';
 import 'support/coach_layout_harness.dart';
 
 /// Pumps finite frames until [finder] matches, then a few more so transitions
@@ -233,6 +234,8 @@ Future<void> _selectCatalogExercise(
   await tester.tap(find.byKey(const Key('coach_exercise_search')));
   await _pumpUntilFound(tester, find.text(name));
   await tester.tap(find.text(name).last);
+  await tester.pumpAndSettle();
+  await usePreviewedExercise(tester);
   await _pumpUntilFound(
       tester, find.byKey(const Key('program_draft_exercise_card_0_0')));
 }

@@ -1986,12 +1986,21 @@ class ProgramEditIn(BaseModel):
     exercises: list[ProgramEditExerciseIn] = Field(max_length=MAX_EXERCISES_PER_DAY + 1)
 
 
+class SuggestedSubstituteOut(SuggestedSubstitute):
+    """A suggested substitute plus read-time library labels; never stored (#803)."""
+
+    primary_muscle: str | None = None
+    equipment: str | None = None
+    image_path: str | None = None
+
+
 class ActiveProgramExerciseOut(PersistedProgramExerciseSchema):
     """A Player prescription plus read-time labels; never stored (#534)."""
 
     notes_are_technique: bool = Field(
         default=False, description="Notes equal the catalog technique; the logger card hides them"
     )
+    suggested_substitutes: list[SuggestedSubstituteOut] = Field(default_factory=list)
 
 
 class ActiveProgramDayOut(PersistedProgramDaySchema):

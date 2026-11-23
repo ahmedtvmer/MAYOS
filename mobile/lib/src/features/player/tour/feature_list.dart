@@ -76,6 +76,17 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
     requiresProgramControl: true,
   ),
   FeatureEntry(
+    id: 'exercise_alternatives',
+    titleEn: 'Alternatives and a preview before you swap',
+    sentenceEn: 'Open an exercise to see its Alternatives tab, and preview any exercise in the swap list before you use it.',
+    titleAr: 'البدائل ومعاينة قبل التبديل',
+    sentenceAr: 'افتح تمرينًا لترى تبويب البدائل، وعاين أي تمرين في قائمة التبديل قبل أن تستخدمه.',
+    target: 'program',
+    location: TourShellTabLocation(tabIndex: 1),
+    release: 9,
+    audience: 'lifter',
+  ),
+  FeatureEntry(
     id: 'xp_ranks',
     titleEn: 'XP, ranks and your weekly streak',
     sentenceEn: 'Earn XP for training the way your plan says, climb from Rookie to Legend, and keep a weekly streak with one workout a week.',
