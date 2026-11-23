@@ -82,7 +82,7 @@ from agent.UserState import PlayerProfileSchema
 ])
 @pytest.mark.parametrize("slot", ["quad_compound", "flat_press", "side_delts", "calf", "abs"])
 @pytest.mark.parametrize("set_count", [1, 2, 3, 4])
-def test_generated_exercise_groups_follow_test_set_rule(
+def test_generated_exercise_is_one_row_of_working_sets(
     experience, test_rir, compound_rir, isolation_rir, slot, set_count,
 ):
     from agent.program_blueprints import SLOT_SPECS
@@ -96,18 +96,18 @@ def test_generated_exercise_groups_follow_test_set_rule(
     candidate = {"id": "example", "name": "Example Exercise"}
     exercise = program_generator._build_program_exercise(candidate, prescription)
     working_rir = compound_rir if "compound" in spec.archetype else isolation_rir
-    expected = [(1, working_rir)] if set_count == 1 else [(1, test_rir), (set_count - 1, working_rir)]
-    assert [(group.sets, group.target_rir) for group in exercise.set_groups] == expected
+    # No Test set: one row at the working RIR, whatever the set count (#823).
+    assert [(group.sets, group.target_rir) for group in exercise.set_groups] == [(set_count, working_rir)]
     assert exercise.working_sets == set_count
-    assert exercise.target_sets == expected[0][0]
-    assert exercise.target_rpe == 10 - expected[0][1]
+    assert exercise.target_sets == set_count
+    assert exercise.target_rpe == 10 - working_rir
     assert all((group.reps_min, group.reps_max) == spec.reps for group in exercise.set_groups)
     reason = exercise_rationale(candidate, prescription, ExerciseRationaleOptions(experience_level=experience))
     assert reason["prescription"]["rir"] == {
         "code": "rir.test_set_rule",
         "params": {
             "experience_level": experience, "target_rir": working_rir,
-            "test_set_rir": test_rir, "test_set_count": int(set_count > 1),
+            "test_set_rir": test_rir, "test_set_count": 0,
             "test_set_counts_toward_weekly_sets": True,
         },
     }
