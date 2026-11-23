@@ -765,25 +765,45 @@ def test_program_edit_preview_warns_at_normal_or_focus_volume_ceiling(
     assert db.ledger.get_active_program().version == 1
 
 
-def test_program_edit_unchanged_preview_still_returns_volume_warnings(api):
-    client, db = api
+def _quads_program(client, db):
     headers = _make_player_with_program(client, db)
     db.catalog_conn.executemany(
         "INSERT OR REPLACE INTO exercise_curated_fields (exercise_id, primary_muscle) VALUES (?, 'Quads')",
         [(exercise_id,) for exercise_id in ("sq", "bp", "row")],
     )
-    unchanged = [
-        {"source_index": index, "exercise_id": exercise_id, "target_sets": 3}
-        for index, exercise_id in enumerate(("sq", "bp", "row"))
+    return headers
+
+
+def _preview_quads(client, headers, sets):
+    exercises = [
+        {"source_index": index, "exercise_id": exercise_id, "target_sets": count}
+        for index, (exercise_id, count) in enumerate(zip(("sq", "bp", "row"), sets, strict=True))
     ]
-    preview = client.post(
+    response = client.post(
         "/programs/active/edits", headers=headers,
-        json={**_program_edit_request(unchanged), "preview": True},
+        json={**_program_edit_request(exercises), "preview": True},
     )
-    assert preview.status_code == 200, preview.text
-    quads = [item for item in preview.json()["volume_warnings"] if item["muscle"].lower() == "quads"]
-    assert quads and quads[0]["weekly_sets"] > quads[0]["ceiling"] == 8
+    assert response.status_code == 200, response.text
+    return [item for item in response.json()["volume_warnings"] if item["muscle"].lower() == "quads"]
+
+
+def test_program_edit_does_not_warn_for_a_muscle_it_did_not_raise(api):
+    """#825: quads are already above the ceiling; an edit that leaves or lowers them gives no warning."""
+    client, db = api
+    headers = _quads_program(client, db)
+
+    assert _preview_quads(client, headers, (3, 3, 3)) == []
+    assert _preview_quads(client, headers, (2, 3, 3)) == []
     assert db.ledger.get_active_program().version == 1
+
+
+def test_program_edit_warns_when_it_raises_a_muscle_above_its_ceiling(api):
+    client, db = api
+    headers = _quads_program(client, db)
+
+    quads = _preview_quads(client, headers, (4, 3, 3))
+
+    assert quads and quads[0]["weekly_sets"] > quads[0]["ceiling"] == 8
 
 
 def test_program_edit_adds_calves_with_their_movement_class_rest(api):
