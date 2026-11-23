@@ -1864,6 +1864,11 @@ Set independent
 `JWT_SECRET` and `ANONYMOUS_ID_SECRET`, plus
 `MAYOS_STAGING_HOSTNAME=staging.mayos.online` and any API settings needed for
 the review, such as `LLM_API_KEY`. Do not copy production sign-in secrets.
+Set `SENTRY_DSN` to the **mayos-api-staging** Sentry project's key (never the
+production `mayos-api` key), so every staging start runs the same Sentry
+start-up code as production (#843; a start-up crash that only happens with
+Sentry configured reached production on 2026-11-23). Compose sets
+`SENTRY_ENVIRONMENT=staging`.
 The script refuses `up` with a missing settings file or data folder; create
 them using the steps above. Preparing or copying the old staging data from
 `/mnt/mayos-data/staging-data-202611081327` is a separate owner operation.
