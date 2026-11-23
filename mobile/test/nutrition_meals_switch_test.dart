@@ -71,6 +71,7 @@ void main() {
       'staples',
       'coach',
       'targets',
+      'portions',
       'unknown',
     ]) {
       testWidgets(
@@ -85,6 +86,7 @@ void main() {
             'can_enable': reason != 'coach',
           };
           await _pumpTargets(tester, fake, language, Brightness.light);
+          expect(_switch(tester).value, isFalse);
           expect(_switch(tester).onChanged, isNull);
           expect(
             find.text(NutritionCopy(language).mealsUnavailable(reason)),
@@ -101,34 +103,40 @@ void main() {
       );
     }
 
-    testWidgets('$language Player can switch enabled unavailable meals off', (
-      WidgetTester tester,
-    ) async {
-      final FakeMayosApi fake = _fake();
-      fake.plannedMealsState = <String, dynamic>{
-        ...fake.plannedMealsState,
-        'status': 'unavailable',
-        'reason': 'staples',
-        'author': 'Player',
-        'enabled': true,
-        'can_enable': true,
-      };
-      await _pumpTargets(tester, fake, language, Brightness.light);
+    testWidgets(
+      '$language default-on payload while unavailable shows the switch off',
+      (WidgetTester tester) async {
+        final FakeMayosApi fake = _fake();
+        fake.plannedMealsState = <String, dynamic>{
+          ...fake.plannedMealsState,
+          'status': 'unavailable',
+          'reason': 'staples',
+          'author': 'Player',
+          // The old default-on read said on with no meals under it (#845).
+          'enabled': true,
+          'can_enable': true,
+        };
+        await _pumpTargets(tester, fake, language, Brightness.light);
 
-      expect(_switch(tester).value, isTrue);
-      expect(_switch(tester).onChanged, isNotNull);
-      await _tapMealsSwitch(tester);
-      await tester.pumpAndSettle();
-      expect(_switch(tester).value, isFalse);
-      expect(fake.plannedMealsState['enabled'], isFalse);
-      expect(
-        fake.adapter.requests.where(
-          (request) => request.path == '/nutrition/meals/disable',
-        ),
-        hasLength(1),
-      );
-      expect(tester.takeException(), isNull);
-    });
+        expect(_switch(tester).value, isFalse);
+        expect(_switch(tester).onChanged, isNull);
+        expect(
+          find.text(NutritionCopy(language).mealsUnavailable('staples')),
+          findsOneWidget,
+        );
+        await tester.tap(find.byKey(const Key('meals_switch')));
+        await tester.pumpAndSettle();
+        expect(
+          fake.adapter.requests.where(
+            (request) =>
+                request.path == '/nutrition/meals/enable' ||
+                request.path == '/nutrition/meals/disable',
+          ),
+          isEmpty,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
 
     testWidgets(
       '$language returning from Food restrictions refreshes meal availability',

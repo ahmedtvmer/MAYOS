@@ -118,6 +118,33 @@ def test_never_set_meal_switch_defaults_on_for_player(meals_api):
     assert nutrition_state["meals"]
 
 
+def test_never_chosen_switch_reports_off_while_meals_are_unavailable(meals_api):
+    client, db, headers, _today = meals_api
+    with db.catalog_locked() as connection:
+        connection.execute("UPDATE foods SET reviewed=0")
+        connection.commit()
+    with db.open_ledger(_ledger_id(db)) as ledger:
+        _make_legacy_default_on_plan(ledger)
+
+    state = client.get("/nutrition/meals", headers=headers).json()
+
+    assert state["status"] == "unavailable"
+    assert state["reason"] == "staples"
+    assert state["enabled"] is False
+    assert state["can_enable"] is True
+    with db.open_ledger(_ledger_id(db)) as ledger:
+        assert ledger.get_nutrition_meal_preference() is None
+
+    # An explicit saved choice is not erased by an unavailable read (#845).
+    with db.open_ledger(_ledger_id(db)) as ledger:
+        ledger.set_nutrition_meal_preference(True)
+    still_unavailable = client.get("/nutrition/meals", headers=headers).json()
+    assert still_unavailable["status"] == "unavailable"
+    assert still_unavailable["enabled"] is False
+    with db.open_ledger(_ledger_id(db)) as ledger:
+        assert ledger.get_nutrition_meal_preference() is True
+
+
 def test_legacy_default_on_preview_remains_that_days_food_log_history_737(meals_api):
     _client, db, _headers, today = meals_api
     with db.open_ledger(_ledger_id(db)) as ledger:
@@ -640,7 +667,7 @@ def test_no_reviewed_staples_means_no_enable_or_new_version(meals_api):
         assert ledger.get_active_nutrition_plan()["id"] == state["plan_version_id"]
 
 
-def test_enabled_meals_can_be_disabled_after_staples_become_unavailable(meals_api):
+def test_enabled_meals_report_off_while_staples_are_unavailable_and_recover_after_review(meals_api):
     client, db, headers, _today = meals_api
     enabled = _enable(client, headers)
     assert enabled["enabled"] is True
@@ -650,10 +677,17 @@ def test_enabled_meals_can_be_disabled_after_staples_become_unavailable(meals_ap
 
     unavailable = client.get("/nutrition/meals", headers=headers).json()
     assert unavailable["status"] == "unavailable"
-    assert unavailable["enabled"] is True
+    assert unavailable["enabled"] is False
+    # The saved choice survives the unavailable read (#845).
+    with db.open_ledger(_ledger_id(db)) as ledger:
+        assert ledger.get_nutrition_meal_preference() is True
 
-    disabled = _disable(client, headers)
-    assert disabled["enabled"] is False
+    with db.catalog_locked() as connection:
+        connection.execute("UPDATE foods SET reviewed=1")
+        connection.commit()
+    recovered = client.get("/nutrition/meals", headers=headers).json()
+    assert recovered["status"] != "unavailable"
+    assert recovered["enabled"] is True
 
 
 def test_meal_read_returns_authoritative_cardio_adjusted_targets(meals_api):

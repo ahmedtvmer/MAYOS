@@ -85,6 +85,7 @@ class NutritionCopy {
   String get loadingMeals => isArabic ? 'جارٍ تحميل الوجبات…' : 'Loading meals…';
   String mealsUnavailable(String? reason) => switch (reason) {
     'staples' => isArabic ? 'تحتاج إلى أطعمة أساسية معتمدة' : 'Needs reviewed Staple foods',
+    'portions' => isArabic ? 'تحتاج إلى حصص عملية' : 'Needs practical portions',
     'coach' => isArabic ? 'مدربك يحدد وجباتك' : 'Your Coach sets your meals',
     'targets' => isArabic ? 'حدّد أهدافك أولًا' : 'Set your targets first',
     _ => isArabic ? 'الوجبات غير متاحة بعد' : 'Meals are not available yet',
