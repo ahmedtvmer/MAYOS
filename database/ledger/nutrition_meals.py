@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from core.food_swap import swap_day
@@ -255,6 +256,31 @@ def cached_variants_for_plan(ledger, plan, entry_date, day_type):
     return {"enabled": True, "variants": variants, "swaps": {}, "targets_changed": False}
 
 
+def _solve_pinned_variants(ledger, payload, entry_date, solve):
+    """Save every pinned day type's meals in the payload itself (#839).
+
+    A Coach-authored version is never materialized by a later read, so meals
+    left pinned would show on the day but leave that day's history empty.
+    """
+    variants = payload.setdefault("variants", {})
+    for day_type, frozen in payload.get("generation_requests", {}).items():
+        if day_type in variants:
+            continue
+        variant = solve(day_type, frozen, entry_date)
+        if variant["status"] == "ready":
+            variants[day_type] = variant
+    return payload
+
+
+def _solve_new_request(ledger, payload):
+    def solve(day_type, frozen, entry_date):
+        request = MealGenerationInput(**frozen)
+        replacements = payload.get("deferred_swaps", {}).get(day_type, [])
+        key = _variant_generation_key(ledger, entry_date, day_type, _variant_fingerprint(request, replacements))
+        return swap_day(generate_meals_bounded(request, key), replacements)
+    return solve
+
+
 def meals_for_version(ledger, plan):
     if plan.meals is not None:
         return plan.meals
@@ -263,11 +289,21 @@ def meals_for_version(ledger, plan):
         return generate_variants(ledger, plan.targets, {}) if plan.author == "Player" \
             and ledger.get_nutrition_meal_preference() is not False else None
     previous = json.loads(active["meals_json"]) if active["meals_json"] else None
+    entry_date = (plan.created_at or datetime.now(UTC).isoformat())[:10]
     if active["author"] == "Coach":
         if not previous or not previous.get("enabled"):
             return None
-        return {**previous, "targets_changed": previous.get("targets_changed", False)
-                or json.loads(active["targets_json"]) != plan.targets}
+        carried = {**previous, "targets_changed": previous.get("targets_changed", False)
+                   or json.loads(active["targets_json"]) != plan.targets}
+        if plan.author != "Coach":
+            return carried
+        # The meals the Player saw on the earlier version are copied as they were.
+        return _solve_pinned_variants(ledger, carried, entry_date,
+                                      lambda day_type, _frozen, _date: resolve_variant(ledger, active, previous, day_type))
     if not meal_switch_enabled(ledger, active, previous):
         return None
-    return generate_variants(ledger, plan.targets, previous or {})
+    payload = generate_variants(ledger, plan.targets, previous or {})
+    if plan.author == "Coach":
+        # A Coach taking over Player meals keeps them in history from the first day.
+        return _solve_pinned_variants(ledger, payload, entry_date, _solve_new_request(ledger, payload))
+    return payload

@@ -383,6 +383,70 @@ def test_saved_coach_history_ignores_player_switch_without_writes_737(meals_api)
     assert history["planned_meals"]["meals"] == enabled["meals"]
 
 
+
+def _coach_takes_over_targets(ledger):
+    active = ledger.get_active_nutrition_plan()
+    with ledger.ledger_transaction():
+        return ledger.save_nutrition_plan(NutritionPlanVersion(
+            "maintain", {"code": "coach"}, None, "mostly_sitting",
+            json.loads(active["targets_json"]), author="Coach", provenance="coach",
+            authority_assignment_id="assignment",
+        ))
+
+
+def test_coach_takeover_copies_the_players_meals_into_history_839(meals_api, monkeypatch):
+    client, db, headers, today = meals_api
+    _enable(client, headers)
+    with db.open_ledger(_ledger_id(db)) as ledger:
+        coach_id = _coach_takes_over_targets(ledger)
+        saved = json.loads(ledger.get_active_nutrition_plan()["meals_json"])
+        # Both day types are saved at takeover; no read has to materialize them.
+        assert {day: saved["variants"][day]["status"] for day in ("training_day", "rest_day")} \
+            == {"training_day": "ready", "rest_day": "ready"}
+        ledger.conn.execute("DELETE FROM nutrition_meal_generation_cache")
+        ledger.commit_ledger()
+        current = meals.read(ledger, today)
+        changes_before = ledger.conn.total_changes
+        history = food_log.read_day(ledger, today, today + timedelta(days=1))
+        assert ledger.conn.total_changes == changes_before
+
+        # A second takeover carries the saved meals instead of solving them again.
+        import database.ledger.nutrition_meals as nutrition_meals
+
+        def no_generation(*_args, **_kwargs):
+            raise AssertionError("a second takeover must not generate meals")
+
+        monkeypatch.setattr(nutrition_meals, "generate_meals_bounded", no_generation)
+        second_id = _coach_takes_over_targets(ledger)
+        second = json.loads(ledger.get_active_nutrition_plan()["meals_json"])
+
+    assert current["plan_version_id"] == coach_id and current["meals"]
+    assert history["planned_meals"]["author"] == "Coach"
+    assert history["planned_meals"]["meals"] == current["meals"]
+    assert second_id > coach_id and second["variants"] == saved["variants"]
+
+
+def test_coach_takeover_copies_meals_a_pinned_coach_version_showed_839(meals_api):
+    client, db, headers, today = meals_api
+    enabled = _enable(client, headers)
+    with db.open_ledger(_ledger_id(db)) as ledger:
+        active = ledger.get_active_nutrition_plan()
+        targets = json.loads(active["targets_json"])
+        with ledger.ledger_transaction():
+            # A Coach version saved before #839 kept its meals pinned but unsolved.
+            ledger.save_nutrition_plan(NutritionPlanVersion(
+                "maintain", {"code": "coach"}, None, "mostly_sitting", targets,
+                author="Coach", provenance="coach", authority_assignment_id="assignment",
+                meals=generate_variants(ledger, targets, {}),
+            ))
+        shown = meals.read(ledger, today)
+        assert json.loads(ledger.get_active_nutrition_plan()["meals_json"])["variants"] == {}
+        _coach_takes_over_targets(ledger)
+        history = food_log.read_day(ledger, today, today + timedelta(days=1))
+
+    assert shown["meals"] and enabled["meals"]
+    assert history["planned_meals"]["meals"] == shown["meals"]
+
 def test_other_day_type_is_generated_on_demand_from_pinned_foods(meals_api):
     client, db, headers, today = meals_api
     first = _enable(client, headers)
