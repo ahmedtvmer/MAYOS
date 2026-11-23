@@ -499,10 +499,13 @@ Future<void> _precacheBrandImages(WidgetTester tester) async {
 }
 
 void main() {
+  // Fonts load before the test body so the frame their "fonts changed"
+  // notice schedules runs on the test's first pump (#821).
+  setUpAll(_loadCaptureFonts);
+
   testWidgets(
     'captures actual selected-family Arabic screens and English comparison',
     (WidgetTester tester) async {
-      await _loadCaptureFonts();
       tester.platformDispatcher.textScaleFactorTestValue = 1;
       addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
       addTearDown(tester.view.resetPhysicalSize);

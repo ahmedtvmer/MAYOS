@@ -122,17 +122,31 @@ void main() {
     );
   });
 
-  testWidgets('Arabic font assets load from the bundle',
-      (WidgetTester tester) async {
-    final FontLoader loader = FontLoader(MayosTypography.arabicFamily)
-      ..addFont(
-          rootBundle.load('assets/fonts/arabic/IBMPlexSansArabic-Regular.ttf'))
-      ..addFont(
-          rootBundle.load('assets/fonts/arabic/IBMPlexSansArabic-Medium.ttf'))
-      ..addFont(
-          rootBundle.load('assets/fonts/arabic/IBMPlexSansArabic-SemiBold.ttf'))
-      ..addFont(
-          rootBundle.load('assets/fonts/arabic/IBMPlexSansArabic-Bold.ttf'));
-    await loader.load();
+  group('Arabic font assets', () {
+    // Loading a font sends a "fonts changed" notice that schedules one more
+    // frame. Loading here, outside the test body, lets the test's pump run
+    // that frame instead of leaving it pending at the end (#821).
+    Object? loadError;
+    setUpAll(() async {
+      final FontLoader loader = FontLoader(MayosTypography.arabicFamily)
+        ..addFont(rootBundle
+            .load('assets/fonts/arabic/IBMPlexSansArabic-Regular.ttf'))
+        ..addFont(rootBundle
+            .load('assets/fonts/arabic/IBMPlexSansArabic-Medium.ttf'))
+        ..addFont(rootBundle
+            .load('assets/fonts/arabic/IBMPlexSansArabic-SemiBold.ttf'))
+        ..addFont(
+            rootBundle.load('assets/fonts/arabic/IBMPlexSansArabic-Bold.ttf'));
+      try {
+        await loader.load();
+      } on Object catch (error) {
+        loadError = error;
+      }
+    });
+
+    testWidgets('load from the bundle', (WidgetTester tester) async {
+      await tester.pump();
+      expect(loadError, isNull);
+    });
   });
 }

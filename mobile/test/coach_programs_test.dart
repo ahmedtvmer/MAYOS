@@ -2278,86 +2278,92 @@ void main() {
     expect(find.byKey(const Key('coach_program_stat_working_sets')), findsOneWidget);
   });
 
-  testWidgets(
-      'Program table fills its desktop width and widens Action and Sets',
-      (tester) async {
-    await loadInterTestFont();
-    final Map<String, dynamic> activeProgram =
-        _coachActiveProgram(provenance: 'automatic');
-    final Map<String, dynamic> program =
-        activeProgram['program'] as Map<String, dynamic>;
-    final List<Map<String, dynamic>> days =
-        program['days'] as List<Map<String, dynamic>>;
-    final List<Map<String, dynamic>> exercises =
-        days.first['exercises'] as List<Map<String, dynamic>>;
-    exercises.first['primary_action'] = 'Shoulder Horizontal Adduction';
-    final FakeMayosApi fake = _coachFake()..coachActiveProgram = activeProgram;
-    await _pumpApp(tester, fake, logicalWidth: 1440);
-    await _pumpUntilFound(tester, find.text('Active assignments'));
-    await tester.tap(find.text('bob').first);
-    await _openProgramSegment(tester);
+  group('Program table', () {
+    // Loading a font sends a "fonts changed" notice that schedules one more
+    // frame. Loading it here, outside the test body, lets the test's first
+    // pump run that frame instead of leaving it pending at the end (#821).
+    setUpAll(loadInterTestFont);
 
-    for (final double width in <double>[1440, 1920]) {
-      tester.view.physicalSize = Size(width * 2, 2400);
-      tester.view.devicePixelRatio = 2;
-      await tester.pump(const Duration(milliseconds: 100));
-      final Finder frame = find.byType(CoachExerciseTableFrame).first;
-      final Finder parentColumn = find
-          .ancestor(
-            of: frame,
-            matching: find.byType(Column),
-          )
-          .first;
-      final Rect frameRect = tester.getRect(frame);
-      final Rect parentRect = tester.getRect(parentColumn);
-      expect(frameRect.right, closeTo(parentRect.right, 1));
-      final Finder actionValue = find.descendant(
-        of: frame,
-        matching: find.text('Shoulder Horizontal Adduction'),
-      );
-      expect(actionValue, findsOneWidget);
-      final RenderParagraph actionParagraph =
-          tester.renderObject<RenderParagraph>(actionValue);
-      final Text actionLabel = tester.widget<Text>(actionValue);
-      final double actionLineHeight =
-          actionLabel.style!.fontSize! * actionLabel.style!.height!;
-      expect(
-        actionParagraph.textSize.height,
-        closeTo(actionLineHeight, 0.5),
-      );
+    testWidgets(
+        'fills its desktop width and widens Action and Sets',
+        (tester) async {
+      final Map<String, dynamic> activeProgram =
+          _coachActiveProgram(provenance: 'automatic');
+      final Map<String, dynamic> program =
+          activeProgram['program'] as Map<String, dynamic>;
+      final List<Map<String, dynamic>> days =
+          program['days'] as List<Map<String, dynamic>>;
+      final List<Map<String, dynamic>> exercises =
+          days.first['exercises'] as List<Map<String, dynamic>>;
+      exercises.first['primary_action'] = 'Shoulder Horizontal Adduction';
+      final FakeMayosApi fake = _coachFake()..coachActiveProgram = activeProgram;
+      await _pumpApp(tester, fake, logicalWidth: 1440);
+      await _pumpUntilFound(tester, find.text('Active assignments'));
+      await tester.tap(find.text('bob').first);
+      await _openProgramSegment(tester);
 
-      final Finder header = find
-          .descendant(
-            of: frame,
-            matching: find.byType(MayosTableHeader),
-          )
-          .first;
-      double headerWidth(String label) => tester
-          .getSize(
-            find.descendant(of: header, matching: find.text(label)),
-          )
-          .width;
-      final double expectedExerciseWidth = frameRect.width -
-          40 -
-          230 -
-          125 -
-          115 -
-          95 -
-          80 -
-          80 -
-          (MayosSpacing.xs * 2 + 2);
-      // The base widths fit the 1440 detail pane, so the table fills it and
-      // Exercise still gets the remaining width.
-      expect(expectedExerciseWidth, greaterThan(105));
-      expect(headerWidth('Exercise'), closeTo(expectedExerciseWidth, 3));
-      expect(headerWidth('Action'), 230);
-      expect(headerWidth('Equipment'), 125);
-      expect(headerWidth('Sets'), 115);
-      expect(headerWidth('Reps'), 95);
-      expect(headerWidth('RIR'), 80);
-      expect(headerWidth('Rest'), 80);
-      expect(tester.takeException(), isNull);
-    }
+      for (final double width in <double>[1440, 1920]) {
+        tester.view.physicalSize = Size(width * 2, 2400);
+        tester.view.devicePixelRatio = 2;
+        await tester.pump(const Duration(milliseconds: 100));
+        final Finder frame = find.byType(CoachExerciseTableFrame).first;
+        final Finder parentColumn = find
+            .ancestor(
+              of: frame,
+              matching: find.byType(Column),
+            )
+            .first;
+        final Rect frameRect = tester.getRect(frame);
+        final Rect parentRect = tester.getRect(parentColumn);
+        expect(frameRect.right, closeTo(parentRect.right, 1));
+        final Finder actionValue = find.descendant(
+          of: frame,
+          matching: find.text('Shoulder Horizontal Adduction'),
+        );
+        expect(actionValue, findsOneWidget);
+        final RenderParagraph actionParagraph =
+            tester.renderObject<RenderParagraph>(actionValue);
+        final Text actionLabel = tester.widget<Text>(actionValue);
+        final double actionLineHeight =
+            actionLabel.style!.fontSize! * actionLabel.style!.height!;
+        expect(
+          actionParagraph.textSize.height,
+          closeTo(actionLineHeight, 0.5),
+        );
+
+        final Finder header = find
+            .descendant(
+              of: frame,
+              matching: find.byType(MayosTableHeader),
+            )
+            .first;
+        double headerWidth(String label) => tester
+            .getSize(
+              find.descendant(of: header, matching: find.text(label)),
+            )
+            .width;
+        final double expectedExerciseWidth = frameRect.width -
+            40 -
+            230 -
+            125 -
+            115 -
+            95 -
+            80 -
+            80 -
+            (MayosSpacing.xs * 2 + 2);
+        // The base widths fit the 1440 detail pane, so the table fills it and
+        // Exercise still gets the remaining width.
+        expect(expectedExerciseWidth, greaterThan(105));
+        expect(headerWidth('Exercise'), closeTo(expectedExerciseWidth, 3));
+        expect(headerWidth('Action'), 230);
+        expect(headerWidth('Equipment'), 125);
+        expect(headerWidth('Sets'), 115);
+        expect(headerWidth('Reps'), 95);
+        expect(headerWidth('RIR'), 80);
+        expect(headerWidth('Rest'), 80);
+        expect(tester.takeException(), isNull);
+      }
+    });
   });
 
   testWidgets('program table enriches muscle, action, and equipment labels',
