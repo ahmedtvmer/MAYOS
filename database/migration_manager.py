@@ -20,7 +20,7 @@ from utils.equipment_access import (
 logger = MayosLogger().get_logger(__name__)
 
 # Current target schema version for all user ledgers
-CURRENT_LEDGER_SCHEMA_VERSION: int = 66
+CURRENT_LEDGER_SCHEMA_VERSION: int = 67
 
 MEAL_SETUP_DDL: tuple[str, ...] = (
     "CREATE TABLE IF NOT EXISTS meal_setup ("
@@ -1498,6 +1498,17 @@ def _migrate_v65_to_v66(conn: sqlite3.Connection) -> None:
         conn.execute(statement)
 
 
+def _migrate_v66_to_v67(conn: sqlite3.Connection) -> None:
+    """Adds past preferred names for report redaction (issue #838).
+
+    Starts empty: names replaced before this version were never recorded.
+    """
+    from database.ledger.assistant_feedback import PREFERRED_NAME_HISTORY_DDL
+
+    for statement in PREFERRED_NAME_HISTORY_DDL:
+        conn.execute(statement)
+
+
 def get_ledger_schema_version(conn: sqlite3.Connection) -> int:
     """Reads the current user_version PRAGMA from the SQLite connection."""
     cursor = conn.cursor()
@@ -1660,6 +1671,7 @@ MIGRATION_REGISTRY: dict[int, MigrationCallable] = {
     63: _migrate_v63_to_v64,
     64: _migrate_v64_to_v65,
     65: _migrate_v65_to_v66,
+    66: _migrate_v66_to_v67,
 }
 
 

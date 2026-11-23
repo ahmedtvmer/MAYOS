@@ -406,8 +406,12 @@ is silently cut. A 👎 without a reason or a comment stays a quiet vote. Votes
 also feed a weekly counts summary to the owner. Nobody else ever sees this
 data: a coach
 never sees their players' votes or reports, and there is no in-app review
-screen. Submissions are rate-limited. Deleting your account removes the
-feedback and reports.
+screen. Submissions are rate-limited. A report, with the exchange and comment
+it carries, is deleted from your account **90 days after it is delivered** to
+the owner. To keep a later report from showing a name you used before, we
+also keep your earlier preferred names, only for redaction, until no chat
+message old enough to contain them remains. Deleting your account removes the
+feedback and reports, and those names.
 
 ## How long we keep your data
 
@@ -438,6 +442,8 @@ feedback and reports.
 - **Other people's history**: check-ins you wrote as a coach and programs you
   published stay in the players' own accounts (you appear as "Former coach"),
   because those records are part of their history.
+- **Assistant reply reports** are deleted 90 days after delivery to the owner
+  (see "Assistant reply feedback and reports").
 - **Service logs** are kept only as long as they remain useful for operations
   and security.
 

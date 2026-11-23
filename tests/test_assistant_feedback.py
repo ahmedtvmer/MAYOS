@@ -1197,6 +1197,103 @@ def test_clear_history_keeps_undelivered_report_until_retry_delivers(api, monkey
         ).fetchone()[0] == 0
 
 
+
+def _seed_named_reply(db, ledger_id: str, name: str, at: datetime) -> None:
+    with db.open_ledger(ledger_id) as ledger:
+        ledger.conn.execute(
+            "INSERT INTO chat_history (id, role, content, created_at) VALUES (?, 'user', ?, ?)",
+            ("question-reply-1", "How many sets should I bench?", at.isoformat()),
+        )
+        ledger.conn.execute(
+            "INSERT INTO chat_history (id, role, content, created_at) VALUES (?, 'assistant', ?, ?)",
+            ("reply-1", f"Good work today, {name}. Keep three working sets.", at.isoformat()),
+        )
+        ledger._commit_ledger()
+
+
+def test_report_of_an_old_reply_masks_the_players_earlier_name_838(api, monkeypatch):
+    client, db = api
+    registered = _register(client, PLAYER_USERNAME)
+    headers = _authed(registered["access_token"])
+    _account_id(client, headers)
+    with db.open_ledger(PLAYER_USERNAME) as ledger:
+        ledger.set_assistant_memory("preferred_name", "Sami")
+    _seed_named_reply(db, PLAYER_USERNAME, "Sami", datetime.now(UTC) - timedelta(minutes=5))
+    with db.open_ledger(PLAYER_USERNAME) as ledger:
+        ledger.set_assistant_memory("preferred_name", "Omar")
+        assert ledger.past_preferred_names() == ["Sami"]
+
+    captured = _capture_discord(monkeypatch)
+    report = client.post(
+        "/chat/feedback/report",
+        headers=headers,
+        json={"message_id": "reply-1", "reasons": ["unsafe_advice"]},
+    )
+
+    assert report.status_code == 200, report.text
+    assert len(captured) == 1
+    assert "Good work today, [redacted]." in captured[0]
+    assert "Sami" not in captured[0]
+
+
+def test_clearing_a_preferred_name_keeps_it_for_redaction_838(api):
+    client, db = api
+    _register(client, PLAYER_USERNAME)
+    with db.open_ledger(PLAYER_USERNAME) as ledger:
+        ledger.set_assistant_memory("preferred_name", "Sami")
+        ledger.set_assistant_memory("preferred_name", "Sami")
+        assert ledger.past_preferred_names() == []
+        ledger.clear_preferred_name()
+        assert ledger.past_preferred_names() == ["Sami"]
+
+
+def test_past_names_are_pruned_once_no_older_chat_remains_838(api):
+    client, db = api
+    _register(client, PLAYER_USERNAME)
+    _seed_named_reply(db, PLAYER_USERNAME, "Sami", datetime.now(UTC) - timedelta(days=1))
+    with db.open_ledger(PLAYER_USERNAME) as ledger:
+        ledger.set_assistant_memory("preferred_name", "Sami")
+        ledger.set_assistant_memory("preferred_name", "Omar")
+        # A message from before the rename can still hold the old name.
+        assert ledger.prune_past_preferred_names() == 0
+        ledger.conn.execute("DELETE FROM chat_history")
+        ledger._commit_ledger()
+        assert ledger.prune_past_preferred_names() == 1
+        assert ledger.past_preferred_names() == []
+
+
+def _delivered_report(db, ledger_id: str, message_id: str, delivered_at: datetime, *, pending_vote: bool = False):
+    now = datetime.now(UTC).isoformat()
+    with db.open_ledger(ledger_id) as ledger:
+        ledger.conn.execute(
+            "INSERT INTO assistant_reply_feedback (feedback_id, account_id, message_id, reply_text,"
+            " question_text, reply_language, route, vote, vote_reasons_json, vote_updated_at,"
+            " report_reasons_json, reported_at, report_delivered_at, created_at, updated_at)"
+            " VALUES (?, 'account', ?, 'reply', 'question', 'en', 'assistant', ?, ?, ?,"
+            " '[\"unsafe_advice\"]', ?, ?, ?, ?)",
+            (f"feedback-{message_id}", message_id,
+             "down" if pending_vote else None, '["wrong_info"]' if pending_vote else "[]",
+             now if pending_vote else None, delivered_at.isoformat(), delivered_at.isoformat(), now, now),
+        )
+        ledger._commit_ledger()
+
+
+def test_reports_are_deleted_90_days_after_delivery_838(api):
+    client, db = api
+    _register(client, PLAYER_USERNAME)
+    now = datetime.now(UTC)
+    _delivered_report(db, PLAYER_USERNAME, "old", now - timedelta(days=91))
+    _delivered_report(db, PLAYER_USERNAME, "recent", now - timedelta(days=89))
+    _delivered_report(db, PLAYER_USERNAME, "owes-vote", now - timedelta(days=120), pending_vote=True)
+
+    from service import assistant_feedback
+
+    # No webhook is configured: retention still runs.
+    assert assistant_feedback.expire_feedback_data(db, now) == 1
+    with db.open_ledger(PLAYER_USERNAME) as ledger:
+        kept = {row[0] for row in ledger.conn.execute("SELECT message_id FROM assistant_reply_feedback")}
+    assert kept == {"recent", "owes-vote"}
+
 def test_account_deletion_removes_feedback_with_the_ledger(api):
     client, db = api
     registered = _register(client, PLAYER_USERNAME)
