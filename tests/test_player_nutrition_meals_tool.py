@@ -146,3 +146,20 @@ def test_swap_tool_calls_cannot_write_a_nutrition_plan(meals_api):
         assert json.loads(messages[1].content) == {"status": "unavailable"}
         assert _plan_rows(ledger) == before
         assert ledger.conn.total_changes == changes
+
+
+@pytest.mark.parametrize("scope", [{"day": "today"}, {"days": 3}])
+def test_day_scoped_read_after_a_positive_rescreen_says_blocked(meals_api, scope):
+    """#757: saved targets are withheld after a positive screening; say blocked, not no_data."""
+    client, db, headers, _today = meals_api
+    _enable(client, headers)
+    with db.open_ledger(_ledger_id(db)) as ledger:
+        assert json.loads(_nutrition_tool(ledger).invoke(scope))["status"] == "ok"
+        ledger.conn.execute(
+            "UPDATE nutrition_screening SET answers_json=? WHERE id=1",
+            (json.dumps({"eating_disorder": True}),),
+        )
+        ledger.conn.commit()
+        response = json.loads(_nutrition_tool(ledger).invoke(scope))
+    assert response["status"] == "blocked"
+    assert response["days"] == []
