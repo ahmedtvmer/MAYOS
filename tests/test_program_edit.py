@@ -1,3 +1,5 @@
+import pytest
+
 from agent.ProgramState import (
     PersistedProgramDaySchema,
     PersistedProgramExerciseSchema,
@@ -376,10 +378,11 @@ def test_program_edit_warning_uses_unchanged_edited_week(fresh_store, monkeypatc
     active = ledger.get_active_program()
 
     response = edit_active_program_day(db, ledger, ProgramEdit(day_name="Full A", expected_active_version=active.version,
-        exercises=[ProgramEditExercise(index, str(row[0]), 3) for index, row in enumerate(rows[1:])],
+        exercises=[ProgramEditExercise(index, str(row[0]), 4 if index == 0 else 3) for index, row in enumerate(rows[1:])],
         player_account_id=TEST_PLAYER_ID, actor=ProgramAnalyticsActor(TEST_PLAYER_ID, "player"), week_order=2, day_order=1))
 
-    assert response["volume_warnings"] == [{"muscle": "biceps", "weekly_sets": 12, "ceiling": 8}]
+    # The edited week's total (one set added), not week 1's.
+    assert response["volume_warnings"] == [{"muscle": "biceps", "weekly_sets": 13, "ceiling": 8}]
 
 
 def test_program_edit_rejects_more_than_ten_exercises(fresh_store):
@@ -395,3 +398,38 @@ def test_program_edit_rejects_more_than_ten_exercises(fresh_store):
         exercises=[ProgramEditExercise(-1, str(row[0]), 2) for row in rows[:11]],
         player_account_id=TEST_PLAYER_ID, actor=ProgramAnalyticsActor(TEST_PLAYER_ID, "player"), day_order=1))
     assert result["code"] == "day_limit"
+
+
+class _CreditLedger:
+    """Every exercise counts fully toward the muscle named by its id prefix."""
+
+    def volume_review_exercise_credits(self, ids):
+        return {exercise_id: {exercise_id.split("-")[0]: {"credit": 1.0}} for exercise_id in ids}
+
+
+def _week(*exercises):
+    return {"days": [{"day_name": "A", "day_order": 1, "exercises": [
+        {"exercise_id": exercise_id, "target_sets": sets} for exercise_id, sets in exercises
+    ]}]}
+
+
+@pytest.mark.parametrize("before,after,expected", [
+    # Lat pulldown added beside hamstrings and shoulders already above 8: no warning for them.
+    ((("hamstrings-1", 5), ("hamstrings-2", 5), ("shoulders-1", 9)),
+     (("hamstrings-1", 5), ("hamstrings-2", 5), ("shoulders-1", 9), ("lats-1", 3)), []),
+    # From below the ceiling to above it: warns for that muscle.
+    ((("quads-1", 4), ("quads-2", 3)), (("quads-1", 4), ("quads-2", 3), ("quads-3", 2)),
+     [{"muscle": "quads", "weekly_sets": 9, "ceiling": 8}]),
+    # Already above and raised further: warns.
+    ((("quads-1", 9),), (("quads-1", 10),), [{"muscle": "quads", "weekly_sets": 10, "ceiling": 8}]),
+    # Lowered but still above: no warning.
+    ((("quads-1", 10),), (("quads-1", 9),), []),
+])
+def test_volume_warning_names_only_muscles_the_edit_raised_above_the_ceiling(before, after, expected):
+    from service.program_edit import _volume_warnings
+
+    warnings = _volume_warnings(
+        _CreditLedger(), _week(*after), {"training_age_years": 0}, 1, before=_week(*before),
+    )
+
+    assert warnings == expected
