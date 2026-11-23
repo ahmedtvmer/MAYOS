@@ -18,6 +18,8 @@ import 'quick_add_screen.dart';
 import 'today_meals.dart';
 import 'nutrition_summary_card.dart';
 import 'nutrition_tile.dart';
+import '../../../core/connectivity_message.dart';
+import '../../../core/display_language/copy_context.dart';
 
 class FoodLogDayView extends ConsumerStatefulWidget {
   const FoodLogDayView({
@@ -91,7 +93,7 @@ class _FoodLogDayViewState extends ConsumerState<FoodLogDayView>
     } on ApiException catch (error) {
       if (mounted && request == _request)
         setState(() {
-          _error = error.message;
+          _error = displayCopyOf(context).failureMessage(apiFailureMessage(error));
           _loading = false;
         });
     }
@@ -204,7 +206,7 @@ class _FoodLogDayViewState extends ConsumerState<FoodLogDayView>
     } on ApiException catch (error) {
       if (mounted)
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(error.message)));
+            .showSnackBar(SnackBar(content: Text(displayCopyOf(context).failureMessage(apiFailureMessage(error)))));
     } finally {
       if (mounted) setState(() => _deleting = false);
     }

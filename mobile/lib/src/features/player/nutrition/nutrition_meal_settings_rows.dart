@@ -7,6 +7,8 @@ import '../../../core/display_language/nutrition_copy.dart';
 import '../../../core/planned_meals_models.dart';
 import '../../../providers.dart';
 import 'food_swap_requests.dart';
+import '../../../core/connectivity_message.dart';
+import '../../../core/display_language/copy_context.dart';
 
 class NutritionMealSettingsRows extends ConsumerStatefulWidget {
   const NutritionMealSettingsRows({required this.onOpenSetup, super.key});
@@ -88,7 +90,7 @@ class _NutritionMealSettingsRowsState
 
   void _showError(ApiException error) =>
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(error.message)));
+          .showSnackBar(SnackBar(content: Text(displayCopyOf(context).failureMessage(apiFailureMessage(error)))));
 
   Future<void> _openSetup() async {
     await widget.onOpenSetup();

@@ -7,6 +7,8 @@ import '../../../core/display_language/food_log_copy.dart';
 import '../../../core/food_log_models.dart';
 import '../../../providers.dart';
 import 'food_nutrient_fields.dart';
+import '../../../core/connectivity_message.dart';
+import '../../../core/display_language/copy_context.dart';
 
 class PersonalFoodScreen extends ConsumerStatefulWidget {
   const PersonalFoodScreen({this.initialName = '', super.key});
@@ -74,7 +76,7 @@ class _PersonalFoodScreenState extends ConsumerState<PersonalFoodScreen> {
         Navigator.of(context).pop(food);
       }
     } on ApiException catch (error) {
-      if (mounted) setState(() { _saving = false; _error = error.message; });
+      if (mounted) setState(() { _saving = false; _error = displayCopyOf(context).failureMessage(apiFailureMessage(error)); });
     }
   }
 
