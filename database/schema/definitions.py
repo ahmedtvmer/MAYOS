@@ -8,6 +8,7 @@ from typing import Any
 
 from agent.prompts import DEFAULT_ASSISTANT_STYLE
 from database.exercise_library.curation import apply_exercise_curation
+from database.food_library import seeding as food_library_seeding
 from database.food_library.seeding import ensure_food_meal_limits_schema, ensure_food_search_schema
 from database.migration_manager import CURRENT_LEDGER_SCHEMA_VERSION
 from database.migration_manager import CHAT_HISTORY_FTS_DDL, CHAT_HISTORY_LEDGER_DDL, FOOD_LOG_DDL, MEAL_SETUP_DDL, PERSONAL_FOODS_DDL
@@ -101,6 +102,11 @@ class SchemaMixin:
                     self.catalog_conn.cursor(),
                     self.curation_path if curation_path is None else curation_path,
                 )
+                # Same guard as the curation re-apply: only a real, initialized
+                # catalog refreshes its Food library from the shipped inputs
+                # (#844). Unchanged inputs do no work; missing inputs are a
+                # logged warning, never a startup failure.
+                food_library_seeding.refresh_catalog_food_library(self.catalog_conn)
 
     def create_catalog_schema(self, curation_path=None) -> None:
         with self._catalog_lock:
