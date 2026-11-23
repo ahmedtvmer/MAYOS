@@ -69,7 +69,10 @@ photo stays on the device (it is never uploaded).
 | Independent verification | No |
 
 Deleting the account removes assistant reply feedback and reports with it,
-exactly as the policy's "Deleting your account" section states.
+exactly as the policy's "Deleting your account" section states. Delivered
+reports are also deleted automatically 90 days after delivery (policy 1.15,
+#838); past preferred names kept only for report redaction follow the same
+section.
 
 ## Planned feature — do NOT declare until it ships
 

@@ -419,10 +419,21 @@ class LedgerProfileMixin:
         cursor.execute("SELECT key, value FROM assistant_memory WHERE key = ?", ("preferred_name",))
         return dict(cursor.fetchall())
 
+    def _remember_replaced_preferred_name(self, new_value: str | None) -> None:
+        """Keeps the outgoing preferred name for report redaction (#838)."""
+        previous = self.get_assistant_memory().get("preferred_name")
+        if previous and previous != new_value:
+            self.conn.execute(
+                "INSERT INTO preferred_name_history (name, replaced_at) VALUES (?, ?) "
+                "ON CONFLICT(name) DO UPDATE SET replaced_at = excluded.replaced_at",
+                (previous, datetime.now(UTC).isoformat()),
+            )
+
     def set_assistant_memory(self, key: str, value: str) -> None:
         if key != "preferred_name":
             raise ValueError("Unsupported assistant memory key")
         validate_preferred_name(value)
+        self._remember_replaced_preferred_name(value)
         cursor = self.conn.cursor()
         cursor.execute(
             """
@@ -434,6 +445,7 @@ class LedgerProfileMixin:
         self.conn.commit()
 
     def clear_preferred_name(self) -> None:
+        self._remember_replaced_preferred_name(None)
         self.conn.execute(
             "DELETE FROM assistant_memory WHERE key = ?", ("preferred_name",)
         )

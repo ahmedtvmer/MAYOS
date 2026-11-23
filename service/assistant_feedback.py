@@ -293,6 +293,24 @@ def _content_chunks(text: str, budget: int) -> list[str]:
     return chunks
 
 
+def expire_feedback_data(db: Any, now: datetime | None = None) -> int:
+    """Deletes reports delivered over 90 days ago and past names no reply can hold (#838).
+
+    Runs with or without a configured webhook, so retention never depends on delivery.
+    """
+    removed = 0
+    for account in db.list_accounts():
+        if account.get("deleted_at") is not None or not db.ledger_exists(account["ledger_id"]):
+            continue
+        try:
+            with db.open_ledger(account["ledger_id"]) as ledger:
+                removed += ledger.delete_expired_feedback_reports(now)
+                ledger.prune_past_preferred_names()
+        except Exception:
+            logger.exception("Assistant feedback retention failed for a ledger.")
+    return removed
+
+
 def _send_discord_message(content: str) -> bool:
     """Delivers one logical message; True only when every part got a 2xx."""
     return all(_discord_post(part) for part in _discord_parts(content))
@@ -307,6 +325,8 @@ def report_context_redact_terms(db: Any, account_id: str, own_ledger: Any) -> li
     memory = own_ledger.get_assistant_memory()
     if memory and memory.get("preferred_name"):
         terms.append(str(memory["preferred_name"]))
+    # An old reply may still carry a name the Player has since changed (#838).
+    terms.extend(own_ledger.past_preferred_names())
     # Coach replies may refer to their assigned Player. Resolve names only for
     # redaction and never put them into the Discord payload.
     for assignment in db.list_active_assignments_for_coach(account_id):
@@ -317,8 +337,10 @@ def report_context_redact_terms(db: Any, account_id: str, own_ledger: Any) -> li
         try:
             with db.open_ledger(player["ledger_id"]) as player_ledger:
                 player_memory = player_ledger.get_assistant_memory()
+                past_names = player_ledger.past_preferred_names()
             if player_memory and player_memory.get("preferred_name"):
                 terms.append(str(player_memory["preferred_name"]))
+            terms.extend(past_names)
         except Exception:
             logger.info("Could not load a Player name for feedback reply redaction.")
     return [term.strip() for term in terms if term and term.strip()]
@@ -562,11 +584,16 @@ def record_report(
 
 
 def feedback_maintenance(db: Any, limit: int = 20) -> None:
-    """Hourly background pass: retry undelivered reports and 👎 feedback, then the weekly summary."""
+    """Hourly background pass: retry undelivered reports and 👎 feedback, expire
+    old reports, then the weekly summary."""
     try:
         retry_pending_reports(db, limit)
     except Exception:
         logger.exception("Assistant feedback report retry pass failed.")
+    try:
+        expire_feedback_data(db)
+    except Exception:
+        logger.exception("Assistant feedback retention pass failed.")
     try:
         send_weekly_summary(db)
     except Exception:

@@ -43,6 +43,20 @@ ASSISTANT_FEEDBACK_DDL = (
 )
 
 
+# Preferred names the Player used before, kept only so a later report of an old
+# reply still masks them (#838). Deleted with the ledger, and pruned once no
+# chat message is old enough to contain one.
+PREFERRED_NAME_HISTORY_DDL = (
+    "CREATE TABLE IF NOT EXISTS preferred_name_history ("
+    " name TEXT PRIMARY KEY CHECK(length(name) BETWEEN 1 AND 60),"
+    " replaced_at TEXT NOT NULL"
+    ")",
+)
+
+# Delivered reports and their excerpts are kept this many days (#838, policy 1.15).
+REPORT_RETENTION_DAYS = 90
+
+
 # A 👎 owes its owner a Discord send exactly when it carries at least one
 # reason or a note and has never been sent (issue #764).
 _VOTE_PENDING_PREDICATE = (
@@ -443,9 +457,47 @@ class LedgerAssistantFeedbackMixin:
             self._commit_ledger()
         return int(cursor.rowcount)
 
+    def delete_expired_feedback_reports(self, now: datetime | None = None) -> int:
+        """Removes reports delivered more than ``REPORT_RETENTION_DAYS`` ago (#838).
+
+        The row goes with its excerpts; a row that still owes a 👎 send stays
+        until that send is done.
+        """
+        cutoff = ((now or datetime.now(UTC)) - timedelta(days=REPORT_RETENTION_DAYS)).isoformat()
+        with self.ledger_transaction():
+            cursor = self.conn.execute(
+                "DELETE FROM assistant_reply_feedback "
+                "WHERE report_delivered_at IS NOT NULL AND report_delivered_at < ? "
+                f"AND {ASSISTANT_FEEDBACK_ROW_DISPOSABLE_PREDICATE}",
+                (cutoff,),
+            )
+            self._commit_ledger()
+        return int(cursor.rowcount)
+
+    def past_preferred_names(self) -> list[str]:
+        return [str(row[0]) for row in self.conn.execute(
+            "SELECT name FROM preferred_name_history ORDER BY replaced_at")]
+
+    def prune_past_preferred_names(self) -> int:
+        """Drops past names older than every remaining chat message (#838).
+
+        A name can appear only in replies written before it was replaced, and
+        reports already captured keep their own redaction terms.
+        """
+        with self.ledger_transaction():
+            cursor = self.conn.execute(
+                "DELETE FROM preferred_name_history WHERE NOT EXISTS ("
+                "SELECT 1 FROM chat_history "
+                "WHERE chat_history.created_at < preferred_name_history.replaced_at)"
+            )
+            self._commit_ledger()
+        return int(cursor.rowcount)
+
 
 __all__ = [
     "ASSISTANT_FEEDBACK_DDL",
+    "PREFERRED_NAME_HISTORY_DDL",
+    "REPORT_RETENTION_DAYS",
     "ASSISTANT_FEEDBACK_ROW_DISPOSABLE_PREDICATE",
     "LedgerAssistantFeedbackMixin",
 ]

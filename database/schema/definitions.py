@@ -25,7 +25,7 @@ from database.ledger.nutrition import (
     NUTRITION_MEAL_GENERATION_CACHE_DDL,
     NUTRITION_MEAL_PREFERENCE_DDL,
 )
-from database.ledger.assistant_feedback import ASSISTANT_FEEDBACK_DDL
+from database.ledger.assistant_feedback import ASSISTANT_FEEDBACK_DDL, PREFERRED_NAME_HISTORY_DDL
 from database.ledger.xp import XP_DDL
 from database.ledger.push import PUSH_INTENTS_DDL
 from database.migration_manager import DELOAD_CHOICES_DDL
@@ -457,6 +457,7 @@ class SchemaMixin:
                 *PROGRAM_DESIGN_OFFER_DDL,
                 *ASSISTANT_FEEDBACK_DDL,
                 *XP_DDL,
+                *PREFERRED_NAME_HISTORY_DDL,
             )
         ))
         ensure_revision_schema(
