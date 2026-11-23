@@ -88,6 +88,17 @@ async def status(account: Account, db: Store, device_id: str = ""):
             "preferences": prefs}
 
 
+@router.get("/local-reminders")
+async def local_reminders(account: Account, db: Store):
+    """The next 14 days of workout reminders for a device that schedules them offline (#840)."""
+    from service import local_reminders as plan
+
+    record = await asyncio.to_thread(db.get_account, account.account_id)
+    if not record or not record.get("is_player") or not db.ledger_exists(record["ledger_id"]):
+        return {"timezone": "UTC", "reminders": []}
+    return await asyncio.to_thread(plan.reminder_plan, db, record, datetime.now(UTC))
+
+
 @router.put("/preferences")
 @limiter.limit(ASSIGNMENT_MUTATE_LIMIT)
 async def preferences(request: Request, body: PushPreferences, account: Account, db: Store):

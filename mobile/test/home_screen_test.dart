@@ -1577,8 +1577,6 @@ void main() {
           'meal_setup' => find.byKey(const Key('nutrition_targets')).evaluate().isNotEmpty
               ? find.byKey(const Key('nutrition_targets')) : find.byKey(const Key('food_log_entry_point')),
           'food_swap_requests' => find.byKey(const Key('food_swap_requests_history')),
-          'web_push' =>
-            find.text('Push notifications are available in the installed web app.'),
           'assistant_meals' || 'ai_assistant_tab' => find.byIcon(Icons.chat_bubble_outline),
           'assistant_personal_logs' => find.byIcon(Icons.chat_bubble_outline),
           // The vote bar exists only under an assistant reply; with an empty
@@ -1774,8 +1772,6 @@ void main() {
           'meal_setup' => find.byKey(const Key('nutrition_targets')).evaluate().isNotEmpty
               ? find.byKey(const Key('nutrition_targets')) : find.byKey(const Key('food_log_entry_point')),
           'food_swap_requests' => find.byKey(const Key('food_swap_requests_history')),
-          'web_push' =>
-            find.text('Push notifications are available in the installed web app.'),
           'assistant_meals' || 'ai_assistant_tab' => find.byIcon(Icons.chat_bubble_outline),
           'assistant_personal_logs' => find.byIcon(Icons.chat_bubble_outline),
           // The vote bar exists only under an assistant reply; with an empty

@@ -160,6 +160,12 @@ class ApiClient {
     return Map<String, dynamic>.from(response.data as Map);
   }
 
+  /// The next 14 days of workout reminders this device schedules offline (#840).
+  Future<Map<String, dynamic>> localReminders() async {
+    final response = await _send(() => _dio.get<dynamic>('/push/local-reminders'));
+    return Map<String, dynamic>.from(response.data as Map);
+  }
+
   Future<void> savePushPreferences(Map<String, dynamic> values) async {
     await _send(() => _dio.put<dynamic>('/push/preferences', data: values));
   }
