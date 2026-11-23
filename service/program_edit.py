@@ -113,11 +113,8 @@ def edit_active_program_day(db: Any, ledger: Any, edit_request: ProgramEdit) -> 
                 return _failure(ProgramEditErrorCode.EXERCISE_NOT_AVAILABLE)
     previous_version = active.version
     if _is_unchanged(prepared.day["exercises"], edit_request.exercises):
-        week_order = int(prepared.day.get("week_order", edit_request.week_order or current_position.current_week))
-        warnings = _volume_warnings(
-            ledger, active.model_dump(), ledger.get_player_profile() or {}, week_order
-        )
-        return {**_updated_program_result(ledger, previous_version), "volume_warnings": warnings}
+        # Nothing changed, so nothing was raised past a ceiling (#825).
+        return {**_updated_program_result(ledger, previous_version), "volume_warnings": []}
     _apply_program_edit(prepared, edit_request.exercises)
     _prepare_added_prescriptions(db, ledger, prepared.day, edit_request.exercises)
     restriction_failure = _restricted_program_edit(db, ledger, prepared.day)
@@ -180,7 +177,10 @@ def edit_active_program_day(db: Any, ledger: Any, edit_request: ProgramEdit) -> 
         exercise.pop("program_edit_prescription_rationale", None)
     carry_program_rationale(active, prepared.program_copy,
                             occurrence_mappings=mappings, removed_entries=removed_entries)
-    warnings = _volume_warnings(ledger, prepared.program_copy, ledger.get_player_profile() or {}, day_key[0])
+    warnings = _volume_warnings(
+        ledger, prepared.program_copy, ledger.get_player_profile() or {}, day_key[0],
+        before=active.model_dump(),
+    )
     if edit_request.preview:
         return {**prepared.program_copy, "previous_version": active.version, "volume_warnings": warnings}
     prepared.program_copy.pop("created_at", None)
@@ -195,12 +195,37 @@ def edit_active_program_day(db: Any, ledger: Any, edit_request: ProgramEdit) -> 
     return {**_updated_program_result(ledger, previous_version), "volume_warnings": warnings}
 
 
-def _volume_warnings(ledger: Any, program: dict[str, Any], profile: dict[str, Any], current_week: int) -> list[dict[str, Any]]:
+def _volume_warnings(
+    ledger: Any, program: dict[str, Any], profile: dict[str, Any], current_week: int,
+    *, before: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Muscles this edit raised above their weekly ceiling (#825).
+
+    A muscle that was already above its ceiling, and that the edit did not
+    raise, gives no warning: only an increase the Player just made is flagged.
+    """
     from agent.focus_muscles import FOCUS_REVIEW_MUSCLES
-    from agent.program_weeks import normalize_program_weeks
-    from agent.ProgramState import program_exercise_working_sets
     level = experience_level_for_training_age(float(profile.get("training_age_years") or 0))
     ceilings = {"beginner": 8, "intermediate": 10, "advanced": 13}
+    totals = _weekly_sets_by_muscle(ledger, program, current_week)
+    before_totals = _weekly_sets_by_muscle(ledger, before, current_week)
+    focus_keys = {str(item.get("muscle", "")) for item in (program.get("program_rationale") or {}).get("focus_muscles", []) if isinstance(item, dict)}
+    focus_groups = {group for key in focus_keys for group in FOCUS_REVIEW_MUSCLES.get(key, set())}
+    warnings = []
+    for muscle, sets in sorted(totals.items()):
+        ceiling = round(ceilings[level] * (1.3 if muscle in focus_groups else 1.0))
+        if sets > ceiling and sets > before_totals.get(muscle, 0.0) + 1e-9:
+            warnings.append({
+                "muscle": muscle,
+                "weekly_sets": round(sets, 2),
+                "ceiling": ceiling,
+            })
+    return warnings
+
+
+def _weekly_sets_by_muscle(ledger: Any, program: dict[str, Any], current_week: int) -> dict[str, float]:
+    from agent.program_weeks import normalize_program_weeks
+    from agent.ProgramState import program_exercise_working_sets
     weeks = normalize_program_weeks(program)
     days = next((week["days"] for week in weeks if int(week["week_order"]) == current_week), weeks[0]["days"] if weeks else [])
     exercises = [exercise for day in days for exercise in day.get("exercises", [])]
@@ -212,18 +237,7 @@ def _volume_warnings(ledger: Any, program: dict[str, Any], profile: dict[str, An
             credit = float(attribution["credit"])
             if credit > 0:
                 totals[muscle] = totals.get(muscle, 0.0) + program_exercise_working_sets(exercise) * credit
-    focus_keys = {str(item.get("muscle", "")) for item in (program.get("program_rationale") or {}).get("focus_muscles", []) if isinstance(item, dict)}
-    focus_groups = {group for key in focus_keys for group in FOCUS_REVIEW_MUSCLES.get(key, set())}
-    warnings = []
-    for muscle, sets in sorted(totals.items()):
-        ceiling = round(ceilings[level] * (1.3 if muscle in focus_groups else 1.0))
-        if sets > ceiling:
-            warnings.append({
-                "muscle": muscle,
-                "weekly_sets": round(sets, 2),
-                "ceiling": ceiling,
-            })
-    return warnings
+    return totals
 
 
 def _restricted_program_edit(db: Any, ledger: Any, day: dict[str, Any]) -> dict[str, Any] | None:
@@ -294,16 +308,13 @@ def _validate_program_edit(
     ):
         return _failure(ProgramEditErrorCode.EXERCISE_NOT_ON_DAY)
     for position, item in enumerate(requested_exercises):
+        # Total working sets, 1 to 4 (or the current total when higher); no
+        # set group is locked (#824).
         maximum_sets = 4
-        minimum_sets = 1
         if item.source_index >= 0:
             current = current_exercises[item.source_index]
             maximum_sets = max(maximum_sets, program_exercise_working_sets(current))
-            minimum_sets += sum(
-                int(group.get("sets", 0))
-                for group in (current.get("set_groups") or [])[1:]
-            )
-        if item.target_sets < minimum_sets or item.target_sets > maximum_sets:
+        if item.target_sets < 1 or item.target_sets > maximum_sets:
             return _failure(ProgramEditErrorCode.INVALID_SET_COUNT, exercise_position=position)
     return None
 
@@ -332,13 +343,33 @@ def _apply_program_edit(
         exercise_copy = deepcopy(current_exercises[requested.source_index])
         groups = exercise_copy.get("set_groups") or []
         if groups:
-            backoff_sets = sum(int(group.get("sets", 0)) for group in groups[1:])
-            groups[0]["sets"] = requested.target_sets - backoff_sets
+            groups = _resize_set_groups(groups, requested.target_sets)
             exercise_copy["set_groups"] = groups
             exercise_copy["target_sets"] = groups[0]["sets"]
         else:
             exercise_copy["target_sets"] = requested.target_sets
         prepared.day["exercises"].append(exercise_copy)
+
+
+def _resize_set_groups(groups: list[dict[str, Any]], target_sets: int) -> list[dict[str, Any]]:
+    """Changes an exercise's total sets at its last set group (#824).
+
+    Added sets join the last group. Removed sets come off the last group, which
+    is dropped when it empties, so earlier groups stay as prescribed while any
+    of their sets remain.
+    """
+    groups = [dict(group) for group in groups]
+    change = target_sets - sum(int(group.get("sets", 0)) for group in groups)
+    if change > 0:
+        groups[-1]["sets"] = int(groups[-1].get("sets", 0)) + change
+    while change < 0:
+        last_sets = int(groups[-1].get("sets", 0))
+        if last_sets + change > 0 or len(groups) == 1:
+            groups[-1]["sets"] = last_sets + change
+            break
+        change += last_sets
+        groups.pop()
+    return groups
 
 
 def _prepare_added_prescriptions(db: Any, ledger: Any, day: dict[str, Any], requested: list[ProgramEditExercise]) -> None:

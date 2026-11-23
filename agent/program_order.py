@@ -20,6 +20,9 @@ BARBELL_BENCH_SLOTS = frozenset({"flat_press", "incline_press"})
 TRICEPS_ISOLATION_SLOTS = frozenset({"triceps_pushdown", "triceps_overhead"})
 FOREARM_ISOLATION_SLOTS = frozenset({"forearm_wrist", "forearm_reverse"})
 HAMSTRING_ISOLATION_SLOTS = frozenset({"ham_curl"})
+# An isolation exercise trained before a compound for the same main muscle
+# stops short of failure so it does not take away from that compound (#823).
+PRE_COMPOUND_RIR = 2.0
 
 
 @dataclass(frozen=True)
@@ -66,8 +69,68 @@ def order_program_exercises(
     main_id = main_lift.exercise.exercise_id if main_lift else None
     entries = _promote_primary_movement_without_compound(entries, main_lift)
     if experience_level == "beginner":
-        return _order_beginner_program(entries, main_lift, main_id)
-    return _order_non_beginner_program(entries, main_lift, main_id, day_family)
+        ordered = _order_beginner_program(entries, main_lift, main_id)
+    else:
+        ordered = _order_non_beginner_program(entries, main_lift, main_id, day_family)
+    return _apply_effort_before_related_compound(ordered)
+
+
+def _apply_effort_before_related_compound(
+    entries: list[ProgramOrderEntry],
+) -> list[ProgramOrderEntry]:
+    """Sets each isolation's RIR from where it sits in the final order (#823).
+
+    An isolation exercise before a later compound sharing its main muscle
+    (leg extension before squat) trains at RIR 2, or its working RIR when that
+    is already easier. Every other exercise keeps its working RIR. The
+    working RIR is kept in the rationale, so ordering again after Focus dosing
+    recomputes from it instead of stacking on the previous pass.
+    """
+    result = []
+    for index, entry in enumerate(entries):
+        related = next(
+            (
+                later
+                for later in entries[index + 1:]
+                if _is_compound(later.exercise)
+                and shares_main_muscle(entry.exercise.slot_key, later.exercise.slot_key)
+            ),
+            None,
+        )
+        before_compound = related is not None and not _is_compound(entry.exercise)
+        result.append(_with_effort(entry, related if before_compound else None))
+    return result
+
+
+def _with_effort(
+    entry: ProgramOrderEntry, related: ProgramOrderEntry | None
+) -> ProgramOrderEntry:
+    from agent.program_rationale import RIR_BEFORE_RELATED_COMPOUND, RIR_TEST_SET_RULE
+
+    rir_reason = entry.rationale.get("prescription", {}).get("rir")
+    groups = list(entry.exercise.set_groups or [])
+    if not isinstance(rir_reason, dict) or not groups:
+        return entry
+    params = dict(rir_reason.get("params") or {})
+    if related is None and "working_rir" not in params:
+        return entry
+    working_rir = float(params.pop("working_rir", params.get("target_rir", groups[-1].target_rir)))
+    params.pop("before_exercise_id", None)
+    if related is None:
+        code, target_rir = RIR_TEST_SET_RULE, working_rir
+    else:
+        code, target_rir = RIR_BEFORE_RELATED_COMPOUND, max(working_rir, PRE_COMPOUND_RIR)
+        params.update(working_rir=working_rir, before_exercise_id=related.exercise.exercise_id)
+    params["target_rir"] = target_rir
+    rationale = deepcopy(entry.rationale)
+    rationale["prescription"]["rir"] = {"code": code, "params": params}
+    exercise = entry.exercise.model_copy(
+        update={
+            "set_groups": [group.model_copy(update={"target_rir": target_rir}) for group in groups],
+            "target_rpe": 10 - target_rir,
+        }
+    )
+    return replace(entry, exercise=exercise, rationale=rationale)
 
 
 def _program_order_entries(
@@ -501,29 +564,14 @@ def _pre_exhaust_prescription(
 def _pre_exhaust_set_groups(
     groups: list[ProgramSetGroupSchema], set_count: int
 ) -> list[ProgramSetGroupSchema]:
-    first_group = groups[0]
-    first_rir = first_group.target_rir if 1 <= first_group.target_rir <= 3 else 2.0
-    first_set = first_group.model_copy(
-        update={"sets": 1, "target_rir": first_rir, "amrap_last_set": False}
-    )
-    if set_count == 1:
-        return [first_set.model_copy(update={"target_rir": 2.0})]
-    working_set = groups[-1].model_copy(
-        update={"sets": set_count - 1, "target_rir": 2.0, "amrap_last_set": False}
-    )
-    return [first_set, working_set]
+    # One row; its RIR is set by the effort-before-compound rule (#823).
+    return [groups[-1].model_copy(update={"sets": set_count, "amrap_last_set": False})]
 
 
 def _pre_exhaust_rationale(
     rationale: dict[str, Any], groups: list[ProgramSetGroupSchema], set_count: int
 ) -> dict[str, Any]:
     rationale = deepcopy(rationale)
-    rir = rationale["prescription"]["rir"]["params"]
-    rir.update(
-        target_rir=2.0,
-        test_set_count=int(set_count > 1),
-        test_set_rir=groups[0].target_rir if set_count > 1 else rir["test_set_rir"],
-    )
     rationale["prescription"]["sets"]["params"]["count"] = set_count
     return rationale
 
@@ -535,9 +583,11 @@ def _receive_pre_exhaust_sets(
     set_count: int,
 ) -> tuple[ProgramExerciseSchema, dict[str, Any]]:
     groups = list(exercise.set_groups or [])
-    last_group = groups[-1]
-    groups.append(last_group.model_copy(update={"sets": set_count}))
-    exercise = exercise.model_copy(update={"set_groups": groups})
+    # The moved sets join the compound's last row instead of adding a row (#823).
+    groups[-1] = groups[-1].model_copy(update={"sets": groups[-1].sets + set_count})
+    exercise = exercise.model_copy(
+        update={"set_groups": groups, "target_sets": groups[0].sets}
+    )
     rationale = deepcopy(rationale)
     set_params = rationale["prescription"]["sets"]["params"]
     set_params["count"] = exercise.working_sets

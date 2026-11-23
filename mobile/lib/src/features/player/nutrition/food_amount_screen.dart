@@ -6,6 +6,8 @@ import '../../../core/display_language/controller.dart';
 import '../../../core/display_language/food_log_copy.dart';
 import '../../../core/food_log_models.dart';
 import '../../../providers.dart';
+import '../../../core/connectivity_message.dart';
+import '../../../core/display_language/copy_context.dart';
 
 class FoodAmountScreen extends ConsumerStatefulWidget {
   const FoodAmountScreen({
@@ -93,7 +95,7 @@ class _FoodAmountScreenState extends ConsumerState<FoodAmountScreen> {
     } on ApiException catch (error) {
       if (mounted)
         setState(() {
-          _error = error.message;
+          _error = displayCopyOf(context).failureMessage(apiFailureMessage(error));
           _saving = false;
         });
     }

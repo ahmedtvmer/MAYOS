@@ -25,7 +25,11 @@ from core.muscle_volume import (
     normalize_main_muscle,
 )
 from service.injuries import render_public_injury_record
-from service.nutrition import assistant_projection, targets_for_day as nutrition_targets_for_day
+from service.nutrition import (
+    assistant_projection,
+    screening_blocks_targets,
+    targets_for_day as nutrition_targets_for_day,
+)
 from service.nutrition_assistant_meals import meal_page
 from service.food_log import NUTRIENT_KEYS
 from service.food_log_context import nutrient_totals
@@ -386,6 +390,11 @@ def _read_saved_nutrition_targets(ledger: Any, args: PlayerNutritionArgs, today:
     except ValueError:
         return _invalid_recent_date(today)
     start = end - timedelta(days=(args.days or 1) - 1)
+    if screening_blocks_targets(ledger):
+        # A positive screening withholds every day's targets; say so instead
+        # of "no_data", as the unscoped read does (#757).
+        return {"status": "blocked", "start_date": start.isoformat(),
+                "end_date": end.isoformat(), "days": []}
     days = [{"date": (start + timedelta(days=offset)).isoformat(),
              "targets": _nutrition_target_values(nutrition_targets_for_day(
                  ledger, start + timedelta(days=offset)))}

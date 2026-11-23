@@ -15,6 +15,8 @@ import 'copy_food_meal_button.dart';
 import 'personal_food_screen.dart';
 import 'quick_add_screen.dart';
 import 'food_restriction_badge.dart';
+import '../../../core/connectivity_message.dart';
+import '../../../core/display_language/copy_context.dart';
 
 class FoodSearchScreen extends ConsumerStatefulWidget {
   const FoodSearchScreen({
@@ -86,7 +88,7 @@ class _FoodSearchScreenState extends ConsumerState<FoodSearchScreen>
     } on ApiException catch (error) {
       if (mounted && request == _request)
         setState(() {
-          _error = error.message;
+          _error = displayCopyOf(context).failureMessage(apiFailureMessage(error));
           _loading = false;
         });
     }

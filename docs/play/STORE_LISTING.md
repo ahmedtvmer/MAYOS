@@ -30,7 +30,7 @@ assistant chat. Both full descriptions carry a fixed sentence:
   أحياناً غير دقيقة."
 
 A second sentence about **reporting** a bad reply ("You can report any
-assistant reply with one tap") is included in the AR/EN drafts below. #748
+assistant reply from its menu") is included in the AR/EN drafts below. #748
 (the 👍/👎 vote and Report action) ships in the same release as this ticket,
 ahead of it, so the sentence is part of the submitted listing; the listing
 must not promise a control that is not in the uploaded build.

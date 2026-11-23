@@ -15,6 +15,7 @@ import 'package:mayos_mobile/src/providers.dart';
 
 import 'support/fake_mayos_api.dart';
 import 'support/scroll_to_control.dart';
+import 'package:mayos_mobile/src/core/display_language/catalog.dart';
 
 void main() {
   for (final String language in <String>['en', 'ar']) {
@@ -229,7 +230,8 @@ void main() {
           await tester.pumpAndSettle();
           expect(_switch(tester).value, initiallyEnabled);
           expect(_switch(tester).onChanged, isNotNull);
-          expect(find.text('MAYOS had a problem; try again.'), findsOneWidget);
+          // The generic service error is shown in the Display language (#760).
+          expect(find.text(MayosCopy(language).serviceUnavailable), findsOneWidget);
           expect(fake.plannedMealsState['enabled'], initiallyEnabled);
           fake.foodWriteFails = false;
           await _tapMealsSwitch(tester);

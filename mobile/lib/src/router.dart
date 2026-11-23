@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
 
 import 'core/app_mode.dart';
 import 'core/error_reporting.dart';
@@ -403,9 +404,12 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
             await ref.read(appModeControllerProvider.notifier).setMode(
               desired, accountId: account.accountId, isCoach: account.isCoach,
             );
-          } on Object {
-            // Persistence failed; the in-memory mode is already applied and
-            // Settings' push entry can retry on the next visit.
+          } on Object catch (error, stackTrace) {
+            // The mode store already swallows its own storage failures and the
+            // in-memory mode is applied; the next syncAccount or notification
+            // redirect saves it again. Anything reaching here is unexpected,
+            // so report it instead of hiding it (#756).
+            unawaited(Sentry.captureException(error, stackTrace: stackTrace));
           }
         }());
       }
