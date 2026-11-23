@@ -626,12 +626,20 @@ def test_generation_prescribes_effort_by_experience(training_age_years, expected
         for exercise in day.exercises:
             exercise_class = prescription_class(SLOT_SPECS[exercise.slot_key])
             minimum_rir, maximum_rir = EXPECTED_RIR_RANGES[(expected_experience, exercise_class)]
-            actual_rir = exercise.set_groups[-1].target_rir
-            assert minimum_rir <= actual_rir <= maximum_rir, (day.day_name, exercise.slot_key)
-            assert exercise.target_rpe == 10 - exercise.set_groups[0].target_rir
+            assert len(exercise.set_groups) == 1, (day.day_name, exercise.slot_key)
+            actual_rir = exercise.set_groups[0].target_rir
+            assert exercise.target_rpe == 10 - actual_rir
             reason_day = next(item for item in program.program_rationale["days"] if item["day_order"] == day.day_order)
             reason = next(item["rationale"] for item in reason_day["exercises"] if item["exercise_id"] == exercise.exercise_id)
-            assert reason["prescription"]["rir"]["code"] == "rir.test_set_rule"
+            rir_reason = reason["prescription"]["rir"]
+            if rir_reason["code"] == "rir.before_related_compound":
+                # Trained before a related compound: RIR 2 unless working effort is easier (#823).
+                working_rir = rir_reason["params"]["working_rir"]
+                assert minimum_rir <= working_rir <= maximum_rir, (day.day_name, exercise.slot_key)
+                assert actual_rir == max(working_rir, 2.0), (day.day_name, exercise.slot_key)
+            else:
+                assert rir_reason["code"] == "rir.test_set_rule"
+                assert minimum_rir <= actual_rir <= maximum_rir, (day.day_name, exercise.slot_key)
 
 
 @pytest.mark.parametrize(

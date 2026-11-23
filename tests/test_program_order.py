@@ -3,20 +3,18 @@ from copy import deepcopy
 import pytest
 
 from agent.ProgramState import ProgramExerciseSchema, ProgramSetGroupSchema
-from agent.program_order import main_muscles_for_slot, order_program_exercises, shares_main_muscle
+from agent.program_order import (
+    ProgramOrderEntry,
+    _apply_effort_before_related_compound,
+    main_muscles_for_slot,
+    order_program_exercises,
+    shares_main_muscle,
+)
 
 
-def _exercise(exercise_id, slot, *, sets=2, equipment="Cable"):
-    set_groups = [ProgramSetGroupSchema(
-        sets=1,
-        reps_min=8,
-        reps_max=12,
-        target_rir=3.0 if sets > 1 else 2.0,
-    )]
-    if sets > 1:
-        set_groups.append(ProgramSetGroupSchema(
-            sets=sets - 1, reps_min=8, reps_max=12, target_rir=2.0,
-        ))
+def _exercise(exercise_id, slot, *, sets=2, equipment="Cable", rir=2.0):
+    # Generated exercises are one row of working sets (#823).
+    set_groups = [ProgramSetGroupSchema(sets=sets, reps_min=8, reps_max=12, target_rir=rir)]
     return ProgramExerciseSchema(
         exercise_id=exercise_id,
         exercise_name=exercise_id,
@@ -31,7 +29,6 @@ def _exercise(exercise_id, slot, *, sets=2, equipment="Cable"):
 
 def _rationale(exercise):
     working_sets = exercise.working_sets
-    test_set_count = int(working_sets > 1)
     return {
         "position": {"code": "position.isolation", "params": {}},
         "prescription": {
@@ -39,9 +36,9 @@ def _rationale(exercise):
             "rir": {
                 "code": "rir.test_set_rule",
                 "params": {
-                    "target_rir": 2.0,
-                    "test_set_count": test_set_count,
-                    "test_set_rir": 3.0 if test_set_count else 2.0,
+                    "target_rir": exercise.set_groups[0].target_rir,
+                    "test_set_count": 0,
+                    "test_set_rir": 3.0,
                 },
             },
         },
@@ -319,3 +316,87 @@ def test_sets_cut_from_pre_exhaust_isolation_are_reassigned():
     assert [
         (entry.exercise.model_dump(), entry.rationale) for entry in repeated
     ] == ordered_state
+
+
+def _leg_day(extension_rir=0.0):
+    return [
+        _exercise("extension", "quad_iso", sets=2, rir=extension_rir),
+        _exercise("squat", "quad_compound", sets=3, rir=1.0, equipment="Barbell"),
+        _exercise("curl", "ham_curl", sets=2, rir=0.0),
+    ]
+
+
+def _by_id(entries):
+    return {entry.exercise.exercise_id: entry for entry in entries}
+
+
+def _rirs(entry):
+    return [group.target_rir for group in entry.exercise.set_groups]
+
+
+def test_isolation_before_a_related_compound_stops_at_rir_2():
+    exercises = _leg_day()
+    entries = [ProgramOrderEntry(exercise, _rationale(exercise)) for exercise in exercises]
+    result = _by_id(_apply_effort_before_related_compound(entries))
+
+    extension = result["extension"]
+    assert _rirs(extension) == [2.0]
+    assert extension.exercise.target_rpe == 8.0
+    assert extension.rationale["prescription"]["rir"] == {
+        "code": "rir.before_related_compound",
+        "params": {
+            "target_rir": 2.0, "test_set_count": 0, "test_set_rir": 3.0,
+            "working_rir": 0.0, "before_exercise_id": "squat",
+        },
+    }
+    # The squat and the unrelated curl keep their working effort.
+    assert _rirs(result["squat"]) == [1.0]
+    assert _rirs(result["curl"]) == [0.0]
+    assert result["curl"].rationale == _rationale(exercises[2])
+
+
+def test_isolation_with_easier_working_rir_keeps_it_before_a_compound():
+    exercises = _leg_day(extension_rir=3.0)
+    entries = [ProgramOrderEntry(exercise, _rationale(exercise)) for exercise in exercises]
+    assert _rirs(_by_id(_apply_effort_before_related_compound(entries))["extension"]) == [3.0]
+
+
+def test_isolation_after_its_compound_keeps_working_rir():
+    extension, squat, curl = _leg_day()
+    entries = [ProgramOrderEntry(exercise, _rationale(exercise)) for exercise in (squat, extension, curl)]
+    result = _by_id(_apply_effort_before_related_compound(entries))
+    assert _rirs(result["extension"]) == [0.0]
+    assert result["extension"].rationale["prescription"]["rir"]["code"] == "rir.test_set_rule"
+
+
+def test_a_second_pass_restores_working_rir_once_the_compound_moves_first():
+    first = _by_id(_apply_effort_before_related_compound(
+        [ProgramOrderEntry(exercise, _rationale(exercise)) for exercise in _leg_day()]
+    ))
+    moved = [first["squat"], first["extension"], first["curl"]]
+    again = _by_id(_apply_effort_before_related_compound(moved))
+    assert _rirs(again["extension"]) == [0.0]
+    assert again["extension"].rationale == _rationale(_leg_day()[0])
+
+
+@pytest.mark.parametrize("experience", ["beginner", "intermediate", "advanced"])
+def test_ordered_leg_day_never_trains_an_isolation_to_failure_before_its_compound(experience):
+    ordered = _order(_leg_day(), experience=experience)
+    ids = [entry.exercise.exercise_id for entry in ordered]
+    extension = _by_id(ordered)["extension"]
+    if ids.index("extension") < ids.index("squat"):
+        assert _rirs(extension) == [2.0]
+    else:
+        assert _rirs(extension) == [0.0]
+    for entry in ordered:
+        assert len(entry.exercise.set_groups) == 1, entry.exercise.exercise_id
+
+
+def test_sets_moved_from_pre_exhaust_join_the_compounds_last_row():
+    exercises = [
+        _exercise("row", "horizontal_row"),
+        _exercise("fly", "chest_fly", sets=3),
+        _exercise("press", "flat_press", sets=2),
+    ]
+    press = _by_id(_order(exercises))["press"]
+    assert [group.sets for group in press.exercise.set_groups] == [3]
