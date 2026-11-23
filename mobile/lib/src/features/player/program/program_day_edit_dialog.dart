@@ -5,21 +5,49 @@ import 'package:flutter/material.dart';
 import '../../../core/display_language/catalog.dart';
 import '../../../core/display_language/copy_context.dart';
 import '../../../core/models.dart';
+import '../../../core/theme/mayos_theme.dart';
 import '../../../core/theme/mayos_typography.dart';
 import '../exercise_picker_dialog.dart';
 
+/// What the Program tab reports back after trying to save the edited day.
+class ProgramDaySaveOutcome {
+  /// The day was saved, or the program must reload: close the dialog.
+  const ProgramDaySaveOutcome.close()
+      : closeDialog = true,
+        error = null;
+
+  /// Nothing was saved: keep the dialog and the Player's edits open (#787).
+  const ProgramDaySaveOutcome.keepEditing([this.error]) : closeDialog = false;
+
+  final bool closeDialog;
+  final String? error;
+}
+
+typedef ProgramDaySave = Future<ProgramDaySaveOutcome> Function(
+  List<ProgramEditExerciseEntry> exercises,
+);
+
 class ProgramDayEditDialog extends StatefulWidget {
-  const ProgramDayEditDialog({super.key, required this.day});
+  const ProgramDayEditDialog({
+    super.key,
+    required this.day,
+    required this.onSave,
+  });
 
   final ProgramDay day;
 
-  static Future<List<ProgramEditExerciseEntry>?> show(
+  /// Saves the edited day; the dialog stays open unless the outcome closes it.
+  final ProgramDaySave onSave;
+
+  static Future<void> show(
     BuildContext context,
-    ProgramDay day,
-  ) =>
-      showDialog<List<ProgramEditExerciseEntry>>(
+    ProgramDay day, {
+    required ProgramDaySave onSave,
+  }) =>
+      showDialog<void>(
         context: context,
-        builder: (BuildContext context) => ProgramDayEditDialog(day: day),
+        builder: (BuildContext context) =>
+            ProgramDayEditDialog(day: day, onSave: onSave),
       );
 
   @override
@@ -27,6 +55,9 @@ class ProgramDayEditDialog extends StatefulWidget {
 }
 
 class _ProgramDayEditDialogState extends State<ProgramDayEditDialog> {
+  bool _saving = false;
+  String? _saveError;
+
   late final List<ProgramEditExerciseEntry> _exercises =
       <ProgramEditExerciseEntry>[
     for (final (int index, ProgramExercise exercise)
@@ -44,9 +75,44 @@ class _ProgramDayEditDialogState extends State<ProgramDayEditDialog> {
     final MayosCopy copy = displayCopyOf(context);
     return AlertDialog(
       title: Text(copy.editDay),
-      content: _exerciseList(context),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          if (_saveError != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Text(
+                _saveError!,
+                key: const Key('program_edit_save_error'),
+                style: MayosTypography.of(context).bodySecondary.copyWith(
+                      color: MayosTheme.of(context).danger,
+                    ),
+              ),
+            ),
+          _exerciseList(context),
+        ],
+      ),
       actions: _actions(copy),
     );
+  }
+
+  Future<void> _save() async {
+    setState(() {
+      _saving = true;
+      _saveError = null;
+    });
+    final ProgramDaySaveOutcome outcome =
+        await widget.onSave(_exercises.toList());
+    if (!mounted) return;
+    if (outcome.closeDialog) {
+      Navigator.of(context).pop();
+      return;
+    }
+    setState(() {
+      _saving = false;
+      _saveError = outcome.error;
+    });
   }
 
   Widget _exerciseList(BuildContext context) {
@@ -225,7 +291,7 @@ class _ProgramDayEditDialogState extends State<ProgramDayEditDialog> {
         ),
         FilledButton(
           key: const Key('program_edit_save_button'),
-          onPressed: () => Navigator.of(context).pop(_exercises.toList()),
+          onPressed: _saving ? null : _save,
           child: Text(copy.save),
         ),
       ];

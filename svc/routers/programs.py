@@ -165,6 +165,11 @@ def _program_mutation_error_response(
                 result["error"],
                 message_metadata=MessageMetadata(result.get("message_code")),
             ),
+            **(
+                {"exercise_position": result["exercise_position"]}
+                if "exercise_position" in result
+                else {}
+            ),
         },
     )
 

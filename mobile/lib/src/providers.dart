@@ -453,9 +453,13 @@ final StateProvider<int> playerShellTabProvider = StateProvider<int>(
 /// The Checkpoint number of the Player's first unopened review, or null when
 /// none waits. Home and Progress set it from the reviews they already load,
 /// and opening that review clears it; the Progress tab shows a dot while it is
-/// set (#789).
+/// set (#789). It resets when the account changes, so one account's waiting
+/// review never shows a dot for another (#794).
 final StateProvider<int?> pendingCheckpointReviewProvider =
-    StateProvider<int?>((ref) => null);
+    StateProvider<int?>((ref) {
+  _resetOnAccountChange(ref, () => ref.controller.state = null);
+  return null;
+});
 
 /// Carries My coach's committed Assignment response to mounted Player tabs
 /// without requiring a second API read.

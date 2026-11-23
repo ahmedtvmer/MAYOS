@@ -714,6 +714,10 @@ class ApiClient {
         statusCode: status,
         errorCode: _machineCode(body),
         failureMessage: serverFailure ?? ServerFailureMessage(detail),
+        // A program edit names the refused exercise by its list position (#787).
+        serverDetails: body['exercise_position'] is int
+            ? <String, dynamic>{'exercise_position': body['exercise_position']}
+            : null,
       );
 
   static ApiException _validationMapFailure(
@@ -3155,7 +3159,9 @@ class ApiClient {
           <String, dynamic>{
             'source_index': entry.sourceIndex,
             'exercise_id': entry.exercise.exerciseId,
-            'target_sets': entry.exercise.targetSets,
+            // The server reads this as all working sets, back-off groups
+            // included, which is what the dialog tracks (#787).
+            'target_sets': entry.prescribedSets,
             if (entry.showAllEquipment) 'show_all_equipment': true,
           },
       ];

@@ -3,14 +3,16 @@
 from datetime import UTC, datetime
 from email.utils import format_datetime, parsedate_to_datetime
 from functools import lru_cache
+import logging
 from pathlib import Path
 import re
-from typing import Any, Iterator
+from typing import Any, Iterator, NoReturn
 
 from botocore.exceptions import BotoCoreError, ClientError
 from fastapi import APIRouter, Request, Response, status
 from fastapi.responses import FileResponse, StreamingResponse
 from service.messages import MessageMetadata
+from svc.error_tracking import ReportedStreamAbort
 from svc.errors import message_http_exception
 
 from utils.r2 import (
@@ -23,6 +25,7 @@ from utils.r2 import (
 )
 
 router = APIRouter(prefix="/media", tags=["media"])
+logger = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 SEARCH_DIRS = (BASE_DIR / "data", BASE_DIR / "dataset")
@@ -46,12 +49,39 @@ def _allowed_media_path(name: str) -> bool:
     )
 
 
-def _stream_body(streaming_body: Any) -> Iterator[bytes]:
+def _stream_body(name: str, streaming_body: Any, expected_length: int | None) -> Iterator[bytes]:
+    """Streams the R2 body; a body that ends early aborts the response (#799).
+
+    The declared Content-Length is already sent, so a short body cannot end
+    normally. One warning names the file and the byte counts, then the
+    connection is aborted so the client does not keep a cut-off file.
+    """
+    sent = 0
     try:
-        while chunk := streaming_body.read(64 * 1024):
+        while True:
+            try:
+                chunk = streaming_body.read(64 * 1024)
+            except (BotoCoreError, OSError, TimeoutError) as exc:
+                _abort_short_stream(name, expected_length, sent, type(exc).__name__)
+            if not chunk:
+                break
+            sent += len(chunk)
             yield chunk
+        if expected_length is not None and sent < expected_length:
+            _abort_short_stream(name, expected_length, sent, "body ended early")
     finally:
         streaming_body.close()
+
+
+def _abort_short_stream(name: str, expected_length: int | None, sent: int, reason: str) -> NoReturn:
+    logger.warning(
+        "Media stream for %s ended after %d of %s bytes (%s).",
+        name,
+        sent,
+        expected_length if expected_length is not None else "unknown",
+        reason,
+    )
+    raise ReportedStreamAbort(name) from None
 
 
 def _raise_provider_error(exc: Exception) -> None:
@@ -140,13 +170,29 @@ def _r2_media_response(name: str, client: Any, bucket: str, request: Request) ->
             "Media not found.",
             MessageMetadata("media.not_found.v1"),
         )
-    metadata = _head_r2_media(name, client, bucket)
-    headers = _validator_headers(metadata)
-    if _not_modified(request, headers):
-        return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers=headers)
+    # The cheap HEAD only answers a conditional request with 304. A full
+    # response takes its length and validators from the GET that supplies the
+    # body, so they cannot describe a different object version (#799).
+    if _is_conditional(request):
+        validators = _validator_headers(_head_r2_media(name, client, bucket))
+        if _not_modified(request, validators):
+            return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers=validators)
     remote_object = _get_r2_media(name, client, bucket)
+    headers = _validator_headers(remote_object)
     content_type = MEDIA_CONTENT_TYPES[Path(name).suffix.lower()]
-    return StreamingResponse(_stream_body(remote_object["Body"]), media_type=content_type, headers=headers)
+    expected_length = remote_object.get("ContentLength")
+    return StreamingResponse(
+        _stream_body(name, remote_object["Body"], int(expected_length) if expected_length is not None else None),
+        media_type=content_type,
+        headers=headers,
+    )
+
+
+def _is_conditional(request: Request) -> bool:
+    return (
+        request.headers.get("if-none-match") is not None
+        or request.headers.get("if-modified-since") is not None
+    )
 
 
 def _local_media_response(name: str) -> FileResponse:

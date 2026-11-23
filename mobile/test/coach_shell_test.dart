@@ -392,6 +392,29 @@ void main() {
     expect(container.read(coachNewAlertsCountProvider), 0);
   });
 
+  test('the waiting Checkpoint review dot resets when the account changes (#794)',
+      () async {
+    final FakeMayosApi fake = _coachFake();
+    fake.passwords['alice'] = 'pw-alice';
+    fake.passwords['bob'] = 'pw-bob';
+    final InMemoryTokenStore tokens = InMemoryTokenStore();
+    await tokens.save('token-alice');
+    final ProviderContainer container = authContainerFor(fake, tokens);
+    await container.read(authControllerProvider.notifier).initialize();
+
+    container.read(pendingCheckpointReviewProvider.notifier).state = 4;
+    await container.read(authControllerProvider.notifier).logout();
+    expect(container.read(pendingCheckpointReviewProvider), isNull);
+
+    container.read(pendingCheckpointReviewProvider.notifier).state = 4;
+    await container
+        .read(authControllerProvider.notifier)
+        .login(username: 'bob', password: 'pw-bob');
+    expect(container.read(authControllerProvider).session?.account.accountId,
+        'account-bob');
+    expect(container.read(pendingCheckpointReviewProvider), isNull);
+  });
+
   testWidgets('a non-coach account sees no mode badge', (WidgetTester tester) async {
     final FakeMayosApi fake = FakeMayosApi();
     fake.issuedToken = 'token-alice';

@@ -197,6 +197,42 @@ def test_program_edit_rejects_total_below_backoff_sets_plus_one(fresh_store):
     assert response["code"] == "invalid_set_count"
 
 
+def test_program_edit_adds_one_set_exercise_beside_a_backoff_exercise(fresh_store):
+    """#787: the grouped exercise is sent as its total, so the added 1-set exercise saves."""
+    db = fresh_store
+    ledger = db.ledger
+    rows = db.catalog_conn.execute("SELECT id, name FROM exercises ORDER BY id LIMIT 3").fetchall()
+    grouped = PersistedProgramExerciseSchema(exercise_id=str(rows[0][0]), exercise_name=str(rows[0][1]),
+        target_sets=1, target_reps_min=5, target_reps_max=8,
+        set_groups=[{"sets": 1, "reps_min": 5, "reps_max": 8, "target_rir": 2},
+                    {"sets": 2, "reps_min": 8, "reps_max": 12, "target_rir": 3}])
+    day = PersistedProgramDaySchema(day_name="Edit", day_order=1, exercises=[grouped])
+    ledger.save_training_program(PersistedProgramSchema(program_name="Edit", split_type="Full Body", weekly_frequency=1, days=[day]).model_dump())
+    active = ledger.get_active_program()
+    added_id = next(
+        str(row["id"]) for row in db.find_exercises_by_name("dumbbell", limit=5)
+        if str(row["id"]) != str(rows[0][0])
+    )
+
+    def edit(grouped_sets):
+        return edit_active_program_day(db, ledger, ProgramEdit(day_name="Edit", expected_active_version=ledger.get_active_program().version,
+            exercises=[ProgramEditExercise(0, str(rows[0][0]), grouped_sets), ProgramEditExercise(-1, added_id, 1)],
+            player_account_id=TEST_PLAYER_ID, actor=ProgramAnalyticsActor(TEST_PLAYER_ID, "player"), day_order=1))
+
+    # What the app used to send: the first group's sets (1), read as a total below 1 + 2 back-offs.
+    refused = edit(1)
+    assert refused["code"] == "invalid_set_count"
+    assert refused["exercise_position"] == 0
+    assert ledger.get_active_program().version == active.version
+
+    saved_response = edit(3)
+    assert "code" not in saved_response
+    saved = ledger.get_active_program().days[0].exercises
+    assert [group.sets for group in saved[0].set_groups] == [1, 2]
+    assert saved[1].exercise_id == added_id
+    assert sum(group.sets for group in saved[1].set_groups) == 1
+
+
 def test_program_edit_total_cap_does_not_turn_backoffs_into_seven_sets(fresh_store):
     db = fresh_store
     ledger = db.ledger
