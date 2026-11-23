@@ -1,5 +1,6 @@
 """Persist the shared Food library in the catalog database."""
 
+import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -7,6 +8,9 @@ from pathlib import Path
 from database.food_library.builder import (
     ALLERGEN_PATH, CURATION_PATH, FOOD_PATH, NUTRIENTS, PORTION_PATH, RECIPE_PATH, build_food_library,
 )
+from utils.logger import MayosLogger
+
+logger = MayosLogger().get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -16,6 +20,101 @@ class FoodLibraryPaths:
     curation: Path = CURATION_PATH
     recipes: Path = RECIPE_PATH
     allergens: Path = ALLERGEN_PATH
+
+
+FOOD_LIBRARY_META_DDL = """CREATE TABLE IF NOT EXISTS food_library_meta (
+    id INTEGER PRIMARY KEY CHECK(id=1), input_hash TEXT NOT NULL
+)"""
+
+
+def shipped_food_library_paths() -> FoodLibraryPaths | None:
+    """The Food library inputs this deployment ships (issue #844).
+
+    The catalog startup refresh rebuilds the Food library only from these
+    files, never from a caller-supplied path. Tests pin this to ``None`` so a
+    server that ships the licensed data files cannot rebuild test catalogs;
+    tests of the refresh pin explicit paths instead.
+    """
+    return FoodLibraryPaths()
+
+
+def food_library_input_hash(paths: FoodLibraryPaths) -> str | None:
+    """SHA-256 over the Food library inputs in load order.
+
+    Returns ``None`` when an input is missing or unreadable: a partial
+    deployment (e.g. a test catalog path) must not crash startup.
+    """
+    digest = hashlib.sha256()
+    for path in (paths.foods, paths.portions, paths.curation, paths.recipes, paths.allergens):
+        try:
+            digest.update(Path(path).read_bytes())
+        except OSError:
+            return None
+        digest.update(b"\0")
+    return digest.hexdigest()
+
+
+def store_food_library_input_hash(connection, input_hash: str | None) -> None:
+    """Record the input hash the catalog's Food library was built from."""
+    if input_hash is None:
+        return
+    connection.execute(FOOD_LIBRARY_META_DDL)
+    connection.execute(
+        "INSERT INTO food_library_meta(id, input_hash) VALUES(1, ?) "
+        "ON CONFLICT(id) DO UPDATE SET input_hash=excluded.input_hash",
+        (input_hash,),
+    )
+
+
+def refresh_catalog_food_library(connection) -> bool:
+    """Re-seed the shared Food library when its shipped inputs changed (#844).
+
+    Runs at catalog startup next to the exercise curation re-apply: a catalog
+    seeded before a Food library update would otherwise never pick up newly
+    reviewed staples. Unchanged inputs do no work; missing input files are a
+    warning, never a startup failure. Returns True when a rebuild ran.
+    """
+    paths = shipped_food_library_paths()
+    if paths is None:
+        return False
+    input_hash = food_library_input_hash(paths)
+    if input_hash is None:
+        missing = next(
+            (str(path) for path in (paths.foods, paths.portions, paths.curation, paths.recipes, paths.allergens)
+             if not Path(path).is_file()),
+            str(paths.foods),
+        )
+        logger.warning("Food library refresh skipped; shipped input '%s' is missing.", missing)
+        return False
+    connection.execute(FOOD_LIBRARY_META_DDL)
+    row = connection.execute("SELECT input_hash FROM food_library_meta WHERE id = 1").fetchone()
+    if row is not None and row[0] == input_hash:
+        return False
+    count = seed_food_library(connection, paths)
+    store_food_library_input_hash(connection, input_hash)
+    connection.commit()
+    logger.info("Food library refreshed from shipped inputs: %s foods.", count)
+    return True
+
+
+def food_staples_status(connection) -> str:
+    """``missing`` when the catalog has foods but no reviewed, visible staple (#844).
+
+    Reviewed staples gate planned meals for Players, so a food library without
+    one is an operator-visible problem. An absent or empty foods table is
+    ``ok``: the startup refresh owns the rebuild, and there is nothing
+    half-loaded to report.
+    """
+    if connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'foods'"
+    ).fetchone() is None:
+        return "ok"
+    has_foods, has_staple = connection.execute(
+        "SELECT EXISTS(SELECT 1 FROM foods), EXISTS("
+        "SELECT 1 FROM foods WHERE reviewed = 1 AND hidden = 0 "
+        "AND staple_roles_json NOT IN ('', '[]'))"
+    ).fetchone()
+    return "missing" if has_foods and not has_staple else "ok"
 
 
 def _create_food_table(connection):

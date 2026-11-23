@@ -8,7 +8,12 @@ from database.exercise_library.curation import DEFAULT_CURATION_CSV_PATH
 from database.exercise_library.curation import apply_exercise_curation
 from database.exercise_library.embeddings import sync_exercise_embeddings
 from database.exercise_library.schema import EXERCISE_COLUMNS
-from database.food_library.seeding import FoodLibraryPaths, seed_food_library
+from database.food_library.seeding import (
+    FoodLibraryPaths,
+    food_library_input_hash,
+    seed_food_library,
+    store_food_library_input_hash,
+)
 
 from utils.logger import MayosLogger
 
@@ -61,6 +66,9 @@ class ExerciseSeedingMixin:
                 recipes=recipe_path or FoodLibraryPaths.recipes,
             )
             seed_food_library(self.catalog_conn, food_paths)
+            # Record the inputs this seed built from so the startup refresh
+            # (#844) does no work until a shipped input actually changes.
+            store_food_library_input_hash(self.catalog_conn, food_library_input_hash(food_paths))
 
     EXCLUDED_BIOMECHANICAL_PATTERNS = ("behind neck", "behind the neck", "upright row")
 

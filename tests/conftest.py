@@ -219,6 +219,21 @@ def _test_seed_defaults(monkeypatch, synthetic_exercise_seed):
     monkeypatch.setattr(ExerciseSeedingMixin, "initialize_and_seed", initialize)
 
 
+@pytest.fixture(autouse=True)
+def _no_startup_food_library_refresh(monkeypatch):
+    """The startup Food refresh never reads the deployment's shipped inputs (#844).
+
+    Test catalogs seed from explicit fixture paths (``_test_seed_defaults``);
+    on a server that ships the licensed data files, the startup refresh would
+    otherwise rebuild every test catalog that was seeded from fixtures.
+    Tests of the refresh pin their own shipped paths
+    (tests/test_food_library_refresh.py).
+    """
+    from database.food_library import seeding
+
+    monkeypatch.setattr(seeding, "shipped_food_library_paths", lambda: None)
+
+
 @pytest.fixture(scope="session")
 def seeded_catalog(tmp_path_factory):
     """Build once from tracked seeds; copies contain no accounts or ledgers."""

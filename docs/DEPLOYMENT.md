@@ -638,6 +638,8 @@ docker compose run --rm mayos-api python scripts/seed_vectors.py
 
 The account-recovery tables (`trainee_emails`, `password_reset_tokens`) and per-user schema are provisioned automatically on boot; no manual step is required.
 
+The shared Food library also refreshes on every API startup: the boot sequence hashes the shipped Food inputs (`data/food_library.csv`, `food_portions.csv`, `food_curation.csv`, `food_recipes.csv`, `food_allergens.csv`), compares the hash with the one recorded in the catalog's `food_library_meta` table, and re-runs the Food library seed only when they differ. Deploying an updated `data/food_curation.csv` (for example, newly reviewed staples) therefore reaches existing catalogs on the next restart without re-running the one-time initializer; unchanged inputs do no work, food ids are stable, and Player food logs and Personal foods are never touched. Missing input files (a partial deployment) are skipped with a startup warning. A catalog that ends up with foods but zero reviewed, visible staples logs a warning and reports `"food_staples": "missing"` in the `/readyz` details without failing readiness.
+
 ### Verification
 
 ```bash

@@ -140,7 +140,7 @@ def web_origins() -> list[str]:
     raw = os.getenv("UI_BASE_URL", "http://localhost:7357")
     return [origin.strip().rstrip("/") for origin in raw.split(",") if origin.strip()]
 
-_ready = {"model": False, "catalog": False, "storage": False, "draining": False}
+_ready = {"model": False, "catalog": False, "storage": False, "draining": False, "food_staples": "ok"}
 
 
 class RedactResetTokenFilter(logging.Filter):
@@ -254,6 +254,29 @@ async def _periodic_loop(db: object, interval_seconds: float, step: object, job:
         await asyncio.sleep(interval_seconds)
 
 
+def record_food_staples_readiness(db: object) -> None:
+    """Records one non-failing /readyz detail: reviewed Food staples (#844).
+
+    A catalog with foods but zero reviewed, visible staples keeps planned
+    meals unavailable for every Player (reason ``staples``). The detail makes
+    that cause operator-visible while deploy readiness stays green; a failed
+    check must never block a deploy, so it reports the ``ok`` default.
+    """
+    from database.food_library.seeding import food_staples_status
+
+    try:
+        detail = food_staples_status(db.catalog_conn)
+    except Exception:
+        logger.exception("Food staples readiness check failed; reporting ok.")
+        return
+    _ready["food_staples"] = detail
+    if detail != "ok":
+        logger.warning(
+            "Catalog has foods but no reviewed, visible staples; planned meals "
+            "stay unavailable for Players (reason 'staples')."
+        )
+
+
 def readiness_snapshot() -> tuple[str, dict[str, bool | str]]:
     """Return API-local readiness shared by /readyz and the dashboard.
 
@@ -285,7 +308,7 @@ async def lifespan(app: FastAPI):
     from database.storage import StorageNotReady, validate_data_root
     from svc.llm import warmup_llm
 
-    _ready.update(model=False, catalog=False, storage=False, draining=False)
+    _ready.update(model=False, catalog=False, storage=False, draining=False, food_staples="ok")
     sweep_task: asyncio.Task[None] | None = None
     push_task: asyncio.Task[None] | None = None
     backup_task: asyncio.Task[None] | None = None
@@ -366,6 +389,10 @@ async def lifespan(app: FastAPI):
             )
         except Exception:
             logger.exception("Catalog initialization failed during lifespan startup")
+        if app.state.db is not None:
+            # One non-failing detail: zero reviewed staples warns but never
+            # blocks deploy readiness (#844).
+            record_food_staples_readiness(app.state.db)
         try:
             await warmup_llm()
             _ready["model"] = True
