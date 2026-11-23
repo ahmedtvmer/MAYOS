@@ -41,6 +41,28 @@ def test_accepted_false_positive_and_known_gap_labels_are_not_rewritten():
     assert franco["fr-benign-02"]["launch_block_expected"] is True
 
 
+def test_missed_blocking_ids_skip_the_shared_resolved_cases():
+    from tests.eval.arabic_resolved_cases import RESOLVED_ACCEPTED_FALSE_POSITIVES
+    from tests.eval.run_arabic_evaluation import _missed_blocking_ids
+
+    rows = [
+        {"case_id": "ar-sore-04", "launch_block_expected": True, "observed_blocking": False},
+        {"case_id": "ar-inj-07", "launch_block_expected": True, "observed_blocking": False},
+        {"case_id": "ar-gen-01", "launch_block_expected": False, "observed_blocking": False},
+        {"case_id": "ar-prog-01", "launch_block_expected": True, "observed_blocking": True},
+    ]
+
+    assert _missed_blocking_ids(rows) == ["ar-inj-07"]
+    assert RESOLVED_ACCEPTED_FALSE_POSITIVES == {"ar-sore-04"}
+
+
+def test_evaluation_reads_the_one_shared_resolved_cases_module():
+    import tests.eval.arabic_resolved_cases as shared
+    from tests.eval import run_arabic_evaluation as runner
+
+    assert runner.RESOLVED_ACCEPTED_FALSE_POSITIVES is shared.RESOLVED_ACCEPTED_FALSE_POSITIVES
+
+
 def test_franco_cases_expect_the_egyptian_english_refusal_without_label_changes():
     from agent.prompts import FRANCO_ARABIC_INPUT_RESPONSE
 

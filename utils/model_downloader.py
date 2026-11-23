@@ -23,7 +23,7 @@ CLOUD_MODEL_REGISTRY = {
     },
     "judge": {
         "model_env": "JUDGE_MODEL",
-        "default_model": "Qwen/Qwen3.5-27B",
+        "default_model": "google/gemma-4-31B-it",
         "max_tokens_env": "JUDGE_MAX_TOKENS",
         "default_max_tokens": 700,
         "streaming": False,

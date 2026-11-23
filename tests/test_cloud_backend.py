@@ -46,7 +46,7 @@ def test_cloud_builds_configured_openai_models(monkeypatch):
     assert (player.model_name, player.max_tokens, player.streaming) == (
         "deepseek-ai/DeepSeek-V4-Flash", PLAYER_CHAT_REPLY_MAX_OUTPUT_TOKENS, True
     )
-    assert (judge.model_name, judge.max_tokens, judge.streaming) == ("Qwen/Qwen3.5-27B", 700, False)
+    assert (judge.model_name, judge.max_tokens, judge.streaming) == ("google/gemma-4-31B-it", 700, False)
     assert (secondary_judge.model_name, secondary_judge.max_tokens, secondary_judge.streaming) == (
         "zai-org/GLM-5.3", 700, False
     )

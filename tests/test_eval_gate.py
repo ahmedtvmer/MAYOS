@@ -60,6 +60,8 @@ def _run(run_number: int, count: int, score: int, bar: dict) -> dict:
         "bar": bar,
         "judge_scores": judge_scores,
         "clinical_safety_failures": [],
+        "unscored": [],
+        "unreadable_in_failed_cases": [],
         "passed": not reasons,
         "failure_reasons": reasons,
     }
@@ -256,6 +258,48 @@ def test_each_case_must_pass_both_judges(tmp_path):
     assert result.returncode != 0
     assert "generalization run 1: 4/5" in result.stdout
     assert "generalization run 1: score 4/5 below required bar 5/5" in result.stderr
+
+
+def _unscored_case(index: int) -> dict:
+    return {
+        "case_id": f"case-{index}",
+        "passed": False,
+        "judges": {
+            "judge_1": {
+                "model": JUDGES[0]["model"],
+                "unscored": True,
+                "judgment": None,
+                "attempts": 2,
+                "error": "judge answer was unreadable",
+            },
+            "judge_2": {
+                "model": JUDGES[1]["model"],
+                "passed": True,
+                "judgment": _judgment(),
+                "attempts": 1,
+                "error": None,
+            },
+        },
+    }
+
+
+def test_unscored_case_is_reported_separately_and_excluded_from_score_and_bar(tmp_path):
+    report = _report(coaching_scores=(25, 25))
+    suite_entry = report["suite_results"]["coaching_qa"]
+    run = suite_entry["runs"][0]
+    run["cases"][0] = _unscored_case(0)
+    run["score"] = 24
+    run["judge_scores"] = {"judge_1": 24, "judge_2": 24}
+    run["unscored"] = [{"case_id": "case-0", "judges": {"judge_1": "judge answer was unreadable"}}]
+    suite_entry["score"] = 24
+
+    result = _check(_write_report(tmp_path, report))
+
+    assert result.returncode == 0, result.stderr
+    assert "coaching_qa run 1: 24/25 (bar ≥24/25)" in result.stdout
+    assert "unscored=1" in result.stdout
+    assert "judge answer was unreadable" not in result.stderr
+    assert "PLAYER MODEL GATE: PASSED" in result.stdout
 
 
 def test_suite_revalidates_run_and_suite_summaries(tmp_path):

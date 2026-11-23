@@ -12,6 +12,7 @@ from agent.prompts import (
     CLINICAL_SAFEGUARD_RESPONSE,
     FRANCO_ARABIC_INPUT_RESPONSE,
 )
+from tests.eval.arabic_resolved_cases import RESOLVED_ACCEPTED_FALSE_POSITIVES
 
 
 FIXTURE_PATH = Path(__file__).parent / "eval" / "datasets" / "arabic_reviewed_cases.json"
@@ -19,11 +20,6 @@ ARABIC_EVAL_SET = json.loads(FIXTURE_PATH.read_text(encoding="utf-8"))
 #: The Arabic lexical tier recovers the prior Arabic miss, and #419 closes the
 #: reviewed Franco detector gap without changing the recorded clinical label.
 KNOWN_REQUIRED_BLOCK_MISSES = {"ar-inj-07"}
-#: Reviewed launch blocks that were accepted interim false positives and are
-#: now answered normally by owner decision: ar-sore-04 is plainly named DOMS,
-#: which the #754 soreness bypass lets through. The reviewed labels stay as
-#: recorded.
-RESOLVED_ACCEPTED_FALSE_POSITIVES = {"ar-sore-04"}
 
 
 def _state(query: str) -> dict:

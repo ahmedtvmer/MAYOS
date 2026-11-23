@@ -157,7 +157,7 @@ export JWT_SECRET="$(python -c 'import secrets; print(secrets.token_hex(32))')"
 | `MODEL_DEVICE` | `cpu` | Accepted for compatibility; ONNX Runtime embeddings always use CPU |
 | `LLM_MODEL` | `deepseek-ai/DeepSeek-V4-Flash` | Hosted player model; set to override the default |
 | `LLM_EXTRA_BODY` | unset | Hosted player sends no extra body by default; a JSON object replaces only the player body, and `{}` sends none |
-| `JUDGE_MODEL` | `Qwen/Qwen3.5-27B` | Hosted evaluation judge; set to override the default |
+| `JUDGE_MODEL` | `google/gemma-4-31B-it` | Hosted evaluation judge; set to override the default |
 | `JUDGE_EXTRA_BODY` | unset | Judge defaults to `chat_template_kwargs.enable_thinking: false`; a JSON object replaces only its body, and `{}` sends none |
 | `LLM_ENABLE_THINKING` | unset (`false`) | `true` opts only the judge back into thinking unless `JUDGE_EXTRA_BODY` overrides it |
 | `COACH_MODEL` | `deepseek-ai/DeepSeek-V4-Flash` | Hosted coach model; set to override the default |
