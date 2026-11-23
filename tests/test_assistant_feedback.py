@@ -763,7 +763,7 @@ def test_vote_up_down_switch_and_undo_are_idempotent(api):
 
 def test_same_vote_replay_never_erases_reasons(api):
     client, db = api
-    registered = _register(client, PLAYER_USERNAME)
+    _register(client, PLAYER_USERNAME)
     headers = _authed(
         client.post("/auth/login", json={"trainee_id": PLAYER_USERNAME, "password": "correct-horse-1"}).json()[
             "access_token"
@@ -1143,7 +1143,7 @@ def test_clear_history_keeps_undelivered_report_until_retry_delivers(api, monkey
     client, db = api
     registered = _register(client, PLAYER_USERNAME)
     headers = _authed(registered["access_token"])
-    account_id = _account_id(client, headers)
+    _account_id(client, headers)
     _seed_reply(db, PLAYER_USERNAME)
 
     from service import assistant_feedback

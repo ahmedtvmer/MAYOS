@@ -693,6 +693,21 @@ def test_program_edit_api_rejects_set_counts_outside_one_to_four(api, set_count)
     assert response.json()["code"] == "invalid_set_count"
 
 
+def test_program_edit_api_names_the_refused_exercise_by_position(api):
+    """#787: the app names the refused exercise from its position in the request."""
+    client, db = api
+    headers = _make_player_with_program(client, db)
+    payload = _program_edit_request([
+        {"source_index": 0, "exercise_id": "sq", "target_sets": 3},
+        {"source_index": 1, "exercise_id": "bp", "target_sets": 5},
+        {"source_index": 2, "exercise_id": "row", "target_sets": 3},
+    ])
+    response = client.post("/programs/active/edits", headers=headers, json=payload)
+    assert response.status_code == 400
+    assert response.json()["code"] == "invalid_set_count"
+    assert response.json()["exercise_position"] == 1
+
+
 def test_program_edit_api_rejects_an_eleventh_working_set_exercise(api):
     client, db = api
     headers = _make_player_with_program(client, db)

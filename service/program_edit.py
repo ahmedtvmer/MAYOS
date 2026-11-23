@@ -293,7 +293,7 @@ def _validate_program_edit(
         for exercise in requested_exercises if exercise.source_index >= 0
     ):
         return _failure(ProgramEditErrorCode.EXERCISE_NOT_ON_DAY)
-    for item in requested_exercises:
+    for position, item in enumerate(requested_exercises):
         maximum_sets = 4
         minimum_sets = 1
         if item.source_index >= 0:
@@ -304,7 +304,7 @@ def _validate_program_edit(
                 for group in (current.get("set_groups") or [])[1:]
             )
         if item.target_sets < minimum_sets or item.target_sets > maximum_sets:
-            return _failure(ProgramEditErrorCode.INVALID_SET_COUNT)
+            return _failure(ProgramEditErrorCode.INVALID_SET_COUNT, exercise_position=position)
     return None
 
 
@@ -461,9 +461,13 @@ def _same_program_content(before: Any, after: dict[str, Any]) -> bool:
             == {key: value for key, value in after.items() if key not in ignored})
 
 
-def _failure(code: ProgramEditErrorCode) -> dict[str, Any]:
-    return {
+def _failure(code: ProgramEditErrorCode, *, exercise_position: int | None = None) -> dict[str, Any]:
+    failure: dict[str, Any] = {
         "code": code,
         "error": PROGRAM_EDIT_ERRORS[code],
         "message_code": PROGRAM_EDIT_MESSAGE_CODES[code],
     }
+    if exercise_position is not None:
+        # Index into the requested exercises, so the app can name the exercise.
+        failure["exercise_position"] = exercise_position
+    return failure

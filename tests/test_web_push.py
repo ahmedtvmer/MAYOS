@@ -140,7 +140,8 @@ def test_one_fact_is_sent_once_per_device_even_after_sweep_replay(push_store):
     assert _queue(db, account)
     assert not _queue(db, account)
     sent = []
-    sender = lambda sub, payload: sent.append((sub["endpoint"], payload))
+    def sender(sub, payload):
+        return sent.append((sub["endpoint"], payload))
     assert web_push.deliver_pending(db, NOW, sender) == 2
     assert web_push.deliver_pending(db, NOW + timedelta(minutes=10), sender) == 0
     assert len(sent) == 2 and sent[0][1]["tag"] == sent[1][1]["tag"]
@@ -188,7 +189,8 @@ def test_transient_failure_retries_after_backoff_without_duplicate_success(push_
         raise WebPushException("test unavailable", response=response)
     assert web_push.deliver_pending(db, NOW, unavailable) == 0
     sent = []
-    sender = lambda sub, payload: sent.append(payload)
+    def sender(sub, payload):
+        return sent.append(payload)
     assert web_push.deliver_pending(db, NOW + timedelta(minutes=1), sender) == 0
     assert web_push.deliver_pending(db, NOW + timedelta(minutes=3), sender) == 1
     assert web_push.deliver_pending(db, NOW + timedelta(minutes=10), sender) == 0
@@ -297,7 +299,8 @@ def test_quiet_delivery_waits_until_morning(push_store):
     storage.save_preferences(db, account["account_id"], prefs)
     _queue(db, account)
     sent = []
-    sender = lambda sub, payload: sent.append(payload)
+    def sender(sub, payload):
+        return sent.append(payload)
     assert web_push.deliver_pending(db, NOW.replace(hour=21), sender) == 0
     assert _deliveries(db)[0]["attempts"] == 0
     assert web_push.deliver_pending(db, (NOW + timedelta(days=1)).replace(hour=6), sender) == 1

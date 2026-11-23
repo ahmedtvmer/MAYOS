@@ -53,7 +53,7 @@ class MayosCopy {
   String get whatsNewTitle => isArabic ? 'ما الجديد' : "What's new";
   String whatsNewRelease(int release) => switch (release) {
         1 || 4 => isArabic ? 'أكتوبر 2026' : 'October 2026',
-        6 || 7 || 8 => isArabic ? 'نوفمبر 2026' : 'November 2026',
+        6 || 7 || 8 || 9 => isArabic ? 'نوفمبر 2026' : 'November 2026',
         _ => isArabic ? 'إصدار $release' : 'Release $release',
       };
   String get whatsNewProfile => whatsNewTitle;
@@ -216,6 +216,9 @@ class MayosCopy {
   String get programEditSaved => isArabic
       ? 'تم تحديث اليوم التدريبي في برنامجك.'
       : 'Training day updated in your program.';
+  String programEditExerciseRefused(String name, String reason) => isArabic
+      ? 'تعذّر حفظ $name: $reason'
+      : "Couldn't save $name: $reason";
   String get programEditChanged => isArabic
       ? 'تغير برنامجك أثناء التعديل. لم تُحفظ تغييراتك.'
       : 'Your program changed while you were editing. Your changes were not saved.';
