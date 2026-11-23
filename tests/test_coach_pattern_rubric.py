@@ -33,7 +33,7 @@ MUSCLE_GROUPS = {
     "calves": {"calf"},
     "abs": {"abs"},
 }
-SMALL_MUSCLE_OPENERS = {"side_delts", "calf", "adductors", "rear_delts", "forearm_wrist", "abs"}
+SMALL_MUSCLE_OPENERS = {"side_delts", "calf", "adductors", "rear_delts", "forearm_reverse", "abs"}
 COACH_PATTERN_BACK_SLOT_ADDITIONS = {
     3: {"Full Body #3": {"vertical_pull": 1, "horizontal_row": 1}},
     4: {"Upper 1": {"horizontal_row": 1}, "Upper 2": {"vertical_pull": 1}},

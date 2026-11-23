@@ -394,6 +394,7 @@ SLOT_SPECS: dict[str, SlotSpec] = {
         primary_actions=("Elbow Extension",),
         primary_muscles=("Triceps",),
     ),
+    # Wrist curls, palms up or down: the second forearm exercise (#788).
     "forearm_wrist": _slot(
         "forearm_wrist",
         "LOWER(name) LIKE '%wrist curl%' AND LOWER(target_muscle) = 'forearms'",
@@ -401,18 +402,21 @@ SLOT_SPECS: dict[str, SlotSpec] = {
         ("barbell", "dumbbell", "cable", "band"),
         reps=(6, 10),
         rest_seconds=120,
-        primary_actions=("Wrist Flexion",),
+        primary_actions=("Wrist Flexion", "Wrist Extension"),
         primary_muscles=("Forearms",),
     ),
+    # Reverse curls (palms-down elbow flexion, brachioradialis): the first
+    # forearm exercise (#788). Wrist curls are the forearm_wrist slot.
     "forearm_reverse": _slot(
         "forearm_reverse",
-        "(LOWER(name) LIKE '%reverse curl%' OR LOWER(name) LIKE '%reverse wrist curl%') "
+        "(LOWER(name) LIKE '%reverse%curl%' OR LOWER(name) LIKE '%revers grip%curl%') "
+        "AND LOWER(name) NOT LIKE '%wrist%' "
         "AND LOWER(target_muscle) IN ('forearms', 'biceps')",
         "isolation",
-        ("dumbbell", "barbell", "ez barbell", "cable", "band"),
+        ("barbell", "ez barbell", "dumbbell", "cable", "band"),
         reps=(6, 10),
         rest_seconds=120,
-        primary_actions=("Wrist Extension",),
+        primary_actions=("Elbow Flexion",),
         primary_muscles=("Forearms",),
     ),
     # --- Legs --------------------------------------------------------------
@@ -575,8 +579,10 @@ SLOT_STAPLES: dict[str, tuple[str, ...]] = {
     "biceps_alt": ("318", "mayos:2", "1630", "31", "1769"),  # Incline DB Curl; MAYOS Bayesian curl; cable/BB curl; bodyweight curl
     "triceps_pushdown": ("1723", "201", "200", "241"),  # one-arm pushdown; cable pushdown; rope pushdown; V-bar pushdown
     "triceps_overhead": ("194", "92", "2188", "453", "1771"),  # overhead cable extension; BB/DB/EZ extensions; bodyweight extension
-    "forearm_wrist": ("1412", "401", "247", "125"),  # palms-up BB curl; seated DB curl; cable curl; BB curl
-    "forearm_reverse": ("1411", "385", "210", "82"),  # palms-down BB curl; DB reverse curl; cable reverse curl; BB reverse curl
+    # Wrist curls: palms-up BB over bench; seated DB; cable; BB; then palms-down
+    # BB over bench; seated DB reverse; cable reverse; incline BB reverse wrist curls.
+    "forearm_wrist": ("1412", "401", "247", "125", "1411", "385", "210", "82"),
+    "forearm_reverse": ("80", "451", "382", "206"),  # reverse curl: barbell; EZ bar; dumbbell; cable
     "quad_compound": ("743", "29", "1436", "770", "1476"),  # sled hack squat; front squat; high-bar squat; Smith squat; one-leg squat
     "quad_lunge": ("336", "3470", "54", "1460"),  # DB lunge; forward lunge; BB lunge; walking lunge
     "quad_iso": ("585", "3007"),  # machine leg extension; resistance-band leg extension
@@ -771,7 +777,7 @@ FB_DAYS: tuple[DayBlueprint, ...] = (
             "quad_iso",
             "calf",
             "rear_delts",
-            "forearm_wrist",
+            "forearm_reverse",
         ),
         family="full",
         double_slots=("incline_press", "horizontal_row"),
@@ -862,7 +868,7 @@ FEMALE_FB_DAYS: tuple[DayBlueprint, ...] = (
             "side_delts",
             "biceps_preacher",
             "triceps_pushdown",
-            "forearm_wrist",
+            "forearm_reverse",
             "abs",
         ),
         family="full",
@@ -947,7 +953,7 @@ UL_DAYS: tuple[DayBlueprint, ...] = (
             "rear_delts",
             "biceps_preacher",
             "triceps_pushdown",
-            "forearm_wrist",
+            "forearm_reverse",
         ),
         family="upper",
         cardio="Light cardio: 10-20 min incline walk or cycling after the session",
@@ -1017,7 +1023,7 @@ UL_DAYS: tuple[DayBlueprint, ...] = (
             "rear_delts",
             "biceps_preacher",
             "triceps_pushdown",
-            "forearm_reverse",
+            "forearm_wrist",
         ),
         family="upper",
     ),
@@ -1131,7 +1137,7 @@ ANTERIOR_POSTERIOR_DAYS: tuple[DayBlueprint, ...] = (
             "rear_delts",
             "biceps_preacher",
             "biceps_alt",
-            "forearm_wrist",
+            "forearm_reverse",
             "ham_curl",
             "calf",
         ),
@@ -1160,7 +1166,7 @@ ANTERIOR_POSTERIOR_DAYS: tuple[DayBlueprint, ...] = (
             "glute_iso",
             "upper_back_pull",
             "rear_delts",
-            "forearm_reverse",
+            "forearm_wrist",
             "biceps_alt",
             "calf",
         ),
@@ -1206,7 +1212,7 @@ PPL_DAYS: tuple[DayBlueprint, ...] = (
             "shrug",
             "rear_delts",
             "biceps_preacher",
-            "forearm_wrist",
+            "forearm_reverse",
         ),
         family="upper",
         sets_family="arms",
@@ -1269,7 +1275,7 @@ FEMALE_UL_DAYS: tuple[DayBlueprint, ...] = (
             "rear_delts",
             "biceps_preacher",
             "triceps_pushdown",
-            "forearm_wrist",
+            "forearm_reverse",
         ),
         family="upper",
     ),
@@ -1329,7 +1335,7 @@ _COACH_PATTERN_EVENTS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("shoulders", ("shoulder_press", "side_delts", "rear_delts")),
     ("biceps", ("biceps_preacher", "biceps_alt")),
     ("triceps", ("triceps_pushdown", "triceps_overhead")),
-    ("forearms", ("forearm_wrist", "forearm_reverse")),
+    ("forearms", ("forearm_reverse", "forearm_wrist")),
     ("quads", ("quad_compound", "quad_iso")),
     ("hamstrings", ("ham_curl", "ham_hinge")),
     ("glutes", ("glute_thrust", "glute_iso")),
@@ -1347,16 +1353,16 @@ _COACH_PATTERN_THREE_DAY_SLOTS: tuple[tuple[str, ...], ...] = (
     # trade the earlier row exposure for a shrug, preserving two trap days.
     (
         "flat_press", "shrug", "side_delts", "biceps_alt",
-        "triceps_overhead", "forearm_wrist", "glute_thrust", "calf", "abs",
+        "triceps_overhead", "forearm_reverse", "glute_thrust", "calf", "abs",
     ),
     (
         "vertical_pull", "horizontal_row", "rear_delts",
-        "forearm_reverse", "quad_iso", "ham_hinge", "glute_iso", "adductors", "abs",
+        "forearm_wrist", "quad_iso", "ham_hinge", "glute_iso", "adductors", "abs",
     ),
 )
 
 _SMALL_MUSCLE_OPENERS = (
-    "side_delts", "calf", "adductors", "rear_delts", "forearm_wrist", "abs",
+    "side_delts", "calf", "adductors", "rear_delts", "forearm_reverse", "abs",
 )
 
 
@@ -1419,7 +1425,25 @@ def _distribute_coach_events(frequency: int, glute_exposures: int) -> list[list[
     for group_index, (group, slots) in enumerate(_COACH_PATTERN_EVENTS):
         events = (*slots, "glute_thrust") if group == "glutes" and glute_exposures == 3 else slots
         _assign_group_events(assigned, group_index, events)
+    _lead_forearms_with_reverse_curl(assigned)
     return assigned
+
+
+def _lead_forearms_with_reverse_curl(assigned: list[list[str]]) -> None:
+    """Keep the week's first forearm exercise a reverse curl (#788).
+
+    Load-based placement can put the wrist curl on an earlier day; swapping the
+    two slots keeps every day's size and muscle spread unchanged.
+    """
+    def first_day(slot: str) -> int | None:
+        return next((index for index, day in enumerate(assigned) if slot in day), None)
+
+    wrist_day, reverse_day = first_day("forearm_wrist"), first_day("forearm_reverse")
+    if wrist_day is None or reverse_day is None or reverse_day < wrist_day:
+        return
+    wrist_slots, reverse_slots = assigned[wrist_day], assigned[reverse_day]
+    wrist_slots[wrist_slots.index("forearm_wrist")] = "forearm_reverse"
+    reverse_slots[reverse_slots.index("forearm_reverse")] = "forearm_wrist"
 
 
 def _assign_group_events(assigned: list[list[str]], group_index: int, slots: tuple[str, ...]) -> None:
@@ -1444,7 +1468,7 @@ def coach_upper_lower_days(frequency: int) -> list[DayBlueprint]:
             "Upper 1",
             (
                 "side_delts", "incline_press", "vertical_pull", "horizontal_row",
-                "biceps_preacher", "triceps_pushdown", "forearm_wrist",
+                "biceps_preacher", "triceps_pushdown", "forearm_reverse",
             ),
             family="upper",
             sets_family="coach",
@@ -1463,7 +1487,7 @@ def coach_upper_lower_days(frequency: int) -> list[DayBlueprint]:
                 # Upper 1 keeps the added row; swap this row for a shrug to keep
                 # the upper-day cap while spreading traps across both days.
                 "rear_delts", "flat_press", "shrug", "vertical_pull",
-                "shoulder_press", "biceps_alt", "triceps_overhead", "forearm_reverse",
+                "shoulder_press", "biceps_alt", "triceps_overhead", "forearm_wrist",
             ),
             family="upper",
             sets_family="coach",
@@ -1487,7 +1511,7 @@ def coach_ppl_upper_lower_days(frequency: int) -> list[DayBlueprint]:
         DayBlueprint(
             "Upper",
             (
-                "forearm_wrist", "flat_press", "vertical_pull", "horizontal_row",
+                "forearm_reverse", "flat_press", "vertical_pull", "horizontal_row",
                 "biceps_preacher", "triceps_pushdown",
             ),
             family="upper",
@@ -1516,7 +1540,7 @@ def coach_ppl_upper_lower_days(frequency: int) -> list[DayBlueprint]:
                 # Upper keeps the added row; Pull trades its row for direct
                 # trap work while retaining two lats days.
                 "rear_delts", "vertical_pull", "shrug",
-                "biceps_alt", "forearm_reverse",
+                "biceps_alt", "forearm_wrist",
             ),
             family="upper",
             sets_family="coach",
@@ -1846,7 +1870,7 @@ BODY_PART_TO_SLOTS: dict[str, tuple[str, ...]] = {
     "front delts": ("shoulder_press",),
     "biceps": ("biceps_preacher", "biceps_alt"),
     "triceps": ("triceps_pushdown", "triceps_overhead"),
-    "forearms": ("forearm_wrist", "forearm_reverse"),
+    "forearms": ("forearm_reverse", "forearm_wrist"),
     "quads": ("quad_compound", "quad_iso"),
     "hamstrings": ("ham_curl", "ham_hinge"),
     "glutes": ("glute_thrust", "glute_iso"),

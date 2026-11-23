@@ -98,6 +98,25 @@ def test_starting_reviewed_overrides_match_program_design_table():
     assert actual == expected
 
 
+REVERSE_CURL_IDS = ("80", "451", "382", "206", "1413", "425", "110", "403", "1616")
+
+
+def test_reverse_curls_are_forearm_elbow_flexion_not_biceps():
+    """#788: palms-down curls train the forearms (brachioradialis)."""
+    curation = load_exercise_curation()
+    for exercise_id in REVERSE_CURL_IDS:
+        row = curation[exercise_id]
+        assert (row.primary_action, row.primary_muscle) == ("Elbow Flexion", "Forearms"), exercise_id
+        assert row.muscle_credits == (), exercise_id
+    assert curation["425"].display_name == "Single-Arm Reverse Curl (Dumbbell)"
+
+
+def test_reverse_curls_add_no_biceps_volume(fresh_store):
+    credits = fresh_store.ledger.volume_review_exercise_credits(["425", "80"])
+    for exercise_id in ("425", "80"):
+        assert "biceps" not in credits.get(exercise_id, {}), exercise_id
+
+
 def test_pull_row_shrug_and_reverse_fly_credits_follow_the_split():
     curation = load_exercise_curation()
     pull_credits = {

@@ -52,7 +52,7 @@ FOCUS_EXTRA_TABLE = {
     "side_delts": {"candidate_slots": ("side_delts",), "main_slot": "side_delts"},
     "biceps": {"candidate_slots": ("biceps_alt", "biceps_preacher"), "main_slot": "biceps_alt"},
     "triceps": {"candidate_slots": ("triceps_overhead", "triceps_pushdown"), "main_slot": "triceps_overhead"},
-    "forearms": {"candidate_slots": ("forearm_wrist", "forearm_reverse"), "main_slot": "forearm_wrist"},
+    "forearms": {"candidate_slots": ("forearm_reverse", "forearm_wrist"), "main_slot": "forearm_reverse"},
     "quads": {"candidate_slots": ("quad_iso", "quad_lunge", "quad_compound"), "main_slot": "quad_compound"},
     "hamstrings": {"candidate_slots": ("ham_curl", "ham_hinge"), "main_slot": "ham_curl"},
     "glutes": {"candidate_slots": ("glute_thrust", "glute_iso"), "main_slot": "glute_thrust"},

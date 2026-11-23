@@ -87,6 +87,17 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
     audience: 'lifter',
   ),
   FeatureEntry(
+    id: 'reverse_curl_forearms',
+    titleEn: 'Reverse curls for forearms',
+    sentenceEn: 'New programs start forearm work with a reverse curl, and reverse curls now count as forearm work, not biceps.',
+    titleAr: 'الكيرل العكسي للساعدين',
+    sentenceAr: 'البرامج الجديدة تبدأ تمارين الساعدين بالكيرل العكسي، ويُحسب الكيرل العكسي الآن تمرينًا للساعدين وليس للعضلة ذات الرأسين.',
+    target: 'program',
+    location: TourShellTabLocation(tabIndex: 1),
+    release: 9,
+    audience: 'lifter',
+  ),
+  FeatureEntry(
     id: 'xp_ranks',
     titleEn: 'XP, ranks and your weekly streak',
     sentenceEn: 'Earn XP for training the way your plan says, climb from Rookie to Legend, and keep a weekly streak with one workout a week.',
