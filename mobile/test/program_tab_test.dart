@@ -1895,6 +1895,82 @@ void main() {
     expect((requested.single as Map<String, dynamic>)['target_sets'], 4);
   });
 
+  List<Map<String, dynamic>> backoffDay() => <Map<String, dynamic>>[
+        <String, dynamic>{
+          'day_name': 'Upper 1',
+          'day_order': 1,
+          'warmup_exercises': <dynamic>[],
+          'exercises': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'exercise_id': 'bench_press', 'exercise_name': 'Bench Press',
+              'target_sets': 1, 'target_reps_min': 5, 'target_reps_max': 8,
+              'target_rpe': 8, 'rest_seconds': 90,
+              'set_groups': <Map<String, dynamic>>[
+                <String, dynamic>{'sets': 1, 'reps_min': 5, 'reps_max': 8, 'target_rir': 2},
+                <String, dynamic>{'sets': 2, 'reps_min': 8, 'reps_max': 12, 'target_rir': 3},
+              ],
+            },
+            <String, dynamic>{
+              'exercise_id': 'row', 'exercise_name': 'Barbell Row',
+              'target_sets': 3, 'target_reps_min': 8, 'target_reps_max': 12,
+              'target_rpe': 8, 'rest_seconds': 90,
+            },
+          ],
+        },
+      ];
+
+  testWidgets('Edit day sends an untouched back-off exercise as its total (#787)',
+      (tester) async {
+    final FakeMayosApi fake = _signedInFake()
+      ..programVersion = 1
+      ..programDaysOverride = backoffDay();
+    await _pumpProgram(tester, fake);
+
+    await tester.tap(find.byKey(const Key('program_edit_day_1')));
+    await tester.pumpAndSettle();
+    // Change only the other exercise; Bench Press (1 top set + 2 back-offs) is untouched.
+    await tester.tap(find.byKey(const Key('program_edit_decrease_1')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('program_edit_save_button')));
+    await tester.pumpAndSettle();
+
+    final List<dynamic> requested = fake.programEditRequests.single['exercises'] as List<dynamic>;
+    expect((requested[0] as Map<String, dynamic>)['target_sets'], 3);
+    expect((requested[1] as Map<String, dynamic>)['target_sets'], 2);
+  });
+
+  testWidgets('a refused day edit keeps the dialog open with the edits and names the exercise',
+      (tester) async {
+    final FakeMayosApi fake = _signedInFake()
+      ..programVersion = 1
+      ..programDaysOverride = backoffDay()
+      ..programEditRefusal = <String, dynamic>{
+        'detail': 'Working sets must be from 1 to 4.',
+        'code': 'invalid_set_count',
+        'message_code': 'program.edit.invalid_set_count.v1',
+        'message_params': <String, dynamic>{},
+        'message_fallback': 'Working sets must be from 1 to 4.',
+        'exercise_position': 1,
+      };
+    await _pumpProgram(tester, fake);
+
+    await tester.tap(find.byKey(const Key('program_edit_day_1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('program_edit_decrease_1')));
+    await tester.pump();
+    expect(find.bySemanticsLabel('Barbell Row: 2 working sets'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('program_edit_save_button')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('program_edit_save_button')), findsOneWidget);
+    expect(
+      find.text("Couldn't save Barbell Row: Working sets must be from 1 to 4."),
+      findsOneWidget,
+    );
+    expect(find.bySemanticsLabel('Barbell Row: 2 working sets'), findsOneWidget);
+    expect(fake.programEditRequests, isEmpty);
+  });
+
   testWidgets('grouped day edit changes first group and keeps back-offs read-only',
       (WidgetTester tester) async {
     final FakeMayosApi fake = _signedInFake()
