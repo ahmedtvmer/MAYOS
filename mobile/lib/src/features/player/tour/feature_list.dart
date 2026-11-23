@@ -81,6 +81,10 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
     sentenceEn: 'Open an exercise to see its Alternatives tab, and preview any exercise in the swap list before you use it.',
     titleAr: 'البدائل ومعاينة قبل التبديل',
     sentenceAr: 'افتح تمرينًا لترى تبويب البدائل، وعاين أي تمرين في قائمة التبديل قبل أن تستخدمه.',
+    target: 'program',
+    location: TourShellTabLocation(tabIndex: 1),
+    release: 9,
+    audience: 'lifter',
   ),
   FeatureEntry(
     id: 'reverse_curl_forearms',
