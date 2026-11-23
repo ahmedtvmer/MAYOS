@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/app.dart';
 import 'package:mayos_mobile/src/core/active_workout.dart';
+import 'package:mayos_mobile/src/features/player/exercise/exercise_detail_screen.dart';
 import 'package:mayos_mobile/src/core/app_mode.dart';
 import 'package:mayos_mobile/src/core/display_language/controller.dart';
 import 'package:mayos_mobile/src/core/device_timezone.dart';
@@ -18,6 +19,7 @@ import 'package:mayos_mobile/src/features/player/workout/active_workout_controll
 import 'package:mayos_mobile/src/features/player/workout/workout_logger_screen.dart';
 
 import 'support/fake_mayos_api.dart';
+import 'support/picker_preview.dart';
 import 'support/finish_flow_test_clock.dart';
 
 Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
@@ -342,6 +344,7 @@ Future<void> _chooseCableFly(WidgetTester tester) async {
   await _openSubstitutePicker(tester);
   await tester.tap(find.text('Cable Fly'));
   await tester.pumpAndSettle();
+  await usePreviewedExercise(tester);
 }
 
 void main() {
@@ -1442,6 +1445,7 @@ void main() {
 
       await _openSubstitutePicker(tester);
       await tester.tap(find.text('Cable Fly'));
+      await usePreviewedExercise(tester);
       await tester.pumpAndSettle();
 
       final Finder requestDialog = find.byType(AlertDialog);
@@ -1510,6 +1514,7 @@ void main() {
 
     await _openSubstitutePicker(tester);
     await tester.tap(find.text('Cable Fly'));
+    await usePreviewedExercise(tester);
     await tester.pumpAndSettle();
     fake.coachControlsProgram = false;
     await tester.enterText(
@@ -1538,6 +1543,7 @@ void main() {
     await _openSubstitutePicker(tester);
     fake.coachControlsProgram = true;
     await tester.tap(find.text('Cable Fly'));
+    await usePreviewedExercise(tester);
     await tester.pumpAndSettle();
 
     expect(
@@ -1622,6 +1628,34 @@ void main() {
         nextWorkout!.exercises.map((e) => e.exerciseId), contains('cable_fly'));
     expect(nextWorkout.exercises.map((e) => e.exerciseId),
         isNot(contains('bench_press')));
+  });
+
+  testWidgets('a picker candidate opens the shared exercise screen; Back changes nothing (#803)',
+      (tester) async {
+    final FakeMayosApi fake = _signedInFake();
+    await _pumpProgram(tester, fake);
+
+    await _openSubstitutePicker(tester);
+    await tester.tap(find.text('Cable Fly'));
+    await tester.pumpAndSettle();
+
+    final ExerciseDetailScreen preview =
+        tester.widget<ExerciseDetailScreen>(find.byType(ExerciseDetailScreen));
+    expect(preview.exerciseId, 'cable_fly');
+    expect(preview.offer, ExerciseDetailOffer.use);
+    expect(find.text('Use this exercise'), findsOneWidget);
+
+    // Back: the route pops without a result.
+    Navigator.of(tester.element(find.byType(ExerciseDetailScreen))).pop();
+    await tester.pumpAndSettle();
+    expect(find.byType(ExerciseDetailScreen), findsNothing);
+    expect(find.text('Cable Fly'), findsOneWidget); // still in the picker
+    expect(fake.programSubstitutionRequests, isEmpty);
+
+    await tester.tap(find.text('Cable Fly'));
+    await tester.pumpAndSettle();
+    await usePreviewedExercise(tester);
+    expect(find.byType(ExerciseDetailScreen), findsNothing);
   });
 
   testWidgets('other-day choice substitutes all occurrences', (tester) async {
@@ -1719,6 +1753,7 @@ void main() {
       await tester.tap(find.text(language == 'ar' ? 'بحث' : 'Search').last);
       await tester.pumpAndSettle();
       await tester.tap(find.text('Bicep Curl').last);
+      await usePreviewedExercise(tester);
       await tester.pumpAndSettle();
       expect(find.text('Bicep Curl'), findsWidgets);
       expect(find.text('2'), findsWidgets);

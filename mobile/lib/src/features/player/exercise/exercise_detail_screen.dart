@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/app_failure.dart';
 import '../../../core/active_workout.dart';
@@ -16,32 +19,60 @@ import '../../../core/theme/mayos_spacing.dart';
 import '../../../core/theme/mayos_theme.dart';
 import '../../../core/theme/mayos_typography.dart';
 import '../../../core/ui/mayos_app_header.dart';
+import '../../../core/ui/mayos_button.dart';
 import '../../../core/ui/mayos_scaffold.dart';
 import '../../../core/ui/mayos_segmented_control.dart';
 import '../../../core/workout_equipment.dart';
 import '../../../providers.dart';
+import '../../../router.dart';
 import '../tour/tour_targets.dart';
+import '../workout/logger_card_widgets.dart' show ExerciseCatalogThumbnail;
 
 const String _cableYRaiseDemoExerciseId = 'mayos:3';
 const String _exerciseDemoTargetId = 'exercise_demo_media';
 
-/// Read-only exercise detail (#53): a typographic/muscle-group hero, the
-/// prescription stat trio when opened from a program day, and Overview /
-/// Technique / History tabs backed by real catalog and dashboard data.
-///
-/// The hero stays fully useful without media; exercise media is gated behind
-/// [mayosExerciseMediaEnabled] and a loadable URL.
-class ExerciseDetailScreen extends ConsumerStatefulWidget {
-  const ExerciseDetailScreen({
-    super.key,
-    required this.exerciseId,
+/// What the shared exercise screen offers besides reading it (#803).
+enum ExerciseDetailOffer {
+  /// Read only: Home, Progress, the exercise library, coach views.
+  none,
+
+  /// Program tab or workout logger: an Alternatives tab and
+  /// "Swap this exercise", which hands [ExerciseDetailResult.swap] back to
+  /// the caller so it opens its own existing swap flow.
+  swap,
+
+  /// A swap or add picker's preview: "Use this exercise", which hands
+  /// [ExerciseDetailResult.use] back so the picker continues as before.
+  use,
+}
+
+/// The action the Player chose on the screen; null when they went back.
+enum ExerciseDetailResult { swap, use }
+
+/// How one caller opens the single exercise screen. Every entry point (Home,
+/// Program tab, logger, Progress, pickers, coach views) differs only here,
+/// never in a copy of the screen (#803).
+class ExerciseDetailOptions {
+  const ExerciseDetailOptions({
     this.dayOrder,
     this.showProgram = true,
     this.showHistory = true,
     this.initialTab = 'overview',
+    this.offer = ExerciseDetailOffer.none,
   });
 
-  final String exerciseId;
+  /// Reads the shared route's query (`/exercise/:id?day=&library=&coach=&tab=&offer=`).
+  factory ExerciseDetailOptions.fromQuery(Map<String, String> query) =>
+      ExerciseDetailOptions(
+        dayOrder: int.tryParse(query['day'] ?? ''),
+        showProgram: query['library'] != '1',
+        showHistory: query['coach'] != '1',
+        initialTab: query['tab'] ?? 'overview',
+        offer: ExerciseDetailOffer.values.firstWhere(
+          (ExerciseDetailOffer offer) => offer.name == query['offer'],
+          orElse: () => ExerciseDetailOffer.none,
+        ),
+      );
 
   /// The program day the exercise was opened from. Null searches all days.
   final int? dayOrder;
@@ -54,6 +85,73 @@ class ExerciseDetailScreen extends ConsumerStatefulWidget {
 
   /// Which tab to open on. Progress (#48) opens this screen on `history`.
   final String initialTab;
+
+  final ExerciseDetailOffer offer;
+
+  ExerciseDetailOptions copyWithOffer(ExerciseDetailOffer offer) =>
+      ExerciseDetailOptions(
+        dayOrder: dayOrder,
+        showProgram: showProgram,
+        showHistory: showHistory,
+        initialTab: initialTab,
+        offer: offer,
+      );
+
+  Map<String, String> toQuery() => <String, String>{
+        if (dayOrder != null) 'day': '$dayOrder',
+        if (!showProgram) 'library': '1',
+        if (!showHistory) 'coach': '1',
+        if (initialTab != 'overview') 'tab': initialTab,
+        if (offer != ExerciseDetailOffer.none) 'offer': offer.name,
+      };
+}
+
+/// The one way to open the exercise screen; resolves to the Player's choice.
+Future<ExerciseDetailResult?> openExerciseDetail(
+  BuildContext context,
+  String exerciseId, [
+  ExerciseDetailOptions options = const ExerciseDetailOptions(),
+]) {
+  if (GoRouter.maybeOf(context) == null) {
+    // A dialog or screen built outside the app router still opens the same
+    // screen, pushed directly.
+    return Navigator.of(context).push<ExerciseDetailResult>(
+      MaterialPageRoute<ExerciseDetailResult>(
+        builder: (BuildContext context) =>
+            ExerciseDetailScreen(exerciseId: exerciseId, options: options),
+      ),
+    );
+  }
+  final Map<String, String> query = options.toQuery();
+  final String path = '$exerciseDetailPath/${Uri.encodeComponent(exerciseId)}';
+  return context.push<ExerciseDetailResult>(
+    query.isEmpty ? path : Uri(path: path, queryParameters: query).toString(),
+  );
+}
+
+/// Exercise detail (#53): a typographic/muscle-group hero, the prescription
+/// stat trio when opened from a program day, and Overview / Technique /
+/// History tabs backed by real catalog and dashboard data, plus an
+/// Alternatives tab or a "Use this exercise" button when the caller offers
+/// one ([ExerciseDetailOffer]).
+///
+/// The hero stays fully useful without media; exercise media is gated behind
+/// [mayosExerciseMediaEnabled] and a loadable URL.
+class ExerciseDetailScreen extends ConsumerStatefulWidget {
+  const ExerciseDetailScreen({
+    super.key,
+    required this.exerciseId,
+    this.options = const ExerciseDetailOptions(),
+  });
+
+  final String exerciseId;
+  final ExerciseDetailOptions options;
+
+  int? get dayOrder => options.dayOrder;
+  bool get showProgram => options.showProgram;
+  bool get showHistory => options.showHistory;
+  String get initialTab => options.initialTab;
+  ExerciseDetailOffer get offer => options.offer;
 
   @override
   ConsumerState<ExerciseDetailScreen> createState() =>
@@ -92,7 +190,9 @@ class _ExerciseDetailScreenState extends ConsumerState<ExerciseDetailScreen>
     super.initState();
     _tourLoadingTargets = ref.read(tourLoadingTargetsProvider.notifier);
     _demoTargetApplies = widget.exerciseId == _cableYRaiseDemoExerciseId;
-    _tab = !widget.showHistory && widget.initialTab == 'history'
+    _tab = (!widget.showHistory && widget.initialTab == 'history') ||
+            (widget.offer != ExerciseDetailOffer.swap &&
+                widget.initialTab == 'alternatives')
         ? 'overview'
         : widget.initialTab;
     _scheduleDemoTargetLoading(true);
@@ -198,30 +298,89 @@ class _ExerciseDetailScreenState extends ConsumerState<ExerciseDetailScreen>
             return const Center(child: CircularProgressIndicator());
           }
           if (snapshot.hasError) {
-            return _ErrorView(
-                message: displayCopyOf(context).loadExerciseFailed,
-                onRetry: _retry);
+            return _withBottomAction(
+              context,
+              _ErrorView(
+                  message: displayCopyOf(context).loadExerciseFailed,
+                  onRetry: _retry),
+            );
           }
           final _DetailData data = snapshot.data!;
           if (data.catalog == null && data.exercise == null) {
-            return _ErrorView(
-              message: data.partialError == null
-                  ? displayCopyOf(context).exerciseUnavailable
-                  : displayCopyOf(context).failureMessage(data.partialError!),
-              onRetry: _retry,
+            // A picker preview still lets the Player use the exercise when
+            // its details cannot load, so a failed read never blocks a swap.
+            return _withBottomAction(
+              context,
+              _ErrorView(
+                message: data.partialError == null
+                    ? displayCopyOf(context).exerciseUnavailable
+                    : displayCopyOf(context).failureMessage(data.partialError!),
+                onRetry: _retry,
+              ),
             );
           }
-          return _DetailBody(
+          return _withBottomAction(context, _DetailBody(
               data: data,
               tab: _tab,
               showHistory: widget.showHistory,
+              showAlternatives: widget.offer == ExerciseDetailOffer.swap,
+              onOpenAlternative: _openAlternative,
               demoTargetId: _demoTargetApplies ? _exerciseDemoTargetId : null,
               onDemoMediaSettled:
                   _demoTargetApplies ? () => _setDemoTargetLoading(false) : null,
-              onTab: (String tab) => setState(() => _tab = tab));
+              onTab: (String tab) => setState(() => _tab = tab)));
         },
       ),
     );
+  }
+
+  Widget _withBottomAction(BuildContext context, Widget body) {
+    final Widget? action = _bottomAction(context);
+    if (action == null) return body;
+    return Column(
+      children: <Widget>[
+        Expanded(child: body),
+        SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+                MayosSpacing.lg, MayosSpacing.sm, MayosSpacing.lg, MayosSpacing.md),
+            child: action,
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// "Swap this exercise" on the Alternatives tab, or "Use this exercise" in
+  /// a picker's preview; both hand the choice back to the caller (#803).
+  Widget? _bottomAction(BuildContext context) {
+    final MayosCopy copy = displayCopyOf(context);
+    return switch (widget.offer) {
+      ExerciseDetailOffer.swap when _tab == 'alternatives' => MayosButton(
+          key: const ValueKey<String>('exercise.detail.swap'),
+          label: copy.swapThisExercise,
+          icon: Icons.swap_horiz,
+          onPressed: () =>
+              Navigator.of(context).pop(ExerciseDetailResult.swap),
+        ),
+      ExerciseDetailOffer.use => MayosButton(
+          key: const ValueKey<String>('exercise.detail.use'),
+          label: copy.useThisExercise,
+          icon: Icons.check,
+          onPressed: () => Navigator.of(context).pop(ExerciseDetailResult.use),
+        ),
+      _ => null,
+    };
+  }
+
+  /// An alternative opens this same screen for it, read-only (#803).
+  void _openAlternative(SuggestedSubstitute alternative) {
+    unawaited(openExerciseDetail(
+      context,
+      alternative.exerciseId,
+      const ExerciseDetailOptions(showProgram: false),
+    ));
   }
 
   @override
@@ -243,6 +402,8 @@ class _DetailBody extends StatelessWidget {
     required this.data,
     required this.tab,
     required this.showHistory,
+    required this.showAlternatives,
+    required this.onOpenAlternative,
     required this.onTab,
     required this.demoTargetId,
     required this.onDemoMediaSettled,
@@ -251,6 +412,8 @@ class _DetailBody extends StatelessWidget {
   final _DetailData data;
   final String tab;
   final bool showHistory;
+  final bool showAlternatives;
+  final ValueChanged<SuggestedSubstitute> onOpenAlternative;
   final ValueChanged<String> onTab;
   final String? demoTargetId;
   final VoidCallback? onDemoMediaSettled;
@@ -293,12 +456,22 @@ class _DetailBody extends StatelessWidget {
             if (showHistory)
               MayosSegment<String>(
                   value: 'history', label: displayCopyOf(context).history),
+            if (showAlternatives)
+              MayosSegment<String>(
+                  value: 'alternatives',
+                  label: displayCopyOf(context).alternatives),
           ],
           selected: tab,
           onChanged: onTab,
         ),
         const SizedBox(height: MayosSpacing.xl),
         switch (tab) {
+          'alternatives' when showAlternatives => _AlternativesTab(
+              // The same list the swap picker suggests, so they agree (#803).
+              alternatives: exercise?.suggestedSubstitutes ??
+                  const <SuggestedSubstitute>[],
+              onOpen: onOpenAlternative,
+            ),
           'technique' => _TechniqueTab(catalog: catalog),
           'history' => _HistoryTab(
               history: data.history,
@@ -941,6 +1114,83 @@ class _HistoryTab extends StatelessWidget {
           ),
       ],
     );
+  }
+}
+
+/// The suggested substitutes, each opening its own exercise screen (#803).
+class _AlternativesTab extends StatelessWidget {
+  const _AlternativesTab({required this.alternatives, required this.onOpen});
+
+  final List<SuggestedSubstitute> alternatives;
+  final ValueChanged<SuggestedSubstitute> onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final MayosCopy copy = displayCopyOf(context);
+    if (alternatives.isEmpty) {
+      return _EmptyTab(message: copy.noSuggestedAlternatives);
+    }
+    final MayosThemeExtension c = MayosTheme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        Text(copy.suggestedSubstitutes,
+            style: MayosTypography.of(context)
+                .bodySecondary
+                .copyWith(color: c.textSecondary)),
+        const SizedBox(height: MayosSpacing.xs),
+        for (final SuggestedSubstitute alternative in alternatives)
+          Padding(
+            padding: const EdgeInsets.only(bottom: MayosSpacing.xs),
+            child: Material(
+              color: c.surface,
+              borderRadius: BorderRadius.circular(12),
+              child: InkWell(
+                key: ValueKey<String>(
+                    'exercise.alternative.${alternative.exerciseId}'),
+                borderRadius: BorderRadius.circular(12),
+                onTap: () => onOpen(alternative),
+                child: Padding(
+                  padding: const EdgeInsets.all(MayosSpacing.sm),
+                  child: Row(
+                    children: <Widget>[
+                      ExerciseCatalogThumbnail(
+                          imagePath: alternative.imagePath),
+                      const SizedBox(width: MayosSpacing.sm),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Text(alternative.exerciseName,
+                                style: MayosTypography.of(context).body),
+                            if (_alternativeMeta(copy, alternative)
+                                case final String meta)
+                              Text(meta,
+                                  style: MayosTypography.of(context)
+                                      .caption
+                                      .copyWith(color: c.textSecondary)),
+                          ],
+                        ),
+                      ),
+                      Icon(Icons.chevron_right, color: c.textMuted),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  String? _alternativeMeta(MayosCopy copy, SuggestedSubstitute alternative) {
+    final List<String> parts = <String>[
+      if (alternative.primaryMuscle?.trim().isNotEmpty == true)
+        copy.primaryMuscleLabel(alternative.primaryMuscle!),
+      if (alternative.equipment?.trim().isNotEmpty == true)
+        titleCase(alternative.equipment!),
+    ];
+    return parts.isEmpty ? null : parts.join(' · ');
   }
 }
 

@@ -76,6 +76,13 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
     requiresProgramControl: true,
   ),
   FeatureEntry(
+    id: 'exercise_alternatives',
+    titleEn: 'Alternatives and a preview before you swap',
+    sentenceEn: 'Open an exercise to see its Alternatives tab, and preview any exercise in the swap list before you use it.',
+    titleAr: 'البدائل ومعاينة قبل التبديل',
+    sentenceAr: 'افتح تمرينًا لترى تبويب البدائل، وعاين أي تمرين في قائمة التبديل قبل أن تستخدمه.',
+  ),
+  FeatureEntry(
     id: 'reverse_curl_forearms',
     titleEn: 'Reverse curls for forearms',
     sentenceEn: 'New programs start forearm work with a reverse curl, and reverse curls now count as forearm work, not biceps.',

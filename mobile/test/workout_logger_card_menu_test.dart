@@ -23,6 +23,7 @@ import 'package:mayos_mobile/src/features/player/workout/workout_logger_screen.d
 import 'package:mayos_mobile/src/providers.dart';
 
 import 'support/fake_mayos_api.dart';
+import 'support/picker_preview.dart';
 import 'support/finish_flow_test_clock.dart';
 
 // The card's ⋮ menu (#162): Replace exercise for every player, Rest time…
@@ -363,6 +364,7 @@ Future<void> _searchAndPick(
   await _pumpUntilFound(tester, find.text(result));
   await tester.tap(find.text(result));
   await tester.pumpAndSettle();
+  await usePreviewedExercise(tester);
 }
 
 Future<void> _confirmReplace(

@@ -51,6 +51,7 @@ Future<void> _pumpDetail(
   bool showProgram = true,
   String initialTab = 'overview',
   bool showHistory = true,
+  ExerciseDetailOffer offer = ExerciseDetailOffer.none,
   Size size = const Size(1080, 2400),
   String languageCode = 'en',
   Stream<bool> connectivityEvents = const Stream<bool>.empty(),
@@ -94,10 +95,13 @@ Future<void> _pumpDetail(
         localizationsDelegates: GlobalMaterialLocalizations.delegates,
         home: ExerciseDetailScreen(
           exerciseId: exerciseId,
-          dayOrder: dayOrder,
-          showProgram: showProgram,
-          initialTab: initialTab,
-          showHistory: showHistory,
+          options: ExerciseDetailOptions(
+            dayOrder: dayOrder,
+            showProgram: showProgram,
+            initialTab: initialTab,
+            showHistory: showHistory,
+            offer: offer,
+          ),
         ),
       ),
     ),
@@ -341,6 +345,87 @@ void main() {
     expect(find.text('Barbell'), findsWidgets);
     // Category and body part collapse into one row when equal.
     expect(find.text('Body part'), findsNothing);
+  });
+
+  testWidgets('Program tab detail shows Alternatives; Swap opens the Substitute flow (#803)',
+      (tester) async {
+    final FakeMayosApi fake = _signedInFake();
+    await _pumpApp(tester, fake);
+
+    await tester.tap(find.text('Program'));
+    await _pumpUntilFound(tester, find.text('Day 1: Upper 1'));
+    await tester.tap(find.text('Bench Press'));
+    await _pumpUntilFound(tester, find.text('Alternatives'));
+
+    await tester.tap(find.text('Alternatives'));
+    await tester.pumpAndSettle();
+    // The same list the swap picker suggests, with muscle and equipment.
+    expect(find.text('Incline DB Press'), findsOneWidget);
+    expect(find.text('Upper Chest · Dumbbell'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey<String>('exercise.detail.swap')));
+    // The existing Substitute picker opens over the Program tab.
+    await _pumpUntilFound(tester, find.text('Suggested substitutes'));
+    await tester.pumpAndSettle();
+    expect(find.byType(ExerciseDetailScreen), findsNothing);
+  });
+
+  testWidgets('an alternative opens the same exercise screen, read-only', (tester) async {
+    final FakeMayosApi fake = _signedInFake();
+    await _pumpApp(tester, fake);
+
+    await tester.tap(find.text('Program'));
+    await _pumpUntilFound(tester, find.text('Day 1: Upper 1'));
+    await tester.tap(find.text('Bench Press'));
+    await _pumpUntilFound(tester, find.text('Alternatives'));
+    await tester.tap(find.text('Alternatives'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(
+        const ValueKey<String>('exercise.alternative.incline_db_press')));
+    await tester.pumpAndSettle();
+
+    final Iterable<ExerciseDetailScreen> screens =
+        tester.widgetList<ExerciseDetailScreen>(find.byType(ExerciseDetailScreen,
+            skipOffstage: false));
+    expect(screens.last.exerciseId, 'incline_db_press');
+    expect(screens.last.offer, ExerciseDetailOffer.none);
+    expect(find.text('Alternatives'), findsNothing);
+  });
+
+  testWidgets('the Alternatives tab is absent without a swap offer', (tester) async {
+    final FakeMayosApi fake = _signedInFake();
+    await _pumpDetail(tester, fake, 'bench_press');
+    expect(find.text('Overview'), findsOneWidget);
+    expect(find.text('Alternatives'), findsNothing);
+    expect(find.byKey(const ValueKey<String>('exercise.detail.use')), findsNothing);
+  });
+
+  testWidgets('the Alternatives tab and Use button read in Arabic', (tester) async {
+    final FakeMayosApi fake = _signedInFake();
+    await _pumpDetail(tester, fake, 'bench_press',
+        offer: ExerciseDetailOffer.swap,
+        initialTab: 'alternatives',
+        languageCode: 'ar');
+    expect(find.text('البدائل'), findsOneWidget);
+    expect(find.text('تبديل هذا التمرين'), findsOneWidget);
+  });
+
+  test('options round-trip through the shared route query', () {
+    const ExerciseDetailOptions options = ExerciseDetailOptions(
+      dayOrder: 2,
+      showProgram: false,
+      showHistory: false,
+      initialTab: 'history',
+      offer: ExerciseDetailOffer.use,
+    );
+    final ExerciseDetailOptions parsed =
+        ExerciseDetailOptions.fromQuery(options.toQuery());
+    expect(parsed.dayOrder, 2);
+    expect(parsed.showProgram, isFalse);
+    expect(parsed.showHistory, isFalse);
+    expect(parsed.initialTab, 'history');
+    expect(parsed.offer, ExerciseDetailOffer.use);
+    expect(const ExerciseDetailOptions().toQuery(), isEmpty);
   });
 
   testWidgets('detail without a day keeps the Progress-tab prescription',

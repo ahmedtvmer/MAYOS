@@ -3130,17 +3130,29 @@ class SuggestedSubstitute {
   const SuggestedSubstitute({
     required this.exerciseId,
     required this.exerciseName,
+    this.primaryMuscle,
+    this.equipment,
+    this.imagePath,
   });
 
   factory SuggestedSubstitute.fromJson(Map<String, dynamic> json) =>
       SuggestedSubstitute(
         exerciseId: json['exercise_id'] as String,
         exerciseName: json['exercise_name'] as String,
+        primaryMuscle: json['primary_muscle'] as String?,
+        equipment: json['equipment'] as String?,
+        imagePath: json['image_path'] as String?,
       );
 
   final String exerciseId;
   final String exerciseName;
 
+  /// Read-time library labels for the Alternatives tab (#803); never sent back.
+  final String? primaryMuscle;
+  final String? equipment;
+  final String? imagePath;
+
+  /// Only the stored identity; the labels are the server's to compute.
   Map<String, dynamic> toJson() => <String, dynamic>{
         'exercise_id': exerciseId,
         'exercise_name': exerciseName,

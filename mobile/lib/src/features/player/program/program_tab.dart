@@ -26,6 +26,7 @@ import '../../../providers.dart';
 import '../../../router.dart';
 import '../assignment/program_request_dialog.dart';
 import '../dashboard/home_planning.dart';
+import '../exercise/exercise_detail_screen.dart';
 import '../exercise_picker_dialog.dart';
 import '../workout/active_workout_prompt.dart';
 import '../tour/tour_targets.dart';
@@ -1146,9 +1147,20 @@ class _ProgramTabState extends ConsumerState<ProgramTab>
     );
   }
 
-  void _openExercise(ProgramDay day, ProgramExercise exercise) {
-    context
-        .push('$exerciseDetailPath/${exercise.exerciseId}?day=${day.dayOrder}');
+  /// Opens the shared exercise screen with its Alternatives tab; "Swap this
+  /// exercise" comes back here and runs the existing Substitute flow (#803).
+  Future<void> _openExercise(ProgramDay day, ProgramExercise exercise) async {
+    final ExerciseDetailResult? result = await openExerciseDetail(
+      context,
+      exercise.exerciseId,
+      ExerciseDetailOptions(
+        dayOrder: day.dayOrder,
+        offer: ExerciseDetailOffer.swap,
+      ),
+    );
+    if (result == ExerciseDetailResult.swap && mounted) {
+      await _onSubstituteExercise(day, exercise);
+    }
   }
 
   ProgramDay? _nextWorkoutDay(TrainingProgram program) {
@@ -1569,7 +1581,7 @@ class _ProgramTabState extends ConsumerState<ProgramTab>
                         exercise: exercise,
                         bestE1rmKg: _bestE1rmByExercise[exercise.exerciseId],
                         showCoachNotes: program.isCoachPublished,
-                        onTap: () => _openExercise(day, exercise),
+                        onTap: () => unawaited(_openExercise(day, exercise)),
                         onSubstitute: _substituting || _pickerBusy
                             ? null
                             : () => unawaited(

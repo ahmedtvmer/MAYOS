@@ -20,6 +20,7 @@ import 'package:mayos_mobile/src/providers.dart';
 
 import 'support/fake_media_http.dart';
 import 'support/fake_mayos_api.dart';
+import 'support/picker_preview.dart';
 
 /// #161: the catalog picture on every exercise card — loaded, missing and
 /// failed pictures through a fake `GET /media` route, all three laid out in
@@ -435,6 +436,7 @@ void main() {
     await _pumpUntilFound(tester, find.text('Bicep Curl'));
     await tester.tap(find.text('Bicep Curl'));
     await tester.pumpAndSettle();
+    await usePreviewedExercise(tester);
 
     // The card carries the picture the catalog search returned for it: the
     // `/media` request went out and no fallback is standing in.
@@ -445,7 +447,9 @@ void main() {
             matching: find.byType(ExerciseLoggingCard))
         .first;
     await _settlePictures(tester);
-    expect(media.requestCount('images/bicep_curl.jpg'), 1);
+    // One request for the preview screen opened by the pick (#803), one for
+    // the card.
+    expect(media.requestCount('images/bicep_curl.jpg'), 2);
     expect(
       find.descendant(of: added, matching: find.byIcon(Icons.fitness_center)),
       findsNothing,

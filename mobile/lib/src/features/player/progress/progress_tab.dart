@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -24,6 +26,7 @@ import '../../../core/weight_limits.dart';
 import '../../../providers.dart';
 import '../tour/tour_targets.dart';
 import '../../../router.dart';
+import '../exercise/exercise_detail_screen.dart';
 import 'progress_chart.dart';
 
 /// The player Progress tab (#48).
@@ -672,8 +675,13 @@ class _StrengthSection extends StatelessWidget {
             icon: Icons.arrow_forward,
             variant: MayosButtonVariant.secondary,
             expand: false,
-            onPressed: () =>
-                context.push('$exerciseDetailPath/$selectedId?tab=history'),
+            onPressed: selectedId == null
+                ? null
+                : () => unawaited(openExerciseDetail(
+                      context,
+                      selectedId!,
+                      const ExerciseDetailOptions(initialTab: 'history'),
+                    )),
           ),
         ],
       ],

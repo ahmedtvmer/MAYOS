@@ -1202,6 +1202,11 @@ void main() {
     await tester.tap(find.text('Search'));
     await _pumpUntilFound(tester, find.text('Bicep Curl'));
     await tester.tap(find.text('Bicep Curl'));
+    // The pick opens the exercise preview first (#803).
+    final Finder useExercise =
+        find.byKey(const ValueKey<String>('exercise.detail.use'));
+    await _pumpUntilFound(tester, useExercise);
+    await tester.tap(useExercise);
     await _pumpUntilFound(tester, find.text('Unplanned'));
 
     // One ticked working set is enough to finish; the unplanned exercise is
