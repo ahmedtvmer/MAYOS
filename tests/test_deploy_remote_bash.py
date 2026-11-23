@@ -36,16 +36,18 @@ def test_remote_bash_preserves_empty_and_spaced_arguments(tmp_path):
     # when ssh joins its arguments into the remote command string.
 
 
-def _run_deploy_release(tmp_path, readiness_result):
+def _run_deploy_release(tmp_path, readiness_result, *, build_result=0, current_tag=""):
     log = tmp_path / "calls.log"
     harness = r'''
 source "$1"
 log="$2"
-current_tag=""
+current_tag="${CURRENT_TAG:-}"
 record() { printf '%s\n' "$1" >> "$log"; }
 upload_build_input() { record upload_build_input; }
 set_image_tag() { record set_image_tag; }
-build_and_start() { record build_and_start; }
+build_image() { record build_image; return "${BUILD_RESULT:-0}"; }
+compose_up() { record compose_up; }
+ensure_running_history() { record ensure_running_history; }
 check_readiness() { record check_readiness; return "$READINESS_RESULT"; }
 start_companion_services() { record start_companion_services; }
 remember_image() { record remember_image; }
@@ -56,6 +58,8 @@ deploy_release fakecommit faketag
 '''
     env = os.environ.copy()
     env["READINESS_RESULT"] = str(readiness_result)
+    env["BUILD_RESULT"] = str(build_result)
+    env["CURRENT_TAG"] = current_tag
     return subprocess.run(
         ["bash", "-c", harness, "test", str(SCRIPT), str(log)],
         text=True,
@@ -429,3 +433,85 @@ def test_deploy_queue_records_missing_deploy_script(tmp_path):
     assert result.returncode == 0
     assert f"commit: {sha}" in output
     assert "outcome: refused: deploy script not found at" in output
+
+
+
+def _run_readiness(tmp_path, *, state_after, container_after="c1", readyz_after_ok=True):
+    """Runs check_readiness locally with docker stubs (#842)."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    docker = bin_dir / "docker"
+    docker.write_text(
+        "#!/usr/bin/env bash\n"
+        "count_file=\"$STUB_DIR/$1-${*: -1}.count\"\n"
+        "if [[ \"$1\" == compose && \" $* \" == *' ps -q api '* ]]; then\n"
+        "  n=$(( $(cat \"$STUB_DIR/ps.count\" 2>/dev/null || echo 0) + 1 )); echo $n > \"$STUB_DIR/ps.count\"\n"
+        "  if (( n == 1 )); then echo c1; else echo \"$CONTAINER_AFTER\"; fi; exit 0\n"
+        "fi\n"
+        "if [[ \"$1\" == compose && \" $* \" == *' exec '* ]]; then\n"
+        "  n=$(( $(cat \"$STUB_DIR/exec.count\" 2>/dev/null || echo 0) + 1 )); echo $n > \"$STUB_DIR/exec.count\"\n"
+        "  if (( n == 1 )) || [[ \"$READYZ_AFTER_OK\" == 1 ]]; then echo '{\"status\":\"ready\"}'; exit 0; fi\n"
+        "  echo 'connection refused'; exit 7\n"
+        "fi\n"
+        "if [[ \"$1\" == compose && \" $* \" == *' logs '* ]]; then echo \"TypeError: Unknown option 'send_default_pii'\"; exit 0; fi\n"
+        "if [[ \"$1\" == inspect && \"$3\" == '{{.RestartCount}}' ]]; then echo 0; exit 0; fi\n"
+        "if [[ \"$1\" == inspect ]]; then echo \"$STATE_AFTER\"; exit 0; fi\n"
+        "exit 2\n",
+        encoding="utf-8",
+    )
+    docker.chmod(0o755)
+    sudo = bin_dir / "sudo"
+    sudo.write_text("#!/usr/bin/env bash\nexec \"$@\"\n", encoding="utf-8")
+    sudo.chmod(0o755)
+    env = os.environ.copy()
+    env.update({
+        "PATH": f"{bin_dir}{os.pathsep}{env.get('PATH', '')}",
+        "STUB_DIR": str(tmp_path),
+        "STATE_AFTER": state_after,
+        "CONTAINER_AFTER": container_after,
+        "READYZ_AFTER_OK": "1" if readyz_after_ok else "0",
+        "MAYOS_READY_SETTLE_SECONDS": "0",
+    })
+    return subprocess.run(
+        ["bash", "-c", 'source "$1"; server_pull_mode=1; check_readiness', "test", str(SCRIPT)],
+        text=True, capture_output=True, env=env, check=False,
+    )
+
+
+def test_readiness_passes_when_the_same_container_stays_up_842(tmp_path):
+    result = _run_readiness(tmp_path, state_after="true 0")
+    assert result.returncode == 0, result.stderr
+    assert '{"status":"ready"}' in result.stdout
+
+
+@pytest.mark.parametrize(("case", "kwargs"), [
+    # The 2026-11-23 outage: answered once, then crash-looped.
+    ("restarted", {"state_after": "true 1"}),
+    ("stopped", {"state_after": "false 0"}),
+    ("replaced", {"state_after": "true 0", "container_after": "c2"}),
+    ("stopped answering", {"state_after": "true 0", "readyz_after_ok": False}),
+])
+def test_readiness_fails_when_the_api_does_not_stay_up_842(tmp_path, case, kwargs):
+    result = _run_readiness(tmp_path, **kwargs)
+    assert result.returncode == 1, (case, result.stdout)
+    assert "did not stay up" in result.stderr
+    # The operator sees why without opening the logs.
+    assert "send_default_pii" in result.stderr
+
+
+
+def test_a_failed_start_up_check_keeps_the_running_image_842(tmp_path):
+    result, log = _run_deploy_release(tmp_path, 0, build_result=1, current_tag="be016f216590")
+    calls = log.read_text(encoding="utf-8").splitlines()
+    assert result.returncode != 0
+    assert "failed its start-up check" in result.stderr
+    # The new image is never started, and the tag points back at the running one.
+    assert "compose_up" not in calls and "check_readiness" not in calls
+    assert calls.count("set_image_tag") == 2
+
+
+def test_the_start_up_check_imports_the_app_in_the_new_image_842():
+    script = SCRIPT.read_text(encoding="utf-8")
+    build = script[script.index("build_image() {"):script.index("\n}\n", script.index("build_image() {"))]
+    assert "run --rm --no-deps -T --entrypoint python api -c 'import svc.app'" in build
+    assert "up -d" not in build

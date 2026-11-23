@@ -22,6 +22,9 @@ Run production commands from the main checkout; a linked git worktree is refused
 On the server, pull <commit> fetches and verifies a public master commit before building.
 Staging up builds this checkout's HEAD on any branch (worktrees allowed), warns
 about dirty files included in the build, and waits up to 3 minutes for /readyz.
+Production readiness also requires the API to stay up, without a restart, for
+MAYOS_READY_SETTLE_SECONDS (default 30) and answer /readyz again; otherwise the
+previous image is restored.
 It requires /opt/mayos/staging.env and /mnt/mayos-data/staging on the server.
 Staging has its own project, images (last 2 kept), lock and state under
 /opt/mayos/state/staging; production containers, image env and history are untouched.
@@ -221,13 +224,19 @@ printf 'Litestream %s; restarted litestream\n' "$restart_reason"
 REMOTE
 }
 
-build_and_start() {
+build_image() {
   local tag="$1"
   remote_bash "$tag" <<'REMOTE'
 tag="$1"
 [[ "$tag" =~ $IMAGE_TAG_RE ]] || { echo "Invalid image tag" >&2; exit 2; }
 "${compose[@]}" build api
-"${compose[@]}" up -d --no-deps --no-build api
+# Start-up check before the swap (#842): import the app in the new image with
+# production's environment. An import-time crash (sentry-sdk 3 on 2026-11-23)
+# stops here, while the old API keeps serving.
+if ! output="$("${compose[@]}" run --rm --no-deps -T --entrypoint python api -c 'import svc.app' 2>&1)"; then
+  printf 'New image %s failed its start-up check:\n%s\n' "$tag" "$(printf '%s\n' "$output" | tail -20)" >&2
+  exit 1
+fi
 REMOTE
 }
 
@@ -242,8 +251,11 @@ REMOTE
 }
 
 check_readiness() {
-  remote_bash <<'REMOTE'
+  remote_bash "${MAYOS_READY_SETTLE_SECONDS:-30}" <<'REMOTE'
+settle="$1"
+[[ "$settle" =~ ^[0-9]+$ ]] || { echo "Invalid settle seconds" >&2; exit 2; }
 last_output="API readiness check did not run"
+ready=0
 deadline=$((SECONDS + 180))
 while (( SECONDS < deadline )); do
   remaining=$((deadline - SECONDS))
@@ -251,13 +263,32 @@ while (( SECONDS < deadline )); do
   if (( remaining < request_timeout )); then request_timeout=$remaining; fi
   if (( request_timeout > 0 )) && last_output="$(timeout "${request_timeout}s" "${compose[@]}" exec -T api \
     curl -fsS --max-time "$request_timeout" http://localhost:8000/readyz 2>&1)"; then
-    printf '%s\n' "$last_output"
-    exit 0
+    ready=1
+    break
   fi
   if (( SECONDS < deadline )); then sleep 1; fi
 done
-printf 'API did not become ready within 3 minutes. Last response: %s\n' "$last_output" >&2
-exit 1
+if (( ! ready )); then
+  printf 'API did not become ready within 3 minutes. Last response: %s\n' "$last_output" >&2
+  exit 1
+fi
+# One good answer is not enough: an API that crashes on start can still answer
+# once, and a deploy reported "ready" while it crash-looped (2026-11-23, #842).
+# The same container must stay running, with no new restart, and answer again.
+container="$("${compose[@]}" ps -q api)"
+restarts="$(sudo docker inspect -f '{{.RestartCount}}' "$container" 2>/dev/null || printf 'missing')"
+sleep "$settle"
+state="$(sudo docker inspect -f '{{.State.Running}} {{.RestartCount}}' "$container" 2>/dev/null || printf 'missing')"
+current="$("${compose[@]}" ps -q api)"
+if [[ -z "$container" || "$current" != "$container" || "$state" != "true $restarts" ]] ||
+  ! last_output="$(timeout 5s "${compose[@]}" exec -T api curl -fsS --max-time 4 http://localhost:8000/readyz 2>&1)"; then
+  printf 'API answered /readyz but did not stay up for %s seconds (running/restarts now: %s; restarts before: %s). Last API log lines:\n' \
+    "$settle" "$state" "$restarts" >&2
+  "${compose[@]}" logs --no-color --tail 20 api >&2 || true
+  exit 1
+fi
+printf '%s\n' "$last_output"
+exit 0
 REMOTE
 }
 
@@ -506,7 +537,12 @@ deploy_release() {
   printf 'Deploying commit %s (image tag %s).\n' "$full_commit" "$tag"
   upload_build_input
   set_image_tag "$tag"
-  build_and_start "$tag"
+  if ! build_image "$tag"; then
+    # Keep restarts on the running image; nothing was swapped.
+    if [[ -n "$previous_tag" ]]; then set_image_tag "$previous_tag"; fi
+    die "image $tag failed to build or failed its start-up check; the API still runs ${previous_tag:-its current image}"
+  fi
+  compose_up
   if check_readiness; then
     start_companion_services
     remember_image "$full_commit" "$tag" "$previous_tag"
