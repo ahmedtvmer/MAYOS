@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, kIsWeb, kReleaseMode, TargetPlatform;
 import 'package:flutter/material.dart'
@@ -25,6 +27,7 @@ import 'core/saved_player_data.dart';
 import 'core/saved_player_reads.dart';
 import 'core/personal_records.dart';
 import 'core/rest_alert_permission_access.dart';
+import 'core/local_reminders.dart';
 import 'core/rest_alerts.dart';
 import 'core/rest_alert_permission_prompt_store.dart';
 import 'core/rest_length.dart';
@@ -374,6 +377,8 @@ Future<void> acceptWorkoutCommit(
     ref.read(pendingRankUpProvider.notifier).state = rankUp;
   }
   await ref.read(trainingStatusProvider.notifier).acceptCommit(accountId, response);
+  // Today is trained: the refreshed plan drops today's reminder (#840).
+  unawaited(ref.read(localReminderSyncProvider).sync());
 }
 
 /// Last-known server training status, loaded at app start and persisted with
@@ -463,6 +468,47 @@ final StateProvider<({String deviceId, Map<String, dynamic> status})?>
     StateProvider<({String deviceId, Map<String, dynamic> status})?>((ref) {
   _resetOnAccountChange(ref, () => ref.controller.state = null);
   return null;
+});
+
+/// Schedules workout reminders as local notifications on Android (#840).
+final Provider<LocalReminderScheduler> localReminderSchedulerProvider =
+    Provider<LocalReminderScheduler>((ref) {
+  return platformLocalReminderScheduler(
+    channelName: () => ref.read(displayLanguageProvider).startsWith('ar')
+        ? 'تذكيرات التدريب'
+        : 'Workout reminders',
+    channelDescription: () => ref.read(displayLanguageProvider).startsWith('ar')
+        ? 'تذكيرات في أيام تدريبك'
+        : 'Reminders on your training days',
+  );
+});
+
+/// Refreshes this device's offline workout reminders from the server plan (#840).
+///
+/// Only a signed-in Player fetches a plan; signing out clears this device's
+/// reminders so another account's never fire here.
+final Provider<LocalReminderSync> localReminderSyncProvider =
+    Provider<LocalReminderSync>((ref) {
+  final LocalReminderSync sync = LocalReminderSync(
+    scheduler: ref.watch(localReminderSchedulerProvider),
+    fetchPlan: () => ref.read(apiClientProvider).localReminders(),
+    canSync: () =>
+        ref.read(authControllerProvider).session?.account.capabilities.player ==
+        true,
+  );
+  ref.listen<String?>(
+    authControllerProvider.select(
+      (AuthState state) => state.session?.account.accountId,
+    ),
+    (String? previous, String? next) {
+      if (next == null) {
+        unawaited(sync.clear());
+      } else if (previous != next) {
+        unawaited(sync.sync());
+      }
+    },
+  );
+  return sync;
 });
 
 final StateProvider<int?> pendingCheckpointReviewProvider =

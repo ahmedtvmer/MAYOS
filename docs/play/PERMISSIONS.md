@@ -20,14 +20,14 @@ flutter_secure_storage, play_install_referrer): none of them adds any further
 | `INTERNET` | App manifest (also merged in by `google_sign_in_android`) | The app's core function is talking to the MAYOS API (`https://api.mayos.online`); Google Sign-In also needs it. Expected — Play never flags plain `INTERNET`. |
 | `ACCESS_NETWORK_STATE` | App manifest | Connectivity checks so network-dependent features (API reachability, reconnection refetching) can degrade gracefully instead of retrying blind. No user data is read from it. |
 | `CAMERA` | App manifest | Lets the Player take a photo with the camera to decorate their **workout share card** (`image_picker`, `ImageSource.camera`). The photo is resized locally and stays on the device — it is never uploaded. The alternative source (gallery) uses the system photo picker and needs no permission. |
-| `RECEIVE_BOOT_COMPLETED` | App manifest | Rest-end reminders (issue #125): after a reboot, the scheduled local notifications must be re-registered, or a Player's rest-end alarm silently disappears. Used only by the `flutter_local_notifications` boot receiver (non-exported). |
+| `RECEIVE_BOOT_COMPLETED` | App manifest | Rest-end reminders (issue #125) and offline workout reminders (issue #840): after a reboot, the scheduled local notifications must be re-registered, or a Player's rest-end alarm or next training-day reminder silently disappears. Used only by the `flutter_local_notifications` boot receiver (non-exported). |
 | `SCHEDULE_EXACT_ALARM` | App manifest | The end-of-rest buzz is a **user-set timer**: exact delivery at the moment the Player chose. Asked once during rest-alert onboarding; Android 14+ denies it by default and a refusal falls back to an inexact allow-while-idle alarm. See the dedicated section below. |
 
 ## Permissions merged in by plugins
 
 | Permission | Source | Why it is needed |
 | :--- | :--- | :--- |
-| `POST_NOTIFICATIONS` | `flutter_local_notifications` 22.3.1 | Required on Android 13+ to show the rest-end timer notification (the whole point of the rest-alert feature, issue #125). The app requests it at most once, from the dedicated onboarding step, and the rest-alert feature degrades gracefully when denied. |
+| `POST_NOTIFICATIONS` | `flutter_local_notifications` 22.3.1 | Required on Android 13+ to show the rest-end timer notification (the whole point of the rest-alert feature, issue #125). The app requests it at most once, from the dedicated onboarding step, and the rest-alert feature degrades gracefully when denied. Workout reminders (issue #840) use it too: it is asked only when the Player turns reminders on in Settings, never on first open, and a refusal leaves reminders off with an explanation. Reminders use **inexact** allow-while-idle scheduling and never need `SCHEDULE_EXACT_ALARM`. |
 | `VIBRATE` | `flutter_local_notifications` 22.3.1 | Lets the rest-end notification vibrate. No standalone vibration API call is made. |
 | `com.google.android.finsky.permission.BIND_GET_INSTALL_REFERRER_SERVICE` | `play_install_referrer` (Google's install-referrer library) | Lets the app read the Play install referrer once per install so registration records only parsed UTM labels (source/medium/campaign). The plugin's own manifest adds no permission; this one comes merged in from Google's referrer library (documented in `docs/PLAY_RELEASE.md` §8). |
 

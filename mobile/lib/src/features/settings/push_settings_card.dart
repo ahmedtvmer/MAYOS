@@ -154,6 +154,9 @@ class _PushSettingsCardState extends ConsumerState<PushSettingsCard> {
   Widget build(BuildContext context) {
     ref.watch(displayLanguageProvider);
     if (!kIsWeb) {
+      if (!widget.compact && ref.watch(localReminderSchedulerProvider).isSupported) {
+        return const AndroidReminderSettingsCard();
+      }
       return widget.compact
           ? const SizedBox.shrink()
           : Text(
@@ -280,6 +283,173 @@ class _PushSettingsCardState extends ConsumerState<PushSettingsCard> {
                 _copy(
                   'Timezone: ${_prefs['timezone']}. Set training days in Profile.',
                   'المنطقة الزمنية: ${_prefs['timezone']}. حدد أيام التدريب في الملف الشخصي.',
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+
+/// Android workout reminders, scheduled on the device so they fire offline
+/// (#840). The same preferences as the web app's push settings; coach updates
+/// and alerts arrive once Android push is set up (#749).
+class AndroidReminderSettingsCard extends ConsumerStatefulWidget {
+  const AndroidReminderSettingsCard({super.key});
+
+  @override
+  ConsumerState<AndroidReminderSettingsCard> createState() =>
+      _AndroidReminderSettingsCardState();
+}
+
+class _AndroidReminderSettingsCardState
+    extends ConsumerState<AndroidReminderSettingsCard> {
+  static const String _deviceId = 'android-local';
+  Map<String, dynamic>? _prefs;
+  bool _busy = false;
+  bool _failed = false;
+  bool _blocked = false;
+
+  bool get _ar => ref.read(displayLanguageProvider).startsWith('ar');
+  String _copy(String en, String ar) => _ar ? ar : en;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load({bool refresh = false}) async {
+    try {
+      final cached = ref.read(pushStatusCacheProvider);
+      final Map<String, dynamic> status =
+          !refresh && cached != null && cached.deviceId == _deviceId
+              ? cached.status
+              : await ref.read(apiClientProvider).pushStatus(_deviceId);
+      if (!mounted) return;
+      ref.read(pushStatusCacheProvider.notifier).state =
+          (deviceId: _deviceId, status: status);
+      setState(() {
+        _prefs = Map<String, dynamic>.from(status['preferences'] as Map);
+        _failed = false;
+      });
+    } on Object {
+      if (mounted) setState(() => _failed = true);
+    }
+  }
+
+  Future<void> _save(String key, Object value) async {
+    final Map<String, dynamic> prefs = Map<String, dynamic>.from(_prefs!);
+    prefs[key] = value;
+    setState(() {
+      _busy = true;
+      _failed = false;
+    });
+    try {
+      await ref.read(apiClientProvider).savePushPreferences(prefs);
+      await _load(refresh: true);
+      await ref.read(localReminderSyncProvider).sync();
+    } on Object {
+      if (mounted) setState(() => _failed = true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _toggle(bool value) async {
+    if (value) {
+      // Asked here, when the Player turns reminders on, never on first open.
+      final bool granted =
+          await ref.read(localReminderSchedulerProvider).requestPermission();
+      if (!mounted) return;
+      setState(() => _blocked = !granted);
+      if (!granted) return;
+    }
+    await _save('workout_reminders', value);
+  }
+
+  Future<void> _time(String key) async {
+    final List<String> parts = (_prefs![key] as String).split(':');
+    final TimeOfDay? selected = await showTimePicker(
+      context: context,
+      initialTime:
+          TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1])),
+    );
+    if (selected != null && mounted) {
+      await _save(
+        key,
+        '${selected.hour.toString().padLeft(2, '0')}:${selected.minute.toString().padLeft(2, '0')}',
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    ref.watch(displayLanguageProvider);
+    final Map<String, dynamic>? prefs = _prefs;
+    return Card(
+      key: const Key('android_reminder_settings'),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              _copy('Workout reminders', 'تذكيرات التدريب'),
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            Text(
+              _copy(
+                'A gentle reminder on your training days, even when you are offline.',
+                'تذكير لطيف في أيام تدريبك، حتى دون اتصال بالإنترنت.',
+              ),
+            ),
+            if (_failed) ...<Widget>[
+              Text(
+                _copy(
+                  'Could not save or load reminders. Please retry.',
+                  'تعذّر حفظ التذكيرات أو تحميلها. أعد المحاولة.',
+                ),
+              ),
+              TextButton(
+                onPressed: _busy ? null : () => _load(refresh: true),
+                child: Text(_copy('Retry', 'إعادة المحاولة')),
+              ),
+            ],
+            if (_blocked)
+              Text(
+                _copy(
+                  'Notifications are blocked. Allow notifications for MAYOS in your phone settings, then turn reminders on again.',
+                  'الإشعارات محظورة. اسمح بإشعارات MAYOS من إعدادات الهاتف، ثم شغّل التذكيرات مرة أخرى.',
+                ),
+              ),
+            if (prefs == null && !_failed) const LinearProgressIndicator(),
+            if (prefs != null) ...<Widget>[
+              SwitchListTile(
+                key: const Key('android_workout_reminders_switch'),
+                contentPadding: EdgeInsets.zero,
+                title: Text(_copy('Workout reminders', 'تذكيرات التدريب')),
+                value: prefs['workout_reminders'] == true,
+                onChanged: _busy ? null : _toggle,
+              ),
+              for (final (String, String, String) item in <(String, String, String)>[
+                ('reminder_time', 'Reminder time', 'وقت التذكير'),
+                ('quiet_start', 'Quiet hours start', 'بداية ساعات الهدوء'),
+                ('quiet_end', 'Quiet hours end', 'نهاية ساعات الهدوء'),
+              ])
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(_copy(item.$2, item.$3)),
+                  trailing: Text(prefs[item.$1] as String),
+                  onTap: _busy ? null : () => _time(item.$1),
+                ),
+              Text(
+                _copy(
+                  'Set training days in Profile.',
+                  'حدد أيام التدريب في الملف الشخصي.',
                 ),
               ),
             ],

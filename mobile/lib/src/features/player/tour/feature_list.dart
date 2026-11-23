@@ -64,6 +64,17 @@ List<String> validateFeatureEntries(
 
 const List<FeatureEntry> featureList = <FeatureEntry>[
   FeatureEntry(
+    id: 'android_offline_reminders',
+    titleEn: 'Workout reminders on Android',
+    sentenceEn: 'Turn on workout reminders in Settings on Android: they arrive on your training days at your time, outside quiet hours, even offline.',
+    titleAr: 'تذكيرات التدريب على أندرويد',
+    sentenceAr: 'شغّل تذكيرات التدريب من الإعدادات على أندرويد: تصلك في أيام تدريبك في الوقت الذي تختاره، خارج ساعات الهدوء، حتى دون اتصال.',
+    target: 'push_notifications',
+    location: TourRouteLocation(settingsPath),
+    release: 9,
+    audience: 'lifter',
+  ),
+  FeatureEntry(
     id: 'one_row_of_working_sets',
     titleEn: 'One row of working sets',
     sentenceEn: 'New programs give each exercise one row of working sets, and an exercise trained before a related compound stops 2 reps short of failure.',

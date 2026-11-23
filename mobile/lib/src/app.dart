@@ -54,6 +54,8 @@ class _MayosAppState extends ConsumerState<MayosApp>
   @override
   void initState() {
     super.initState();
+    // Starts the offline workout reminder sync, which follows sign-in (#840).
+    ref.read(localReminderSyncProvider);
     _analyticsAuthSubscription = ref.listenManual<AuthState>(
       authControllerProvider,
       (AuthState? previous, AuthState next) {
@@ -180,6 +182,8 @@ class _MayosAppState extends ConsumerState<MayosApp>
       // Grants/revocations can happen elsewhere; refresh live capabilities.
       unawaited(ref.read(authControllerProvider.notifier).refreshAccount());
       ref.read(draftSyncServiceProvider).resumeForeground();
+      // Picks up program, training-day and setting changes made elsewhere (#840).
+      unawaited(ref.read(localReminderSyncProvider).sync());
     } else if (state == AppLifecycleState.paused) {
       // Offline drafts sync only while the app is in the foreground (ADR 020/033).
       ref.read(draftSyncServiceProvider).pauseForeground();
