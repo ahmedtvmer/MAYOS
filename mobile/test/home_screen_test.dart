@@ -1564,12 +1564,6 @@ void main() {
       }
       if (entry.release == currentFeatureRelease) {
         final Finder realControl = switch (entry.id) {
-          'cable_y_raise_demo' => find.byKey(
-              container.read(tourTargetRegistryProvider)['exercise_demo_media']!.key,
-            ),
-          'exercise_alternatives' => find.byKey(
-              container.read(tourTargetRegistryProvider)['program']!.key,
-            ),
           'weak_points' => find.byKey(const Key('profile_weak_points_section')),
           'assistant_why' || 'assistant_volume' || 'assistant_exercise_lookup' =>
             find.byKey(const Key('chat_composer')),
@@ -1592,10 +1586,9 @@ void main() {
           'assistant_feedback' => find.byKey(const Key('assistant_feedback_vote_buttons')).evaluate().isNotEmpty
               ? find.byKey(const Key('assistant_feedback_vote_buttons'))
               : find.byKey(const Key('chat_composer_bar')),
-          'reverse_curl_forearms' => find.byKey(
-              container.read(tourTargetRegistryProvider)['program']!.key,
-            ),
-          _ => find.text(entry.titleEn),
+          // Any other entry: the control its registered TourTarget wraps, so a
+          // new release entry needs no arm here (#751).
+          _ => _registeredTourTarget(container, entry),
         };
         expect(realControl, findsOneWidget, reason: entry.id);
         final Rect cutout = tester.getRect(find.byKey(const ValueKey<String>('tour_spotlight_cutout')));
@@ -1768,12 +1761,6 @@ void main() {
       }
       if (entry.release == currentFeatureRelease) {
         final Finder realControl = switch (entry.id) {
-          'cable_y_raise_demo' => find.byKey(
-              container.read(tourTargetRegistryProvider)['exercise_demo_media']!.key,
-            ),
-          'exercise_alternatives' => find.byKey(
-              container.read(tourTargetRegistryProvider)['program']!.key,
-            ),
           'weak_points' => find.byKey(const Key('profile_weak_points_section')),
           'assistant_why' || 'assistant_volume' || 'assistant_exercise_lookup' =>
             find.byKey(const Key('chat_composer')),
@@ -1796,10 +1783,9 @@ void main() {
           'assistant_feedback' => find.byKey(const Key('assistant_feedback_vote_buttons')).evaluate().isNotEmpty
               ? find.byKey(const Key('assistant_feedback_vote_buttons'))
               : find.byKey(const Key('chat_composer_bar')),
-          'reverse_curl_forearms' => find.byKey(
-              container.read(tourTargetRegistryProvider)['program']!.key,
-            ),
-          _ => find.text(entry.titleEn),
+          // Any other entry: the control its registered TourTarget wraps, so a
+          // new release entry needs no arm here (#751).
+          _ => _registeredTourTarget(container, entry),
         };
         expect(realControl, findsOneWidget, reason: entry.id);
         final Rect cutout = tester.getRect(find.byKey(const ValueKey<String>('tour_spotlight_cutout')));
@@ -2765,4 +2751,12 @@ void main() {
       }
     }
   });
+}
+
+
+/// The widget registered for [entry]'s TourTarget, or its title when the
+/// target is not on screen.
+Finder _registeredTourTarget(ProviderContainer container, FeatureEntry entry) {
+  final Key? key = container.read(tourTargetRegistryProvider)[entry.target]?.key;
+  return key == null ? find.text(entry.titleEn) : find.byKey(key);
 }
