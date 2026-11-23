@@ -5,6 +5,7 @@ import '../../../core/api_client.dart';
 import '../../../core/display_language/controller.dart';
 import '../../../core/display_language/food_swap_copy.dart';
 import '../../../core/display_language/food_swap_request_copy.dart';
+import '../../../core/display_language/nutrition_copy.dart';
 import '../../../core/display_language/planned_meals_copy.dart';
 import '../../../core/food_log_models.dart';
 import '../../../core/food_swap_models.dart';
@@ -287,17 +288,31 @@ class _TodayMealsState extends ConsumerState<TodayMeals> {
           constraints.maxWidth,
           foodWidth,
         );
+        final List<String> columns = _columnNames(copy);
         return Column(
           children: <Widget>[
-            _tableRow(_headerRow(copy), foodWidth, numberWidth),
+            _tableRow(_headerRow(copy), foodWidth, numberWidth, columns),
             for (final _MealTableRow row in _mealRows(plan, copy))
-              _tableRow(row, foodWidth, numberWidth),
-            _tableRow(_dayTotalRow(plan, copy), foodWidth, numberWidth),
-            _tableRow(_targetRow(plan, copy), foodWidth, numberWidth),
+              _tableRow(row, foodWidth, numberWidth, columns),
+            _tableRow(_dayTotalRow(plan, copy), foodWidth, numberWidth, columns),
+            _tableRow(_targetRow(plan, copy), foodWidth, numberWidth, columns),
           ],
         );
       },
     );
+  }
+
+  /// Spoken names of the number columns, so a screen reader says
+  /// "Protein: 30" instead of a bare number (#753).
+  List<String> _columnNames(PlannedMealsCopy copy) {
+    final NutritionCopy nutrition = NutritionCopy(copy.language);
+    return <String>[
+      copy.amountColumn,
+      nutrition.calories,
+      nutrition.protein,
+      nutrition.carbsShort,
+      nutrition.fat,
+    ];
   }
 
   double _foodColumnWidth(double tableWidth) => tableWidth < 170
@@ -336,6 +351,8 @@ class _TodayMealsState extends ConsumerState<TodayMeals> {
         food: _mealCell(meal, copy),
         values: <String>['', ..._macroValues(meal.totals)],
         kind: _MealTableRowKind.meal,
+        // A logged meal's summary row is muted like its foods (#753).
+        muted: _isLogged(meal),
       );
 
   _MealTableRow _foodRow(
@@ -386,8 +403,12 @@ class _TodayMealsState extends ConsumerState<TodayMeals> {
       Expanded(
         child: Text(
           _mealName(meal, copy),
-          style: Theme.of(context).textTheme.titleSmall
-              ?.copyWith(fontWeight: FontWeight.bold),
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.bold,
+            color: _isLogged(meal)
+                ? Theme.of(context).colorScheme.onSurfaceVariant
+                : null,
+          ),
         ),
       ),
       if (_isLogged(meal))
@@ -506,7 +527,12 @@ class _TodayMealsState extends ConsumerState<TodayMeals> {
     icon: Icon(icon, size: 18),
   );
 
-  Widget _tableRow(_MealTableRow row, double foodWidth, double numberWidth) =>
+  Widget _tableRow(
+    _MealTableRow row,
+    double foodWidth,
+    double numberWidth,
+    List<String> columns,
+  ) =>
       Container(
         key: Key('planned_meals_row_${row.id}'),
         decoration: _rowDecoration(row),
@@ -514,7 +540,7 @@ class _TodayMealsState extends ConsumerState<TodayMeals> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             _fixedFoodCell(row, foodWidth),
-            Expanded(child: _scrollingNumberCells(row, numberWidth)),
+            Expanded(child: _scrollingNumberCells(row, numberWidth, columns)),
           ],
         ),
       );
@@ -542,7 +568,10 @@ class _TodayMealsState extends ConsumerState<TodayMeals> {
     width: width,
     child: Padding(
       padding: EdgeInsetsDirectional.only(
-        start: MayosSpacing.xs,
+        // Food rows sit indented under their meal (#753).
+        start: row.kind == _MealTableRowKind.food
+            ? MayosSpacing.xs + MayosSpacing.md
+            : MayosSpacing.xs,
         end: MayosSpacing.xs,
         top: MayosSpacing.xs,
         bottom: MayosSpacing.xs,
@@ -551,7 +580,11 @@ class _TodayMealsState extends ConsumerState<TodayMeals> {
     ),
   );
 
-  Widget _scrollingNumberCells(_MealTableRow row, double width) {
+  Widget _scrollingNumberCells(
+    _MealTableRow row,
+    double width,
+    List<String> columns,
+  ) {
     final TextStyle? style =
         (row.kind == _MealTableRowKind.header
                 ? Theme.of(context).textTheme.labelLarge
@@ -572,26 +605,43 @@ class _TodayMealsState extends ConsumerState<TodayMeals> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            for (final String value in row.values)
-              _numberCell(value, width, style),
+            for (final (int index, String value) in row.values.indexed)
+              _numberCell(
+                value,
+                width,
+                style,
+                label: row.kind == _MealTableRowKind.header || value.isEmpty
+                    ? null
+                    : '${columns[index]}: $value',
+              ),
           ],
         ),
       ),
     );
   }
 
-  Widget _numberCell(String value, double width, TextStyle? style) => SizedBox(
-    width: width,
-    child: Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: MayosSpacing.xxs,
-        vertical: MayosSpacing.xs,
+  Widget _numberCell(
+    String value,
+    double width,
+    TextStyle? style, {
+    String? label,
+  }) {
+    final Widget cell = SizedBox(
+      width: width,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: MayosSpacing.xxs,
+          vertical: MayosSpacing.xs,
+        ),
+        child: Center(
+          child: Text(value, textAlign: TextAlign.center, style: style),
+        ),
       ),
-      child: Center(
-        child: Text(value, textAlign: TextAlign.center, style: style),
-      ),
-    ),
-  );
+    );
+    return label == null
+        ? cell
+        : Semantics(label: label, excludeSemantics: true, child: cell);
+  }
 
   ScrollController _tableScrollController(String rowId) =>
       _tableScrollControllers.putIfAbsent(rowId, ScrollController.new);
