@@ -204,10 +204,64 @@ _PHYSICIAN_PREFIX_RE = re.compile(
     re.IGNORECASE,
 )
 
+# #865: a question is never physician advice. The lookahead keeps clipped
+# statements ("should avoid squats", "am not allowed to bench") as statements.
+_QUESTION_LEAD_RE = re.compile(
+    r"^(?:(?:so|and|but|ok|okay|hey|hi|well|also)[\s,]+)?(?:"
+    r"(?:is|are|am|was|were|does|did|has|should|could|would|will|may)\b"
+    r"(?!\s+(?:not|avoid|never|be|been|told|advised|cleared)\b)"
+    r"|(?:can|do|have)\s+(?:i|we|you|they)\b"
+    r"|(?:what|which|when|why|how|who|where)\b)"
+    r"|^(?:هل|ينفع|ممكن|إزاي|ازاي|ليه|لماذا|متى|امتى|إمتى|كيف|أقدر|اقدر)(?=\s)",
+    re.IGNORECASE,
+)
+_REPORTED_ADVICE_RE = re.compile(
+    r"^(?:(?:my|the)\s+)?(?:physician|doctor|clinician)\s+(?:said|told|advised|cleared|approved)\b"
+    r"|^(?:ال)?(?:دكتور|طبيب)(?:ي)?\s+(?:قال|سمح|منع|أكد)",
+    re.IGNORECASE,
+)
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?؟])\s+|\n+")
+
+
+def _sentences(message: str) -> list[str]:
+    return [part.strip() for part in _SENTENCE_SPLIT_RE.split(message.strip()) if part.strip()]
+
+
+def _is_question(text: str) -> bool:
+    return bool(_QUESTION_LEAD_RE.match(text)) or text.endswith(("?", "؟"))
+
+
+def _reported_wording(message: str) -> str:
+    """The message without its questions (#865).
+
+    A question never reports advice, but a restriction stated next to one
+    ("squat is not cleared, what instead?") must not be lost.
+    """
+    kept = []
+    for sentence in _sentences(message):
+        if _REPORTED_ADVICE_RE.match(sentence) or not _is_question(sentence):
+            kept.append(sentence)
+            continue
+        kept.extend(
+            clause
+            for clause in (part.strip() for part in re.split(r"[,،;]", sentence))
+            if _REPORTED_ADVICE_RE.match(clause)
+            or (_CLEARANCE_NEGATIVE_RE.search(clause) and not _is_question(clause))
+        )
+    return " ".join(kept)
+
+
+def _asked_sentences_removed(message: str) -> str:
+    """Drops only sentences that open as a question: "I saw a doctor, can I
+    train?" still reports the visit."""
+    return " ".join(
+        sentence for sentence in _sentences(message) if not _QUESTION_LEAD_RE.match(sentence)
+    )
+
 
 def parse_clearance_statement(message: str, pending_exercise_name: str | None = None) -> dict[str, str] | None:
     """Extracts only explicit player wording; the model never supplies this verdict."""
-    text = message.strip()
+    text = _reported_wording(message)
     if not text:
         return None
     if _CLEARANCE_LIMITS_RE.search(text):
@@ -637,13 +691,13 @@ def has_matching_status_update(ledger: Any, message: str) -> bool:
 
 
 def _status_from_message(message: str) -> str | None:
-    if _PHYSICIAN_SEEN_RE.search(message):
+    if _PHYSICIAN_SEEN_RE.search(_asked_sentences_removed(message)):
         return "physician_seen"
     return None
 
 
 def full_physician_clearance(message: str) -> bool:
-    return bool(_FULL_PHYSICIAN_CLEARANCE_RE.search(message))
+    return bool(_FULL_PHYSICIAN_CLEARANCE_RE.search(_asked_sentences_removed(message)))
 
 
 def pending_resolution(ledger: Any) -> dict[str, Any] | None:
