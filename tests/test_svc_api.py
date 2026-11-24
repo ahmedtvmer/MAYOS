@@ -1361,7 +1361,7 @@ def test_arabic_routine_slot_update_reply_uses_egyptian_copy_over_http(
     monkeypatch.setattr(
         assistant_graph,
         "substitute_program_exercise",
-        lambda *_args: {"ok": True, "replacement": replacement},
+        lambda *_args: {"ok": True, "replacement": replacement, "day_names": [day.day_name]},
     )
 
     with client.stream(
