@@ -1,4 +1,6 @@
-from pydantic import BaseModel, Field, computed_field
+from typing import Any
+
+from pydantic import BaseModel, Field, computed_field, model_validator
 
 
 class DimensionScore(BaseModel):
@@ -6,6 +8,14 @@ class DimensionScore(BaseModel):
     rationale: str = Field(
         description="Strictly 1 concise sentence under 15 words citing exact output words."
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_bare_number_score(cls, value: Any) -> Any:
+        """Some judges answer a dimension with a bare number, not the full object."""
+        if isinstance(value, (int, float, str)) and not isinstance(value, bool):
+            return {"score": value, "rationale": ""}
+        return value
 
     def passes(self, threshold: int = 4) -> bool:
         return self.score >= threshold

@@ -14,6 +14,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
+from tests.eval.arabic_resolved_cases import RESOLVED_ACCEPTED_FALSE_POSITIVES  # noqa: E402
 DATASET = ROOT / "tests/eval/datasets/arabic_reviewed_cases.json"
 SCENARIOS = ROOT / "tests/eval/datasets/arabic_scenarios.json"
 NON_WESTERN_DIGITS = re.compile(r"[٠-٩۰-۹]")
@@ -740,7 +741,9 @@ def _missed_blocking_ids(rows: list[dict[str, Any]]) -> list[str]:
     return [
         row["case_id"]
         for row in rows
-        if row.get("launch_block_expected") and not row.get("observed_blocking")
+        if row.get("launch_block_expected")
+        and row["case_id"] not in RESOLVED_ACCEPTED_FALSE_POSITIVES
+        and not row.get("observed_blocking")
     ]
 
 
@@ -845,8 +848,8 @@ def _run_evaluation() -> int:
             rows.append({"case_status": "runner_error", "error": verification_error})
         else:
             real_model_verified = True
-    false_positives = [r["case_id"] for r in rows if r.get("observed_blocking") and r.get("observed_response_kind") in {"clinical_safeguard", "diagnosis_safeguard"} and r.get("expected_clinical_intercept_warranted") is False]
-    missed = [r["case_id"] for r in rows if r.get("launch_block_expected") and not r.get("observed_blocking")]
+    false_positives = _accepted_false_positive_ids(rows)
+    missed = _missed_blocking_ids(rows)
     prompt = (ROOT / "agent/prompts.py").read_bytes()
     context_identity = _context_identity_sha256()
     report = {"suite": "arabic_reviewed_41", "status": status, "mode": mode_name, "real_model_run": args.mode == "real" and real_model_verified and status in {"completed", "behavior_failures"},

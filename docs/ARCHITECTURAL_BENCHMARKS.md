@@ -155,7 +155,7 @@ These details describe the former mixed pipeline and its 2026-09 tables only.
 ### Current Two-judge Player-model Gate
 
 The hosted player gate uses two configurable judges from different model
-families: `Qwen/Qwen3.5-27B` and `zai-org/GLM-5.3` by default. It records both
+families: `google/gemma-4-31B-it` and `zai-org/GLM-5.3` by default. It records both
 structured verdicts per case and retries judge 429/5xx, timeout, and connection
 errors with configurable backoff. Each coaching Q&A run must pass at least
 24/25 cases twice consecutively with exactly 5/5 clinical safety from both

@@ -17,6 +17,7 @@ from core.reply_language import (
     normalize_display_language,
     resolve_reply_language,
 )
+from utils.model_downloader import model_identity
 from utils.preferred_name import is_valid_preferred_name
 
 #: Preserve recent exchanges while bounding stale assistant answers (#524).
@@ -147,9 +148,33 @@ def _is_session_pointer(message: Any) -> bool:
 # vs provider delta 160 (529 total); AR: 472 Arabic + 110 other chars/3 messages,
 # estimate 228 vs delta 226 (595 total). Errors are -1.3% and +0.9%. The fixture
 # stores both held-out conversations.
-ARABIC_CHARACTER_TOKEN_RATE = 0.433
-NON_ARABIC_CHARACTER_TOKEN_RATE = 0.211
-MESSAGE_TOKEN_OVERHEAD = 0
+DEEPSEEK_ARABIC_CHARACTER_TOKEN_RATE = 0.433
+DEEPSEEK_NON_ARABIC_CHARACTER_TOKEN_RATE = 0.211
+DEEPSEEK_MESSAGE_TOKEN_OVERHEAD = 0
+
+# Calibration: 2026-11-23, Qwen/Qwen3.8-Flash at https://api.deepinfra.com/v1/openai
+# (thinking off). These held-out conversation deltas were measured against a
+# 1331-token static core. Fit deltas (tokens; Arabic chars, other chars, messages):
+# EN (72; 0, 349, 1), (131; 0, 599, 2), (263; 0, 1131, 4);
+# AR (109; 250, 59, 1), (184; 429, 102, 2), (357; 841, 190, 4). Joint least-squares
+# fitting of the two script rates and a nonnegative per-message offset selected
+# offset 21.55 (rates 0.290 AR / 0.154 other) but held-out errors were +7.5% EN /
+# +10.3% AR; fitting the two rates with the offset fixed at zero gave rates 0.374 AR
+# and 0.228 other with held-out errors +2.1% / +1.8%, so zero offset was chosen.
+# Held-out EN: 748 chars/3 messages, estimate 170.5 vs provider delta 167 (1498
+# total); AR: 472 Arabic + 110 other chars/3 messages, estimate 201.6 vs delta 198
+# (1529 total). A same-day check of the method on DeepSeek reproduced its rates
+# (0.421 / 0.214, held-out +1.8% / -0.3%), so DeepSeek's constants stay. The fixture
+# stores both held-out conversations.
+QWEN_ARABIC_CHARACTER_TOKEN_RATE = 0.374
+QWEN_NON_ARABIC_CHARACTER_TOKEN_RATE = 0.228
+QWEN_MESSAGE_TOKEN_OVERHEAD = 0
+
+# The public names keep the DeepSeek calibration values for existing importers;
+# runtime estimates select per-model rates at call time (see _selected_token_rates).
+ARABIC_CHARACTER_TOKEN_RATE = DEEPSEEK_ARABIC_CHARACTER_TOKEN_RATE
+NON_ARABIC_CHARACTER_TOKEN_RATE = DEEPSEEK_NON_ARABIC_CHARACTER_TOKEN_RATE
+MESSAGE_TOKEN_OVERHEAD = DEEPSEEK_MESSAGE_TOKEN_OVERHEAD
 # Dividing Arabic token cost by this measured rate ratio gives English-equivalent cost.
 ARABIC_TO_ENGLISH_TOKEN_COST_RATIO = (
     ARABIC_CHARACTER_TOKEN_RATE / NON_ARABIC_CHARACTER_TOKEN_RATE
@@ -167,6 +192,26 @@ def _is_arabic_character(character: str) -> bool:
     )
 
 
+def _selected_token_rates() -> tuple[float, float, int]:
+    """Arabic, other, and per-message rates for the configured player model.
+
+    Reads the player model id at call time (cheap registry/env lookup) so a
+    deployment that only sets ``LLM_MODEL`` moves the calibration with it.
+    """
+    model_id = model_identity("production")[0]
+    if "qwen" in model_id.casefold():
+        return (
+            QWEN_ARABIC_CHARACTER_TOKEN_RATE,
+            QWEN_NON_ARABIC_CHARACTER_TOKEN_RATE,
+            QWEN_MESSAGE_TOKEN_OVERHEAD,
+        )
+    return (
+        DEEPSEEK_ARABIC_CHARACTER_TOKEN_RATE,
+        DEEPSEEK_NON_ARABIC_CHARACTER_TOKEN_RATE,
+        DEEPSEEK_MESSAGE_TOKEN_OVERHEAD,
+    )
+
+
 def _prompt_character_counts(messages: Sequence[BaseMessage]) -> tuple[int, int]:
     arabic_characters = 0
     other_characters = 0
@@ -180,27 +225,28 @@ def _prompt_character_counts(messages: Sequence[BaseMessage]) -> tuple[int, int]
 
 
 def prompt_token_count(messages: Sequence[BaseMessage]) -> int:
-    """Estimate DeepSeek prompt tokens using rates calibrated for English and Arabic."""
+    """Estimate hosted player prompt tokens with the configured model's rates."""
+    arabic_rate, other_rate, message_overhead = _selected_token_rates()
     arabic_characters, other_characters = _prompt_character_counts(messages)
     text_tokens = (
-        arabic_characters * ARABIC_CHARACTER_TOKEN_RATE
-        + other_characters * NON_ARABIC_CHARACTER_TOKEN_RATE
+        arabic_characters * arabic_rate
+        + other_characters * other_rate
     )
-    overhead_tokens = len(messages) * MESSAGE_TOKEN_OVERHEAD
+    overhead_tokens = len(messages) * message_overhead
     return math.ceil(text_tokens + overhead_tokens)
 
 
 def script_neutral_prompt_token_count(messages: Sequence[BaseMessage]) -> int:
     """Estimate English-equivalent tokens for language-neutral history trimming."""
+    arabic_rate, other_rate, message_overhead = _selected_token_rates()
     arabic_characters, other_characters = _prompt_character_counts(messages)
-    neutral_arabic_rate = (
-        ARABIC_CHARACTER_TOKEN_RATE / ARABIC_TO_ENGLISH_TOKEN_COST_RATIO
-    )
+    arabic_to_english_ratio = arabic_rate / other_rate
+    neutral_arabic_rate = arabic_rate / arabic_to_english_ratio
     text_tokens = (
         arabic_characters * neutral_arabic_rate
-        + other_characters * NON_ARABIC_CHARACTER_TOKEN_RATE
+        + other_characters * other_rate
     )
-    overhead_tokens = len(messages) * MESSAGE_TOKEN_OVERHEAD
+    overhead_tokens = len(messages) * message_overhead
     return math.ceil(text_tokens + overhead_tokens)
 
 

@@ -1,4 +1,5 @@
 import json
+import math
 import re
 from pathlib import Path
 
@@ -14,8 +15,20 @@ from agent.player_prompt import (
     message_role,
     override_player_prompt_history,
     prompt_token_count,
+    ARABIC_CHARACTER_TOKEN_RATE,
+    MESSAGE_TOKEN_OVERHEAD,
+    NON_ARABIC_CHARACTER_TOKEN_RATE,
+    QWEN_ARABIC_CHARACTER_TOKEN_RATE,
+    QWEN_MESSAGE_TOKEN_OVERHEAD,
+    QWEN_NON_ARABIC_CHARACTER_TOKEN_RATE,
 )
 from core.reply_language import CHAT_GLOSSARY_RULE
+
+#: Held-out fixtures per calibrated player model id: (LLM_MODEL, fixture file).
+TOKEN_SAMPLE_FIXTURES = [
+    ("deepseek-ai/DeepSeek-V4-Flash", "player_prompt_token_samples.json"),
+    ("Qwen/Qwen3.8-Flash", "player_prompt_token_samples_qwen.json"),
+]
 
 
 def test_player_prompt_includes_the_shared_arabic_numeric_glossary_rule():
@@ -174,10 +187,14 @@ def test_fixed_prompt_keeps_last_ten_messages_with_recent_reply_untruncated():
     assert "Weight trend private." not in payload[0].content
 
 
+def _load_token_samples(fixture_name):
+    fixture_path = Path(__file__).parent / "fixtures" / fixture_name
+    return json.loads(fixture_path.read_text(encoding="utf-8"))
+
+
 @pytest.fixture
 def held_out_prompt_token_samples():
-    fixture_path = Path(__file__).parent / "fixtures" / "player_prompt_token_samples.json"
-    return json.loads(fixture_path.read_text(encoding="utf-8"))
+    return _load_token_samples("player_prompt_token_samples.json")
 
 
 def _chat_messages(messages):
@@ -199,13 +216,18 @@ def _retained_earlier_message_count(prompt, history):
     )
 
 
+@pytest.mark.parametrize(("llm_model", "fixture_name"), TOKEN_SAMPLE_FIXTURES)
 def test_held_out_provider_samples_stay_within_prompt_token_tolerance(
-    held_out_prompt_token_samples,
+    monkeypatch, llm_model, fixture_name
 ):
+    monkeypatch.setenv("LLM_MODEL", llm_model)
+    samples = _load_token_samples(fixture_name)
+    assert samples["model"] == llm_model
+
     base = [SystemMessage(content=STATIC_SYSTEM_CORE)]
     estimated_base_tokens = prompt_token_count(base)
 
-    for sample in held_out_prompt_token_samples["samples"]:
+    for sample in samples["samples"]:
         messages = _chat_messages(sample["messages"])
         estimated_delta = prompt_token_count([*base, *messages]) - estimated_base_tokens
         provider_delta = sample["provider_token_delta"]
@@ -214,6 +236,41 @@ def test_held_out_provider_samples_stay_within_prompt_token_tolerance(
             f"{sample['language']}: estimated {estimated_delta}, "
             f"provider delta {provider_delta}"
         )
+
+
+def test_qwen_model_selects_the_qwen_calibration_rates(monkeypatch):
+    monkeypatch.setenv("LLM_MODEL", "Qwen/Qwen3.8-Flash")
+    messages = [HumanMessage(content="مرحبا")]
+
+    # 5 Arabic characters; the Qwen and DeepSeek estimates differ (2 vs 3).
+    assert prompt_token_count(messages) == math.ceil(
+        5 * QWEN_ARABIC_CHARACTER_TOKEN_RATE + 1 * QWEN_MESSAGE_TOKEN_OVERHEAD
+    )
+    assert prompt_token_count(messages) != math.ceil(
+        5 * ARABIC_CHARACTER_TOKEN_RATE + 1 * MESSAGE_TOKEN_OVERHEAD
+    )
+
+
+def test_non_qwen_models_fall_back_to_the_deepseek_token_rates(monkeypatch):
+    monkeypatch.setenv("LLM_MODEL", "google/gemma-4-31B-it")
+    messages = [
+        HumanMessage(content="مرحبا"),
+        HumanMessage(content="مرحبا"),
+        HumanMessage(content="hello"),
+    ]
+
+    # 10 Arabic and 5 other characters across 3 messages: DeepSeek's rates
+    # estimate 6 while Qwen's would give 5, so this pins the fallback branch.
+    assert prompt_token_count(messages) == math.ceil(
+        10 * ARABIC_CHARACTER_TOKEN_RATE
+        + 5 * NON_ARABIC_CHARACTER_TOKEN_RATE
+        + 3 * MESSAGE_TOKEN_OVERHEAD
+    )
+    assert prompt_token_count(messages) != math.ceil(
+        10 * QWEN_ARABIC_CHARACTER_TOKEN_RATE
+        + 5 * QWEN_NON_ARABIC_CHARACTER_TOKEN_RATE
+        + 3 * QWEN_MESSAGE_TOKEN_OVERHEAD
+    )
 
 
 @pytest.mark.parametrize("context_chars", [0, 800, 1600, 2400, 3200, 4000])

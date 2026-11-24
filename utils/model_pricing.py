@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_MODEL_PRICING: dict[str, dict[str, float]] = {
     "Qwen/Qwen3.5-9B": {"input": 0.10, "output": 0.15},
     "Qwen/Qwen3.5-27B": {"input": 0.26, "output": 2.60},
+    "Qwen/Qwen3.8-Flash": {"input": 0.113, "output": 0.382},
     "deepseek-ai/DeepSeek-V4-Flash": {
         "input": 0.09,
         "cached_input": 0.018,

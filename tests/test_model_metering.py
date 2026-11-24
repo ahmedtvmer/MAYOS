@@ -1484,7 +1484,7 @@ def test_resolve_split_meters_only_model_path_through_injected_inference(api, mo
     account_id = _account_id(db, "coach")
     fake = _fake_model("deepseek-ai/DeepSeek-V4-Flash")
     fake.reset([get_default_split(3)])
-    monkeypatch.setattr(program_rules, "llm", fake)
+    monkeypatch.setattr(program_rules, "program_llm", fake)
 
     scope = InferenceScope(
         account_id=account_id,

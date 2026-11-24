@@ -76,6 +76,9 @@ class CallResult:
     response: Any = None
     attempts: int = 0
     error: str | None = None
+    #: True when the final failure was a structured-parse error, i.e. the
+    #: judge answered but the evaluation still cannot read the answer.
+    unreadable_response: bool = False
 
 
 def configured_judges(environ: dict[str, str] | None = None) -> list[dict[str, str]]:
@@ -100,7 +103,7 @@ def configured_judges(environ: dict[str, str] | None = None) -> list[dict[str, s
 
 def _model_family(model_id: str) -> str:
     normalized = model_id.casefold()
-    for family in ("qwen", "glm", "deepseek", "llama", "claude", "gpt"):
+    for family in ("qwen", "glm", "deepseek", "llama", "claude", "gpt", "gemma"):
         if family in normalized:
             return family
     return model_id.split("/", maxsplit=1)[0].casefold()
@@ -187,7 +190,11 @@ def call_with_retry(
                 transient_retries += 1
                 sleeper(delay)
                 continue
-            return CallResult(attempts=attempts, error=_safe_error_message(error))
+            return CallResult(
+                attempts=attempts,
+                error=_safe_error_message(error),
+                unreadable_response=_structured_parse_error(error),
+            )
 
 
 def evaluate_report(
@@ -287,6 +294,8 @@ def _print_result_line(name: str, result: dict[str, Any]) -> None:
     ):
         if key in result:
             details.append(f"{label}={result[key]}")
+    if isinstance(result.get("unscored"), list):
+        details.append(f"unscored={len(result['unscored'])}")
     if "would_be_passed" in result:
         details.append(f"would-be gate={'PASS' if result['would_be_passed'] else 'FAIL'}")
     detail = f"; {'; '.join(details)}" if details else ""

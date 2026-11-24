@@ -76,6 +76,7 @@ def _install_scripted_chat_model(scripted_chat_model):
     model_downloader._judge_llm_instance = None
     model_downloader._coach_llm_instance = None
     model_downloader._coach_import_llm_instance = None
+    model_downloader._program_llm_instance = None
     return scripted_chat_model
 
 

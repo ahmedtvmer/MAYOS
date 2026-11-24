@@ -87,6 +87,7 @@ def _captured_player_requests(monkeypatch, call_site: str, *, streaming: bool = 
         max_retries=0,
     )
     monkeypatch.setattr(model_downloader, "_llm_instance", model)
+    monkeypatch.setattr(model_downloader, "_program_llm_instance", model)
     return request_bodies, client
 
 
