@@ -1599,7 +1599,10 @@ def _resolve_arabic_source(
         return None
     best_similarity = max(similarity for _, _, similarity in candidates)
     best_matches = [(day, exercise) for day, exercise, score in candidates if score == best_similarity]
-    if best_similarity < SUBSTITUTION_SOURCE_SIMILARITY_THRESHOLD or len(best_matches) != 1:
+    best_ids = {str(exercise.exercise_id) for _, exercise in best_matches}
+    # The same exercise on several days is one source, not an ambiguity; like the
+    # English resolver, the first day in program order holds the swap.
+    if best_similarity < SUBSTITUTION_SOURCE_SIMILARITY_THRESHOLD or len(best_ids) != 1:
         return None
     return best_matches[0]
 
