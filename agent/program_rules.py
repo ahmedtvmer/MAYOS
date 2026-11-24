@@ -287,6 +287,7 @@ SPLIT_FREQUENCY_NAMES: dict[tuple[str, int], str] = {
     ("anterior_posterior", 5): "Anterior / Posterior Split",
     ("ppl", 3): "Push / Pull / Legs",
     ("ppl_x_ul", 5): "PPL × UL",
+    ("ppl_x_chest_back_arms", 5): "PPL × Chest & Back × Arms",
     # Keep the old label readable so chat can recognize already-saved 5-day programs.
     ("ppl", 5): "Hybrid PPL / Upper-Lower",
 }

@@ -15,7 +15,7 @@ cardio.fat_loss_finisher, cardio.coach_option; day_order.full_body_distributed,
 day_order.full_body_glute_priority,
 day_order.upper_lower_alternating, day_order.female_upper_lower, day_order.arnold,
 day_order.arnold_x_ul, day_order.anterior_posterior, day_order.ppl,
-day_order.ppl_x_ul_spaces_leg_days. Change codes: change.substitution,
+day_order.ppl_x_ul_spaces_leg_days, day_order.ppl_x_chest_back_arms. Change codes: change.substitution,
 change.program_edit_removed, change.program_edit_trimmed,
 change.program_edit_reordered, change.program_edit_added,
 change.program_edit_raised, change.volume_review, change.coach_edit.
@@ -45,6 +45,7 @@ DAY_ORDER_ARNOLD_X_UL = "day_order.arnold_x_ul"
 DAY_ORDER_ANTERIOR_POSTERIOR = "day_order.anterior_posterior"
 DAY_ORDER_PPL = "day_order.ppl"
 DAY_ORDER_PPL_X_UL_SPACES_LEG_DAYS = "day_order.ppl_x_ul_spaces_leg_days"
+DAY_ORDER_PPL_X_CHEST_BACK_ARMS = "day_order.ppl_x_chest_back_arms"
 SELECTION_STAPLE = "selection.staple"
 SELECTION_EQUIPMENT_ACCESS_STAPLE = "selection.equipment_access_staple"
 SELECTION_SIGNATURE_MATCH = "selection.signature_match"
