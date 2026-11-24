@@ -295,6 +295,41 @@ def test_issue_808_partial_source_name_swaps_the_single_program_match(
     assert "Kneeling Crunch" not in leg_names
 
 
+def test_issue_808_same_exercise_on_two_days_is_one_source(program_store, monkeypatch):
+    # Staging 2026-11-24: Kneeling Crunch on Lower and Legs read as ambiguous and
+    # got the generic which-exercise question. The first day holds the swap, as in English.
+    before = _seed_program(
+        program_store,
+        {
+            "Lower": ["Kneeling Crunch", "barbell squat", "leg press"],
+            "Chest Day": ["Incline Dumbbell Press", "Chest Fly", "barbell row"],
+            "Legs": ["leg press", "barbell squat", "Kneeling Crunch"],
+        },
+    )
+    _scripted(
+        monkeypatch,
+        [{
+            "intent": "exercise_substitution",
+            "source_exercise": "Kneeling Crunch",
+            "target_exercise": "Plank",
+            "target_day": "",
+        }],
+        default_turn=COACHING_REPLY,
+    )
+    state = _turn("بدل ال crunch بال plank")
+
+    "".join(stream_assistant_turn(state, ledger=program_store.ledger, store=program_store))
+
+    after = program_store.ledger.get_active_program()
+    lower_names = [exercise.exercise_name for exercise in after.days[0].exercises]
+    legs_names = [exercise.exercise_name for exercise in after.days[2].exercises]
+    assert state["intent"] == "exercise_substitution"
+    assert state["program_updated"] is True
+    assert after.version == before.version + 1
+    assert "Plank" in lower_names and "Kneeling Crunch" not in lower_names
+    assert "Kneeling Crunch" in legs_names
+
+
 @pytest.mark.parametrize(
     ("message", "reply_prefix"),
     [
