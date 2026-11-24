@@ -560,7 +560,9 @@ def test_ambiguous_source_clarifies_without_mutation(fresh_store, monkeypatch):
     assert state["intent"] == "arabic_swap_clarification"
     assert state["program_updated"] is False
     assert after.version == before.version
-    assert response == ARABIC_SWAP_CLARIFICATION
+    # #808: two program exercises named by every requested word ask with the list.
+    assert response.startswith("هل تقصد ")
+    assert "Bench Press (Barbell)" in response and "Bench Press (Dumbbell)" in response
 
 
 @pytest.mark.parametrize(

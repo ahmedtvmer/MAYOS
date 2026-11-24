@@ -198,6 +198,44 @@ def test_active_program_volume_uses_reviewed_credits_once_per_main_group(
     assert "3541" in _exercise_ids_for_muscles(fresh_store, ["shoulders"])
 
 
+def test_active_program_weekly_totals_sum_muscle_totals_and_working_sets(
+    fresh_store, seed_exercise_curation
+):
+    """#808: one number for "how many sets a week", plus the plain set count."""
+    seed_exercise_curation(fresh_store, {
+        "3541": {
+            "display_name": "Incline Y-Raise (Dumbbell)",
+            "primary_muscle": "Traps",
+            "muscle_credits": "shoulders=1|traps=0.75",
+        },
+    })
+    program = PersistedProgramSchema(
+        program_name="Weekly totals",
+        split_type="Custom",
+        weekly_frequency=1,
+        days=[PersistedProgramDaySchema(
+            day_name="Shoulders",
+            day_order=1,
+            exercises=[PersistedProgramExerciseSchema(
+                exercise_id="3541",
+                exercise_name="Incline Y-Raise (Dumbbell)",
+                target_sets=2,
+                target_reps_min=8,
+                target_reps_max=12,
+                target_rpe=8,
+            )],
+        )],
+    )
+    fresh_store.ledger.save_training_program(program.model_dump())
+
+    result = _read_active_program(fresh_store.ledger, ActiveProgramArgs())
+
+    assert result["weekly_sets_total"] == 3.5  # shoulders 2 + traps 1.5
+    assert result["weekly_working_sets"] == 2
+    assert "weekly sets total" in result["how_mayos_counts"]["en"].lower()
+    assert "المجموعات العاملة الأسبوعي" in result["how_mayos_counts"]["ar"]
+
+
 def test_focus_volume_and_frequency_use_main_group_credits():
     exercises = {
         "press": SimpleNamespace(exercise_id="press", working_sets=2),

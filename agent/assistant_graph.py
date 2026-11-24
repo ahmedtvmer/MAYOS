@@ -1283,6 +1283,10 @@ def _classify_single_clause(
     if _is_food_log_query(c):
         return {"intent": "coaching_qa", "intent_metadata": {}, "query": c}
 
+    # A weekly sets/volume question about the program is coaching, not history (#808).
+    if _is_weekly_program_volume_question(c):
+        return {"intent": "coaching_qa", "intent_metadata": {}, "query": c}
+
     if _whole_session_query(c) or RE_EXERCISE_PERFORMANCE_QUERY.search(c) or RE_HISTORY_INDICATOR.search(c):
         return {"intent": "exercise_history", "intent_metadata": {"raw_query": c}, "query": c}
 
@@ -1600,6 +1604,151 @@ def _resolve_arabic_source(
     return best_matches[0]
 
 
+def _tied_program_sources(program: Any, source_name: str) -> tuple[float, list[Any]]:
+    """Top source similarity and the distinct exercises sharing it (#808)."""
+    source_stem = clean_movement_stem(source_name.lower())
+    scored: dict[str, tuple[float, Any]] = {}
+    for day in program.days:
+        for exercise in day.exercises:
+            similarity = _substitution_source_similarity(
+                source_name, source_stem, exercise
+            )
+            scored.setdefault(str(exercise.exercise_id), (similarity, exercise))
+    if not scored:
+        return 0.0, []
+    best_similarity = max(similarity for similarity, _ in scored.values())
+    tied = [
+        exercise
+        for similarity, exercise in scored.values()
+        if similarity == best_similarity
+    ]
+    return best_similarity, tied
+
+
+# --- Partial-name source resolution (#808) ----------------------------------
+# When the similarity rule finds no source, a named exercise can still be
+# placed by whole words: «ال crunch» names Kneeling Crunch. Shared by the
+# Arabic resolver and the English substitution node.
+
+_SOURCE_ARTICLE_WORDS = frozenset({"a", "an", "the", "ال"})
+
+
+def _requested_source_words(requested_name: str) -> list[str]:
+    """Requested words: lowercased, bare articles dropped and a attached Arabic
+    article «ال» stripped, so «ال crunch» and "the crunch" mean "crunch"."""
+    words: list[str] = []
+    for word in re.findall(r"\w+", requested_name.lower(), re.UNICODE):
+        if word in _SOURCE_ARTICLE_WORDS:
+            continue
+        if word.startswith("ال") and len(word) > 2:
+            word = word[2:]
+        if word and word not in words:
+            words.append(word)
+    return words
+
+
+def _name_contains_whole_words(name: str, words: Sequence[str]) -> bool:
+    lowered = name.lower()
+    return all(
+        re.search(rf"(?<!\w){re.escape(word)}(?!\w)", lowered) for word in words
+    )
+
+
+def _whole_word_source_matches(
+    days: Sequence[Any], requested_name: str
+) -> list[tuple[Any, Any]]:
+    """Program (day, exercise) pairs whose name contains every requested word
+    as a whole word."""
+    words = _requested_source_words(requested_name)
+    if not words:
+        return []
+    return [
+        (day, exercise)
+        for day in days
+        for exercise in day.exercises
+        if _name_contains_whole_words(exercise.exercise_name, words)
+    ]
+
+
+def _distinct_program_exercises(matches: list[tuple[Any, Any]]) -> list[Any]:
+    distinct: list[Any] = []
+    for _, exercise in matches:
+        if all(
+            str(exercise.exercise_id) != str(known.exercise_id)
+            for known in distinct
+        ):
+            distinct.append(exercise)
+    return distinct
+
+
+@dataclass(frozen=True)
+class _WholeWordSource:
+    """Outcome of the #808 whole-word rule for an unresolved swap source."""
+
+    source: tuple[Any, Any] | None = None
+    candidates: tuple[dict[str, Any], ...] = ()
+
+
+def _resolve_source_by_whole_words(
+    days: Sequence[Any], requested_name: str
+) -> _WholeWordSource:
+    """One program exercise containing every requested word is the source; two
+    or three distinct matches ask with the list; more or none keep the generic
+    reply (#808)."""
+    matches = _whole_word_source_matches(days, requested_name)
+    distinct = _distinct_program_exercises(matches)
+    if len(distinct) == 1:
+        day = next(
+            day
+            for day, exercise in matches
+            if str(exercise.exercise_id) == str(distinct[0].exercise_id)
+        )
+        return _WholeWordSource(source=(day, distinct[0]))
+    if 2 <= len(distinct) <= 3:
+        return _WholeWordSource(candidates=tuple(
+            {"id": str(exercise.exercise_id), "name": exercise.exercise_name}
+            for exercise in distinct
+        ))
+    return _WholeWordSource()
+
+
+def _closest_program_exercise_names(
+    program: Any, source_name: str, limit: int = 3, preferred: Sequence[Any] = ()
+) -> list[str]:
+    """Up to `limit` program exercise names ranked by the source similarity,
+    with the `preferred` (top-score tied) exercises first, distinct by id."""
+    source_stem = clean_movement_stem(source_name.lower())
+    ranked: dict[str, tuple[float, str]] = {}
+    for day in program.days:
+        for exercise in day.exercises:
+            similarity = _substitution_source_similarity(
+                source_name, source_stem, exercise
+            )
+            ranked.setdefault(
+                str(exercise.exercise_id), (similarity, exercise.exercise_name)
+            )
+    names: list[str] = []
+    for exercise in preferred:
+        entry = ranked.pop(str(exercise.exercise_id), None)
+        if entry is not None:
+            names.append(entry[1])
+    names.extend(
+        name
+        for _, name in sorted(ranked.values(), key=lambda item: item[0], reverse=True)
+    )
+    return names[:limit]
+
+
+def _program_has_exercise_named(program: Any, source_name: str) -> bool:
+    """True when a program exercise's name equals the requested source (#808)."""
+    requested = source_name.strip().casefold()
+    return any(
+        exercise.exercise_name.strip().casefold() == requested
+        for day in program.days
+        for exercise in day.exercises
+    )
+
+
 def _arabic_target_name_similarity(name: str, match: dict[str, Any]) -> float:
     normalized_name = _normalize_exercise_name(name)
     return max(
@@ -1755,22 +1904,81 @@ def _resolve_arabic_target(
     return _ArabicTargetResolution()
 
 
+@dataclass(frozen=True)
+class _SwapSourceResolution:
+    """A named swap source placed on a program day, or the clarification to
+    send instead when no day holds it (#808)."""
+
+    source: tuple[Any, Any] | None = None
+    clarification: dict[str, Any] | None = None
+
+
+def _arabic_source_clarification(
+    program: Any, source_name: str
+) -> _SwapSourceResolution:
+    """#808 replies for a named source the similarity rule cannot place."""
+    if not _requested_source_words(source_name):
+        return _SwapSourceResolution()
+    partial = _resolve_source_by_whole_words(list(program.days), source_name)
+    if partial.source is not None:
+        return _SwapSourceResolution(source=partial.source)
+    if partial.candidates:
+        return _SwapSourceResolution(
+            clarification={"clarification_candidates": list(partial.candidates)}
+        )
+    return _SwapSourceResolution(clarification={
+        "clarification_kind": "source_not_in_program",
+        "requested_source": source_name.strip(),
+        "closest_exercises": _closest_program_exercise_names(
+            program, source_name, limit=3
+        ),
+    })
+
+
 def _arabic_swap_source(
     program: Any, intent: ArabicIntentClassification
-) -> tuple[Any, Any] | None:
+) -> _SwapSourceResolution:
     if not program or not intent.source_exercise:
-        return None
+        return _SwapSourceResolution()
     day = _resolve_arabic_day(program, intent.target_day) if intent.target_day else None
     if intent.target_day and day is None:
-        return None
+        return _SwapSourceResolution()
+    source_name = expand_fitness_abbreviations(intent.source_exercise.strip())
     match = _resolve_arabic_source(
-        program, intent.source_exercise, requested_day=day.day_name if day else None
+        program, source_name, requested_day=day.day_name if day else None
     )
     if match is None and day is not None:
         # Same rule as English (#762, owner decision): when the named day lacks
         # the exercise, swap it on the day where it is; the reply names that day.
-        match = _resolve_arabic_source(program, intent.source_exercise)
-    return match
+        match = _resolve_arabic_source(program, source_name)
+    if match is not None:
+        return _SwapSourceResolution(source=match)
+    best_similarity, tied = _tied_program_sources(program, source_name)
+    if best_similarity < SUBSTITUTION_SOURCE_SIMILARITY_THRESHOLD:
+        return _arabic_source_clarification(program, source_name)
+    if len(tied) == 1:
+        # Unreachable through the similarity rule, which resolves a unique best
+        # above the threshold; keep today's generic question rather than
+        # inventing a match.
+        return _SwapSourceResolution()
+    # The staging Bench Press case: several press exercises tie for "Bench
+    # Press" at the top score, so the similarity rule cannot pick one (#808).
+    partial = _resolve_source_by_whole_words(list(program.days), source_name)
+    if partial.source is not None:
+        return _SwapSourceResolution(source=partial.source)
+    if partial.candidates:
+        return _SwapSourceResolution(
+            clarification={"clarification_candidates": list(partial.candidates)}
+        )
+    if len(tied) > 3 or _program_has_exercise_named(program, source_name):
+        return _SwapSourceResolution()
+    return _SwapSourceResolution(clarification={
+        "clarification_kind": "source_not_in_program",
+        "requested_source": source_name.strip(),
+        "closest_exercises": _closest_program_exercise_names(
+            program, source_name, limit=3, preferred=tied
+        ),
+    })
 
 
 def _arabic_swap_metadata(
@@ -1791,10 +1999,10 @@ def _validated_arabic_swap(
 ) -> dict[str, Any] | None:
     if not intent.target_exercise:
         return None
-    source_match = _arabic_swap_source(program, intent)
-    if source_match is None:
-        return None
-    source_day, source = source_match
+    source_resolution = _arabic_swap_source(program, intent)
+    if source_resolution.source is None:
+        return source_resolution.clarification
+    source_day, source = source_resolution.source
     resolution = _resolve_arabic_target(
         _ArabicSwapTargetContext(
             store=store, source=source, source_day=source_day, program=program
@@ -2248,6 +2456,45 @@ def _is_arabic_history_question(groups: dict[str, bool]) -> bool:
     )
 
 
+# --- Weekly program sets/volume question (#808) ------------------------------
+# «البرنامج بتاعي فيه كام set في الأسبوع؟» asks about the Training program's
+# weekly volume, not past sessions. One deterministic check for both routers:
+# a program word or a per-week span together with a sets/volume word, matched
+# on the normalized history text so prefixed and possessive forms
+# («البرنامج», «برنامجي», أسبوعيًا) count. Past-session phrasing («آخر مرة
+# عملت...», "how many sets did I do...") is history and keeps out.
+RE_WEEKLY_PROGRAM_WORD = re.compile(r"برنامج|جدول|\b(?:my|the)\s+(?:program|routine)\b")
+RE_WEEKLY_SPAN_WORD = re.compile(r"اسبوع|\b(?:per|a)\s+week\b|\bweekly\b")
+RE_WEEKLY_SETS_WORD = re.compile(
+    rf"(?<![{_ARABIC_HISTORY_LETTERS}])(?:مجموعات|مجموعه)(?:ي|ك|نا|ها)?(?![{_ARABIC_HISTORY_LETTERS}])"
+    rf"|(?<![{_ARABIC_HISTORY_LETTERS}])(?:ست|فوليوم)(?![{_ARABIC_HISTORY_LETTERS}])"
+    r"|\b(?:sets?|volume)\b"
+)
+# Anchored with the Arabic-letter lookarounds from RE_WEEKLY_SETS_WORD, so
+# «الخامس» cannot read as the «امس» marker, and attached pronoun suffixes
+# («عملتها») keep counting as past phrasing (#808).
+_ARABIC_PAST_PERFORMANCE_MARKERS = (
+    r"(?:(?:ال)?امبارح|(?:ال)?امس|البارحه|(?:ال)?اخر مره|(?:ال)?مره اللي فاتت|قبل كده)"
+    r"|(?:عملت|سجلت|لعبت|رفعت|شلت|عدت)(?:ها|ه|هم|هن|نا|كم|كن|ني|ك|ي|وا|و)?"
+)
+RE_PAST_PERFORMANCE_MARKER = re.compile(
+    rf"(?<![{_ARABIC_HISTORY_LETTERS}])(?:{_ARABIC_PAST_PERFORMANCE_MARKERS})(?![{_ARABIC_HISTORY_LETTERS}])"
+    r"|\b(?:did i|last (?:time|session|workout)|previous (?:session|workout))\b"
+)
+
+
+def _is_weekly_program_volume_question(query: str) -> bool:
+    """A question about the program's weekly sets or volume, not past sessions (#808)."""
+    normalized = _normalized_arabic_history_text(query)
+    if RE_PAST_PERFORMANCE_MARKER.search(normalized):
+        return False
+    program_or_week = (
+        RE_WEEKLY_PROGRAM_WORD.search(normalized)
+        or RE_WEEKLY_SPAN_WORD.search(normalized)
+    )
+    return bool(program_or_week and RE_WEEKLY_SETS_WORD.search(normalized))
+
+
 def _arabic_history_lexical_route(
     query: str, config: dict[str, Any] | None
 ) -> dict[str, Any] | None:
@@ -2322,6 +2569,8 @@ def _arabic_swap_route(
             "intent": "arabic_swap_clarification",
             "intent_metadata": {"clarification_candidates": clarification_candidates},
         }
+    if metadata.get("clarification_kind"):
+        return {"intent": "arabic_swap_clarification", "intent_metadata": metadata}
     if classification.intent == "composite_intent" or classification.has_additional_request:
         metadata["has_additional_request"] = True
         return {"intent": "composite_intent", "intent_metadata": {"arabic_validated_swap": metadata}}
@@ -2384,6 +2633,8 @@ def _classify_arabic_intent(query: str, config: dict[str, Any] | None) -> dict[s
         normalized = RE_ARABIC_DIACRITICS.sub("", query)
         if RE_ARABIC_TRAIN_REST_QUESTION.search(normalized):
             return {"intent": "coaching_qa", "intent_metadata": {}}
+        if _is_weekly_program_volume_question(query):
+            return {"intent": "coaching_qa", "intent_metadata": {}}
         return _classify_arabic_history(classification, program, store)
     return {"intent": "coaching_qa", "intent_metadata": {}}
 
@@ -2396,12 +2647,31 @@ def arabic_swap_clarification_node(
     if isinstance(candidates, list) and 2 <= len(candidates) <= 3:
         return _name_clarification_reply(candidates, "ar")
     kind = metadata.get("clarification_kind")
+    if kind == "source_not_in_program":
+        return _source_not_in_program_reply(state, metadata)
     response = {
         "program_change": ARABIC_PROGRAM_CHANGE_CLARIFICATION_RESPONSE,
         "program_reference": ARABIC_ACTION_CLARIFICATION_RESPONSE,
         "history": ARABIC_HISTORY_CLARIFICATION_RESPONSE,
     }.get(kind, ARABIC_SWAP_CLARIFICATION_RESPONSE)
     return _response(response)
+
+
+def _source_not_in_program_reply(
+    state: AssistantState, metadata: dict[str, Any]
+) -> dict[str, Any]:
+    """#808: the named source is on no program day; offer the closest ones."""
+    source = str(metadata.get("requested_source") or "").strip()
+    closest = [str(name) for name in metadata.get("closest_exercises") or ()][:3]
+    query = _get_message_text(state["messages"][-1]) if state.get("messages") else ""
+    language = resolve_reply_language(query, state.get("display_language", "ar"))
+    if language == "ar":
+        near = f" الأقرب: {'، '.join(closest)}." if closest else ""
+        message = f"{source} مش موجود في برنامجك.{near} تقصد أنهي واحد؟"
+    else:
+        near = f" Closest: {', '.join(closest)}." if closest else ""
+        message = f"{source} isn't in your program.{near} Which one did you mean?"
+    return _response(message)
 
 
 def _clinical_turn_metadata(
@@ -5094,30 +5364,39 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
             return {"program_updated": False, "response_content": msg, "messages": [AIMessage(content=msg)]}
 
     if not matched_ex or best_similarity < SUBSTITUTION_SOURCE_SIMILARITY_THRESHOLD:
-        routine_exercises = [
-            (day, exercise)
-            for day in current_week_days
-            for exercise in day.exercises
-        ]
-        descriptions = describe_exercises(
-            store,
-            ((exercise.exercise_id, exercise.exercise_name) for _, exercise in routine_exercises),
-        )
-        routine_list = [
-            f"- {exercise.exercise_name.title()} (Day {day.day_order}: {day.day_name})"
-            for day, exercise in routine_exercises
-        ]
-        model_routine_list = [
-            f"- {description} (Day {day.day_order}: {day.day_name})"
-            for (day, _), description in zip(routine_exercises, descriptions)
-        ]
-        if requested_day_name:
-            msg = f"Could not identify **'{raw_source or source_name or query}'** in {requested_day_name}."
-            model_msg = msg
+        # #808: a partial name («the crunch») matches when exactly one program
+        # exercise contains every requested word; two or three ask with the list.
+        partial = _resolve_source_by_whole_words(current_week_days, source_name)
+        if partial.source is not None:
+            target_day, matched_ex = partial.source
+        elif partial.candidates:
+            language = resolve_reply_language(query, state.get("display_language", "en"))
+            return _name_clarification_reply(list(partial.candidates), language)
         else:
-            msg = f"Could not identify **'{raw_source or source_name or query}'** in your active split.\n\n**Active Movements:**\n" + "\n".join(routine_list)
-            model_msg = f"Could not identify **'{raw_source or source_name or query}'** in your active split.\n\n**Active Movements:**\n" + "\n".join(model_routine_list)
-        return _response_with_model_context(msg, model_msg)
+            routine_exercises = [
+                (day, exercise)
+                for day in current_week_days
+                for exercise in day.exercises
+            ]
+            descriptions = describe_exercises(
+                store,
+                ((exercise.exercise_id, exercise.exercise_name) for _, exercise in routine_exercises),
+            )
+            routine_list = [
+                f"- {exercise.exercise_name.title()} (Day {day.day_order}: {day.day_name})"
+                for day, exercise in routine_exercises
+            ]
+            model_routine_list = [
+                f"- {description} (Day {day.day_order}: {day.day_name})"
+                for (day, _), description in zip(routine_exercises, descriptions)
+            ]
+            if requested_day_name:
+                msg = f"Could not identify **'{raw_source or source_name or query}'** in {requested_day_name}."
+                model_msg = msg
+            else:
+                msg = f"Could not identify **'{raw_source or source_name or query}'** in your active split.\n\n**Active Movements:**\n" + "\n".join(routine_list)
+                model_msg = f"Could not identify **'{raw_source or source_name or query}'** in your active split.\n\n**Active Movements:**\n" + "\n".join(model_routine_list)
+            return _response_with_model_context(msg, model_msg)
 
     with store.catalog_locked() as conn:
         cursor = conn.cursor()
