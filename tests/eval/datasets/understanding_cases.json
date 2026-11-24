@@ -1,0 +1,2517 @@
+{
+ "version": 1,
+ "status": "draft",
+ "review_note": "Arabic, Franco and mixed cases count only once review_status is OWNER_REVIEWED.",
+ "programs": {
+  "five_day": {
+   "program_name": "Test plan",
+   "split_type": "PPL × UL",
+   "weekly_frequency": 5,
+   "days": [
+    {
+     "day_name": "Push",
+     "exercises": [
+      {
+       "name": "Incline Bench Press (Dumbbell)",
+       "sets": 3
+      },
+      {
+       "name": "Pec Deck (Machine)",
+       "sets": 3
+      },
+      {
+       "name": "Lateral Raise (Cable)",
+       "sets": 3
+      },
+      {
+       "name": "Triceps Pushdown (Cable)",
+       "sets": 3
+      }
+     ]
+    },
+    {
+     "day_name": "Pull",
+     "exercises": [
+      {
+       "name": "Lat Pulldown (Cable)",
+       "sets": 3
+      },
+      {
+       "name": "Seated Row (Cable)",
+       "sets": 3
+      },
+      {
+       "name": "Reverse Pec Deck (Machine)",
+       "sets": 3
+      },
+      {
+       "name": "Biceps Curl (Cable)",
+       "sets": 3
+      }
+     ]
+    },
+    {
+     "day_name": "Legs",
+     "exercises": [
+      {
+       "name": "Hack Squat (Plate-Loaded)",
+       "sets": 3
+      },
+      {
+       "name": "Romanian Deadlift (Barbell)",
+       "sets": 3
+      },
+      {
+       "name": "Leg Extension (Machine)",
+       "sets": 3
+      },
+      {
+       "name": "Kneeling Crunch (Cable)",
+       "sets": 3
+      }
+     ]
+    },
+    {
+     "day_name": "Upper",
+     "exercises": [
+      {
+       "name": "Incline Bench Press (Smith Machine)",
+       "sets": 3
+      },
+      {
+       "name": "Chest-Supported T-Bar Row (Plate-Loaded)",
+       "sets": 3
+      },
+      {
+       "name": "Seated Shoulder Press (Smith Machine)",
+       "sets": 3
+      },
+      {
+       "name": "Hammer Curl (Dumbbell)",
+       "sets": 3
+      }
+     ]
+    },
+    {
+     "day_name": "Lower",
+     "exercises": [
+      {
+       "name": "45° Leg Press (Plate-Loaded)",
+       "sets": 3
+      },
+      {
+       "name": "Lying Leg Curl (Machine)",
+       "sets": 3
+      },
+      {
+       "name": "Standing Calf Raise (Machine)",
+       "sets": 3
+      },
+      {
+       "name": "Kneeling Crunch (Cable)",
+       "sets": 3
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "cases": [
+  {
+   "id": "swap-en-01",
+   "language": "en",
+   "message": "swap leg extension for leg press",
+   "expected": [
+    "change",
+    "ask",
+    "confirm"
+   ],
+   "program": "five_day",
+   "allowed_change": {
+    "kind": "swap",
+    "from": "Leg Extension (Machine)",
+    "to": [
+     "45° Leg Press (Plate-Loaded)",
+     "Leg Press (Smith Machine)"
+    ]
+   },
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "NOT_REQUIRED"
+  },
+  {
+   "id": "swap-en-02",
+   "language": "en",
+   "message": "can u change hammer curls to cable curls",
+   "expected": [
+    "change",
+    "ask",
+    "confirm"
+   ],
+   "program": "five_day",
+   "allowed_change": {
+    "kind": "swap",
+    "from": "Hammer Curl (Dumbbell)",
+    "to": [
+     "Biceps Curl (Cable)",
+     "Close-Grip Curl (Cable)"
+    ]
+   },
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "NOT_REQUIRED"
+  },
+  {
+   "id": "swap-en-03",
+   "language": "en",
+   "message": "replace hack squat w back squat",
+   "expected": [
+    "change",
+    "ask",
+    "confirm"
+   ],
+   "program": "five_day",
+   "allowed_change": {
+    "kind": "swap",
+    "from": "Hack Squat (Plate-Loaded)",
+    "to": [
+     "Back Squat (Barbell)"
+    ]
+   },
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "NOT_REQUIRED"
+  },
+  {
+   "id": "swap-en-04",
+   "language": "en",
+   "message": "instead of pec deck put dumbell fly",
+   "expected": [
+    "change",
+    "ask",
+    "confirm"
+   ],
+   "program": "five_day",
+   "allowed_change": {
+    "kind": "swap",
+    "from": "Pec Deck (Machine)",
+    "to": [
+     "Fly (Dumbbell)"
+    ]
+   },
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "NOT_REQUIRED"
+  },
+  {
+   "id": "swap-en-05",
+   "language": "en",
+   "message": "swap the smith incline for barbell incline",
+   "expected": [
+    "change",
+    "confirm"
+   ],
+   "program": "five_day",
+   "allowed_change": {
+    "kind": "swap",
+    "from": "Incline Bench Press (Smith Machine)",
+    "to": [
+     "Incline Bench Press (Barbell)"
+    ]
+   },
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "NOT_REQUIRED"
+  },
+  {
+   "id": "swap-en-06",
+   "language": "en",
+   "message": "i dont have a t bar, give me chest supported dumbbell row",
+   "expected": [
+    "change",
+    "ask",
+    "confirm"
+   ],
+   "program": "five_day",
+   "allowed_change": {
+    "kind": "swap",
+    "from": "Chest-Supported T-Bar Row (Plate-Loaded)",
+    "to": [
+     "Chest-Supported Row (Dumbbell)"
+    ]
+   },
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "NOT_REQUIRED"
+  },
+  {
+   "id": "swap-en-07",
+   "language": "en",
+   "message": "lat puldown to pull ups",
+   "expected": [
+    "change",
+    "ask",
+    "confirm"
+   ],
+   "program": "five_day",
+   "allowed_change": {
+    "kind": "swap",
+    "from": "Lat Pulldown (Cable)",
+    "to": [
+     "Wide-Grip Pull-Up",
+     "Neutral-Grip Pull-Up",
+     "Weighted Pull-Up",
+     "Mixed-Grip Pull-Up"
+    ]
+   },
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "NOT_REQUIRED"
+  },
+  {
+   "id": "swap-en-08",
+   "language": "en",
+   "message": "swap leg curl",
+   "expected": [
+    "ask"
+   ],
+   "program": "five_day",
+   "note": "No target given.",
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "NOT_REQUIRED"
+  },
+  {
+   "id": "swap-en-09",
+   "language": "en",
+   "message": "change the incline press",
+   "expected": [
+    "ask"
+   ],
+   "program": "five_day",
+   "reply_any": [
+    "Incline Bench Press (Dumbbell)",
+    "Incline Bench Press (Smith Machine)"
+   ],
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "NOT_REQUIRED"
+  },
+  {
+   "id": "swap-en-10",
+   "language": "en",
+   "message": "swap bulgarian split squat for lunges",
+   "expected": [
+    "ask",
+    "answer"
+   ],
+   "program": "five_day",
+   "note": "Not in the program.",
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "NOT_REQUIRED"
+  },
+  {
+   "id": "swap-en-11",
+   "language": "en",
+   "message": "swap crunches for planks",
+   "expected": [
+    "ask"
+   ],
+   "program": "five_day",
+   "reply_any": [
+    "Plank",
+    "بلانك"
+   ],
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "NOT_REQUIRED"
+  },
+  {
+   "id": "swap-en-12",
+   "language": "en",
+   "message": "swap sldl for seated leg curl",
+   "expected": [
+    "ask",
+    "confirm",
+    "answer"
+   ],
+   "program": "five_day",
+   "note": "SLDL is not in the program; the RDL must not be swapped silently.",
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "NOT_REQUIRED"
+  },
+  {
+   "id": "swap-egy-01",
+   "language": "egy",
+   "message": "غير crunch ل plank",
+   "expected": [
+    "ask"
+   ],
+   "program": "five_day",
+   "reply_any": [
+    "Plank",
+    "بلانك"
+   ],
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "swap-egy-02",
+   "language": "egy",
+   "message": "بدل ال crunch بال plank",
+   "expected": [
+    "ask"
+   ],
+   "program": "five_day",
+   "reply_any": [
+    "Plank",
+    "بلانك"
+   ],
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "swap-egy-03",
+   "language": "egy",
+   "message": "عايز اشيل الكرانش واحط بلانك",
+   "expected": [
+    "ask"
+   ],
+   "program": "five_day",
+   "reply_any": [
+    "Plank",
+    "بلانك"
+   ],
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "swap-egy-04",
+   "language": "egy",
+   "message": "بدل الهاك سكوات بليج بريس",
+   "expected": [
+    "change",
+    "ask",
+    "confirm"
+   ],
+   "program": "five_day",
+   "allowed_change": {
+    "kind": "swap",
+    "from": "Hack Squat (Plate-Loaded)",
+    "to": [
+     "45° Leg Press (Plate-Loaded)",
+     "Leg Press (Smith Machine)"
+    ]
+   },
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "swap-egy-05",
+   "language": "egy",
+   "message": "الليج اكستنشن مش متاح عندي في الجيم",
+   "expected": [
+    "ask",
+    "confirm",
+    "answer"
+   ],
+   "program": "five_day",
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "swap-egy-06",
+   "language": "egy",
+   "message": "مش عايز هامر كيرل حطلي كيرل بالكابل",
+   "expected": [
+    "change",
+    "ask",
+    "confirm"
+   ],
+   "program": "five_day",
+   "allowed_change": {
+    "kind": "swap",
+    "from": "Hammer Curl (Dumbbell)",
+    "to": [
+     "Biceps Curl (Cable)",
+     "Close-Grip Curl (Cable)"
+    ]
+   },
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "swap-egy-07",
+   "language": "egy",
+   "message": "بدل ال smith incline بباربل",
+   "expected": [
+    "change",
+    "ask",
+    "confirm"
+   ],
+   "program": "five_day",
+   "allowed_change": {
+    "kind": "swap",
+    "from": "Incline Bench Press (Smith Machine)",
+    "to": [
+     "Incline Bench Press (Barbell)"
+    ]
+   },
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "swap-egy-08",
+   "language": "egy",
+   "message": "غيرلي الانكلاين",
+   "expected": [
+    "ask"
+   ],
+   "program": "five_day",
+   "reply_any": [
+    "Incline Bench Press (Dumbbell)",
+    "Incline Bench Press (Smith Machine)"
+   ],
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "swap-egy-09",
+   "language": "egy",
+   "message": "البيك ديك زحمة ينفع فلاي دمبل مكانه؟",
+   "expected": [
+    "ask",
+    "confirm",
+    "answer"
+   ],
+   "program": "five_day",
+   "note": "A question: no silent swap.",
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "swap-egy-10",
+   "language": "egy",
+   "message": "شيل سيتد رو وحط تي بار",
+   "expected": [
+    "change",
+    "ask",
+    "confirm"
+   ],
+   "program": "five_day",
+   "allowed_change": {
+    "kind": "swap",
+    "from": "Seated Row (Cable)",
+    "to": [
+     "T-Bar Row (Plate-Loaded)",
+     "V-Handle T-Bar Row (Plate-Loaded)",
+     "Chest-Supported T-Bar Row (Plate-Loaded)"
+    ]
+   },
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "swap-egy-11",
+   "language": "egy",
+   "message": "لات بول داون يبقى بول اب",
+   "expected": [
+    "change",
+    "ask",
+    "confirm"
+   ],
+   "program": "five_day",
+   "allowed_change": {
+    "kind": "swap",
+    "from": "Lat Pulldown (Cable)",
+    "to": [
+     "Wide-Grip Pull-Up",
+     "Neutral-Grip Pull-Up",
+     "Weighted Pull-Up",
+     "Mixed-Grip Pull-Up"
+    ]
+   },
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "swap-egy-12",
+   "language": "egy",
+   "message": "بدل Bench Press بـ Dumbbell Bench Press",
+   "expected": [
+    "ask"
+   ],
+   "program": "five_day",
+   "reply_any": [
+    "Incline Bench Press"
+   ],
+   "note": "No flat bench in this program.",
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "swap-msa-01",
+   "language": "msa",
+   "message": "استبدل تمرين تمديد الساق بضغط الساق",
+   "expected": [
+    "change",
+    "ask",
+    "confirm"
+   ],
+   "program": "five_day",
+   "allowed_change": {
+    "kind": "swap",
+    "from": "Leg Extension (Machine)",
+    "to": [
+     "45° Leg Press (Plate-Loaded)",
+     "Leg Press (Smith Machine)"
+    ]
+   },
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "swap-msa-02",
+   "language": "msa",
+   "message": "أريد تغيير تمرين العقلة",
+   "expected": [
+    "ask",
+    "answer"
+   ],
+   "program": "five_day",
+   "note": "Pull-ups are not in the program.",
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "swap-msa-03",
+   "language": "msa",
+   "message": "استبدل تمرين الكرانش بتمرين البلانك",
+   "expected": [
+    "ask"
+   ],
+   "program": "five_day",
+   "reply_any": [
+    "Plank",
+    "بلانك"
+   ],
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "swap-mix-01",
+   "language": "mixed",
+   "message": "عايز ابدل lateral raise cable بـ lateral raise dumbbell",
+   "expected": [
+    "change",
+    "confirm"
+   ],
+   "program": "five_day",
+   "allowed_change": {
+    "kind": "swap",
+    "from": "Lateral Raise (Cable)",
+    "to": [
+     "Lateral Raise (Dumbbell)"
+    ]
+   },
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "swap-mix-02",
+   "language": "mixed",
+   "message": "swap ال RDL ب deadlift عادي",
+   "expected": [
+    "change",
+    "ask",
+    "confirm"
+   ],
+   "program": "five_day",
+   "allowed_change": {
+    "kind": "swap",
+    "from": "Romanian Deadlift (Barbell)",
+    "to": [
+     "Deadlift (Barbell)"
+    ]
+   },
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "swap-franco-01",
+   "language": "franco",
+   "message": "badel el hack squat b leg press",
+   "expected": [
+    "change",
+    "ask",
+    "confirm",
+    "answer"
+   ],
+   "program": "five_day",
+   "allowed_change": {
+    "kind": "swap",
+    "from": "Hack Squat (Plate-Loaded)",
+    "to": [
+     "45° Leg Press (Plate-Loaded)",
+     "Leg Press (Smith Machine)"
+    ]
+   },
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "swap-franco-02",
+   "language": "franco",
+   "message": "3ayez aghayar el crunch l plank",
+   "expected": [
+    "ask",
+    "answer"
+   ],
+   "program": "five_day",
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "swap-franco-03",
+   "language": "franco",
+   "message": "msh 3ayez hammer curl, 7ot cable curl",
+   "expected": [
+    "change",
+    "ask",
+    "confirm",
+    "answer"
+   ],
+   "program": "five_day",
+   "allowed_change": {
+    "kind": "swap",
+    "from": "Hammer Curl (Dumbbell)",
+    "to": [
+     "Biceps Curl (Cable)",
+     "Close-Grip Curl (Cable)"
+    ]
+   },
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "follow-egy-01",
+   "language": "egy",
+   "message": "فرونت",
+   "expected": [
+    "change"
+   ],
+   "program": "five_day",
+   "allowed_change": {
+    "kind": "swap",
+    "from": "Kneeling Crunch (Cable)",
+    "to": [
+     "Front Plank (Weighted)"
+    ]
+   },
+   "before": [
+    "غير crunch ل plank"
+   ],
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "follow-egy-02",
+   "language": "egy",
+   "message": "لا فرونت",
+   "expected": [
+    "change",
+    "confirm"
+   ],
+   "program": "five_day",
+   "allowed_change": {
+    "kind": "swap",
+    "from": "Kneeling Crunch (Cable)",
+    "to": [
+     "Front Plank (Weighted)"
+    ]
+   },
+   "before": [
+    "غير crunch ل plank"
+   ],
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "follow-egy-03",
+   "language": "egy",
+   "message": "السايد",
+   "expected": [
+    "change",
+    "confirm"
+   ],
+   "program": "five_day",
+   "allowed_change": {
+    "kind": "swap",
+    "from": "Kneeling Crunch (Cable)",
+    "to": [
+     "Side Plank"
+    ]
+   },
+   "before": [
+    "غير crunch ل plank"
+   ],
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "follow-egy-04",
+   "language": "egy",
+   "message": "خلاص سيبها",
+   "expected": [
+    "answer",
+    "ask"
+   ],
+   "program": "five_day",
+   "before": [
+    "غير crunch ل plank"
+   ],
+   "note": "Drops the swap.",
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "follow-egy-05",
+   "language": "egy",
+   "message": "ايه الفرق بينهم؟",
+   "expected": [
+    "answer",
+    "ask"
+   ],
+   "program": "five_day",
+   "before": [
+    "غير crunch ل plank"
+   ],
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "follow-egy-06",
+   "language": "egy",
+   "message": "فيه كام مجموعة ظهر في الأسبوع؟",
+   "expected": [
+    "answer"
+   ],
+   "program": "five_day",
+   "before": [
+    "غير crunch ل plank"
+   ],
+   "note": "Unrelated question; the swap must not apply.",
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "follow-egy-07",
+   "language": "egy",
+   "message": "الدمبل",
+   "expected": [
+    "ask"
+   ],
+   "program": "five_day",
+   "before": [
+    "غيرلي الانكلاين"
+   ],
+   "note": "Picks the source; the target is still missing.",
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "follow-en-01",
+   "language": "en",
+   "message": "front",
+   "expected": [
+    "change",
+    "confirm"
+   ],
+   "program": "five_day",
+   "allowed_change": {
+    "kind": "swap",
+    "from": "Kneeling Crunch (Cable)",
+    "to": [
+     "Front Plank (Weighted)"
+    ]
+   },
+   "before": [
+    "swap crunches for planks"
+   ],
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "NOT_REQUIRED"
+  },
+  {
+   "id": "follow-en-02",
+   "language": "en",
+   "message": "the side one",
+   "expected": [
+    "change",
+    "confirm"
+   ],
+   "program": "five_day",
+   "allowed_change": {
+    "kind": "swap",
+    "from": "Kneeling Crunch (Cable)",
+    "to": [
+     "Side Plank"
+    ]
+   },
+   "before": [
+    "swap crunches for planks"
+   ],
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "NOT_REQUIRED"
+  },
+  {
+   "id": "follow-en-03",
+   "language": "en",
+   "message": "incline becnh press smith",
+   "expected": [
+    "ask"
+   ],
+   "program": "five_day",
+   "before": [
+    "change the incline press"
+   ],
+   "note": "Picks the source; the target is still missing.",
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "NOT_REQUIRED"
+  },
+  {
+   "id": "follow-en-04",
+   "language": "en",
+   "message": "nvm",
+   "expected": [
+    "answer",
+    "ask"
+   ],
+   "program": "five_day",
+   "before": [
+    "swap crunches for planks"
+   ],
+   "note": "Drops the swap.",
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "NOT_REQUIRED"
+  },
+  {
+   "id": "follow-en-05",
+   "language": "en",
+   "message": "seated leg curl",
+   "expected": [
+    "change",
+    "confirm"
+   ],
+   "program": "five_day",
+   "allowed_change": {
+    "kind": "swap",
+    "from": "Lying Leg Curl (Machine)",
+    "to": [
+     "Seated Leg Curl (Machine)"
+    ]
+   },
+   "before": [
+    "swap leg curl"
+   ],
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "NOT_REQUIRED"
+  },
+  {
+   "id": "follow-en-06",
+   "language": "en",
+   "message": "yes",
+   "expected": [
+    "ask"
+   ],
+   "program": "five_day",
+   "before": [
+    "swap crunches for planks"
+   ],
+   "note": "Yes does not pick an option.",
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "NOT_REQUIRED"
+  },
+  {
+   "id": "follow-mix-01",
+   "language": "mixed",
+   "message": "front plank weighted",
+   "expected": [
+    "change",
+    "confirm"
+   ],
+   "program": "five_day",
+   "allowed_change": {
+    "kind": "swap",
+    "from": "Kneeling Crunch (Cable)",
+    "to": [
+     "Front Plank (Weighted)"
+    ]
+   },
+   "before": [
+    "غير crunch ل plank"
+   ],
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "program-en-01",
+   "language": "en",
+   "message": "change my program to PPL, 3 days",
+   "expected": [
+    "confirm"
+   ],
+   "program": "five_day",
+   "allowed_change": {
+    "kind": "rebuild",
+    "splits": [
+     "ppl"
+    ],
+    "frequency": 3
+   },
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "NOT_REQUIRED"
+  },
+  {
+   "id": "program-en-02",
+   "language": "en",
+   "message": "i want full body 3 times a week",
+   "expected": [
+    "confirm"
+   ],
+   "program": "five_day",
+   "allowed_change": {
+    "kind": "rebuild",
+    "splits": [
+     "full_body"
+    ],
+    "frequency": 3
+   },
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "NOT_REQUIRED"
+  },
+  {
+   "id": "program-en-03",
+   "language": "en",
+   "message": "switch me to upper lower 4 days",
+   "expected": [
+    "confirm"
+   ],
+   "program": "five_day",
+   "allowed_change": {
+    "kind": "rebuild",
+    "splits": [
+     "upper_lower"
+    ],
+    "frequency": 4
+   },
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "NOT_REQUIRED"
+  },
+  {
+   "id": "program-en-04",
+   "language": "en",
+   "message": "can only train 3 days now",
+   "expected": [
+    "ask",
+    "confirm",
+    "answer"
+   ],
+   "program": "five_day",
+   "allowed_change": {
+    "kind": "rebuild",
+    "splits": [
+     "ppl",
+     "ppl_x_ul",
+     "full_body",
+     "upper_lower",
+     "arnold",
+     "arnold_x_ul",
+     "anterior_posterior"
+    ],
+    "frequency": 3
+   },
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "NOT_REQUIRED"
+  },
+  {
+   "id": "program-en-05",
+   "language": "en",
+   "message": "new split pls",
+   "expected": [
+    "ask",
+    "answer"
+   ],
+   "program": "five_day",
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "NOT_REQUIRED"
+  },
+  {
+   "id": "program-en-06",
+   "language": "en",
+   "message": "arnold split",
+   "expected": [
+    "ask",
+    "confirm",
+    "answer"
+   ],
+   "program": "five_day",
+   "allowed_change": {
+    "kind": "rebuild",
+    "splits": [
+     "arnold_x_ul",
+     "arnold"
+    ],
+    "frequency": 5
+   },
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "NOT_REQUIRED"
+  },
+  {
+   "id": "program-en-07",
+   "language": "en",
+   "message": "i want a bro split",
+   "expected": [
+    "ask",
+    "answer"
+   ],
+   "program": "five_day",
+   "note": "Not a split we build.",
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "NOT_REQUIRED"
+  },
+  {
+   "id": "program-en-08",
+   "language": "en",
+   "message": "yes",
+   "expected": [
+    "change"
+   ],
+   "program": "five_day",
+   "allowed_change": {
+    "kind": "rebuild",
+    "splits": [
+     "ppl"
+    ],
+    "frequency": 3
+   },
+   "before": [
+    "change my program to PPL, 3 days"
+   ],
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "NOT_REQUIRED"
+  },
+  {
+   "id": "program-en-09",
+   "language": "en",
+   "message": "no wait",
+   "expected": [
+    "answer",
+    "ask"
+   ],
+   "program": "five_day",
+   "before": [
+    "change my program to PPL, 3 days"
+   ],
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "NOT_REQUIRED"
+  },
+  {
+   "id": "program-en-10",
+   "language": "en",
+   "message": "make it 4 days",
+   "expected": [
+    "confirm",
+    "ask"
+   ],
+   "program": "five_day",
+   "allowed_change": {
+    "kind": "rebuild",
+    "splits": [
+     "ppl",
+     "ppl_x_ul",
+     "full_body",
+     "upper_lower",
+     "arnold",
+     "arnold_x_ul",
+     "anterior_posterior"
+    ],
+    "frequency": 4
+   },
+   "before": [
+    "change my program to PPL, 3 days"
+   ],
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "NOT_REQUIRED"
+  },
+  {
+   "id": "program-egy-01",
+   "language": "egy",
+   "message": "غير برنامجي ل ppl , chest and back, arms",
+   "expected": [
+    "confirm"
+   ],
+   "program": "five_day",
+   "allowed_change": {
+    "kind": "rebuild",
+    "splits": [
+     "ppl_x_chest_back_arms"
+    ],
+    "frequency": 5
+   },
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "program-egy-02",
+   "language": "egy",
+   "message": "غيّر البرنامج لـ PPL و chest x back و arms",
+   "expected": [
+    "confirm"
+   ],
+   "program": "five_day",
+   "allowed_change": {
+    "kind": "rebuild",
+    "splits": [
+     "ppl_x_chest_back_arms"
+    ],
+    "frequency": 5
+   },
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "program-egy-03",
+   "language": "egy",
+   "message": "عايز برنامج ٣ ايام",
+   "expected": [
+    "ask",
+    "confirm"
+   ],
+   "program": "five_day",
+   "allowed_change": {
+    "kind": "rebuild",
+    "splits": [
+     "ppl",
+     "ppl_x_ul",
+     "full_body",
+     "upper_lower",
+     "arnold",
+     "arnold_x_ul",
+     "anterior_posterior"
+    ],
+    "frequency": 3
+   },
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "program-egy-04",
+   "language": "egy",
+   "message": "عايز اغير الروتين بتاعي لفول بودي ٣ ايام",
+   "expected": [
+    "confirm"
+   ],
+   "program": "five_day",
+   "allowed_change": {
+    "kind": "rebuild",
+    "splits": [
+     "full_body"
+    ],
+    "frequency": 3
+   },
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "program-egy-05",
+   "language": "egy",
+   "message": "زهقت من التقسيمة دي",
+   "expected": [
+    "answer",
+    "ask"
+   ],
+   "program": "five_day",
+   "note": "A complaint, not a request.",
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "program-egy-06",
+   "language": "egy",
+   "message": "عايز ابر لوور 4 ايام",
+   "expected": [
+    "confirm"
+   ],
+   "program": "five_day",
+   "allowed_change": {
+    "kind": "rebuild",
+    "splits": [
+     "upper_lower"
+    ],
+    "frequency": 4
+   },
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "program-egy-07",
+   "language": "egy",
+   "message": "تمام",
+   "expected": [
+    "change"
+   ],
+   "program": "five_day",
+   "allowed_change": {
+    "kind": "rebuild",
+    "splits": [
+     "upper_lower"
+    ],
+    "frequency": 4
+   },
+   "before": [
+    "عايز ابر لوور 4 ايام"
+   ],
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "program-egy-08",
+   "language": "egy",
+   "message": "لا",
+   "expected": [
+    "answer",
+    "ask"
+   ],
+   "program": "five_day",
+   "before": [
+    "عايز ابر لوور 4 ايام"
+   ],
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "program-egy-09",
+   "language": "egy",
+   "message": "عايز أغيّر الروتين بتاعي لتقسيمة صدر وضهر ودراع",
+   "expected": [
+    "ask",
+    "confirm",
+    "answer"
+   ],
+   "program": "five_day",
+   "allowed_change": {
+    "kind": "rebuild",
+    "splits": [
+     "ppl_x_chest_back_arms"
+    ],
+    "frequency": 5
+   },
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "program-msa-01",
+   "language": "msa",
+   "message": "أريد تغيير برنامجي إلى تقسيمة الدفع والسحب والأرجل ثلاثة أيام",
+   "expected": [
+    "confirm"
+   ],
+   "program": "five_day",
+   "allowed_change": {
+    "kind": "rebuild",
+    "splits": [
+     "ppl"
+    ],
+    "frequency": 3
+   },
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "program-franco-01",
+   "language": "franco",
+   "message": "3ayez full body 3 ayam",
+   "expected": [
+    "confirm",
+    "ask",
+    "answer"
+   ],
+   "program": "five_day",
+   "allowed_change": {
+    "kind": "rebuild",
+    "splits": [
+     "full_body"
+    ],
+    "frequency": 3
+   },
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "edit-en-01",
+   "language": "en",
+   "message": "add biceps to leg days",
+   "expected": [
+    "confirm"
+   ],
+   "program": "five_day",
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "NOT_REQUIRED"
+  },
+  {
+   "id": "edit-en-02",
+   "language": "en",
+   "message": "take leg extension off leg days",
+   "expected": [
+    "confirm",
+    "ask"
+   ],
+   "program": "five_day",
+   "allowed_change": {
+    "kind": "remove",
+    "exercise": "Leg Extension (Machine)",
+    "days": []
+   },
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "NOT_REQUIRED"
+  },
+  {
+   "id": "edit-en-03",
+   "language": "en",
+   "message": "4 sets of lat pulldown",
+   "expected": [
+    "confirm",
+    "ask",
+    "change"
+   ],
+   "program": "five_day",
+   "allowed_change": {
+    "kind": "sets",
+    "exercise": "Lat Pulldown (Cable)",
+    "sets": 4
+   },
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "NOT_REQUIRED"
+  },
+  {
+   "id": "edit-en-04",
+   "language": "en",
+   "message": "less triceps on push",
+   "expected": [
+    "ask",
+    "confirm",
+    "answer"
+   ],
+   "program": "five_day",
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "NOT_REQUIRED"
+  },
+  {
+   "id": "edit-en-05",
+   "language": "en",
+   "message": "yes",
+   "expected": [
+    "change"
+   ],
+   "program": "five_day",
+   "allowed_change": {
+    "kind": "add",
+    "days": [
+     "Legs",
+     "Lower"
+    ]
+   },
+   "before": [
+    "add biceps to leg days"
+   ],
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "NOT_REQUIRED"
+  },
+  {
+   "id": "edit-en-06",
+   "language": "en",
+   "message": "no",
+   "expected": [
+    "answer",
+    "ask"
+   ],
+   "program": "five_day",
+   "before": [
+    "add biceps to leg days"
+   ],
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "NOT_REQUIRED"
+  },
+  {
+   "id": "edit-egy-01",
+   "language": "egy",
+   "message": "ضيف باي على أيام الرجل",
+   "expected": [
+    "confirm"
+   ],
+   "program": "five_day",
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "edit-egy-02",
+   "language": "egy",
+   "message": "شيل الكرانش من يوم الرجل",
+   "expected": [
+    "confirm",
+    "ask"
+   ],
+   "program": "five_day",
+   "allowed_change": {
+    "kind": "remove",
+    "exercise": "Kneeling Crunch (Cable)",
+    "days": [
+     "Legs",
+     "Lower"
+    ]
+   },
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "edit-egy-03",
+   "language": "egy",
+   "message": "زود مجموعة في اللات بول داون",
+   "expected": [
+    "confirm",
+    "ask",
+    "change"
+   ],
+   "program": "five_day",
+   "allowed_change": {
+    "kind": "sets",
+    "exercise": "Lat Pulldown (Cable)",
+    "sets": 4
+   },
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "edit-egy-04",
+   "language": "egy",
+   "message": "خلي السيتد رو ٤ مجموعات",
+   "expected": [
+    "confirm",
+    "ask",
+    "change"
+   ],
+   "program": "five_day",
+   "allowed_change": {
+    "kind": "sets",
+    "exercise": "Seated Row (Cable)",
+    "sets": 4
+   },
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "edit-egy-05",
+   "language": "egy",
+   "message": "أيوه",
+   "expected": [
+    "change"
+   ],
+   "program": "five_day",
+   "allowed_change": {
+    "kind": "add",
+    "days": [
+     "Legs",
+     "Lower"
+    ]
+   },
+   "before": [
+    "ضيف باي على أيام الرجل"
+   ],
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "question-en-01",
+   "language": "en",
+   "message": "should i change my split?",
+   "expected": [
+    "answer",
+    "ask"
+   ],
+   "program": "five_day",
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "NOT_REQUIRED"
+  },
+  {
+   "id": "question-en-02",
+   "language": "en",
+   "message": "is hack squat better than leg press?",
+   "expected": [
+    "answer",
+    "ask"
+   ],
+   "program": "five_day",
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "NOT_REQUIRED"
+  },
+  {
+   "id": "question-en-03",
+   "language": "en",
+   "message": "how many sets do i do for back per week",
+   "expected": [
+    "answer"
+   ],
+   "program": "five_day",
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "NOT_REQUIRED"
+  },
+  {
+   "id": "question-en-04",
+   "language": "en",
+   "message": "last time i did rdl how much",
+   "expected": [
+    "answer"
+   ],
+   "program": "five_day",
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "NOT_REQUIRED"
+  },
+  {
+   "id": "question-en-05",
+   "language": "en",
+   "message": "why is crunch twice in my week",
+   "expected": [
+    "answer"
+   ],
+   "program": "five_day",
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "NOT_REQUIRED"
+  },
+  {
+   "id": "question-en-06",
+   "language": "en",
+   "message": "what would happen if i swapped rdl for deadlift",
+   "expected": [
+    "answer",
+    "ask"
+   ],
+   "program": "five_day",
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "NOT_REQUIRED"
+  },
+  {
+   "id": "question-egy-01",
+   "language": "egy",
+   "message": "البرنامج بتاعي فيه كام set في الأسبوع؟",
+   "expected": [
+    "answer"
+   ],
+   "program": "five_day",
+   "reply_any": [
+    "60",
+    "٦٠",
+    "ستين"
+   ],
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "question-egy-02",
+   "language": "egy",
+   "message": "آخر مرة عملت كام set في البنش؟",
+   "expected": [
+    "answer",
+    "ask"
+   ],
+   "program": "five_day",
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "question-egy-03",
+   "language": "egy",
+   "message": "البرنامج ده كويس ليا؟",
+   "expected": [
+    "answer",
+    "ask"
+   ],
+   "program": "five_day",
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "question-egy-04",
+   "language": "egy",
+   "message": "ينفع أبدل الهاك سكوات بليج بريس؟",
+   "expected": [
+    "answer",
+    "ask",
+    "confirm"
+   ],
+   "program": "five_day",
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "question-egy-05",
+   "language": "egy",
+   "message": "ليه الكرانش مرتين؟",
+   "expected": [
+    "answer",
+    "ask"
+   ],
+   "program": "five_day",
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "question-msa-01",
+   "language": "msa",
+   "message": "هل الأفضل أن أغيّر برنامجي الآن؟",
+   "expected": [
+    "answer",
+    "ask"
+   ],
+   "program": "five_day",
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "hedge-en-01",
+   "language": "en",
+   "message": "maybe ill swap hack squat for leg press later",
+   "expected": [
+    "answer",
+    "ask",
+    "confirm"
+   ],
+   "program": "five_day",
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "NOT_REQUIRED"
+  },
+  {
+   "id": "hedge-en-02",
+   "language": "en",
+   "message": "dont change anything, just tell me my push day",
+   "expected": [
+    "answer"
+   ],
+   "program": "five_day",
+   "reply_any": [
+    "Pec Deck"
+   ],
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "NOT_REQUIRED"
+  },
+  {
+   "id": "hedge-en-03",
+   "language": "en",
+   "message": "im thinking about going full body",
+   "expected": [
+    "answer",
+    "ask"
+   ],
+   "program": "five_day",
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "NOT_REQUIRED"
+  },
+  {
+   "id": "hedge-egy-01",
+   "language": "egy",
+   "message": "ما تغيرش حاجة بس قولي يوم البوش فيه ايه",
+   "expected": [
+    "answer"
+   ],
+   "program": "five_day",
+   "reply_any": [
+    "Pec Deck",
+    "بيك ديك"
+   ],
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "hedge-egy-02",
+   "language": "egy",
+   "message": "بفكر ابدل الهاك بليج بريس مش متأكد",
+   "expected": [
+    "answer",
+    "ask",
+    "confirm"
+   ],
+   "program": "five_day",
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "hedge-egy-03",
+   "language": "egy",
+   "message": "صاحبي غير برنامجه لفول بودي",
+   "expected": [
+    "answer",
+    "ask"
+   ],
+   "program": "five_day",
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "injury-en-01",
+   "language": "en",
+   "message": "can i squat?",
+   "expected": [
+    "answer",
+    "ask"
+   ],
+   "program": "five_day",
+   "injury": {
+    "area": "knee",
+    "description": "knee pain"
+   },
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "NOT_REQUIRED"
+  },
+  {
+   "id": "injury-en-02",
+   "language": "en",
+   "message": "did my doctor say i can do leg press?",
+   "expected": [
+    "answer",
+    "ask"
+   ],
+   "program": "five_day",
+   "injury": {
+    "area": "knee",
+    "description": "knee pain"
+   },
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "NOT_REQUIRED"
+  },
+  {
+   "id": "injury-en-03",
+   "language": "en",
+   "message": "when can i go back to squats",
+   "expected": [
+    "answer",
+    "ask"
+   ],
+   "program": "five_day",
+   "injury": {
+    "area": "knee",
+    "description": "knee pain"
+   },
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "NOT_REQUIRED"
+  },
+  {
+   "id": "injury-en-04",
+   "language": "en",
+   "message": "am i allowed to do leg extension?",
+   "expected": [
+    "answer",
+    "ask"
+   ],
+   "program": "five_day",
+   "injury": {
+    "area": "knee",
+    "description": "knee pain"
+   },
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "NOT_REQUIRED"
+  },
+  {
+   "id": "injury-en-05",
+   "language": "en",
+   "message": "doctor said no leg extension",
+   "expected": [
+    "change",
+    "ask"
+   ],
+   "program": "five_day",
+   "allowed_change": {
+    "kind": "clearance",
+    "exercise": "Leg Extension (Machine)",
+    "verdict": "not_cleared"
+   },
+   "injury": {
+    "area": "knee",
+    "description": "knee pain"
+   },
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "NOT_REQUIRED"
+  },
+  {
+   "id": "injury-egy-01",
+   "language": "egy",
+   "message": "مسموح العب سكوات؟",
+   "expected": [
+    "answer",
+    "ask"
+   ],
+   "program": "five_day",
+   "injury": {
+    "area": "knee",
+    "description": "knee pain"
+   },
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "injury-egy-02",
+   "language": "egy",
+   "message": "هو الدكتور ممكن يسمحلي بليج بريس؟",
+   "expected": [
+    "answer",
+    "ask"
+   ],
+   "program": "five_day",
+   "injury": {
+    "area": "knee",
+    "description": "knee pain"
+   },
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "injury-egy-03",
+   "language": "egy",
+   "message": "الدكتور قالي بلاش ليج اكستنشن",
+   "expected": [
+    "change",
+    "ask"
+   ],
+   "program": "five_day",
+   "allowed_change": {
+    "kind": "clearance",
+    "exercise": "Leg Extension (Machine)",
+    "verdict": "not_cleared"
+   },
+   "injury": {
+    "area": "knee",
+    "description": "knee pain"
+   },
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "injury-egy-04",
+   "language": "egy",
+   "message": "مسموح ألعب سكوات",
+   "expected": [
+    "answer",
+    "ask"
+   ],
+   "program": "five_day",
+   "injury": {
+    "area": "knee",
+    "description": "knee pain"
+   },
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "injury-egy-05",
+   "language": "egy",
+   "message": "ينفع اتمرن رجل النهاردة؟",
+   "expected": [
+    "answer",
+    "ask"
+   ],
+   "program": "five_day",
+   "injury": {
+    "area": "knee",
+    "description": "knee pain"
+   },
+   "reply_none": [
+    "your coach",
+    "assigned coach",
+    "الكوتش بتاعك",
+    "مدربك"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "coach-en-01",
+   "language": "en",
+   "message": "swap leg extension for leg press",
+   "expected": [
+    "refuse"
+   ],
+   "program": "five_day",
+   "authority": "coach",
+   "review_status": "NOT_REQUIRED"
+  },
+  {
+   "id": "coach-en-02",
+   "language": "en",
+   "message": "change my program to PPL, 3 days",
+   "expected": [
+    "refuse"
+   ],
+   "program": "five_day",
+   "authority": "coach",
+   "review_status": "NOT_REQUIRED"
+  },
+  {
+   "id": "coach-en-03",
+   "language": "en",
+   "message": "new split pls",
+   "expected": [
+    "refuse",
+    "ask"
+   ],
+   "program": "five_day",
+   "authority": "coach",
+   "review_status": "NOT_REQUIRED"
+  },
+  {
+   "id": "coach-egy-01",
+   "language": "egy",
+   "message": "بدل الهاك سكوات بليج بريس",
+   "expected": [
+    "refuse"
+   ],
+   "program": "five_day",
+   "authority": "coach",
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "coach-egy-02",
+   "language": "egy",
+   "message": "غير برنامجي لفول بودي ٣ ايام",
+   "expected": [
+    "refuse"
+   ],
+   "program": "five_day",
+   "authority": "coach",
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "coach-egy-03",
+   "language": "egy",
+   "message": "البرنامج ده كويس ليا؟",
+   "expected": [
+    "answer",
+    "ask"
+   ],
+   "program": "five_day",
+   "authority": "coach",
+   "review_status": "PENDING_OWNER"
+  }
+ ]
+}

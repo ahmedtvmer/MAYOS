@@ -1,8 +1,9 @@
 """Compare two player models over recorded gate and Arabic evaluation runs.
 
 Subcommands:
-- ``run``: sequentially invokes the hosted player gate and the real Arabic
-  evaluation as child processes per model and run, then writes the comparison.
+- ``run``: sequentially invokes the hosted player gate, the real Arabic
+  evaluation and the realistic-message understanding cases (#866) as child
+  processes per model and run, then writes the comparison.
 - ``report``: rebuilds the comparison from already-recorded report files
   without calling any model.
 - ``save-baseline``: freezes a model's passing list for later comparisons.
@@ -31,6 +32,10 @@ from tests.eval.suites import arabic_replies  # noqa: E402
 
 GATE_RUNNER = Path(__file__).resolve().parent / "run_evaluation.py"
 ARABIC_RUNNER = Path(__file__).resolve().parent / "run_arabic_evaluation.py"
+UNDERSTANDING_RUNNER = Path(__file__).resolve().parent / "run_understanding_evaluation.py"
+EVAL_RUNNERS = (("gate", GATE_RUNNER), ("arabic", ARABIC_RUNNER), ("understanding", UNDERSTANDING_RUNNER))
+#: Recorded directories from before #866 hold only these two.
+CORE_EVAL_TYPES = ("gate", "arabic")
 COMPARISON_JSON = "comparison.json"
 COMPARISON_MD = "comparison.md"
 ARABIC_FALLBACK_SUITE = "arabic_reviewed_41"
@@ -213,9 +218,44 @@ def _arabic_eval_case_results(report: dict[str, Any]) -> dict[str, dict[str, Any
     return results
 
 
+def _understanding_case_results(report: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Counted understanding cases; cases the owner has not reviewed yet are left out."""
+    rows = report.get("cases")
+    return {
+        f"understanding/{row['case_id']}": {
+            "passed": row.get("passed") is True,
+            "unscored": row.get("scored") is not True and not row.get("wrong_changes"),
+        }
+        for row in (rows if isinstance(rows, list) else [])
+        if isinstance(row, dict) and isinstance(row.get("case_id"), str) and row.get("counted") is True
+    }
+
+
+def _wrong_changes_by_model(
+    out_dir: Path, identities: dict[str, str], runs: int
+) -> dict[str, dict[str, list[str]]]:
+    """Model -> run -> cases with a wrong change applied.
+
+    Cases the owner has not reviewed yet are included: the number must be 0 for all of them.
+    """
+    wrong: dict[str, dict[str, list[str]]] = {}
+    for slug, model_id in identities.items():
+        for run_number in range(1, runs + 1):
+            report = _load_json(out_dir / slug / f"understanding_{run_number}.json")
+            rows = report.get("cases") if report is not None else None
+            if not isinstance(rows, list):
+                continue
+            wrong.setdefault(model_id, {})[str(run_number)] = sorted(
+                str(row.get("case_id")) for row in rows if isinstance(row, dict) and row.get("wrong_changes")
+            )
+    return wrong
+
+
 def _report_case_results(report: dict[str, Any], eval_type: str) -> dict[str, dict[str, Any]]:
     if eval_type == "gate":
         return _gate_case_results(report)
+    if eval_type == "understanding":
+        return _understanding_case_results(report)
     return _arabic_eval_case_results(report)
 
 
@@ -234,7 +274,7 @@ def _recorded_slugs(out_dir: Path) -> list[str]:
     slugs = set()
     if out_dir.is_dir():
         for child in out_dir.iterdir():
-            if child.is_dir() and (any(child.glob("gate_*.json")) or any(child.glob("arabic_*.json"))):
+            if child.is_dir() and any(any(child.glob(f"{name}_*.json")) for name, _runner in EVAL_RUNNERS):
                 slugs.add(child.name)
     return sorted(slugs)
 
@@ -242,10 +282,20 @@ def _recorded_slugs(out_dir: Path) -> list[str]:
 def _detect_runs(out_dir: Path) -> int:
     highest = 0
     for path in out_dir.glob("*/*.json"):
-        match = re.fullmatch(r"(?:gate|arabic)_(\d+)\.json", path.name)
+        match = re.fullmatch(r"(?:gate|arabic|understanding)_(\d+)\.json", path.name)
         if match:
             highest = max(highest, int(match.group(1)))
     return highest
+
+
+def _expected_eval_types(out_dir: Path) -> tuple[str, ...]:
+    """The evals a run must have; understanding only where it was requested or recorded."""
+    stored = _load_json(out_dir / "models.json")
+    if isinstance(stored, dict) and isinstance(stored.get("evals"), list):
+        return tuple(stored["evals"])
+    if any(out_dir.glob("*/understanding_*.json")):
+        return tuple(name for name, _runner in EVAL_RUNNERS)
+    return CORE_EVAL_TYPES
 
 
 def _extract_model_runs(
@@ -257,8 +307,8 @@ def _extract_model_runs(
     invalid: list[dict[str, Any]] = []
     for run_number in range(1, runs + 1):
         run_results: dict[str, dict[str, dict[str, Any]]] = {}
-        for eval_type, template in (("gate", "gate_{n}.json"), ("arabic", "arabic_{n}.json")):
-            path = model_dir / template.format(n=run_number)
+        for eval_type in _expected_eval_types(out_dir):
+            path = model_dir / f"{eval_type}_{run_number}.json"
             report = _load_json(path)
             if report is None:
                 invalid.append({
@@ -330,7 +380,7 @@ def _gate_judges(out_dir: Path, slugs: list[str]) -> dict[str, str]:
 
 def _report_model_id(report: dict[str, Any], eval_type: str) -> str | None:
     """The player model id a recorded report was produced for, when it records one."""
-    if eval_type == "gate":
+    if eval_type in {"gate", "understanding"}:
         player_model = report.get("player_model")
     else:
         # The Arabic report records the configured player model at model.model.
@@ -347,7 +397,9 @@ def _run_validity(eval_type: str, report: dict[str, Any], model_id: str | None) 
         if report.get("partial") is True:
             return "gate report is a partial suite run"
     elif report.get("real_model_run") is not True:
-        return "arabic report is not a real configured-model run"
+        return f"{eval_type} report is not a real configured-model run"
+    elif eval_type == "understanding" and report.get("partial") is True:
+        return "understanding report is a partial run"
     recorded = _report_model_id(report, eval_type)
     if model_id is not None and recorded is not None and recorded != model_id:
         return f"report player model is {recorded!r}, expected {model_id!r}"
@@ -355,8 +407,8 @@ def _run_validity(eval_type: str, report: dict[str, Any], model_id: str | None) 
 
 
 def _model_identity(out_dir: Path, slug: str, fallback: str) -> str:
-    for eval_type, pattern in (("gate", "gate_*.json"), ("arabic", "arabic_*.json")):
-        for path in _sorted_run_files(out_dir / slug, pattern):
+    for eval_type, _runner in EVAL_RUNNERS:
+        for path in _sorted_run_files(out_dir / slug, f"{eval_type}_*.json"):
             report = _load_json(path)
             if report is None:
                 continue
@@ -394,7 +446,17 @@ def _write_models_json(out_dir: Path, model_ids: dict[str, str], runs: int) -> P
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / "models.json"
     path.write_text(
-        json.dumps({"model_a": model_ids["a"], "model_b": model_ids.get("b"), "runs": runs}, ensure_ascii=False, indent=2) + "\n",
+        json.dumps(
+            {
+                "model_a": model_ids["a"],
+                "model_b": model_ids.get("b"),
+                "runs": runs,
+                "evals": [name for name, _runner in EVAL_RUNNERS],
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
         encoding="utf-8",
     )
     print(f"Model slots written: {path}")
@@ -464,6 +526,7 @@ def _build_comparison(out_dir: Path, runs: int, model_ids: dict[str, str] | None
         "judges": _gate_judges(out_dir, slugs),
         "commit": _base_commit(),
         "invalid_runs": invalid_runs,
+        "wrong_changes_applied": _wrong_changes_by_model(out_dir, identities, runs),
         "cases": cases,
         "a_not_b": sorted(a_not_b),
         "b_not_a": sorted(b_not_a),
@@ -497,6 +560,9 @@ def _comparison_markdown(report: dict[str, Any]) -> str:
     lines.append("")
     lines.append(f"- A not B: {', '.join(report['a_not_b']) or 'none'}")
     lines.append(f"- B not A: {', '.join(report['b_not_a']) or 'none'}")
+    for model, by_run in (report.get("wrong_changes_applied") or {}).items():
+        listed = "; ".join(f"run {run}: {', '.join(cases) or 'none'}" for run, cases in by_run.items())
+        lines.append(f"- Wrong changes applied (must be none), {model}: {listed}")
     if report.get("invalid_runs"):
         lines.append("")
         lines.append("## Invalid runs")
@@ -555,8 +621,8 @@ def _run_children(out_dir: Path, model_ids: dict[str, str], runs: int) -> None:
             continue
         slug = model_slug(model_id)
         for run_number in range(1, runs + 1):
-            for eval_type, runner, prefix in (("gate", GATE_RUNNER, "gate"), ("arabic", ARABIC_RUNNER, "arabic")):
-                report_path = out_dir / slug / f"{prefix}_{run_number}.json"
+            for eval_type, runner in EVAL_RUNNERS:
+                report_path = out_dir / slug / f"{eval_type}_{run_number}.json"
                 command = [sys.executable, str(runner)]
                 if eval_type == "arabic":
                     command += ["--mode", "real"]
@@ -656,6 +722,11 @@ def _compare_command(args: argparse.Namespace) -> int:
         key for key, entry in results.items() if entry is not None and entry.get("passes") is True and key not in baseline_keys
     )
     invalid_runs = [entry for entry in comparison.get("invalid_runs", []) if entry.get("model") == args.model]
+    wrong_changes = [
+        f"run {run}: {case_id}"
+        for run, case_ids in (comparison.get("wrong_changes_applied") or {}).get(args.model, {}).items()
+        for case_id in case_ids
+    ]
     payload = {
         "model": args.model,
         "baseline": str(args.baseline),
@@ -665,7 +736,8 @@ def _compare_command(args: argparse.Namespace) -> int:
         "baseline_missing": sorted(missing),
         "bonus_cases": bonus,
         "invalid_runs": invalid_runs,
-        "passed": not gaps and not unscored and not missing and not invalid_runs,
+        "wrong_changes_applied": wrong_changes,
+        "passed": not gaps and not unscored and not missing and not invalid_runs and not wrong_changes,
     }
     json_path = args.dir / f"{model_slug(args.model)}_baseline_comparison.json"
     md_path = args.dir / f"{model_slug(args.model)}_baseline_comparison.md"
@@ -686,6 +758,7 @@ def _compare_command(args: argparse.Namespace) -> int:
         ("Baseline cases unscored", payload["baseline_unscored"]),
         ("Baseline cases missing", payload["baseline_missing"]),
         ("Bonus cases", payload["bonus_cases"]),
+        ("Wrong changes applied", wrong_changes),
         ("Invalid runs", invalid_lines),
     ):
         md_lines.append(f"## {title}")
@@ -705,7 +778,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Compare player models over recorded gate and Arabic evaluation runs.")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    run_parser = subparsers.add_parser("run", help="Run both evaluations per model and run, then write the comparison.")
+    run_parser = subparsers.add_parser("run", help="Run every evaluation per model and run, then write the comparison.")
     run_parser.add_argument("--model-a", required=True, help="Player model id for slot A.")
     run_parser.add_argument("--model-b", default=None, help="Optional player model id for slot B.")
     run_parser.add_argument("--runs", type=int, default=3, help="Gate/Arabic invocations per model (default 3).")

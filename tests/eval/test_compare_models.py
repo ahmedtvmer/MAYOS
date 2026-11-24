@@ -156,6 +156,19 @@ def _arabic_report(player_model: str, rows: list[dict]) -> dict:
     }
 
 
+def _understanding_row(case_id: str, *, passed: bool = True, counted: bool = True, wrong: tuple = ()) -> dict:
+    return {
+        "case_id": case_id, "passed": passed, "scored": True, "counted": counted, "wrong_changes": list(wrong),
+    }
+
+
+def _understanding_report(player_model: str, rows: list[dict], *, partial: bool = False) -> dict:
+    return {
+        "kind": "understanding", "real_model_run": True, "player_model": player_model,
+        "partial": partial, "cases": rows,
+    }
+
+
 def _canonical_gate_report(player_model: str, run: int) -> dict:
     model_a = {
         1: {"qa-01": ("passed", "passed"), "qa-02": ("failed", "failed"), "qa-03": ("unscored", "unscored")},
@@ -206,11 +219,20 @@ def test_run_pins_player_model_runs_children_sequentially_and_records_failures(t
         ("model-b", "arabic", 1): _arabic_report("model-b", [_arabic_row("ar-sore-04")]),
         ("model-b", "arabic", 2): _arabic_report("model-b", [_arabic_row("ar-sore-04")]),
     }
+    for model_id in ("model-a", "model-b"):
+        for run in (1, 2):
+            canned[(model_id, "understanding", run)] = _understanding_report(
+                model_id, [_understanding_row("swap-en-01")]
+            )
+    kinds = {
+        "run_evaluation.py": "gate",
+        "run_arabic_evaluation.py": "arabic",
+        "run_understanding_evaluation.py": "understanding",
+    }
     calls = []
 
     def fake_run(command, env=None, cwd=None):
-        script = Path(command[1]).name
-        kind = "gate" if script == "run_evaluation.py" else "arabic"
+        kind = kinds[Path(command[1]).name]
         report_path = Path(command[command.index("--report") + 1])
         run_number = int(report_path.stem.split("_")[1])
         calls.append({"model": env["LLM_MODEL"], "kind": kind, "run": run_number, "env": dict(env), "command": list(command), "cwd": cwd})
@@ -231,12 +253,16 @@ def test_run_pins_player_model_runs_children_sequentially_and_records_failures(t
     assert [(call["model"], call["kind"], call["run"]) for call in calls] == [
         ("model-a", "gate", 1),
         ("model-a", "arabic", 1),
+        ("model-a", "understanding", 1),
         ("model-a", "gate", 2),
         ("model-a", "arabic", 2),
+        ("model-a", "understanding", 2),
         ("model-b", "gate", 1),
         ("model-b", "arabic", 1),
+        ("model-b", "understanding", 1),
         ("model-b", "gate", 2),
         ("model-b", "arabic", 2),
+        ("model-b", "understanding", 2),
     ]
     assert all(call["env"]["LLM_MODEL"] == call["model"] for call in calls)
     assert all(call["env"]["COMPARE_CHILD_MARKER"] == "inherited" for call in calls)
@@ -247,6 +273,7 @@ def test_run_pins_player_model_runs_children_sequentially_and_records_failures(t
         "model_a": "model-a",
         "model_b": "model-b",
         "runs": 2,
+        "evals": ["gate", "arabic", "understanding"],
     }
 
     comparison = json.loads((tmp_path / "comparison.json").read_text(encoding="utf-8"))
@@ -570,3 +597,50 @@ def test_compare_fails_when_the_compared_model_has_an_invalid_run(tmp_path):
     ]
     assert payload["baseline_gaps"] == ["coaching_qa/qa-01"]
     assert payload["passed"] is False
+
+
+def _write_understanding_dir(tmp_path: Path, rows: list[dict], *, partial: bool = False) -> Path:
+    _write_canonical_dir(tmp_path)
+    for model_id in ("model-a", "model-b"):
+        for run in (1, 2, 3):
+            path = tmp_path / compare_models.model_slug(model_id) / f"understanding_{run}.json"
+            path.write_text(json.dumps(_understanding_report(model_id, rows, partial=partial)), encoding="utf-8")
+    return tmp_path
+
+
+def test_understanding_cases_count_only_after_review(tmp_path):
+    _write_understanding_dir(
+        tmp_path, [_understanding_row("swap-en-01"), _understanding_row("swap-egy-01", counted=False)]
+    )
+
+    assert compare_models.main(["report", "--dir", str(tmp_path)]) == 0
+
+    comparison = json.loads((tmp_path / "comparison.json").read_text(encoding="utf-8"))
+    assert comparison["cases"]["understanding/swap-en-01"]["a"]["passes"] is True
+    assert "understanding/swap-egy-01" not in comparison["cases"]
+
+
+def test_a_wrong_change_is_listed_and_fails_the_baseline_comparison_even_when_unreviewed(tmp_path):
+    rows = [_understanding_row("swap-egy-01", passed=False, counted=False, wrong=("program",))]
+    _write_understanding_dir(tmp_path, rows)
+    baseline = tmp_path / "baseline.json"
+    baseline.write_text(json.dumps({"passing": []}), encoding="utf-8")
+    assert compare_models.main(["report", "--dir", str(tmp_path)]) == 0
+
+    exit_code = compare_models.main(
+        ["compare", "--dir", str(tmp_path), "--model", "model-a", "--baseline", str(baseline)]
+    )
+
+    comparison = json.loads((tmp_path / "comparison.json").read_text(encoding="utf-8"))
+    assert comparison["wrong_changes_applied"]["model-a"]["1"] == ["swap-egy-01"]
+    assert exit_code == 1
+
+
+def test_a_partial_understanding_run_is_invalid(tmp_path):
+    _write_understanding_dir(tmp_path, [_understanding_row("swap-en-01")], partial=True)
+
+    assert compare_models.main(["report", "--dir", str(tmp_path)]) == 0
+
+    comparison = json.loads((tmp_path / "comparison.json").read_text(encoding="utf-8"))
+    reasons = {entry["reason"] for entry in comparison["invalid_runs"] if entry["eval"] == "understanding"}
+    assert reasons == {"understanding report is a partial run"}
