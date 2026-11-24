@@ -28,7 +28,7 @@ def _reader(program):
     return next(tool for tool in tools if tool.name == "get_program_rationale")
 
 
-def test_active_program_reports_player_authority_without_assignment(fresh_store):
+def test_active_program_omits_authority_without_assignment(fresh_store):
     program = _program()
     ledger = SimpleNamespace(
         get_active_program=lambda: program,
@@ -42,10 +42,10 @@ def test_active_program_reports_player_authority_without_assignment(fresh_store)
     tools, _definitions = build_player_read_tools(ledger, store, "player-id")
     result = json.loads(next(tool for tool in tools if tool.name == "get_active_program").invoke({}))
 
-    assert result["program_authority"] == "player"
+    assert "program_authority" not in result
 
 
-def test_active_program_reports_coach_authority_and_display_name(fresh_store):
+def test_active_program_omits_coach_authority_and_display_name(fresh_store):
     program = _program(authored=True)
     program.created_at = "2026-10-27T12:00:00+00:00"
     ledger = SimpleNamespace(
@@ -68,8 +68,8 @@ def test_active_program_reports_coach_authority_and_display_name(fresh_store):
     tools, _definitions = build_player_read_tools(ledger, store, "player-id")
     result = json.loads(next(tool for tool in tools if tool.name == "get_active_program").invoke({}))
 
-    assert result["program_authority"] == "coach"
-    assert result["coach"] == "Coach Display"
+    assert "program_authority" not in result
+    assert "coach" not in result
 
 
 def test_program_rationale_reader_scopes_by_day_or_exercise_and_keeps_unknown_codes():
@@ -109,7 +109,12 @@ def test_program_rationale_reader_reports_legacy_and_coach_authored_source_and_n
     assert legacy["reason_available"] is False
     assert authored["reason_available"] is False
     assert authored["source"] == "coach_authored"
-    assert authored["days"][0]["exercises"][0]["coach_note"] == "Coach note"
+    # #860 (owner decision 2026-11-24): the Coach-authored note never reaches
+    # the model's rationale record, under any key.
+    assert "exercise_note" not in authored["days"][0]["exercises"][0]
+    assert "coach_note" not in authored["days"][0]["exercises"][0]
+    assert "note" not in authored["days"][0]["exercises"][0]
+    assert "Coach note" not in json.dumps(authored, ensure_ascii=False)
 
 
 def test_program_rationale_reader_never_exceeds_4_kb():
@@ -149,7 +154,11 @@ def test_coach_published_generated_program_is_not_labeled_automatic():
     program = _program(rationale={"days": []}, authored=True)
     result = json.loads(_reader(program).invoke({}))
     assert result["source"] == "coach_generated"
-    assert result["days"][0]["exercises"][0]["coach_note"] == "Coach note"
+    # #860 (owner decision 2026-11-24): the note is dropped from the record.
+    assert "exercise_note" not in result["days"][0]["exercises"][0]
+    assert "coach_note" not in result["days"][0]["exercises"][0]
+    assert "note" not in result["days"][0]["exercises"][0]
+    assert "Coach note" not in json.dumps(result, ensure_ascii=False)
 
 
 def test_oversized_day_rationale_is_paged_without_losing_reasons():

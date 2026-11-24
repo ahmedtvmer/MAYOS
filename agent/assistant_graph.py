@@ -219,6 +219,8 @@ IntentType = Literal[
     "exercise_clearance_disambiguation",
     "coaching_qa",
     "composite_intent",
+    "coach_controlled",
+    "change_help",
 ]
 
 # Tier-0a: unconditional acute-trauma signals (fail-closed; no fatigue bypass).
@@ -583,12 +585,18 @@ def _franco_explicit_swap_query(query: str) -> str | None:
     return f"swap {match.group('source').strip()} for {match.group('target').strip()}"
 
 
+# The program as the thing being changed, with "my" («برنامجي», «روتيني»,
+# «تقسيمتي») as well as "the": without the possessives «غيّر برنامجي» fell
+# through to the model (#860).
+_ARABIC_PROGRAM_NOUN = (
+    r"(?:ال)?(?:برنامج|روتين)|(?:برنامج|روتين)ي|(?:ال)?تقسيمة|تقسيمتي|program|routine|split"
+)
 # Unicode \w treats Arabic letters as word characters; diacritics are removed first.
 RE_ARABIC_PROGRAM_COMMAND = re.compile(
     r"(?:(?<!\w)(?:ظبط|غير|عدل|بدل|خلي|اعمل|زود|قلل)(?:لي)?(?!\w)|"
     r"(?<!\w)(?:ممكن|لو\s+سمحت|يا\s+ريت|من\s+فضلك)\s+"
     r"ت(?:ظبط|غير|عدل|بدل|خلي|عمل|زود|قلل)(?:لي)?(?!\w))"
-    r".{0,50}(?<!\w)(?:البرنامج|برنامج|التقسيمة|تقسيمة|الروتين|روتين|program|routine|split)(?!\w)",
+    rf".{{0,50}}(?<!\w)(?:{_ARABIC_PROGRAM_NOUN})(?!\w)",
     re.IGNORECASE,
 )
 # Past-tense wishes and hedges («كنت عايز أغير… بس مش متأكد») are not requests.
@@ -598,7 +606,7 @@ RE_ARABIC_HEDGED_PROGRAM_CHANGE = re.compile(
 RE_ARABIC_WANTED_PROGRAM_CHANGE = re.compile(
     r"(?<!\w)(?:عايز|عاوز|عايزة|عاوزة|محتاج|محتاجة)\s+"
     r"(?:أ|ا)?(?:ظبط|غير|عدل|بدل|خلي|عمل|زود|قلل)(?:لي)?(?!\w)"
-    r".{0,50}(?<!\w)(?:البرنامج|برنامج|التقسيمة|تقسيمة|الروتين|روتين|program|routine|split)(?!\w)",
+    rf".{{0,50}}(?<!\w)(?:{_ARABIC_PROGRAM_NOUN})(?!\w)",
     re.IGNORECASE,
 )
 RE_ARABIC_NEGATED_PROGRAM_CHANGE = re.compile(
@@ -1529,6 +1537,138 @@ def _arabic_program_change_is_directive(query: str) -> bool:
     return _authorized_action(query, "program_mutation") or bool(
         RE_ARABIC_PROGRAM_COMMAND.search(normalized)
         or RE_ARABIC_WANTED_PROGRAM_CHANGE.search(normalized)
+    )
+
+
+# --- #860: deterministic program-change request detection --------------------
+# One detector decides, in code, whether a turn is a directive to change the
+# Training program. Questions («should I change my split?», «البرنامج ده كويس
+# ليا؟») and negations are advice, not change requests.
+_RE_PROGRAM_CHANGE_QUESTION = re.compile(
+    r"\b(?:should\s+i|can\s+(?:i|you)|could\s+(?:i|you)"
+    r"|why\s+(?:is|am|do|does|did|would)|what\s+(?:do|should|about|if)"
+    r"|how\s+(?:is|do|does|can|should|about)|is\s+(?:my|the|it|it\s+ok(?:ay)?\s+to)"
+    r"|are\s+(?:my|the|these)|do\s+i|does\s+(?:my|the|it)"
+    r"|would\s+it\s+be\s+better\s+to)\b",
+    re.IGNORECASE,
+)
+_RE_PROGRAM_CHANGE_NEGATED = re.compile(
+    r"\b(?:don't|do\s+not|doesn't|does\s+not|not\s+to|never|stop|no\s+need)\b"
+    r"[^.!?;]{0,30}?\b(?:change|switch|swap|replace|rebuild|regenerate|make|turn|update|fix|adjust)\b",
+    re.IGNORECASE,
+)
+_RE_PROGRAM_TARGET_NOUN = r"(?:program|routine|split(?!\s+squat)|plan|workout|days?)"
+# Directive forms the fixed router misses: "make my routine a bro split",
+# "turn my program into an upper/lower split", "change my plan".
+_RE_PROGRAM_DIRECTIVE_REQUEST = re.compile(
+    rf"\b(?:change|switch|replace|rebuild|regenerate|make|turn|fix|adjust|update)\b"
+    rf"[^.!?;]{{0,60}}?\b(?:my|the|this|current)\s+{_RE_PROGRAM_TARGET_NOUN}\b",
+    re.IGNORECASE,
+)
+# "I want a bro split", "I want an upper/lower split", "give me 4 days".
+_RE_WANTED_SPLIT_REQUEST = re.compile(
+    r"\b(?:i\s+(?:want|need|would\s+like)|give\s+me)\s+(?:a\s+|an\s+)?"
+    r"(?:(?:[a-z][a-z\s/×x-]{0,30})?split(?!\s+squat)|\d+\s+days?)\b",
+    re.IGNORECASE,
+)
+# A body-part day composition ("a chest and back day") names a structure.
+_MUSCLE_DAY_WORD = r"chest|back|shoulders?|arms?|legs?|push|pull|upper|lower|glutes?|quads?|core"
+_RE_BODY_DAY_STRUCTURE = re.compile(
+    rf"\b(?:{_MUSCLE_DAY_WORD})\s+(?:and|&|,)\s+(?:{_MUSCLE_DAY_WORD})"
+    rf"(?:\s+and\s+(?:{_MUSCLE_DAY_WORD}))?\s+days?\b",
+    re.IGNORECASE,
+)
+# Words that leave "split" unattached to a structure: router verbs and generic
+# modifiers are not split names, so "<modifier> split" needs a real modifier
+# («bro split», "body part split").
+_GENERIC_SPLIT_WORDS = frozenset(
+    {
+        "switch", "change", "make", "turn", "replace", "rebuild", "regenerate",
+        "update", "fix", "adjust", "set", "add", "put", "move", "remove", "take",
+        "augment", "want", "need", "give", "show", "get", "please",
+        "new", "custom", "own", "old", "my", "the", "your", "a", "an", "current",
+        "whole", "different", "another", "program", "routine",
+    }
+)
+_ARABIC_BODY_PART = r"صدر|ضهر|ظهر|دراع|رجلين|رجل|كتف|باي|تراي|ساق|اكتاف"
+_RE_ARABIC_BODY_DAY_STRUCTURE = re.compile(
+    rf"(?:{_ARABIC_BODY_PART})\s*و\s*(?:{_ARABIC_BODY_PART})"
+    rf"|(?:تقسيم[هة])\s*(?:{_ARABIC_BODY_PART})"
+)
+
+
+def _is_program_change_request(query: str) -> bool:
+    """True for a directive to change the Training program, in either language (#860)."""
+    if ARABIC_SCRIPT_RE.search(query):
+        normalized = RE_ARABIC_DIACRITICS.sub("", query)
+        return bool(
+            _arabic_program_change_is_directive(query)
+            or RE_ARABIC_SWAP_REQUEST.search(normalized)
+            or RE_ARABIC_NAMED_SWAP.fullmatch(normalized.strip())
+        )
+    if _is_food_log_query(query) or RE_NUTRITION.search(query):
+        return False
+    if _RE_PROGRAM_CHANGE_QUESTION.search(query) or _RE_PROGRAM_CHANGE_NEGATED.search(query):
+        return False
+    return bool(
+        RE_PROGRAM_MUTATION.search(query)
+        or RE_PROGRAM_DAY_EDIT.search(query)
+        or RE_ARABIC_PROGRAM_DAY_EDIT.search(query)
+        or RE_EXPLICIT_SWAP.search(query)
+        or RE_SINGLE_SWAP.search(query)
+        or _RE_PROGRAM_DIRECTIVE_REQUEST.search(query)
+        or _RE_WANTED_SPLIT_REQUEST.search(query)
+    )
+
+
+def _names_unrecognized_split(query: str) -> bool:
+    """True when the query names a split structure no supported plan builds (#860).
+
+    A bare "split" or a verb/generic modifier («switch split», "my new split")
+    names nothing: those requests are frequency changes that keep the current
+    split and stay executable.
+    """
+    if match_split_keyword(query) is not None:
+        return False
+    casefolded = query.casefold()
+    if any(name.casefold() in casefolded for name in SPLIT_DISPLAY_NAMES.values()):
+        return False
+    for match in re.finditer(r"\bsplit\b", query, re.IGNORECASE):
+        before = query[:match.start()].split()
+        if not before or before[-1].casefold() not in _GENERIC_SPLIT_WORDS:
+            return True
+    return bool(_RE_BODY_DAY_STRUCTURE.search(query))
+
+
+def _names_arabic_split_structure(query: str) -> bool:
+    """«تقسيمة صدر وضهر ودراع» names a composition, not a supported split (#860)."""
+    normalized = RE_ARABIC_DIACRITICS.sub("", query)
+    if match_split_keyword(normalized) is not None:
+        return False
+    return bool(_RE_ARABIC_BODY_DAY_STRUCTURE.search(normalized))
+
+
+def _is_unresolved_program_change(query: str) -> bool:
+    """A change request whose named structure no supported split plan builds (#860).
+
+    Today's route hands it to a hosted model (custom split planning); the fixed
+    change-help reply replaces that.
+    """
+    if ARABIC_SCRIPT_RE.search(query):
+        return _names_arabic_split_structure(query)
+    return _names_unrecognized_split(query)
+
+
+def _unresolved_arabic_program_change(query: str) -> bool:
+    """Arabic change request that must bypass the Arabic classifier (#860).
+
+    Only when no frequency is mentioned: a named frequency keeps today's
+    validated Arabic change route.
+    """
+    return (
+        _mentioned_arabic_frequency(query) is None
+        and _is_program_change_request(query)
+        and _names_arabic_split_structure(query)
     )
 
 
@@ -3629,6 +3769,11 @@ def assistant_preference_delete_node(state: AssistantState, config: dict[str, An
 
 
 def router_node(state: AssistantState, config: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Routes the turn, then applies the one program-authority gate (#860)."""
+    return _apply_program_authority_gate(_route_player_turn(state, config), state, config)
+
+
+def _route_player_turn(state: AssistantState, config: dict[str, Any] | None = None) -> dict[str, Any]:
     if state.get("pipeline_error"):
         return {"intent": "telemetry_intercept", "intent_metadata": {"response_content": state["pipeline_error"]}}
     messages = state.get("messages", [])
@@ -3901,6 +4046,12 @@ def router_node(state: AssistantState, config: dict[str, Any] | None = None) -> 
         history_route = _arabic_history_lexical_route(query, config)
         if history_route is not None:
             return history_route
+        if _unresolved_arabic_program_change(query):
+            # #860: a change request naming a structure no supported split
+            # builds never reaches the Arabic classifier; the shared authority
+            # gate turns this coaching_qa route into the fixed change-help
+            # reply, or the Coach refusal under a Coach-controlled program.
+            return {"intent": "coaching_qa", "intent_metadata": {}, "active_intents": []}
         return _classify_arabic_intent(query, config)
 
     # Clause Splitting for Compound / Multi-Intent Queries
@@ -5320,6 +5471,212 @@ def _coach_program_refusal(query: str) -> str:
     return programs_service.COACH_CONTROLLED_REQUEST_ERROR
 
 
+# --- #860: one authority gate after routing ----------------------------------
+#: Change intents whose turn is decided in code, never by the model.
+_PROGRAM_AUTHORITY_INTENTS = frozenset(
+    {
+        "exercise_substitution",
+        "program_mutation",
+        "program_edit",
+        "program_edit_confirmation",
+        "composite_intent",
+    }
+)
+
+
+def _program_authority(
+    state: AssistantState, config: dict[str, Any] | None
+) -> Literal["player", "coach"]:
+    """Program authority from one helper, in code (#860).
+
+    Authority passes to the Coach only after an assigned Coach publishes a
+    program; until then, and after unassignment, the Player controls it.
+    """
+    ledger, store = _graph_context(config)
+    if programs_service.player_controls_program(store, ledger, state.get("player_account_id")):
+        return "player"
+    return "coach"
+
+
+# The Arabic counterpart of _swap_source_names_the_program: «الروتين بتاعي»,
+# «برنامجي» and «التقسيمة» as the thing being changed are the program itself.
+_RE_ARABIC_PROGRAM_SOURCE = re.compile(
+    r"(?:ال)?(?:برنامج|روتين|تقسيمة|تقسيمه|سبليت|جدول|خطة|خطه)(?:ي|ى)?(?:\s|$)"
+)
+
+
+def _change_suggestion_kind(route: dict[str, Any], query: str) -> str:
+    """Suggestion kind for a gated change request (#860).
+
+    Swap routes prefill a Substitution request; program change and edit routes
+    prefill a split change. A ``coaching_qa`` route that only carries the
+    detected request decides by its wording, and a program word as the swap
+    source stays a split change.
+    """
+    metadata = route.get("intent_metadata") or {}
+    intent = route.get("intent")
+    if isinstance(metadata.get("arabic_validated_swap"), dict):
+        return "substitution"
+    if intent == "exercise_substitution":
+        return "substitution"
+    if intent in {"program_mutation", "program_edit", "program_edit_confirmation"}:
+        return "split_change"
+    if ARABIC_SCRIPT_RE.search(query):
+        normalized = RE_ARABIC_DIACRITICS.sub("", query)
+        named = RE_ARABIC_NAMED_SWAP.fullmatch(normalized.strip())
+        if named and _RE_ARABIC_PROGRAM_SOURCE.match(named.group("source").strip()):
+            return "split_change"
+        if named:
+            return "substitution"
+        if (
+            RE_ARABIC_PROGRAM_COMMAND.search(normalized)
+            or RE_ARABIC_WANTED_PROGRAM_CHANGE.search(normalized)
+        ):
+            return "split_change"
+        return "substitution" if RE_ARABIC_SWAP_REQUEST.search(normalized) else "split_change"
+    explicit = RE_EXPLICIT_SWAP.search(query)
+    if explicit and _swap_source_names_the_program(explicit.group("source")):
+        return "split_change"
+    if explicit or RE_SINGLE_SWAP.search(query):
+        return "substitution"
+    return "split_change"
+
+
+def _swap_source_names_the_program(source: str) -> bool:
+    words = [
+        word for word in source.strip().casefold().split()
+        if word not in {"my", "the", "current", "whole"}
+    ]
+    return not words or words[-1] in {
+        "program", "routine", "split", "plan", "schedule", "workout", "days",
+    }
+
+
+def _coach_controlled_route(route: dict[str, Any], query: str) -> dict[str, Any]:
+    """Rewrite a change route into the fixed ``coach_controlled`` turn (#860)."""
+    metadata = dict(route.get("intent_metadata") or {})
+    return {
+        "intent": "coach_controlled",
+        "intent_metadata": {
+            **metadata,
+            "gated_intent": route.get("intent"),
+            "gated_suggestion": _change_suggestion_kind(route, query),
+        },
+    }
+
+
+def _change_help_route(route: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "intent": "change_help",
+        "intent_metadata": dict(route.get("intent_metadata") or {}),
+    }
+
+
+def _apply_program_authority_gate(
+    route: dict[str, Any],
+    state: AssistantState,
+    config: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """The one authority gate after routing (#860).
+
+    Change intents under a Coach-controlled program become the fixed
+    ``coach_controlled`` refusal; a change request that would otherwise reach
+    the hosted model becomes the fixed ``change_help`` reply. Per-node checks
+    stay as a second guard.
+    """
+    intent = route.get("intent") or "coaching_qa"
+    gated = intent in _PROGRAM_AUTHORITY_INTENTS
+    if intent == "composite_intent" and not isinstance(
+        (route.get("intent_metadata") or {}).get("arabic_validated_swap"), dict
+    ):
+        # Composite turns without a validated swap keep their per-sub-intent
+        # guards; the sub-intent handlers refuse under a Coach themselves.
+        gated = False
+    query = _get_message_text(state["messages"][-1]) if state.get("messages") else ""
+    if not gated and not (
+        intent == "coaching_qa"
+        # A deliberately marked advice request (#738: "swap X for an
+        # alternative") is advice, not a change request, and keeps the model.
+        and not (route.get("intent_metadata") or {}).get("advice_request")
+        and _is_program_change_request(query)
+    ):
+        return route
+    if _program_authority(state, config) == "coach":
+        return _coach_controlled_route(route, query)
+    if gated:
+        if intent == "program_mutation" and _is_unresolved_program_change(query):
+            return _change_help_route(route)
+        return route
+    return _change_help_route(route)
+
+
+def coach_controlled_node(state: AssistantState, config: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Fixed refusal for a change request under a Coach-controlled program (#860)."""
+    query = _get_message_text(state["messages"][-1])
+    metadata = state.get("intent_metadata") or {}
+    ledger, store = _graph_context(config)
+    swap = metadata.get("arabic_validated_swap")
+    if metadata.get("gated_suggestion") == "substitution" or isinstance(swap, dict):
+        suggestion = _substitution_request_suggestion(
+            store, ledger, query, swap if isinstance(swap, dict) else metadata
+        )
+    else:
+        suggestion = _split_change_request_suggestion(query, metadata)
+    return _response(_coach_program_refusal(query), request_suggestion=suggestion)
+
+
+def _player_split_plan(ledger: Any) -> tuple[int, list[str]]:
+    """Weekly frequency and the split names ``get_split_plan`` supports for it (#860)."""
+    profile = (ledger.get_player_profile() or {}) if ledger is not None else {}
+    program = ledger.get_active_program() if ledger is not None else None
+    frequency = getattr(program, "weekly_frequency", None) or profile.get("weekly_frequency") or 4
+    if type(frequency) is not int or not 1 <= frequency <= 5:
+        frequency = 4
+    gender = str(profile.get("gender", "male")).lower()
+    names: list[str] = []
+    for split_type, display_name in SPLIT_DISPLAY_NAMES.items():
+        if split_type == "female_full_body":
+            continue  # retired glute-priority split, never offered
+        if split_type.startswith("female_") and gender != "female":
+            continue
+        if get_split_plan(split_type, frequency, gender) is None:
+            continue
+        label = SPLIT_FREQUENCY_NAMES.get((split_type, frequency), display_name)
+        if label not in names:
+            names.append(label)
+    return frequency, names
+
+
+def _change_help_reply(language: str, frequency: int, split_names: list[str]) -> str:
+    """Fixed reply for a change request the deterministic router cannot build (#860)."""
+    example_split = split_names[0] if split_names else "Full Body"
+    days = "يوم" if frequency == 1 else "يومين" if frequency == 2 else f"{frequency} أيام"
+    splits_label = "، ".join(split_names) if language == "ar" else ", ".join(split_names)
+    if language == "ar":
+        return (
+            "تغييرات البرنامج التدريبي بتتم هنا في الشات وبتنفّذ على طول. ابعت واحدة من دي:\n"
+            "- بدل X بـ Y\n"
+            f"- غيّر برنامجي لـ {example_split} {days}\n"
+            f"التقسيمات المتاحة لأسبوعك ({days}): {splits_label}."
+        )
+    day_word = "day" if frequency == 1 else "days"
+    return (
+        "Routine changes happen right here in chat, and they apply at once. Send one of these:\n"
+        "- swap X for Y\n"
+        f"- change my program to {example_split}, {frequency} {day_word}\n"
+        f"Supported splits for your {frequency}-{day_word} week: {splits_label}."
+    )
+
+
+def change_help_node(state: AssistantState, config: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Fixed reply for a change request that would otherwise reach the model (#860)."""
+    query = _get_message_text(state["messages"][-1])
+    language = resolve_reply_language(query, state.get("display_language", "en"))
+    ledger, _store = _graph_context(config)
+    frequency, split_names = _player_split_plan(ledger)
+    return _response(_change_help_reply(language, frequency, split_names))
+
+
 def _arabic_frequency_label(frequency: int) -> str:
     if frequency == 1:
         return "يوم واحد"
@@ -6114,12 +6471,10 @@ def program_edit_confirmation_node(state: AssistantState, config: dict[str, Any]
 def program_edit_chat_node(state: AssistantState, config: dict[str, Any] | None = None) -> dict[str, Any]:
     query = _get_message_text(state["messages"][-1])
     language = resolve_reply_language(query, state.get("display_language", "en"))
-    _ledger, store = _graph_context(config)
+    ledger, store = _graph_context(config)
     account_id = state.get("player_account_id")
-    assignment = store.get_active_assignment_for_player(account_id) if store and account_id else None
-    active = _ledger.get_active_program() if _ledger else None
-    from service.programs import coach_controls_program
-    if coach_controls_program(assignment, active):
+    active = ledger.get_active_program() if ledger is not None else None
+    if not programs_service.player_controls_program(store, ledger, account_id, active):
         reply = _coach_program_refusal(query)
         suggestion = _split_change_request_suggestion(query, state.get("intent_metadata", {}))
         return _response(reply, request_suggestion=suggestion)
@@ -6127,12 +6482,14 @@ def program_edit_chat_node(state: AssistantState, config: dict[str, Any] | None 
     base_program = None
     if regenerated:
         try:
-            base_program = _build_chat_rebuild_preview(query, _ledger)
+            base_program = _build_chat_rebuild_preview(query, ledger)
         except ValueError:
             logger.warning("Program rebuild preview could not validate the requested plan")
             return _response("Could not build a rebuild preview. Nothing changed.")
     from service.chat_program_edit import plan_chat_program_edit
-    planned = plan_chat_program_edit(store, _ledger, account_id, query, base_program=base_program)
+    planned = plan_chat_program_edit(
+        store, ledger, state.get("player_account_id"), query, base_program=base_program
+    )
     if "error" in planned:
         reply = planned.get("message") or ("I couldn't build that Program edit preview. Nothing changed." if language == "en" else "مقدرتش أجهز معاينة التعديل. مفيش حاجة اتغيرت.")
         return _response(reply)
@@ -6147,7 +6504,7 @@ def program_edit_chat_node(state: AssistantState, config: dict[str, Any] | None 
     if optional_names:
         reply += (f"\nOptional: {optional_names}." if language == "en" else f"\nاختياري: {optional_names}.")
     offer_text = finalize_coach_output(reply)
-    preview_id = _ledger.set_pending_chat_program_edit(proposal, offer_text)
+    preview_id = ledger.set_pending_chat_program_edit(proposal, offer_text)
     preview = {"id": preview_id, "days": proposal["preview_days"],
                "warnings": proposal["warnings"], "optional": proposal["optional"]}
     return {**_response(offer_text), "program_edit_preview": preview,
@@ -7100,6 +7457,8 @@ builder.add_node("exercise_clearance_update", _safe_node(injury_clearance_update
 builder.add_node("exercise_clearance_disambiguation", _safe_node(exercise_clearance_disambiguation_node))
 builder.add_node("assistant_preference_delete_confirmed", _safe_node(assistant_preference_delete_node))
 builder.add_node("composite_intent", _safe_node(composite_intent_node))
+builder.add_node("coach_controlled", _safe_node(coach_controlled_node))
+builder.add_node("change_help", _safe_node(change_help_node))
 builder.add_node("generation", _safe_node(generation_node))
 
 builder.set_entry_point("hydrate_context")
@@ -7128,6 +7487,8 @@ builder.add_conditional_edges(
         "exercise_clearance_disambiguation": "exercise_clearance_disambiguation",
         "assistant_preference_delete_confirmed": "assistant_preference_delete_confirmed",
         "composite_intent": "composite_intent",
+        "coach_controlled": "coach_controlled",
+        "change_help": "change_help",
         "coaching_qa": "generation",
     },
 )
@@ -7138,7 +7499,7 @@ for node in [
     "catalog_search", "injury_area_clarification", "injury_status_update",
     "injury_physician_followup", "exercise_clearance_update", "exercise_clearance_disambiguation",
     "assistant_preference_delete_confirmed",
-    "composite_intent", "generation",
+    "composite_intent", "coach_controlled", "change_help", "generation",
 ]:
     builder.add_edge(node, END)
 
@@ -7318,6 +7679,8 @@ def stream_assistant_turn(
             "exercise_clearance_disambiguation": exercise_clearance_disambiguation_node,
             "assistant_preference_delete_confirmed": assistant_preference_delete_node,
             "composite_intent": composite_intent_node,
+            "coach_controlled": coach_controlled_node,
+            "change_help": change_help_node,
         }
         if intent == "exercise_history":
             result = exercise_history_node(state, config)

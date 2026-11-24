@@ -108,9 +108,9 @@ def read_program_rationale(program: Any, scope: Any = None) -> dict[str, Any]:
                         record[key] = reason[key]
             if item.get("changes"):
                 record["changes"] = item["changes"]
-            note = _field(ex, "note")
-            if source in {"coach_authored", "coach_generated", "template_derived", "imported"} and note:
-                record["coach_note"] = note
+            # #860 (owner decision 2026-11-24): the exercise note is not shown to
+            # the model at all — imported and template programs carry it for
+            # Players with no Coach, so it is dropped from the record entirely.
             exercises.append(record)
         day_record = {"day": name, "day_order": order, "exercises": exercises}
         for key in ("day_order_reason", "warmup", "cardio", "cardio_restriction", "removed", "skipped"):

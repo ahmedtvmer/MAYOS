@@ -196,7 +196,7 @@ def test_chat_sse_done_frame_contains_structured_program_edit_preview(api):
     assert '"id"' in response.text and '"days"' in response.text
 
 
-def test_active_program_tool_context_reports_player_authority_without_coach(api, monkeypatch):
+def test_active_program_tool_context_omits_authority_without_coach(api, monkeypatch):
     client, db = api
     _force_free_form_coaching_intent(monkeypatch)
     registered = _register(client, "player-authority-chat")
@@ -216,7 +216,8 @@ def test_active_program_tool_context_reports_player_authority_without_coach(api,
         json={"content": "Who controls my program?"})
 
     assert response.status_code == 200
-    assert '"program_authority":"player"' in _last_rendered(model)
+    # #860: program authority left the model's tool results entirely.
+    assert "program_authority" not in _last_rendered(model)
 
 
 def test_chat_history_hides_preview_after_coach_takes_program_authority(api):
@@ -2252,7 +2253,7 @@ def test_active_program_overview_bounds_repeated_restriction_skips_to_selected_w
     assert "first-week-only" in first_week["skipped_restricted_slots"]["Wrist loading"]
 
 
-def test_active_program_overview_and_scopes_preserve_coach_authority_fields(api):
+def test_active_program_overview_and_scopes_omit_coach_authority_fields(api):
     _client, db = api
     _assigned_player(api, "overview-coach-player")
     coach_id = db.get_active_account_by_username("coach")["account_id"]
@@ -2266,10 +2267,11 @@ def test_active_program_overview_and_scopes_preserve_coach_authority_fields(api)
         tool = next(tool for tool in tools if tool.name == "get_active_program")
         for scope in ({}, {"day_name": "Full A"}, {"exercise_id": "sq"}, {"muscle": "quads"}):
             decoded = json.loads(tool.invoke(scope))
-            assert decoded["program_authority"] == "coach"
-            assert decoded["coach"] == COACH_USERNAME
+            # #860: authority and the Coach name left the model's tool results.
+            assert "program_authority" not in decoded
+            assert "coach" not in decoded
             assert "auth" not in decoded
-        # The generic oversized fallback must preserve authority and volume facts.
+        # The generic oversized fallback keeps volume facts without authority.
         overview = json.loads(tool.invoke({}))
         oversized_day = {**_day_plan().model_dump(), "day_name": "x" * 5000}
         ledger.save_training_program({
@@ -2280,8 +2282,8 @@ def test_active_program_overview_and_scopes_preserve_coach_authority_fields(api)
         assert len(oversized.encode("utf-8")) <= player_tools.MAX_TOOL_RESULT_BYTES
         fallback = json.loads(oversized)
         assert fallback["status"] == "summary_only"
-        assert fallback["program_authority"] == "coach"
-        assert fallback["coach"] == COACH_USERNAME
+        assert "program_authority" not in fallback
+        assert "coach" not in fallback
         for key in ("weekly_volume_by_muscle", "logged_volume_7d", "how_mayos_counts"):
             assert fallback[key] == overview[key]
 
