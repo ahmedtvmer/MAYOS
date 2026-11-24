@@ -462,6 +462,8 @@ def test_ar_mixed_03_suggestion_never_executes_scripted_swap(fresh_store, monkey
 
 
 def test_ar_mixed_03_mismatched_name_hit_clarifies_without_mutation(fresh_store, monkeypatch):
+    # #808 follow-up: "Goblet Squat" has no catalog row at all, so the swap now
+    # asks about the target instead of the generic which-source question.
     before = _seed_program(fresh_store)
     leg_press = fresh_store.find_exercises_by_name("Leg Press", limit=1)[0]
     original_search = fresh_store.find_exercises_by_name
@@ -490,10 +492,15 @@ def test_ar_mixed_03_mismatched_name_hit_clarifies_without_mutation(fresh_store,
 
     after = fresh_store.ledger.get_active_program()
     assert state["intent"] == "arabic_swap_clarification"
+    assert state["intent_metadata"]["clarification_kind"] == "target_not_found"
+    assert state["intent_metadata"]["requested_target"] == "Goblet Squat"
     assert state["program_updated"] is False
     assert after.version == before.version
     assert "45° Leg Press (Plate-Loaded)" not in {exercise.exercise_name for exercise in after.days[0].exercises}
-    assert response == ARABIC_SWAP_CLARIFICATION
+    assert response == (
+        "مش لاقي Goblet Squat في مكتبة التمارين. "
+        "اكتب اسم التمرين بالظبط اللي عايزه بدل Back Squat (Barbell)."
+    )
 
 
 def test_arabic_composite_swap_and_weight_progression_question_stays_composite(
@@ -620,6 +627,8 @@ def test_composite_swap_executes_once_and_handles_the_other_request_later(
 
 
 def test_unresolved_swap_target_clarifies_without_mutation(fresh_store, monkeypatch):
+    # #808 follow-up: the source resolved, but "Imaginary Press" has no catalog
+    # hit at all — the reply is about the target, not the generic source question.
     before = _seed_program(fresh_store)
     model = ScriptedChatModel(
         [
@@ -637,9 +646,14 @@ def test_unresolved_swap_target_clarifies_without_mutation(fresh_store, monkeypa
 
     after = fresh_store.ledger.get_active_program()
     assert state["intent"] == "arabic_swap_clarification"
+    assert state["intent_metadata"]["clarification_kind"] == "target_not_found"
+    assert state["intent_metadata"]["requested_target"] == "Imaginary Press"
     assert state["program_updated"] is False
     assert after.version == before.version
-    assert response == ARABIC_SWAP_CLARIFICATION
+    assert response == (
+        "مش لاقي Imaginary Press في مكتبة التمارين. "
+        "اكتب اسم التمرين بالظبط اللي عايزه بدل Bench Press (Barbell)."
+    )
 
 
 def test_english_swap_with_arabic_politeness_keeps_the_english_route(monkeypatch):
