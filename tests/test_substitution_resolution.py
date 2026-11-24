@@ -256,7 +256,11 @@ def test_assistant_swap_targets_players_current_week_by_coordinates(sub_db):
 
     assert result["program_updated"] is True
     updated = sub_db.ledger.get_active_program()
-    assert updated.weeks[0].days[0].exercises[0].exercise_id == REVERSE_LAT_SLOT
+    # Owner decision 2026-11-24: this swap names no day, so it replaces the
+    # source on every occurrence in every week, like the app's "all occurrences"
+    # substitution. The coordinates still locate the named day in the player's
+    # current week for validation.
+    assert updated.weeks[0].days[0].exercises[0].exercise_id == "2330"
     assert updated.weeks[1].days[0].exercises[0].exercise_id == "2330"
 
 
@@ -308,7 +312,9 @@ def test_day_without_source_falls_back_to_the_source_day(sub_db):
     assert active.days[1].exercises[0].exercise_id == HIP_THRUST
 
 
-def test_ambiguous_source_asks_which_day_without_publishing(sub_db):
+def test_ambiguous_source_swaps_every_day_without_a_named_day(sub_db):
+    # Owner decision 2026-11-24: with no day named, a swap replaces the source on
+    # every day of the player's current week instead of asking which day.
     _save_program_days(
         sub_db,
         [
@@ -322,12 +328,11 @@ def test_ambiguous_source_asks_which_day_without_publishing(sub_db):
         {"configurable": {"ledger": sub_db.ledger, "store": sub_db}},
     )
 
-    assert result["program_updated"] is False
-    assert "Upper 1" in result["response_content"]
-    assert "Pull" in result["response_content"]
+    assert result["program_updated"] is True
+    assert "Routine Slot Updated (Upper 1, Pull)" in result["response_content"]
     after = sub_db.ledger.get_active_program()
-    assert after.version == before.version
-    assert [day.exercises[0].exercise_id for day in after.days] == [REVERSE_LAT_SLOT, REVERSE_LAT_SLOT]
+    assert after.version == before.version + 1
+    assert [day.exercises[0].exercise_id for day in after.days] == ["579", "579"]
 
 
 def test_catalog_name_resolution_tiers(sub_db):

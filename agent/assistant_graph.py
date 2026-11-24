@@ -506,6 +506,38 @@ def _resolved_catalog_target(
     return None
 
 
+def _whole_word_catalog_hits(target_name: str, store: Any) -> list[dict[str, Any]]:
+    """Visible catalog hits whose name or source name contains every requested
+    word as a whole word («Plank» → Side Plank, #808). Alias-only hits
+    ("Shoulder Tap" matched through its "plank shoulder tap" alias) stay out."""
+    searcher = getattr(store, "find_exercises_by_name", None)
+    if not callable(searcher) or not target_name.strip():
+        return []
+    try:
+        hits = searcher(target_name, limit=10)
+    except sqlite3.Error:
+        return []
+    visible_check = getattr(store, "is_exercise_library_exercise_visible", None)
+    return [
+        hit
+        for hit in _whole_word_name_matches(target_name, hits)
+        if not callable(visible_check) or visible_check(str(hit["id"]))
+    ]
+
+
+def _swap_source_is_on_program(
+    source_name: str, routing_context: _SwapRoutingContext | None
+) -> bool:
+    """A program exercise the source rule can place (#808): by whole words, or
+    by the similarity rule's unique best above the threshold."""
+    program = routing_context.program if routing_context else None
+    if program is None:
+        return False
+    if _whole_word_source_matches(list(program.days), source_name):
+        return True
+    return _resolve_arabic_source(program, source_name) is not None
+
+
 def _catalog_candidate_matches_target_words(
     target_words: set[str], candidate: dict[str, Any]
 ) -> bool:
@@ -1333,6 +1365,16 @@ def _classify_single_clause(
             resolved_target = None
             if routing_context is not None and routing_context.store is not None:
                 resolved_target = _resolved_catalog_target(tgt, routing_context)
+                if (
+                    resolved_target is None
+                    and _swap_source_is_on_program(src, routing_context)
+                    and _whole_word_catalog_hits(tgt, routing_context.store)
+                ):
+                    # #808: a one-word target ("Plank") names no exact catalog
+                    # row, but whole-word hits exist (Side Plank, ...). The node
+                    # installs the single hit or asks with the list; a target
+                    # with no catalog hit keeps the advice route.
+                    resolved_target = tgt
                 if resolved_target is None:
                     return {
                         "intent": "coaching_qa",
@@ -1772,6 +1814,8 @@ def _arabic_target_name_similarity(name: str, match: dict[str, Any]) -> float:
 class _ArabicTargetResolution:
     target: tuple[str, dict[str, Any]] | None = None
     clarification_candidates: tuple[dict[str, Any], ...] = ()
+    # True when the catalog has no hit for the requested target at all (#808).
+    not_found: bool = False
 
 
 @dataclass(frozen=True)
@@ -1847,6 +1891,76 @@ def _prefer_or_clarify_exact_arabic_targets(
     return in_program or exact_matches, True
 
 
+def _whole_word_name_matches(
+    name: str, matches: Sequence[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Catalog matches whose name or source name contains every requested word
+    as a whole word. Empty when none does, so alias-only requests ("db bench")
+    keep every match while an alias-only plank ("Shoulder Tap") drops out."""
+    words = _requested_source_words(name)
+    if not words:
+        return []
+    return [
+        match
+        for match in matches
+        if any(
+            _name_contains_whole_words(match.get(field) or "", words)
+            for field in ("name", "source_name")
+        )
+    ]
+
+
+def _arabic_target_whole_word_matches(
+    context: _ArabicSwapTargetContext, source_entry: dict[str, Any], name: str
+) -> list[dict[str, Any]]:
+    """Catalog hits whose name or source name contains every requested target
+    word as a whole word («Plank» → Side Plank, #808)."""
+    source_id = str(context.source.exercise_id)
+    word_hits = _whole_word_name_matches(
+        name, context.store.find_exercises_by_name(name, limit=10)
+    )
+    visible = [
+        match
+        for match in word_hits
+        if str(match["id"]) != source_id
+        and context.store.is_exercise_library_exercise_visible(str(match["id"]))
+    ]
+    return _compatible_arabic_targets(visible, source_entry)
+
+
+def _resolve_arabic_target_by_whole_words(
+    context: _ArabicSwapTargetContext, source_entry: dict[str, Any], name: str
+) -> _ArabicTargetResolution:
+    """#808 fallback: when no close catalog name exists, a single whole-word hit
+    is the target, two or three ask with the list, and none reports the target
+    as missing."""
+    compatible = _arabic_target_whole_word_matches(context, source_entry, name)
+    compatible.sort(
+        key=lambda match: _arabic_target_name_similarity(name, match), reverse=True
+    )
+    if len(compatible) == 1:
+        target_id = str(compatible[0]["id"])
+        target = context.store.get_exercise_library_entry(target_id)
+        return (
+            _ArabicTargetResolution(target=(target_id, target))
+            if target
+            else _ArabicTargetResolution(not_found=True)
+        )
+    if len(compatible) > 1:
+        return _ArabicTargetResolution(
+            clarification_candidates=tuple(compatible[:3])
+        )
+    return _ArabicTargetResolution(not_found=True)
+
+
+def _target_has_latin_words(name: str) -> bool:
+    """True when the requested target contains a Latin word. Library names and
+    source names are English, so an Arabic-script target can only match through
+    an Arabic alias, which the equivalent-name tier already resolves; the
+    whole-word fallback and the missing-target reply stay Latin-only (#808)."""
+    return bool(re.search(r"[a-zA-Z]", name))
+
+
 def _resolve_arabic_target_name(
     context: _ArabicSwapTargetContext, source_entry: dict[str, Any], name: str
 ) -> _ArabicTargetResolution | None:
@@ -1854,7 +1968,13 @@ def _resolve_arabic_target_name(
         context.store, name
     )
     if not matches:
-        return _ArabicTargetResolution() if near_miss_ids else None
+        if near_miss_ids:
+            return _ArabicTargetResolution()
+        if not _target_has_latin_words(name):
+            return None
+        # Every catalog hit was below the fuzzy threshold (or none existed);
+        # whole words are the last deterministic chance before "not found".
+        return _resolve_arabic_target_by_whole_words(context, source_entry, name)
     matches, clarify = _prefer_or_clarify_exact_arabic_targets(
         matches, exact_ids, context.program
     )
@@ -1900,11 +2020,18 @@ def _resolve_arabic_target(
     if source_entry is None:
         return _ArabicTargetResolution()
     raw_name = requested_name.strip()
+    not_found = False
     for name in dict.fromkeys((raw_name, expand_fitness_abbreviations(raw_name))):
         resolution = _resolve_arabic_target_name(context, source_entry, name)
-        if resolution is not None:
-            return resolution
-    return _ArabicTargetResolution()
+        if resolution is None:
+            continue
+        if resolution.not_found:
+            # The whole-word fallback missed; try the next name variant before
+            # reporting the target as missing.
+            not_found = True
+            continue
+        return resolution
+    return _ArabicTargetResolution(not_found=not_found)
 
 
 @dataclass(frozen=True)
@@ -1914,6 +2041,9 @@ class _SwapSourceResolution:
 
     source: tuple[Any, Any] | None = None
     clarification: dict[str, Any] | None = None
+    # Owner decision 2026-11-24: a swap without a named day changes every day
+    # that holds the source. A named day that holds it changes that day only.
+    all_occurrences: bool = True
 
 
 def _arabic_source_clarification(
@@ -1950,12 +2080,14 @@ def _arabic_swap_source(
     match = _resolve_arabic_source(
         program, source_name, requested_day=day.day_name if day else None
     )
-    if match is None and day is not None:
+    if match is not None:
+        return _SwapSourceResolution(source=match, all_occurrences=day is None)
+    if day is not None:
         # Same rule as English (#762, owner decision): when the named day lacks
         # the exercise, swap it on the day where it is; the reply names that day.
         match = _resolve_arabic_source(program, source_name)
-    if match is not None:
-        return _SwapSourceResolution(source=match)
+        if match is not None:
+            return _SwapSourceResolution(source=match)
     best_similarity, tied = _tied_program_sources(program, source_name)
     if best_similarity < SUBSTITUTION_SOURCE_SIMILARITY_THRESHOLD:
         return _arabic_source_clarification(program, source_name)
@@ -1985,7 +2117,11 @@ def _arabic_swap_source(
 
 
 def _arabic_swap_metadata(
-    source_day: Any, source: Any, target_id: str, target_entry: dict[str, Any]
+    source_day: Any,
+    source: Any,
+    target_id: str,
+    target_entry: dict[str, Any],
+    all_occurrences: bool,
 ) -> dict[str, Any]:
     return {
         "mode": "direct_swap",
@@ -1994,6 +2130,16 @@ def _arabic_swap_metadata(
         "source_day": source_day.day_name,
         "target_exercise": target_entry["name"],
         "target_exercise_id": str(target_id),
+        "all_occurrences": all_occurrences,
+    }
+
+
+def _target_not_found_metadata(source: Any, requested_target: str) -> dict[str, Any]:
+    """#808: the source resolved but no catalog exercise matches the target."""
+    return {
+        "clarification_kind": "target_not_found",
+        "requested_target": requested_target,
+        "source_exercise": source.exercise_name,
     }
 
 
@@ -2015,8 +2161,14 @@ def _validated_arabic_swap(
     if resolution.clarification_candidates:
         return {"clarification_candidates": list(resolution.clarification_candidates)}
     if resolution.target is None:
+        if resolution.not_found:
+            return _target_not_found_metadata(
+                source, intent.target_exercise.strip()
+            )
         return None
-    return _arabic_swap_metadata(source_day, source, *resolution.target)
+    return _arabic_swap_metadata(
+        source_day, source, *resolution.target, source_resolution.all_occurrences
+    )
 
 
 def _arabic_history_program_match(program: Any, requested_name: str) -> tuple[str, str] | None:
@@ -2652,12 +2804,35 @@ def arabic_swap_clarification_node(
     kind = metadata.get("clarification_kind")
     if kind == "source_not_in_program":
         return _source_not_in_program_reply(state, metadata)
+    if kind == "target_not_found":
+        return _target_not_found_reply(state, metadata)
     response = {
         "program_change": ARABIC_PROGRAM_CHANGE_CLARIFICATION_RESPONSE,
         "program_reference": ARABIC_ACTION_CLARIFICATION_RESPONSE,
         "history": ARABIC_HISTORY_CLARIFICATION_RESPONSE,
     }.get(kind, ARABIC_SWAP_CLARIFICATION_RESPONSE)
     return _response(response)
+
+
+def _target_not_found_reply(
+    state: AssistantState, metadata: dict[str, Any]
+) -> dict[str, Any]:
+    """#808: the source resolved but the requested target has no catalog hit."""
+    target = str(metadata.get("requested_target") or "").strip()
+    source = str(metadata.get("source_exercise") or "").strip()
+    query = _get_message_text(state["messages"][-1]) if state.get("messages") else ""
+    language = resolve_reply_language(query, state.get("display_language", "ar"))
+    if language == "ar":
+        message = (
+            f"مش لاقي {target} في مكتبة التمارين. "
+            f"اكتب اسم التمرين بالظبط اللي عايزه بدل {source}."
+        )
+    else:
+        message = (
+            f"I couldn't find {target} in the exercise library. "
+            f"Write the exact name of the exercise you want instead of {source}."
+        )
+    return _response(message)
 
 
 def _source_not_in_program_reply(
@@ -5174,11 +5349,21 @@ UNSPECIFIC_CHOICE_WORDS = {"one", "two", "three", "first", "second", "third"}
 class _RoutineSlotUpdateReply:
     source_exercise: str
     replacement: dict[str, Any]
-    day_name: str
+    day_names: tuple[str, ...]
     new_notes: str
     query: str
     display_language: object
     note_suffix: str = ""
+
+
+def _routine_slot_days_label(day_names: Sequence[str], language: DisplayLanguage) -> str:
+    """Every changed day in the reply: «يوم Lower ويوم Legs» / "(Lower, Legs)"."""
+    if language == "ar":
+        parts = [f"يوم {day_name}" for day_name in day_names]
+        if len(parts) <= 2:
+            return " و".join(parts)
+        return "، ".join(parts[:-1]) + " و" + parts[-1]
+    return ", ".join(day_names)
 
 
 def _validated_swap_success(
@@ -5190,12 +5375,12 @@ def _validated_swap_success(
     replacement = substitution["replacement"]
     profile = ledger.get_player_profile() or {}
     experience_level = experience_level_for_training_age(profile.get("training_age_years", 0.0))
-    day_name = substitution["day_names"][0]
+    day_names = _distinct_day_names(substitution["day_names"])
     msg = _routine_slot_updated_message(
         _RoutineSlotUpdateReply(
             source_exercise=metadata["source_exercise"],
             replacement=replacement,
-            day_name=day_name,
+            day_names=tuple(day_names),
             new_notes=replacement.get("instructions") or get_biomechanical_cue(replacement, experience_level),
             query=_get_message_text(state["messages"][-1]),
             display_language=state.get("display_language", "en"),
@@ -5215,12 +5400,13 @@ def _routine_slot_updated_message(update: _RoutineSlotUpdateReply) -> str:
     replacement = update.replacement
     language = resolve_reply_language(update.query, update.display_language)
     installed = replacement["name"].title()
+    days_label = _routine_slot_days_label(update.day_names, language)
     if language == "ar":
-        heading = f"تمام، بدّلت التمرين في يوم {update.day_name}."
+        heading = f"تمام، بدّلت التمرين في {days_label}."
         labels = ("اللي اتشال", "اللي اتحط", "التوجيه")
         new_notes = "اشتغل بنفس الفورم اللي كنت بتعمله."
     else:
-        heading = f"Routine Slot Updated ({update.day_name})"
+        heading = f"Routine Slot Updated ({days_label})"
         labels = ("Removed", "Installed", "Execution Directive")
         new_notes = update.new_notes
         installed += f" (`{replacement['target_muscle']}` | `{replacement['equipment']}`)"
@@ -5230,6 +5416,11 @@ def _routine_slot_updated_message(update: _RoutineSlotUpdateReply) -> str:
         f"- **{labels[1]}:** {installed}\n"
         f"- **{labels[2]}:** *{new_notes}*{update.note_suffix}"
     )
+
+
+def _distinct_day_names(day_names: Sequence[Any]) -> list[str]:
+    """Changed days in program order, without repeated multi-week names."""
+    return list(dict.fromkeys(str(day_name) for day_name in day_names))
 
 
 def _persist_validated_swap(
@@ -5243,6 +5434,9 @@ def _persist_validated_swap(
             day_name=metadata["source_day"],
             exercise_id=metadata["source_exercise_id"],
             replacement_exercise_id=metadata["target_exercise_id"],
+            # Owner decision 2026-11-24: a swap without a named day replaces the
+            # source on every day that holds it.
+            all_occurrences=bool(metadata.get("all_occurrences", True)),
         ),
     )
 
@@ -5351,20 +5545,10 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
         if requested_match[0] and requested_match[2] >= SUBSTITUTION_SOURCE_SIMILARITY_THRESHOLD:
             matched_ex, target_day, best_similarity = requested_match
 
-    if (
-        requested_day_name is None
-        and matched_ex
-        and best_similarity >= SUBSTITUTION_SOURCE_SIMILARITY_THRESHOLD
-    ):
-        matching_days = [
-            day
-            for day in current_week_days
-            if any(str(ex.exercise_id) == str(matched_ex.exercise_id) for ex in day.exercises)
-        ]
-        if len(matching_days) > 1:
-            day_list = ", ".join(day.day_name for day in matching_days)
-            msg = f"I found **{matched_ex.exercise_name.title()}** on more than one day: {day_list}. Which day should I change?"
-            return {"program_updated": False, "response_content": msg, "messages": [AIMessage(content=msg)]}
+    # Owner decision 2026-11-24: a swap without a named day replaces the source
+    # on every day of the player's current week, so the old which-day question
+    # no longer applies.
+    all_occurrences = requested_day_name is None
 
     if not matched_ex or best_similarity < SUBSTITUTION_SOURCE_SIMILARITY_THRESHOLD:
         # #808: a partial name («the crunch») matches when exactly one program
@@ -5530,6 +5714,13 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
                 if str(match["id"]) != str(matched_ex.exercise_id)
                 and str(match["id"]) not in near_miss_ids
             ]
+        # #808: an alias-only hit ("Shoulder Tap" matched for "plank" through its
+        # "plank shoulder tap" alias) is not the named movement. When any hit's
+        # own name contains every requested word, keep only those hits; a target
+        # named only by an alias ("db bench") keeps every match.
+        word_matches = _whole_word_name_matches(resolve_text, name_matches)
+        if word_matches:
+            name_matches = word_matches
     if near_miss_ids and not name_matches:
         return _near_miss_refusal(store, resolve_text, near_miss_ids)
     compatible_matches = [
@@ -5642,6 +5833,7 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
             day_order=target_day.day_order,
             exercise_id=matched_ex.exercise_id,
             replacement_exercise_id=str(replacement["id"]),
+            all_occurrences=all_occurrences,
         ),
     )
     if substitution["ok"]:
@@ -5675,7 +5867,7 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
             _RoutineSlotUpdateReply(
                 source_exercise=matched_ex.exercise_name,
                 replacement=replacement,
-                day_name=target_day.day_name,
+                day_names=tuple(_distinct_day_names(substitution["day_names"])),
                 new_notes=new_notes,
                 query=query,
                 display_language=state.get("display_language", "en"),

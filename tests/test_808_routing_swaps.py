@@ -297,7 +297,9 @@ def test_issue_808_partial_source_name_swaps_the_single_program_match(
 
 def test_issue_808_same_exercise_on_two_days_is_one_source(program_store, monkeypatch):
     # Staging 2026-11-24: Kneeling Crunch on Lower and Legs read as ambiguous and
-    # got the generic which-exercise question. The first day holds the swap, as in English.
+    # got the generic which-exercise question. The whole-word rule places the
+    # source, and the owner decision (2026-11-24) swaps it on every day that
+    # holds it while naming both days in the reply.
     before = _seed_program(
         program_store,
         {
@@ -318,7 +320,9 @@ def test_issue_808_same_exercise_on_two_days_is_one_source(program_store, monkey
     )
     state = _turn("بدل ال crunch بال plank")
 
-    "".join(stream_assistant_turn(state, ledger=program_store.ledger, store=program_store))
+    response = "".join(
+        stream_assistant_turn(state, ledger=program_store.ledger, store=program_store)
+    )
 
     after = program_store.ledger.get_active_program()
     lower_names = [exercise.exercise_name for exercise in after.days[0].exercises]
@@ -327,7 +331,8 @@ def test_issue_808_same_exercise_on_two_days_is_one_source(program_store, monkey
     assert state["program_updated"] is True
     assert after.version == before.version + 1
     assert "Plank" in lower_names and "Kneeling Crunch" not in lower_names
-    assert "Kneeling Crunch" in legs_names
+    assert "Plank" in legs_names and "Kneeling Crunch" not in legs_names
+    assert "تمام، بدّلت التمرين في يوم Lower ويوم Legs." in response
 
 
 @pytest.mark.parametrize(
@@ -580,4 +585,259 @@ def test_issue_808_swap_without_a_named_source_keeps_the_generic_question(
     assert response == ARABIC_SWAP_CLARIFICATION
     assert state["program_updated"] is False
     after = program_store.ledger.get_active_program()
+    assert after.version == before.version
+
+
+# --- 4. A plank target with no plain hit in the catalog (#808 follow-up) ------
+# Staging 2026-11-24: «بدل ال crunch بال plank» failed because the catalog holds
+# only plank variants (Side Plank, Front Plank (Weighted), Power Point Plank)
+# below the fuzzy threshold, plus Shoulder Tap whose alias contains "plank".
+# The synthetic seed already carries Kneeling Crunch (Cable), Side Plank,
+# Side Plank Hip Abduction and Shoulder Tap; the fixtures below add the two
+# missing variants. The single-variant fixture hides the synthetic Side Plank
+# and Side Plank Hip Abduction display names so exactly one compatible plank
+# hit remains.
+
+SIDE_PLANK_EXERCISE_ID = "705"
+SIDE_PLANK_HIP_ABDUCTION_EXERCISE_ID = "1774"
+PLANK_FIXTURE_EXERCISES = (
+    ("808-front-plank-weighted", "Front Plank (Weighted)", "waist", "abs", "body weight"),
+    ("808-power-point-plank", "Power Point Plank", "waist", "abs", "body weight"),
+)
+PLANK_PROGRAM_DAYS = {
+    "Lower": ["Kneeling Crunch (Cable)", "Back Squat (Barbell)", "barbell row"],
+    "Chest Day": ["Bench Press (Barbell)", "Fly (Dumbbell)", "barbell row"],
+    "Legs": ["Romanian Deadlift (Barbell)", "Back Squat (Barbell)", "Kneeling Crunch (Cable)"],
+}
+
+
+@pytest.fixture
+def plank_variants_store(fresh_store):
+    """The staging catalog: plank variants but no plain Plank (#808)."""
+    _seed_plank_catalog(fresh_store, single_plank=False)
+    return fresh_store
+
+
+@pytest.fixture
+def single_plank_store(fresh_store):
+    """One compatible plank hit: the synthetic Side Plank display is hidden."""
+    _seed_plank_catalog(fresh_store, single_plank=True)
+    return fresh_store
+
+
+def _seed_plank_catalog(store, *, single_plank: bool):
+    with store.catalog_locked() as conn:
+        if single_plank:
+            # One plank hit: hide the synthetic Side Plank and Side Plank Hip
+            # Abduction display names, so "Plank" whole-word matches the
+            # inserted variant only.
+            conn.execute(
+                "DELETE FROM exercise_display_names WHERE exercise_id IN (?, ?)",
+                (SIDE_PLANK_EXERCISE_ID, SIDE_PLANK_HIP_ABDUCTION_EXERCISE_ID),
+            )
+        for exercise_id, name, body_part, muscle, equipment in PLANK_FIXTURE_EXERCISES:
+            if single_plank and exercise_id != "808-front-plank-weighted":
+                continue
+            conn.execute(
+                "INSERT INTO exercises (id, name, body_part, target_muscle, equipment) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (exercise_id, name, body_part, muscle, equipment),
+            )
+            conn.execute(
+                "INSERT INTO exercise_display_names (exercise_id, display_name, is_reviewed) "
+                "VALUES (?, ?, 1)",
+                (exercise_id, name),
+            )
+        conn.commit()
+    return _seed_program(store, PLANK_PROGRAM_DAYS)
+
+
+def test_issue_808_plank_without_a_plain_hit_clarifies_with_plank_variants(
+    plank_variants_store, monkeypatch
+):
+    before = plank_variants_store.ledger.get_active_program()
+    _scripted(
+        monkeypatch,
+        [{
+            "intent": "exercise_substitution",
+            "source_exercise": "ال crunch",
+            "target_exercise": "Plank",
+        }],
+        default_turn=COACHING_REPLY,
+    )
+    state = _turn("بدل ال crunch بال plank")
+
+    response = "".join(
+        stream_assistant_turn(
+            state, ledger=plank_variants_store.ledger, store=plank_variants_store
+        )
+    )
+
+    assert state["intent"] == "arabic_swap_clarification"
+    assert state["program_updated"] is False
+    assert response.startswith("هل تقصد ")
+    assert "**Side Plank**" in response
+    assert "**Front Plank (Weighted)**" in response
+    assert "**Power Point Plank**" in response
+    assert "Shoulder Tap" not in response
+    assert "Side Plank Hip Abduction" not in response
+    after = plank_variants_store.ledger.get_active_program()
+    assert after.version == before.version
+
+
+def test_issue_808_single_plank_variant_swaps_every_source_day(
+    single_plank_store, monkeypatch
+):
+    before = single_plank_store.ledger.get_active_program()
+    _scripted(
+        monkeypatch,
+        [{
+            "intent": "exercise_substitution",
+            "source_exercise": "Kneeling Crunch",
+            "target_exercise": "Plank",
+            "target_day": "",
+        }],
+        default_turn=COACHING_REPLY,
+    )
+    state = _turn("بدل ال crunch بال plank")
+
+    response = "".join(
+        stream_assistant_turn(
+            state, ledger=single_plank_store.ledger, store=single_plank_store
+        )
+    )
+
+    after = single_plank_store.ledger.get_active_program()
+    lower_names = [exercise.exercise_name for exercise in after.days[0].exercises]
+    legs_names = [exercise.exercise_name for exercise in after.days[2].exercises]
+    assert state["intent"] == "exercise_substitution"
+    assert state["program_updated"] is True
+    assert after.version == before.version + 1
+    assert "Front Plank (Weighted)" in lower_names
+    assert "Kneeling Crunch (Cable)" not in lower_names
+    assert "Front Plank (Weighted)" in legs_names
+    assert "Kneeling Crunch (Cable)" not in legs_names
+    assert "تمام، بدّلت التمرين في يوم Lower ويوم Legs." in response
+
+
+def test_issue_808_named_day_swap_changes_that_day_only(single_plank_store, monkeypatch):
+    before = single_plank_store.ledger.get_active_program()
+    _scripted(monkeypatch, default_turn=COACHING_REPLY)
+    state = _turn("بدل Kneeling Crunch بـ Plank في يوم Legs")
+
+    "".join(
+        stream_assistant_turn(
+            state, ledger=single_plank_store.ledger, store=single_plank_store
+        )
+    )
+
+    after = single_plank_store.ledger.get_active_program()
+    lower_names = [exercise.exercise_name for exercise in after.days[0].exercises]
+    legs_names = [exercise.exercise_name for exercise in after.days[2].exercises]
+    assert state["intent"] == "exercise_substitution"
+    assert state["program_updated"] is True
+    assert after.version == before.version + 1
+    assert "Kneeling Crunch (Cable)" in lower_names
+    assert "Front Plank (Weighted)" not in lower_names
+    assert "Front Plank (Weighted)" in legs_names
+    assert "Kneeling Crunch (Cable)" not in legs_names
+
+
+def test_issue_808_english_swap_without_a_day_changes_both_days(
+    single_plank_store, monkeypatch
+):
+    before = single_plank_store.ledger.get_active_program()
+    _scripted(monkeypatch)
+    state = _turn("swap Kneeling Crunch for Plank")
+
+    response = "".join(
+        stream_assistant_turn(
+            state, ledger=single_plank_store.ledger, store=single_plank_store
+        )
+    )
+
+    after = single_plank_store.ledger.get_active_program()
+    lower_names = [exercise.exercise_name for exercise in after.days[0].exercises]
+    legs_names = [exercise.exercise_name for exercise in after.days[2].exercises]
+    assert state["intent"] == "exercise_substitution"
+    assert state["program_updated"] is True
+    assert after.version == before.version + 1
+    assert "Front Plank (Weighted)" in lower_names
+    assert "Kneeling Crunch (Cable)" not in lower_names
+    assert "Front Plank (Weighted)" in legs_names
+    assert "Kneeling Crunch (Cable)" not in legs_names
+    assert "Routine Slot Updated (Lower, Legs)" in response
+
+
+def test_issue_808_target_without_any_catalog_hit_reports_the_target(
+    plank_variants_store, monkeypatch
+):
+    before = plank_variants_store.ledger.get_active_program()
+    _scripted(
+        monkeypatch,
+        [{
+            "intent": "exercise_substitution",
+            "source_exercise": "ال crunch",
+            "target_exercise": "xyzzy",
+        }],
+        default_turn=COACHING_REPLY,
+    )
+    state = _turn("بدل ال crunch بال xyzzy")
+
+    response = "".join(
+        stream_assistant_turn(
+            state, ledger=plank_variants_store.ledger, store=plank_variants_store
+        )
+    )
+
+    assert state["intent"] == "arabic_swap_clarification"
+    assert state["intent_metadata"]["clarification_kind"] == "target_not_found"
+    assert state["intent_metadata"]["requested_target"] == "xyzzy"
+    assert state["program_updated"] is False
+    assert response == (
+        "مش لاقي xyzzy في مكتبة التمارين. "
+        "اكتب اسم التمرين بالظبط اللي عايزه بدل Kneeling Crunch (Cable)."
+    )
+    after = plank_variants_store.ledger.get_active_program()
+    assert after.version == before.version
+
+
+def test_issue_808_english_plank_with_variants_asks_with_the_list(
+    plank_variants_store, monkeypatch
+):
+    # Owner decision 2026-11-24 routing rule: "Plank" names no exact catalog
+    # row, but whole-word hits route the swap; several hits ask with the list.
+    before = plank_variants_store.ledger.get_active_program()
+    _scripted(monkeypatch)
+    state = _turn("swap Kneeling Crunch for Plank")
+
+    response = "".join(
+        stream_assistant_turn(
+            state, ledger=plank_variants_store.ledger, store=plank_variants_store
+        )
+    )
+
+    assert state["program_updated"] is False
+    assert response.startswith("Did you mean ")
+    assert "**Side Plank**" in response
+    assert "**Power Point Plank**" in response
+    assert "**Front Plank (Weighted)**" in response
+    assert "Shoulder Tap" not in response
+    after = plank_variants_store.ledger.get_active_program()
+    assert after.version == before.version
+
+
+def test_issue_808_english_target_without_a_catalog_hit_keeps_the_advice_route(
+    single_plank_store, monkeypatch
+):
+    # "xyzzy" has no catalog hit at all: today's advice route, no swap.
+    before = single_plank_store.ledger.get_active_program()
+    _scripted(monkeypatch)
+    state = _turn("swap Kneeling Crunch for xyzzy")
+
+    route = router_node(state, _config(single_plank_store))
+
+    assert route["intent"] == "coaching_qa"
+    assert route["intent_metadata"]["advice_request"] is True
+    after = single_plank_store.ledger.get_active_program()
     assert after.version == before.version
