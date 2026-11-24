@@ -3390,7 +3390,8 @@ def test_arabic_history_fallback_does_not_inject_ledger_figures(api, monkeypatch
                 "source_exercise": "Imaginary Press",
                 "target_exercise": "Bench Press",
             },
-            "أنهي تمرين عايز تغيّره؟",
+            # #808: a named source that isn't in the program names the closest ones.
+            "Imaginary Press مش موجود في برنامجك. الأقرب: Bench Press، Row، Squat. تقصد أنهي واحد؟",
         ),
     ],
 )

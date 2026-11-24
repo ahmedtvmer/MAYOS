@@ -806,6 +806,49 @@ def test_keyword_matching_is_not_hijacked_by_body_part_phrases():
 
 
 @pytest.mark.parametrize(
+    "preference",
+    [
+        "ppl, chest x back, full arms",
+        "PPL + chest & back + arms",
+        "push pull legs then chest and back and an arms day",
+        "change my routine from ppl ul to ppl chestxback fullarm",
+    ],
+)
+def test_ppl_chest_back_arms_requests_pick_the_new_split(preference):
+    assert match_split_keyword(preference) == "ppl_x_chest_back_arms"
+
+
+def test_ppl_chest_back_arms_keywords_leave_other_splits_alone():
+    assert match_split_keyword("ppl x ul") == "ppl_x_ul"
+    assert match_split_keyword("PPL upper/lower") == "ppl_x_ul"
+    assert match_split_keyword("push/pull/legs") == "ppl"
+    assert match_split_keyword("my chest and back are sore") is None
+
+
+def test_ppl_chest_back_arms_plan_has_five_named_days():
+    assert SPLIT_SUPPORTED_FREQUENCIES["ppl_x_chest_back_arms"] == (5,)
+    plan = get_split_plan("ppl_x_chest_back_arms", 5)
+    assert plan is not None
+    assert [day.day_name for day in plan.days] == ["Push", "Pull", "Legs", "Chest & Back", "Arms"]
+    assert plan.split_name == "PPL × Chest & Back × Arms"
+    assert get_split_plan("ppl_x_chest_back_arms", 4) is None
+    assert "ppl_x_chest_back_arms" not in {key for key, _ in valid_splits_for(5)}
+
+
+def test_ppl_chest_back_arms_program_covers_every_muscle_group():
+    program = _generate("male", 5, preference="ppl, chest x back, full arms")
+    assert [day.day_name for day in program.days] == ["Push", "Pull", "Legs", "Chest & Back", "Arms"]
+    slots = {exercise.slot_key for day in program.days for exercise in day.exercises}
+    for required in (
+        "incline_press", "flat_press", "chest_fly", "vertical_pull", "horizontal_row",
+        "side_delts", "rear_delts", "calf", "adductors", "abs", "shrug",
+    ):
+        assert required in slots, f"Weekly coverage missing '{required}': {sorted(slots)}"
+    assert {"biceps_preacher", "biceps_alt"} <= slots
+    assert {"triceps_pushdown", "triceps_overhead"} <= slots
+
+
+@pytest.mark.parametrize(
     ("preference", "expected_split"),
     [
         (

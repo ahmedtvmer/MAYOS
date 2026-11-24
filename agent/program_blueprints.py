@@ -22,7 +22,8 @@ from agent.program_rationale import (
     DAY_ORDER_ANTERIOR_POSTERIOR, DAY_ORDER_ARNOLD, DAY_ORDER_ARNOLD_X_UL,
     DAY_ORDER_FEMALE_UPPER_LOWER, DAY_ORDER_FULL_BODY_DISTRIBUTED,
     DAY_ORDER_FULL_BODY_GLUTE_PRIORITY, DAY_ORDER_PPL,
-    DAY_ORDER_PPL_X_UL_SPACES_LEG_DAYS, DAY_ORDER_UPPER_LOWER_ALTERNATING,
+    DAY_ORDER_PPL_X_CHEST_BACK_ARMS, DAY_ORDER_PPL_X_UL_SPACES_LEG_DAYS,
+    DAY_ORDER_UPPER_LOWER_ALTERNATING,
 )
 from typing import Literal
 
@@ -1250,6 +1251,36 @@ PPL_X_UL_DAYS: tuple[DayBlueprint, ...] = (
     ),
 )
 
+# Push, Pull, Legs, then Chest & Back and Arms: a common gym five-day hybrid
+# (owner request, 2026-11-24). Chat-only; not offered in the Coach split picker.
+PPL_X_CHEST_BACK_ARMS_DAYS: tuple[DayBlueprint, ...] = (
+    *PPL_DAYS,
+    DayBlueprint(
+        "Chest & Back",
+        (
+            "flat_press",
+            "incline_press",
+            "chest_fly",
+            "vertical_pull",
+            "horizontal_row",
+            "rear_delts",
+        ),
+        family="upper",
+    ),
+    DayBlueprint(
+        "Arms",
+        (
+            "biceps_preacher",
+            "biceps_alt",
+            "triceps_pushdown",
+            "triceps_overhead",
+            "shoulder_press",
+            "side_delts",
+        ),
+        family="arms",
+    ),
+)
+
 FEMALE_UL_DAYS: tuple[DayBlueprint, ...] = (
     DayBlueprint(
         "Lower 1 (Glute & Quad)",
@@ -1572,6 +1603,7 @@ SPLIT_DAY_POOLS: dict[str, tuple[DayBlueprint, ...]] = {
     "anterior_posterior": ANTERIOR_POSTERIOR_DAYS,
     "ppl": PPL_DAYS,
     "ppl_x_ul": PPL_X_UL_DAYS,
+    "ppl_x_chest_back_arms": PPL_X_CHEST_BACK_ARMS_DAYS,
 }
 
 SPLIT_SUPPORTED_FREQUENCIES: dict[str, tuple[int, ...]] = {
@@ -1584,6 +1616,7 @@ SPLIT_SUPPORTED_FREQUENCIES: dict[str, tuple[int, ...]] = {
     "anterior_posterior": (2, 3, 4, 5),
     "ppl": (3,),
     "ppl_x_ul": (5,),
+    "ppl_x_chest_back_arms": (5,),
 }
 
 SPLIT_DAY_ORDER_REASON_CODES = {
@@ -1596,6 +1629,7 @@ SPLIT_DAY_ORDER_REASON_CODES = {
     "anterior_posterior": DAY_ORDER_ANTERIOR_POSTERIOR,
     "ppl": DAY_ORDER_PPL,
     "ppl_x_ul": DAY_ORDER_PPL_X_UL_SPACES_LEG_DAYS,
+    "ppl_x_chest_back_arms": DAY_ORDER_PPL_X_CHEST_BACK_ARMS,
 }
 
 SPLIT_TYPE_ALIASES_BY_FREQUENCY: dict[tuple[str, int], str] = {
@@ -1613,6 +1647,7 @@ SPLIT_DISPLAY_NAMES: dict[str, str] = {
     "anterior_posterior": "Anterior / Posterior Split",
     "ppl": "PPL",
     "ppl_x_ul": "PPL × UL",
+    "ppl_x_chest_back_arms": "PPL × Chest & Back × Arms",
 }
 
 LEGACY_GLUTE_PRIORITY_SPLIT_NAMES = frozenset(
@@ -1701,6 +1736,14 @@ SPLIT_KEYWORD_PATTERNS: tuple[tuple[str, tuple[re.Pattern[str], ...]], ...] = (
         ),
     ),
     ("arnold", (re.compile(r"\barnold\b"),)),
+    (
+        "ppl_x_chest_back_arms",
+        (
+            # A PPL mention is required so free-text custom splits ("emphasis
+            # days for chest, back, and arms") still reach the custom planner.
+            re.compile(r"\b(?:ppl|push[\s,/*-]*pull[\s,/*-]*legs?)\b[\s\S]*\bchest\s*(?:x|×|&|\+|/|and)?\s*back\b"),
+        ),
+    ),
     (
         "ppl_x_ul",
         (
