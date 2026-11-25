@@ -1099,21 +1099,7 @@ def _read_active_program(ledger: Any, args: ActiveProgramArgs | None = None, sto
     program = ledger.get_active_program()
     volume_context = _program_volume_context(ledger)
     if program is None:
-        return {"status": "not_set", "active_program": "not set", "program_authority": "player", **volume_context}
-    authority = "player"
-    coach_name = None
-    if store is not None and player_account_id:
-        assignment = store.get_active_assignment_for_player(player_account_id)
-        from service.programs import coach_controls_program
-        if coach_controls_program(assignment, program):
-            authority = "coach"
-            coach = store.get_account(assignment["coach_account_id"])
-            if coach:
-                from service.assignments import coach_identity
-
-                coach_name = coach_identity(
-                    store, assignment["coach_account_id"], coach
-                )["display_name"]
+        return {"status": "not_set", "active_program": "not set", **volume_context}
     from agent.ProgramState import program_exercise_working_sets
 
     all_days = list(getattr(program, "days", ()) or ())
@@ -1211,9 +1197,7 @@ def _read_active_program(ledger: Any, args: ActiveProgramArgs | None = None, sto
         "week_order": selected_week, "days": days,
         "movement_restrictions": _player_profile(ledger).get("movement_restrictions", []),
         "skipped_restricted_slots": _program_restriction_skips(program, all_days),
-        "program_authority": authority,
         **volume_context,
-        **({"coach": coach_name} if coach_name else {}),
         **({} if detailed_scope else {
             "weekly_sets_by_muscle": {muscle: round(sets, 2) for muscle, sets in summary.items()},
             "weekly_volume_by_muscle": weekly_volume,
@@ -1250,7 +1234,7 @@ PLAYER_READ_TOOL_REGISTRY: tuple[PlayerReadTool, ...] = (
     PlayerReadTool(
         name="get_active_program",
         description=(
-            "Read active Program overview: ordered days and muscles, weekly sets, authority and "
+            "Read active Program overview: ordered days and muscles, weekly sets and "
             "restriction skips; no prescriptions. Defaults to current week; week_order selects another. "
             "Scope day_name, exercise_name/exercise_id or muscle for matching prescriptions only. "
             "Rows include canonical secondary_muscles group labels and movement_pattern. "
@@ -1434,8 +1418,6 @@ def _encode_tool_result(tool_result: Any) -> str:
             return compact_days_rendered
         compact = {
             "status": "summary_only",
-            "program_authority": tool_result.get("program_authority", "player"),
-            **({"coach": tool_result["coach"]} if tool_result.get("coach") else {}),
             "weekly_sets_by_muscle": tool_result["weekly_sets_by_muscle"],
             **{key: tool_result[key] for key in ("weekly_volume_by_muscle", "logged_volume_7d", "how_mayos_counts") if key in tool_result},
             "message": "Scope by day_name, exercise_name/exercise_id or muscle for prescriptions.",
