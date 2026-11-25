@@ -1039,8 +1039,8 @@ def _program_volume_context(ledger: Any) -> dict[str, Any]:
     return {
         "logged_volume_7d": volume_attribution(None, ledger.ledger_id, 7, ledger),
         "how_mayos_counts": {
-            "en": "Working sets use 12 main muscle groups. Lats means latissimus dorsi; traps includes upper, mid and lower trapezius plus rhomboids and upper/mid back. Each exercise has per-muscle credits: default 1 for its primary group and 0.5 for each distinct helper group; reviewed credits replace those defaults. A generic source label of back is ambiguous and uncounted unless a specific target resolves it. Warm-ups and unlisted muscles are excluded. Weekly sets total sums the per-muscle totals into one number; weekly working sets is the plain count of prescribed working sets across all training days.",
-            "ar": "تُحسب المجموعات العاملة ضمن 12 مجموعة عضلية رئيسية. اللاتس (الظهر العريض) هي العضلة الظهرية العريضة، والترابيس تشمل ألياف الترابيس العلوية والوسطى والسفلية والعضلات المعينية ومنتصف وأعلى الظهر. لكل تمرين رصيد: 1 للعضلة الأساسية و0.5 لكل عضلة مساعدة مختلفة؛ وتحل الأرصدة المراجعة محل الافتراضات. وصف المصدر العام «ظهر» غير محدد ولا يُحسب إلا إذا أوضحت العضلة المستهدفة ذلك. لا تُحسب مجموعات الإحماء أو العضلات غير المدرجة. إجمالي المجموعات الأسبوعي يجمع إجماليات كل مجموعة عضلية في رقم واحد، وعدد المجموعات العاملة الأسبوعي هو مجموع المجموعات العاملة المقررة في كل أيام التدريب.",
+            "en": "Working sets use 12 main muscle groups. Lats means latissimus dorsi; traps includes upper, mid and lower trapezius plus rhomboids and upper/mid back. Each exercise has per-muscle credits: default 1 for its primary group and 0.5 for each distinct helper group; reviewed credits replace those defaults. A generic source label of back is ambiguous and uncounted unless a specific target resolves it. Warm-ups and unlisted muscles are excluded.",
+            "ar": "تُحسب المجموعات العاملة ضمن 12 مجموعة عضلية رئيسية. اللاتس (الظهر العريض) هي العضلة الظهرية العريضة، والترابيس تشمل ألياف الترابيس العلوية والوسطى والسفلية والعضلات المعينية ومنتصف وأعلى الظهر. لكل تمرين رصيد: 1 للعضلة الأساسية و0.5 لكل عضلة مساعدة مختلفة؛ وتحل الأرصدة المراجعة محل الافتراضات. وصف المصدر العام «ظهر» غير محدد ولا يُحسب إلا إذا أوضحت العضلة المستهدفة ذلك. لا تُحسب مجموعات الإحماء أو العضلات غير المدرجة.",
         },
     }
 
@@ -1219,7 +1219,7 @@ def _read_active_program(ledger: Any, args: ActiveProgramArgs | None = None, sto
             "weekly_volume_by_muscle": weekly_volume,
             "weekly_sets_total": _weekly_sets_total(weekly_volume),
             "weekly_working_sets": _program_working_sets(all_days),
-            "message": "weekly_sets_by_muscle gives direct sets; weekly_volume_by_muscle gives weighted direct, indirect and total sets. Sub-regions map to one main group. Scope by day_name, exercise_name/exercise_id or muscle for prescriptions.",
+            "message": "weekly_sets_by_muscle gives direct sets; weekly_volume_by_muscle gives weighted direct, indirect and total sets; weekly_sets_total sums those totals; weekly_working_sets counts prescribed working sets. Sub-regions map to one main group. Scope by day_name, exercise_name/exercise_id or muscle for prescriptions.",
         }),
     }
     return _program_prescription_page(response, args.offset) if detailed_scope else response

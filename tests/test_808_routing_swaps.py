@@ -196,7 +196,6 @@ def test_issue_808_past_session_sets_question_stays_history(
         },
     )
     _scripted(monkeypatch, [classification])
-    state = _turn(message)
 
     route = assistant_graph._classify_arabic_intent(message, _config(program_store))
 
