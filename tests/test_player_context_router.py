@@ -206,27 +206,30 @@ def test_no_program_is_reported_before_model_answers(api, monkeypatch):
     assert _done_content(response.text) == "You have no active Program."
     _calls, results = _simulated_reads(model)
     [result] = results
-    assert {key: result[key] for key in ("status", "active_program", "program_authority")} == {
-        "status": "not_set", "active_program": "not set", "program_authority": "player"}
+    assert {key: result[key] for key in ("status", "active_program")} == {
+        "status": "not_set", "active_program": "not set"}
+    assert "program_authority" not in result
     # Logged volume is reported even without a Program (#545).
     assert set(result["logged_volume_7d"].values()) == {0.0}
     assert set(result["how_mayos_counts"]) == {"en", "ar"}
 
 
-def test_coach_program_router_retains_authority(router_player, monkeypatch):
+def test_coach_program_read_keeps_authority_out_of_tool_results(router_player, monkeypatch):
     client, db, _headers = router_player
     _coach_headers, headers, _assignment = _assigned_player((client, db), "router-coached")
     coach_id = db.get_active_account_by_username("coach")["account_id"]
     with db.open_ledger("router-coached") as ledger:
         _save_router_program(ledger, coach_id)
     _force_free_form_coaching_intent(monkeypatch)
-    model = ScriptedChatModel(["Your Coach holds Program authority."])
+    model = ScriptedChatModel(["Push A has your pressing work."])
     monkeypatch.setattr(assistant_graph, "llm", model)
     response = client.post("/chat/messages", headers=headers, json={"content": "What's on Push A?"})
-    assert _done_content(response.text) == "Your Coach holds Program authority."
+    assert _done_content(response.text) == "Push A has your pressing work."
     _calls, results = _simulated_reads(model)
-    assert results[0]["program_authority"] == "coach"
-    assert results[0]["coach"]
+    assert results[0]["status"] == "ok"
+    # #860: code decides authority; the model never sees it or the Coach's name.
+    assert "program_authority" not in results[0]
+    assert "coach" not in results[0]
 
 
 @pytest.mark.parametrize("question", [
