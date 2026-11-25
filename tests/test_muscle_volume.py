@@ -232,8 +232,13 @@ def test_active_program_weekly_totals_sum_muscle_totals_and_working_sets(
 
     assert result["weekly_sets_total"] == 3.5  # shoulders 2 + traps 1.5
     assert result["weekly_working_sets"] == 2
-    assert "weekly sets total" in result["how_mayos_counts"]["en"].lower()
-    assert "المجموعات العاملة الأسبوعي" in result["how_mayos_counts"]["ar"]
+    assert "weekly_sets_total sums those totals" in result["message"]
+    # Day reads share a 4 KB cap with their prescriptions, so text about the
+    # overview-only totals must not ride along with every scoped read.
+    scoped = _read_active_program(fresh_store.ledger, ActiveProgramArgs(day_name="Shoulders"))
+    assert scoped["days"][0]["exercises"]
+    assert "weekly_sets_total" not in scoped
+    assert "weekly sets total" not in str(scoped["how_mayos_counts"]).lower()
 
 
 def test_focus_volume_and_frequency_use_main_group_credits():

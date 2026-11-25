@@ -263,9 +263,12 @@ def _pull_fixture(tmp_path, *, inputs=True, checks=None):
     (bin_dir / "sudo").write_text("#!/usr/bin/env bash\nexec \"$@\"\n", encoding="utf-8")
     (bin_dir / "docker").write_text(
         "#!/usr/bin/env bash\n"
-        "if [[ \"$1\" == compose ]]; then printf '%s\\n' \"$*\" >> \"$MAYOS_SERVER_ROOT/docker.log\"; if [[ \" $* \" == *' ps -q litestream '* ]]; then printf 'litestream-container\\n'; fi; exit 0; fi\n"
+        "if [[ \"$1\" == compose ]]; then printf '%s\\n' \"$*\" >> \"$MAYOS_SERVER_ROOT/docker.log\"; if [[ \" $* \" == *' ps -q litestream '* ]]; then printf 'litestream-container\\n'; fi; if [[ \" $* \" == *' ps -q api '* ]]; then printf 'api-container\\n'; fi; exit 0; fi\n"
         "if [[ \"$1\" == ps ]]; then if [[ -s \"$MAYOS_SERVER_ROOT/app/deploy/.image.env\" ]]; then printf 'container\\n'; fi; exit 0; fi\n"
         "if [[ \"$1\" == inspect && \"$2\" == --format ]]; then tag=$(sed -n 's/^MAYOS_IMAGE_TAG=//p' \"$MAYOS_SERVER_ROOT/app/deploy/.image.env\"); printf 'mayos-api:%s\\n' \"$tag\"; exit 0; fi\n"
+        # The settle check (#842) reads the API container's state and restart count.
+        "if [[ \"$1\" == inspect && \"$2\" == -f && \"$3\" == *State.Running*RestartCount* ]]; then printf 'true 0\\n'; exit 0; fi\n"
+        "if [[ \"$1\" == inspect && \"$2\" == -f && \"$3\" == *RestartCount* ]]; then printf '0\\n'; exit 0; fi\n"
         "if [[ \"$1\" == inspect && \"$2\" == -f ]]; then printf '%s/src/deploy/litestream.yml\\n' \"$MAYOS_SERVER_ROOT\"; exit 0; fi\n"
         "if [[ \"$1\" == image && \"$2\" == inspect ]]; then exit 1; fi\n"
         "exit 0\n",
@@ -288,6 +291,7 @@ def _run_pull(tmp_path, root, bin_dir, commit):
         "MAYOS_SERVER_ROOT": _bash_path(root),
         "MAYOS_PUBLIC_REPO_URL": _bash_path(tmp_path / "origin"),
         "MAYOS_REQUIRED_CHECKS": "Unit, Concurrency & Telemetry Tests|Production Image Smoke Test",
+        "MAYOS_READY_SETTLE_SECONDS": "0",
     })
     return subprocess.run(["bash", str(SCRIPT), "pull", commit], text=True, capture_output=True, env=env, check=False)
 
