@@ -187,8 +187,16 @@ def delete_exercise_clearance(
     return deleted
 
 
+# A negated permission ("hasn't cleared me", "غير مسموح") must never read as one.
+_NEGATED_PERMISSION = (
+    r"(?:\bnot|\bnever|\bno\s+longer|n['’]t)\s+(?:\w+\s+){0,2}?(?:cleared|allowed|approved)\b"
+    r"|(?:مش|غير|مو)\s+مسموح|مسموحش|ممنوع"
+)
+# "Not ok" is everyday wording: it denies a permission but is no restriction by itself.
+_NEGATED_OK = r"(?:\bnot|\bnever|n['’]t)\s+(?:\w+\s+)?(?:okay|ok|safe)\b|(?:مش|غير|مو)\s+آمن"
 _CLEARANCE_NEGATIVE_RE = re.compile(
-    r"\b(?:no|not\s+cleared|not\s+allowed|avoid|shouldn['’]?t|can['’]?t\s+do|cannot\s+do|forbidden)\b|مش\s+مسموح|ممنوع",
+    r"\b(?:no|avoid|shouldn['’]?t|can['’]?t\s+do|cannot\s+do|forbidden)\b|بلاش|"
+    + _NEGATED_PERMISSION + "|" + _NEGATED_OK,
     re.IGNORECASE,
 )
 _CLEARANCE_LIMITS_RE = re.compile(
@@ -219,6 +227,32 @@ _REPORTED_ADVICE_RE = re.compile(
     r"^(?:(?:my|the)\s+)?(?:physician|doctor|clinician)\s+(?:said|told|advised|cleared|approved)\b"
     r"|^(?:ال)?(?:دكتور|طبيب)(?:ي)?\s+(?:قال|سمح|منع|أكد)",
     re.IGNORECASE,
+)
+_PHYSICIAN_RE = re.compile(r"\b(?:physician|doctor|clinician)\b|دكتور|طبيب", re.IGNORECASE)
+_EXPLICIT_RESTRICTION_RE = re.compile(r"\bforbidden\b|" + _NEGATED_PERMISSION, re.IGNORECASE)
+# Wording a Player also uses in ordinary messages; it counts only for a real exercise.
+_EXERCISE_BOUND_RE = re.compile(
+    r"\bcleared\b|\bavoid\b|\bshouldn['’]?t\b|^no\s+\w", re.IGNORECASE
+)
+_UNSURE_RE = re.compile(
+    r"\bnot\s+sure\b|\b(?:don['’]?t|do\s+not)\s+know\b|\b(?:maybe|if)\b.{0,20}\b(?:cleared|allowed)\b|مش\s+عارف|مش\s+متأكد",
+    re.IGNORECASE,
+)
+_SHORT_ANSWER_RE = re.compile(
+    r"(?:(?:he|she|they|(?:(?:my|the)\s+)?(?:physician|doctor|clinician))\s+said\s+)?"
+    r"(?:it(?:['’]?s|\s+is|\s+was)?\s+|i(?:['’]?m|\s+am)\s+)?"
+    r"(?:(?:not\s+)?(?:cleared|allowed|approved)(?:\s+with\s+limits?)?|avoid(?:\s+it)?|forbidden|with\s+limits?|limited|"
+    r"(?:only\s+)?(?:light\s+weight|partial\s+range)(?:\s+only)?|modif(?:y\s+it|ied))"
+    r"|(?:(?:ال)?(?:دكتور|طبيب)\s+)?(?:قال(?:ي|\s+لي)?\s+)?"
+    r"(?:(?:مش\s+|غير\s+)?مسموح(?:\s+بحدود)?|ممنوع|بلاش|بحدود|بأوزان\s+خفيفة)",
+    re.IGNORECASE,
+)
+_ARABIC_VERDICT_WORDS_RE = re.compile(
+    r"^(?:ال)?(?:دكتور|طبيب)(?:ي)?\s+(?:قال|سمح|منع|أكد)(?:ي|\s*لي(?:ا)?)?\s+(?:إن\s+)?"
+    r"|(?:(?:مش|غير|مو)\s+)?(?:مسموح|آمن)(?:ش)?(?:\s+(?:لي|ليا|بيه|بيها))?|ممنوع(?:ة)?(?:\s+(?:عليا|علي|عليّ))?|بلاش|بحدود|بأوزان\s+خفيفة"
+)
+_EQUIPMENT_WORDS = frozenset(
+    "barbell dumbbell cable machine smith band kettlebell plate loaded ez bar".split()
 )
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?؟])\s+|\n+")
 
@@ -264,37 +298,101 @@ def parse_clearance_statement(message: str, pending_exercise_name: str | None = 
     text = _reported_wording(message)
     if not text:
         return None
-    if _CLEARANCE_LIMITS_RE.search(text):
-        verdict = "cleared_with_limits"
-        note_match = re.search(r"\b(?:with\s+limits?|limited|modify|only\s+if)\b\s*(.*)$", text, re.I)
-        note = note_match.group(1).strip(" .,!?") if note_match else None
-    elif _CLEARANCE_NEGATIVE_RE.search(text):
-        verdict, note = "not_cleared", None
-    elif _CLEARANCE_POSITIVE_RE.search(text):
-        verdict, note = "cleared", None
-    else:
+    if _UNSURE_RE.search(text):
         return None
-
-    exercise = _PHYSICIAN_PREFIX_RE.sub("", text)
-    exercise = re.sub(r"^(?:the\s+)?(?:exercise\s+)?", "", exercise, flags=re.I)
-    exercise = re.sub(
-        r"^(?:no|not\s+cleared|not\s+allowed|avoid|shouldn['’]?t|can['’]?t\s+do|cannot\s+do|cleared|approved|okay\s+to|ok\s+to|allowed\s+to|can\s+do|safe\s+to)\s+",
-        "", exercise, flags=re.I,
-    )
-    exercise = re.sub(
-        r"\s+(?:is|are)?\s*(?:not\s+cleared|not\s+allowed|cleared|approved|okay|safe|with\s+limits?|limited).*$",
-        "", exercise, flags=re.I,
-    ).strip(" .,!?")
-    exercise = re.sub(r"^(?:me\s+to|to)\s+", "", exercise, flags=re.I)
-    if not exercise and pending_exercise_name:
-        exercise = pending_exercise_name
+    verdict, note = _clearance_verdict(text)
+    if verdict is None:
+        return None
+    if pending_exercise_name and _SHORT_ANSWER_RE.fullmatch(text.strip(" .,!؟?")):
+        return {"exercise_name": pending_exercise_name, "verdict": verdict, "note": note or ""}
+    if not (
+        _PHYSICIAN_RE.search(text) or _EXPLICIT_RESTRICTION_RE.search(text) or _EXERCISE_BOUND_RE.search(text)
+    ):
+        return None
+    exercise = _clearance_exercise(text)
     if not exercise or re.match(
-        r"^(?:i|me|my|we|you|he|she|they|physician|doctor|clinician|injury|pain)\b",
+        r"^(?:i|me|my|we|you|he|she|they|no|physician|doctor|clinician|injury|pain)\b",
         exercise,
         re.I,
     ):
         return None
     return {"exercise_name": exercise, "verdict": verdict, "note": note or ""}
+
+
+def _clearance_verdict(text: str) -> tuple[str | None, str | None]:
+    if _EXPLICIT_RESTRICTION_RE.search(text):
+        return "not_cleared", None
+    if _CLEARANCE_LIMITS_RE.search(text):
+        note_match = re.search(r"\b(?:with\s+limits?|limited|modify|only\s+if)\b\s*(.*)$", text, re.I)
+        return "cleared_with_limits", note_match.group(1).strip(" .,!?") if note_match else None
+    if _CLEARANCE_NEGATIVE_RE.search(text):
+        return "not_cleared", None
+    if _CLEARANCE_POSITIVE_RE.search(text):
+        return "cleared", None
+    return None, None
+
+
+def _clearance_exercise(text: str) -> str:
+    """The exercise words left once the advice wording is removed."""
+    exercise = _PHYSICIAN_PREFIX_RE.sub("", text)
+    exercise = re.sub(
+        r"^(?:(?:my|the)\s+)?(?:physician|doctor|clinician)\s+(?:(?:has|have|had|did)(?:n['’]?t|\s+not|\s+never)|never)\s+"
+        r"(?:\w+\s+)?(?:cleared|clear|allowed|allow|approved|approve)(?:\s+me)?\s+(?:to\s+|for\s+)?",
+        "", exercise, flags=re.I,
+    )
+    exercise = re.sub(
+        r"^(?:i['’]?m|i\s+am|am|i['’]?ve\s+been|i\s+have\s+been|i)\s+"
+        r"(?=(?:not\s+|no\s+longer\s+|never\s+)?(?:allowed|cleared)\b|should(?:n['’]?t|\s+not|\s+avoid)\b)",
+        "", exercise, flags=re.I,
+    )
+    exercise = re.sub(r"^(?:the\s+)?(?:exercise\s+)?", "", exercise, flags=re.I)
+    exercise = re.sub(
+        r"^(?:no\s+longer\s+(?:allowed|cleared)|no|(?:not|never)\s+(?:cleared|allowed)|should\s+(?:avoid|not)|avoid|"
+        r"shouldn['’]?t|can['’]?t\s+do|cannot\s+do|cleared|approved|okay|ok|allowed|can\s+do|safe)(?:\s+(?:to|for))?\s+",
+        "", exercise, flags=re.I,
+    )
+    exercise = re.sub(
+        r"\s+(?:is|are|was|were)?(?:n['’]?t)?\s*(?:not\s+cleared|not\s+allowed|not\s+safe|cleared|allowed|approved|okay|safe|"
+        r"forbidden|with\s+limits?|limited).*$",
+        "", exercise, flags=re.I,
+    )
+    exercise = re.sub(r"\s+", " ", _ARABIC_VERDICT_WORDS_RE.sub("", exercise.strip())).strip(" .,!?؟،")
+    return re.sub(r"^(?:me\s+to|to|for)\s+(?:do\s+)?|^(?:do|doing)\s+", "", exercise, flags=re.I)
+
+
+def is_ordinary_wording(message: str, clearance: dict[str, str], pending_exercise_name: str | None) -> bool:
+    """Advice wording with no physician behind it. Arabic restrictions are kept
+    as written: the library lookup cannot read every Arabic exercise name."""
+    text = _reported_wording(message)
+    if pending_exercise_name and clearance.get("exercise_name") == pending_exercise_name:
+        return False
+    if _PHYSICIAN_RE.search(text):
+        return False
+    return not (_EXPLICIT_RESTRICTION_RE.search(text) and re.search(r"[\u0600-\u06ff]", text))
+
+
+def names_library_exercise(store: Any, exercise_name: str) -> bool:
+    """Every word belongs to one library exercise, and not only to its equipment."""
+
+    def stem(word: str) -> str:
+        if len(word) > 5 and word.endswith("ing"):
+            word = word[:-3]
+            if word[-1] == word[-2] and word[-1] != "s":
+                word = word[:-1]
+        return word[:-1] if len(word) > 3 and word.endswith("s") else word
+
+    def words(value: str) -> set[str]:
+        return {stem(word) for word in re.findall(r"[^\W\d_]+", str(value or "").casefold())}
+
+    lookup = re.sub(r"^(?:do|doing|perform|performing)\s+", "", exercise_name, flags=re.I)
+    wanted = words(lookup)
+    if not wanted - _EQUIPMENT_WORDS:
+        return False
+    return any(
+        wanted <= words(match.get("name", "")) | words(match.get("display_name", ""))
+        for query in dict.fromkeys((lookup, " ".join(sorted(wanted, key=lookup.casefold().find))))
+        for match in store.find_exercises_by_name(query, limit=20)
+    )
 
 
 def resolve_exercise_matches(store: Any, exercise_name: str) -> list[dict[str, Any]]:
