@@ -2601,6 +2601,54 @@
     "request to"
    ],
    "review_status": "NOT_REQUIRED"
+  },
+  {
+   "id": "rir-en-01",
+   "language": "en",
+   "message": "my knee is a bit sore from yesterday's squats, how should I go easier today?",
+   "expected": [
+    "answer",
+    "ask"
+   ],
+   "program": "five_day",
+   "rir_target": 1,
+   "review_status": "NOT_REQUIRED"
+  },
+  {
+   "id": "rir-en-02",
+   "language": "en",
+   "message": "I'm wiped out today, how do I make my sets easier?",
+   "expected": [
+    "answer",
+    "ask"
+   ],
+   "program": "five_day",
+   "rir_target": 1,
+   "review_status": "NOT_REQUIRED"
+  },
+  {
+   "id": "rir-egy-01",
+   "language": "egy",
+   "message": "ركبتي واجعاني شوية من سكوات امبارح، أخفف التمرين النهارده إزاي؟",
+   "expected": [
+    "answer",
+    "ask"
+   ],
+   "program": "five_day",
+   "rir_target": 1,
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "rir-egy-02",
+   "language": "egy",
+   "message": "أنا مرهق جدا النهارده، أخفف المجموعات إزاي؟",
+   "expected": [
+    "answer",
+    "ask"
+   ],
+   "program": "five_day",
+   "rir_target": 1,
+   "review_status": "PENDING_OWNER"
   }
  ]
 }

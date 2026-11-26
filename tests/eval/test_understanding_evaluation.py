@@ -157,6 +157,52 @@ def test_a_forbidden_phrase_in_the_reply_fails():
     assert understanding.score_case(case, START, [_turn(reply="Ask Your Coach first.")]).passed is False
 
 
+@pytest.mark.parametrize(
+    "reply",
+    [
+        "Lower your RIR to 2-3 on squats today.",
+        "قلل الـ RIR لـ 2-3 في السكوات النهارده.",
+        "Increase RIR to 0 on your last set.",
+        "خلي RIR أقل: 2 أو 3",
+    ],
+)
+def test_rir_wording_that_contradicts_its_number_fails(reply):
+    # #872: "lower RIR" means closer to failure, so it cannot give an easier number.
+    case = _case(["answer"], rir_target=1)
+
+    result = understanding.score_case(case, START, [_turn(reply=reply)])
+
+    assert result.passed is False
+    assert any("RIR" in problem for problem in result.problems)
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        "Leave more reps in reserve: raise RIR to 2-3 today.",
+        "زوّد الـ RIR لـ 2-3 النهارده.",
+        "Keep RIR at 2 today.",
+        "Rest 3 minutes between sets.",
+        # Live replies (#872 run): the direction word governs the load, not RIR.
+        "**Drop squat intensity** — keep RIR at 2–3 instead of 0–1.",
+        "You can reduce load and keep 2–3 RIR on the 45° Leg Press.",
+    ],
+)
+def test_rir_wording_that_agrees_with_its_number_passes(reply):
+    case = _case(["answer"], rir_target=1)
+
+    assert understanding.score_case(case, START, [_turn(reply=reply)]).passed is True
+
+
+@pytest.mark.parametrize("value", [-1, "1", True])
+def test_an_invalid_rir_target_is_rejected(value):
+    dataset = copy.deepcopy(understanding.load_dataset())
+    next(item for item in dataset["cases"] if item.get("rir_target") is not None)["rir_target"] = value
+
+    with pytest.raises(ValueError):
+        understanding.validate_dataset(dataset)
+
+
 def test_a_rebuild_without_confirmation_is_reported_separately_from_wrong_changes():
     case = _case(["confirm"], allowed={"kind": "rebuild", "splits": ["ppl"], "frequency": 3})
 
