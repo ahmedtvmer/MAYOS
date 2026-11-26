@@ -93,6 +93,49 @@ def _validate_case(case: dict[str, Any], programs: dict[str, Any]) -> None:
         raise ValueError(f"{label} has an unknown review status.")
     if case["language"] != "en" and status == "NOT_REQUIRED":
         raise ValueError(f"{label} is not English, so the owner must review it.")
+    rir_target = case.get("rir_target")
+    if rir_target is not None and (not isinstance(rir_target, int) or isinstance(rir_target, bool) or rir_target < 0):
+        raise ValueError(f"{label} has an invalid rir_target.")
+
+
+# #872: "lower RIR" means closer to failure. When a reply names a direction and a
+# number, the number must move that way from the program's target RIR.
+_RIR_NUMBER = r"(\d+)(?:\s*(?:-|–|to|لـ?|ل|او|أو|or)\s*(\d+))?"
+# The direction word must govern RIR itself: only filler words may sit between
+# them, so "drop the load and keep RIR at 2" is not read as "drop RIR".
+_EN_GAP = r"(?:\s+(?:your|the|my|target|working))*\s+"
+_AR_GAP = r"\s*(?:الـ\s*|ال)?"
+_RIR_DIRECTION_PATTERNS = (
+    (re.compile(
+        r"\b(?P<word>lower|reduce|decrease|drop|cut)" + _EN_GAP + r"RIR\b[^.\n؟?\d]{0,20}" + _RIR_NUMBER,
+        re.IGNORECASE), "lower"),
+    (re.compile(
+        r"\b(?P<word>raise|increase|higher|bump)" + _EN_GAP + r"RIR\b[^.\n؟?\d]{0,20}" + _RIR_NUMBER,
+        re.IGNORECASE), "higher"),
+    (re.compile(
+        r"(?P<word>قل[ّ]?ل|نز[ّ]?ل|اخفض|خف[ّ]?ض)\S*" + _AR_GAP + r"RIR[^.\n؟?\d]{0,20}" + _RIR_NUMBER),
+        "lower"),
+    (re.compile(
+        r"(?P<word>زو[ّ]?د|ارفع|زي[ّ]?د|عل[ّ]?ي)\S*" + _AR_GAP + r"RIR[^.\n؟?\d]{0,20}" + _RIR_NUMBER),
+        "higher"),
+    (re.compile(r"RIR\s*(?P<word>أقل|اقل)[^.\n؟?\d]{0,20}" + _RIR_NUMBER), "lower"),
+    (re.compile(r"RIR\s*(?P<word>أعلى|اعلى|أكتر|اكتر)[^.\n؟?\d]{0,20}" + _RIR_NUMBER), "higher"),
+)
+
+
+def rir_direction_problems(reply: str, target: int) -> list[str]:
+    """Direction words that contradict their RIR number, given the program's target (#872)."""
+    problems = []
+    for pattern, direction in _RIR_DIRECTION_PATTERNS:
+        for match in pattern.finditer(reply):
+            numbers = [int(value) for value in match.groups()[-2:] if value is not None]
+            if not numbers:
+                continue
+            if direction == "lower" and min(numbers) >= target:
+                problems.append(f"says {match.group('word')} RIR but gives {match.group(0).strip()} (target {target})")
+            if direction == "higher" and max(numbers) <= target:
+                problems.append(f"says {match.group('word')} RIR but gives {match.group(0).strip()} (target {target})")
+    return problems
 
 
 def counts_toward_score(case: dict[str, Any]) -> bool:
@@ -468,6 +511,8 @@ def score_case(case: dict[str, Any], start: Snapshot, turns: list[TurnResult]) -
     named = [text for text in case.get("reply_none", []) if text.casefold() in final.reply.casefold()]
     if named:
         problems.append(f"reply contains {', '.join(named)}")
+    if case.get("rir_target") is not None:
+        problems.extend(rir_direction_problems(final.reply, case["rir_target"]))
     false_claim = not changed and CLAIMED_DONE_RE.search(final.reply) is not None
     if false_claim:
         problems.append("reply claims a change that did not happen")
