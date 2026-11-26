@@ -611,11 +611,27 @@ def _observe_case_with_catalog(
             with model_patch:
                 for _chunk in graph.stream_assistant_turn(state, ledger=ledger, store=store):
                     pass
-        metadata = state.get("intent_metadata") or {}
+                observed_intent = state.get("intent")
+                metadata = state.get("intent_metadata") or {}
+                if ledger.get_pending_program_rebuild() is not None:
+                    # #867: a rebuild shows a preview first; confirm it the way a Player would.
+                    from langchain_core.messages import AIMessage
+
+                    yes = "أيوه" if graph._is_arabic_dominant(case["text"]) else "yes"
+                    confirm_state = {
+                        **state,
+                        "messages": [
+                            HumanMessage(content=case["text"]),
+                            AIMessage(content=str(state.get("response_content") or "")),
+                            HumanMessage(content=yes),
+                        ],
+                    }
+                    for _chunk in graph.stream_assistant_turn(confirm_state, ledger=ledger, store=store):
+                        pass
         return {
             "case_id": case["id"],
-            "observed_intent": state.get("intent"),
-            "franco_intercept": state.get("intent") == "clinical_intercept" and metadata.get("franco") is True,
+            "observed_intent": observed_intent,
+            "franco_intercept": observed_intent == "clinical_intercept" and metadata.get("franco") is True,
             "executed_actions": executed_actions,
             "scripted_classifier_used": scripted_classification is not None,
         }
