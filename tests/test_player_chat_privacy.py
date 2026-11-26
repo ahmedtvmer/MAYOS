@@ -245,12 +245,12 @@ def _force_free_form_coaching_intent(monkeypatch):
     monkeypatch.setattr(
         assistant_graph,
         "_classify_intent_with_llm",
-        lambda _query: assistant_graph.IntentClassification(intent="coaching_qa"),
+        lambda _query, *_context: assistant_graph.IntentClassification(intent="coaching_qa"),
     )
     monkeypatch.setattr(
         assistant_graph,
         "_classify_arabic_intent",
-        lambda _query, _config: {"intent": "coaching_qa", "intent_metadata": {}},
+        lambda _query, _config, *_context: {"intent": "coaching_qa", "intent_metadata": {}},
     )
 
 

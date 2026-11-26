@@ -148,10 +148,48 @@ class LedgerChatMixin:
         )
         self._commit_ledger()
 
+    def set_pending_swap_question(self, question: dict[str, Any], question_text: str) -> None:
+        """Chat asked which exercise a swap means (#858). One pending question
+        at a time: any newer chat question replaces it."""
+        self.conn.execute(
+            "INSERT INTO assistant_goal_weak_point_pending "
+            "(id, muscles_json, offer_id, kind, offer_text, created_at) VALUES (1, ?, ?, 'swap_question', ?, ?) "
+            "ON CONFLICT(id) DO UPDATE SET muscles_json = excluded.muscles_json, "
+            "offer_id = excluded.offer_id, kind = excluded.kind, offer_text = excluded.offer_text, "
+            "created_at = excluded.created_at",
+            (json.dumps(question, ensure_ascii=False), str(uuid.uuid4()), question_text,
+             datetime.now(UTC).isoformat()),
+        )
+        self._commit_ledger()
+
+    def get_pending_swap_question(self) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            "SELECT muscles_json, offer_text, created_at FROM assistant_goal_weak_point_pending "
+            "WHERE id = 1 AND kind = 'swap_question'"
+        ).fetchone()
+        if row is None:
+            return None
+        try:
+            created = datetime.fromisoformat(row["created_at"])
+            question = json.loads(row["muscles_json"])
+        except (TypeError, ValueError, json.JSONDecodeError):
+            self.clear_pending_swap_question()
+            return None
+        if (datetime.now(UTC) - created).total_seconds() > 1800 or not isinstance(question, dict):
+            self.clear_pending_swap_question()
+            return None
+        return {**question, "question_text": row["offer_text"]}
+
+    def clear_pending_swap_question(self) -> None:
+        self.conn.execute(
+            "DELETE FROM assistant_goal_weak_point_pending WHERE id = 1 AND kind = 'swap_question'"
+        )
+        self._commit_ledger()
+
     def get_pending_goal_weak_point_suggestion(self) -> dict[str, Any] | None:
         row = self.conn.execute(
             "SELECT muscles_json, offer_id, kind, offer_text, created_at "
-            "FROM assistant_goal_weak_point_pending WHERE id = 1"
+            "FROM assistant_goal_weak_point_pending WHERE id = 1 AND kind != 'swap_question'"
         ).fetchone()
         if row is None:
             return None
