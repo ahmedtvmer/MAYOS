@@ -524,6 +524,8 @@ class FakeMayosApi {
   Map<String, dynamic>? chatRefusal;
   // When true, the done frame reports `program_updated: true`.
   bool chatProgramUpdated = false;
+  // When true, the done frame reports `nutrition_updated: true` (#861).
+  bool chatNutritionUpdated = false;
   Map<String, dynamic>? chatRequestSuggestion;
   Map<String, dynamic>? chatProgramEditPreview;
   Map<String, dynamic>? chatDoneAllowance;
@@ -2623,6 +2625,7 @@ class FakeMayosApi {
         'data: {"token": ${jsonEncode(chunk)}}\n\n',
       'data: {"done": true, "response_content": ${jsonEncode(reply)}, '
           '"program_updated": ${chatProgramUpdated ? 'true' : 'false'}, '
+          '"nutrition_updated": ${chatNutritionUpdated ? 'true' : 'false'}, '
           '"outcome": "completed"$suggestionJson$allowanceJson$programEditJson$feedbackJson}\n\n',
     ]);
   }

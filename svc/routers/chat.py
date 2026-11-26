@@ -298,6 +298,7 @@ def _run_turn(
             "response_content": state.get("response_content") or "",
             "program_updated": bool(state.get("program_updated")),
             "movement_restrictions_updated": bool(state.get("movement_restrictions_updated")),
+            "nutrition_updated": bool(state.get("nutrition_updated")),
             "outcome": turn.answer_outcome,
         }
         if allowance is not None:

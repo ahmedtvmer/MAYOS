@@ -561,6 +561,14 @@ final StateProvider<int> coachNewAlertsCountProvider = StateProvider<int>((
   return 0;
 });
 
+/// Bumped when chat saves a Nutrition plan rebuild (#861). The Player's
+/// Nutrition tab stays alive in the shell, so it listens and reloads.
+///
+/// Only chat bumps it; the Nutrition tab never does, so a bump cannot loop.
+final StateProvider<int> playerNutritionRevisionProvider = StateProvider<int>(
+  (ref) => 0,
+);
+
 /// Bumped whenever a coaching action changes what a roster row shows
 /// (acknowledge/resolve on either the player page or the Alerts tab, and a
 /// saved check-in). The Roster tab listens and reloads in the background, so

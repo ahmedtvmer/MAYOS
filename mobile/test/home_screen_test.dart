@@ -427,7 +427,7 @@ void main() {
     final Finder sheetList = find.descendant(
       of: find.byType(BottomSheet), matching: find.byType(Scrollable),
     ).first;
-    await tester.scrollUntilVisible(showMe, 180, scrollable: sheetList);
+    await tester.scrollUntilVisible(showMe, 400, scrollable: sheetList);
     await tester.ensureVisible(showMe);
     await tester.pumpAndSettle();
     await tester.tap(showMe);
@@ -610,7 +610,7 @@ void main() {
     final Finder sheetList = find.descendant(
       of: find.byType(BottomSheet), matching: find.byType(Scrollable),
     ).first;
-    await tester.scrollUntilVisible(showMe, 180, scrollable: sheetList);
+    await tester.scrollUntilVisible(showMe, 400, scrollable: sheetList);
     await tester.ensureVisible(showMe);
     await tester.pumpAndSettle();
     await tester.tap(showMe);
@@ -1544,7 +1544,7 @@ void main() {
       final Finder sheetList = find.descendant(
         of: find.byType(BottomSheet), matching: find.byType(Scrollable),
       ).first;
-      await tester.scrollUntilVisible(showMe, 180, scrollable: sheetList);
+      await tester.scrollUntilVisible(showMe, 400, scrollable: sheetList);
       await tester.ensureVisible(showMe);
       await tester.pumpAndSettle();
       await tester.tap(showMe);

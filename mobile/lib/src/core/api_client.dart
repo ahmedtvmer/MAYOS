@@ -3694,6 +3694,7 @@ class ApiClient {
             : '',
         programUpdated: frame['program_updated'] == true,
         movementRestrictionsUpdated: frame['movement_restrictions_updated'] == true,
+        nutritionUpdated: frame['nutrition_updated'] == true,
         outcome: frame['outcome'] is String
             ? frame['outcome'] as String
             : 'completed',

@@ -1099,6 +1099,26 @@ void main() {
     expect(find.text('Deload applied'), findsOneWidget);
   });
 
+  testWidgets('nutrition_updated tells the Nutrition tab to reload (#861)',
+      (tester) async {
+    final FakeMayosApi fake = _fakePlayer('nutrition-rebuild')
+      ..chatNutritionUpdated = true;
+    await _pumpChat(tester, fake,
+        store: InMemoryChatCacheStore(), scopeKey: UniqueKey());
+    await _acceptDisclosure(tester);
+    final ProviderContainer container = ProviderScope.containerOf(
+      tester.element(find.byType(MayosApp)),
+    );
+    expect(container.read(playerNutritionRevisionProvider), 0);
+
+    await tester.enterText(
+        find.byKey(const Key('chat_composer')), 'yes');
+    await tester.tap(find.byKey(const Key('chat_send')));
+    await _pumpUntilFound(tester, _chatMarkdown('Keep your elbows tucked.'));
+
+    expect(container.read(playerNutritionRevisionProvider), 1);
+  });
+
   testWidgets('chat Program edit preview renders optional toggle and confirms',
       (tester) async {
     final FakeMayosApi fake = _fakePlayer('program-edit-card')
