@@ -1410,6 +1410,34 @@ def test_chat_error_frame_never_leaks(client, monkeypatch):
     assert [message["role"] for message in history] == ["user"]
 
 
+@pytest.mark.parametrize(
+    "content,language",
+    [("Hi?", "en"), ("التمرين النهارده إيه؟", "ar")],
+)
+def test_chat_error_frame_uses_the_reply_language(client, monkeypatch, content, language):
+    # #871: the route's error event carries the fallback in the reply language.
+    import json
+
+    from svc.routers import chat as chat_router
+    from utils.text_scrubber import pipeline_error_response
+
+    client.post("/auth/register", json={"trainee_id": "alice", "password": "correct-horse-1"})
+
+    def boom(state, **_kwargs):
+        raise RuntimeError("internal database secret")
+        yield ""
+
+    monkeypatch.setattr(chat_router, "stream_assistant_turn", boom)
+    with client.stream("POST", "/chat/messages", json={"content": content}) as stream:
+        raw = stream.read().decode()
+    lines = raw.splitlines()
+    data = json.loads(lines[lines.index("event: error") + 1].removeprefix("data: "))
+    expected = pipeline_error_response(language)
+    assert data["detail"] == expected
+    assert data["message_code"] == "chat.failed.v1"
+    assert data["message_fallback"] == expected
+
+
 def test_chat_stream_disconnect_still_persists_reply(client, monkeypatch):
     import threading
     import time

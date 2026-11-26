@@ -14,7 +14,10 @@ from utils.text_scrubber import (
     CoachOutputScrubber,
     EMPTY_RESPONSE_FALLBACK,
     PIPELINE_ERROR_RESPONSE,
+    PIPELINE_ERROR_RESPONSE_AR,
+    contains_pipeline_error_response,
     finalize_coach_output,
+    pipeline_error_response,
     scrub_coach_output,
 )
 
@@ -83,6 +86,34 @@ def test_graph_and_stream_failures(graph, stage):
         graph.llm.reset([RuntimeError("private detail"), RuntimeError("private detail")])
     assert graph.assistant_graph.invoke(request, config={"configurable": {"ledger": graph.db, "store": graph.db}})["response_content"] == PIPELINE_ERROR_RESPONSE
     assert list(graph.stream_assistant_turn(request, ledger=graph.db, store=graph.db)) == [PIPELINE_ERROR_RESPONSE]
+
+
+ARABIC_QUESTION = "أعمل كام عدة في السكوات؟"
+
+
+@pytest.mark.parametrize("stage", ["hydrate", "router", "model"])
+def test_arabic_turn_failure_gets_the_arabic_error_reply(graph, stage):
+    # #871: a failed Arabic turn answers in Arabic and still never claims success.
+    request = state(ARABIC_QUESTION)
+    if stage == "hydrate":
+        request["telemetry_context"] = None
+        graph.db.get_player_profile.side_effect = RuntimeError("private detail")
+    elif stage == "router":
+        graph.evaluate_clinical_semantic_guard.side_effect = RuntimeError("private detail")
+    else:
+        graph.llm.reset([RuntimeError("private detail")] * 4)
+    assert graph.assistant_graph.invoke(request, config={"configurable": {"ledger": graph.db, "store": graph.db}})["response_content"] == PIPELINE_ERROR_RESPONSE_AR
+    shown = "".join(graph.stream_assistant_turn(request, ledger=graph.db, store=graph.db))
+    assert shown == PIPELINE_ERROR_RESPONSE_AR == request["response_content"]
+    assert "private" not in shown
+
+
+def test_pipeline_error_texts_are_recognized_in_both_languages():
+    assert pipeline_error_response("ar") == PIPELINE_ERROR_RESPONSE_AR
+    assert pipeline_error_response("en") == PIPELINE_ERROR_RESPONSE
+    assert contains_pipeline_error_response("Use controlled reps.\n\n" + PIPELINE_ERROR_RESPONSE_AR)
+    assert contains_pipeline_error_response(PIPELINE_ERROR_RESPONSE)
+    assert not contains_pipeline_error_response("Use controlled reps.")
 
 
 def test_finish_limit_keeps_only_complete_sentences_before_notice(graph):

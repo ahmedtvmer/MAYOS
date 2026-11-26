@@ -45,7 +45,7 @@ from svc.schemas import (
     ChatMessageIn,
     ChatProgramEditDecisionIn,
 )
-from utils.text_scrubber import PIPELINE_ERROR_RESPONSE
+from utils.text_scrubber import pipeline_error_response
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -174,6 +174,15 @@ async def delete_preference(
     deleted = await asyncio.to_thread(ledger.delete_assistant_preference, preference_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Assistant preference not found.")
+
+
+def _error_reply_language(db: Any, account_id: str, message: str) -> str:
+    """The reply language for a failed turn; a failed account read falls back to the message (#871)."""
+    try:
+        display_language = (db.get_account(account_id) or {}).get("display_language", "en")
+    except Exception:
+        display_language = "en"
+    return resolve_reply_language(message, display_language)
 
 
 def _run_turn(
@@ -318,12 +327,13 @@ def _run_turn(
     except Exception:
         if disconnected.is_set():
             turn.mark_interrupted()
+        error_reply = pipeline_error_response(_error_reply_language(db, account_id, content))
         out.put(
             (
                 "error",
                 {
-                    "detail": PIPELINE_ERROR_RESPONSE,
-                    **chat_error_message(PIPELINE_ERROR_RESPONSE),
+                    "detail": error_reply,
+                    **chat_error_message(error_reply),
                 },
             )
         )
