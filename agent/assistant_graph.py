@@ -120,7 +120,14 @@ from utils.logger import MayosLogger
 from utils.equipment_access import COMMERCIAL_GYM, equipment_access_allows, map_equipment_access
 from utils.model_downloader import llm, structured_output_model
 from utils import player_output_budgets
-from utils.text_scrubber import CoachOutputScrubber, EMPTY_RESPONSE_FALLBACK, PIPELINE_ERROR_RESPONSE, finalize_coach_output
+from utils.text_scrubber import (
+    CoachOutputScrubber,
+    EMPTY_RESPONSE_FALLBACK,
+    PIPELINE_ERROR_RESPONSE,
+    PIPELINE_ERROR_RESPONSE_AR,
+    finalize_coach_output,
+    pipeline_error_response,
+)
 
 load_dotenv()
 logger = MayosLogger().get_logger(__name__)
@@ -7512,6 +7519,13 @@ def _trim_to_last_complete_sentence(text: str) -> str:
     return text[:_last_complete_sentence_end(text)].rstrip()
 
 
+def _pipeline_error_reply(state: AssistantState) -> str:
+    """The pipeline error reply in the language of the Player's latest message (#871)."""
+    messages = state.get("messages") or []
+    query = _get_message_text(messages[-1]) if messages else ""
+    return pipeline_error_response(resolve_reply_language(query, state.get("display_language", "en")))
+
+
 def generation_node(state: AssistantState, config: dict[str, Any] | None = None) -> dict[str, Any]:
     try:
         payload = build_prompt_payload(state)
@@ -7525,7 +7539,7 @@ def generation_node(state: AssistantState, config: dict[str, Any] | None = None)
         return _response(str(exc))
     except Exception:
         logger.exception("Assistant generation failed")
-        return _response(PIPELINE_ERROR_RESPONSE)
+        return _response(_pipeline_error_reply(state))
 
 
 def composite_intent_node(state: AssistantState, config: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -7651,11 +7665,12 @@ def _safe_node(handler):
             return result
         except Exception:
             logger.exception("Assistant node failed: %s", handler.__name__)
+            error_reply = _pipeline_error_reply(state)
             if handler is hydrate_context_node:
-                return {"pipeline_error": PIPELINE_ERROR_RESPONSE}
+                return {"pipeline_error": error_reply}
             if handler is router_node:
-                return {"intent": "telemetry_intercept", "intent_metadata": {"response_content": PIPELINE_ERROR_RESPONSE}}
-            return _response(PIPELINE_ERROR_RESPONSE)
+                return {"intent": "telemetry_intercept", "intent_metadata": {"response_content": error_reply}}
+            return _response(error_reply)
     return run
 
 
@@ -7820,6 +7835,7 @@ def _can_append_physician_followup(
         for error_prefix in (
             CONTEXT_TOO_LONG_RESPONSE,
             PIPELINE_ERROR_RESPONSE,
+            PIPELINE_ERROR_RESPONSE_AR,
             "Failed to search the exercise catalog.",
             "Could not complete action for:",
         )
@@ -8017,7 +8033,10 @@ def stream_assistant_turn(
             if stream_output.pending_output:
                 visible.append(stream_output.pending_output)
                 yield stream_output.pending_output
-        result = _response(PIPELINE_ERROR_RESPONSE, bool(result and result.get("program_updated")))
+        result = _response(
+            pipeline_error_response(resolve_reply_language(query, state.get("display_language", "en"))),
+            bool(result and result.get("program_updated")),
+        )
     finally:
         if routed_context is not None:
             _record_context_retrieval(routed_context, model_fetched_more)

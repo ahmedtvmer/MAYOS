@@ -533,9 +533,9 @@ def _outcome_fields(case: dict[str, Any], route: dict[str, Any], reply: str) -> 
 
 
 def _graph_error_response(reply: str) -> str | None:
-    from utils.text_scrubber import EMPTY_RESPONSE_FALLBACK, PIPELINE_ERROR_RESPONSE
+    from utils.text_scrubber import EMPTY_RESPONSE_FALLBACK, PIPELINE_ERROR_RESPONSES
 
-    for marker in (PIPELINE_ERROR_RESPONSE, EMPTY_RESPONSE_FALLBACK):
+    for marker in (*PIPELINE_ERROR_RESPONSES, EMPTY_RESPONSE_FALLBACK):
         if marker in reply:
             return f"Assistant graph returned error response: {marker}"
     return None
