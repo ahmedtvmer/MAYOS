@@ -477,6 +477,11 @@ def test_static_system_core_carries_no_authority_wording():
     assert "quote coach_note" not in lowered
     assert "mention coach or program requests" not in lowered
     assert "Program changes are handled outside this reply" in core
+    # #859: no refusal and no request offer, for every Player; the swap
+    # wording names no Coach, so it is no cue for an invented Coach.
+    assert "never say you can't change the program" in core
+    assert "never offer to send a request to anyone" in core
+    assert lowered.count("coach") == 1  # only "You are Mayos, an evidence-based strength coach."
     assert "Tabs Home, Program, Nutrition, Progress." in core
 
 
