@@ -3084,6 +3084,15 @@ def _previous_assistant_message_is_injury_area_question(
     }
 
 
+def _previous_assistant_message_asks_for_physician_advice(
+    messages: Sequence[BaseMessage],
+) -> bool:
+    if len(messages) < 2 or _message_role(messages[-2]) != "assistant":
+        return False
+    previous = _get_message_text(messages[-2])
+    return "What did your physician say about" in previous or "الدكتور قال إيه" in previous
+
+
 def _memory_write_request(query: str) -> tuple[str, str] | None:
     remember = re.match(
         r"^\s*(?:please\s+)?remember\s+(?:that\s+)?(.+?)\s*[.!؟?]*\s*$",
@@ -3957,8 +3966,11 @@ def _route_player_turn(state: AssistantState, config: dict[str, Any] | None = No
                 str(physician_followup_answer["id"]), False
             )
         pending_exercise = injuries_service.pending_exercise_followup(ledger)
+        # Only a direct answer may leave the exercise unnamed (#865).
         pending_exercise_name = (
-            pending_exercise.get("pending_exercise_name") if pending_exercise else None
+            pending_exercise.get("pending_exercise_name")
+            if pending_exercise and _previous_assistant_message_asks_for_physician_advice(messages)
+            else None
         )
         if injuries_service.full_physician_clearance(query):
             injury = ledger.get_latest_active_injury(body_area_in_text(query))
@@ -3970,7 +3982,14 @@ def _route_player_turn(state: AssistantState, config: dict[str, Any] | None = No
                     "active_intents": [],
                 }
         clearance = injuries_service.parse_clearance_statement(query, pending_exercise_name)
-        if clearance and (clearance.get("exercise_name") or pending_exercise_name):
+        if (
+            clearance
+            and _store is not None
+            and injuries_service.is_ordinary_wording(query, clearance, pending_exercise_name)
+            and not injuries_service.names_library_exercise(_store, clearance["exercise_name"])
+        ):
+            clearance = None
+        if clearance:
             ledger.clear_pending_assistant_preference_deletion()
             area = body_area_in_text(query)
             injury = (
