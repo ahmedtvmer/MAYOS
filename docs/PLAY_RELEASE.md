@@ -17,10 +17,13 @@ step is one command or one Play Console screen.
 
 ## 1. One-time API configuration
 
+Set it in the API's server environment (the `.env` the compose stack reads on
+the production host; see `docs/DEPLOYMENT.md` §3), then restart the API:
+
 ```bash
 # Owner contact rendered on GET /privacy. Without it the page still serves,
 # but with a placeholder and a warning in the logs.
-fly secrets set PRIVACY_CONTACT_EMAIL="you@example.com"
+PRIVACY_CONTACT_EMAIL=you@example.com
 ```
 
 - [ ] `PRIVACY_CONTACT_EMAIL` is set and the address is one you actually read.
@@ -91,7 +94,8 @@ keytool -list -v -keystore ~/keystores/mayos-upload -alias mayos-upload | grep -
       comma-separated:
 
 ```bash
-fly secrets set ANDROID_APP_SHA256_CERT_FINGERPRINTS="AA:BB:…,DD:EE:…"
+# In the API's server environment (docs/DEPLOYMENT.md §3), then restart the API:
+ANDROID_APP_SHA256_CERT_FINGERPRINTS=AA:BB:…,DD:EE:…
 ```
 
   Without them `/.well-known/assetlinks.json` returns 404 and the password-reset
@@ -158,7 +162,7 @@ dart run flutter_launcher_icons
 
 - [ ] **Create the app** (free, app type: app; not a game).
 - [ ] **Default store listing**: title, short/full description, screenshots,
-      feature graphic. Describe it as a free invitation-only closed trial.
+      feature graphic, from `docs/play/STORE_LISTING.md` (EN and AR).
 - [ ] **Privacy policy URL**: `https://api.mayos.online/privacy`.
 - [ ] **App content → Data safety**: complete from §8 below.
 - [ ] **App content → Content rating**: complete the IARC questionnaire
@@ -178,6 +182,11 @@ dart run flutter_launcher_icons
       confirm no paid offers exist during the closed trial.
 
 ## 8. Data safety form (answer key, derived from `docs/PRIVACY_POLICY.md`)
+
+> **Superseded by `docs/play/DATA_SAFETY.md`**, which is kept in sync with the
+> current policy (Nutrition, health-screening answers, crash logs, reply
+> feedback). The table below is the original closed-trial key, kept for
+> history; fill the form from `docs/play/DATA_SAFETY.md`.
 
 The `play_install_referrer` library adds the Android
 `BIND_GET_INSTALL_REFERRER_SERVICE` permission. The app reads the Play install

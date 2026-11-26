@@ -1,8 +1,8 @@
 # Google Play Data safety form (answer key)
 
-Prepared for issue #750. Answer key for Play Console → **App content → Data
-safety**, derived from `docs/PRIVACY_POLICY.md` (version 1.13, effective
-2026-11-17) and the closed-trial answer key in `docs/PLAY_RELEASE.md` §8. The
+Prepared for issue #750, updated for Nutrition in #881. Answer key for Play
+Console → **App content → Data safety**, derived from `docs/PRIVACY_POLICY.md`
+(version 1.15, effective 2026-11-23) and the closed-trial answer key in `docs/PLAY_RELEASE.md` §8. The
 rule is unchanged: **the form may never contradict the published policy** —
 Play rejects apps whose Data safety form and privacy policy disagree, so fill
 the form only from what actually ships.
@@ -32,10 +32,27 @@ deletion page a user can reach without the app).
 | **Personal info — email address** (recovery email) | Yes | **Required**: the app blocks dashboard and onboarding until one is added (ADR 007 recovery gate) | App functionality (password recovery), account management | No one |
 | **Health and fitness — body data**: weight, height, age, gender, body proportions, injuries/limitations free text | Yes | Optional — the Player chooses what to enter | App functionality (training) | No one |
 | **Health and fitness — exercise history**: workouts, sets, weights, reps, effort (RIR/RPE), readiness, personal records, training schedule and pauses, check-ins | Yes | Optional — the Player chooses what to log | App functionality (training and coaching) | No one |
+| **Health and fitness — Fitness info (Nutrition)**: Nutrition setup (confirmed sex, Daily activity, Nutrition goal and pace), Nutrition targets and their versions, pace proposals and decisions, daily Nutrition adherence, Water log, Food log entries (foods, amounts, portions, meal labels, logged times, nutrient values, Quick add entries) and Personal foods | Yes | Optional — the Player chooses what to set up and log | App functionality (nutrition targets, meal plans and logging) | No one |
+| **Health and fitness — Health info**: Nutrition health-screening answers (pregnancy or breastfeeding, medical conditions, eating disorders) with the time answered; Injury records (body area, the Player's description, status reported / physician seen / resolved) with their Exercise clearances; anything about allergies, food restrictions or conditions the Player writes in food names or chat | Yes | Optional — asked only when the Player sets up Nutrition or reports an injury | App functionality (safe nutrition targets, exercise adjustments) | No one. Health-screening answers are never shown to a Coach and never sent to the AI model |
 | **User content**: onboarding answers, assistant chat, program-request text | Yes | Optional | App functionality (onboarding uses deterministic rules; AI features use the hosted model provider) | No one |
 | **User content — Assistant reply feedback and reports** (ships with #748 in the same release; policy section "Assistant reply feedback and reports"): the 👍/👎 vote or the Report action the Player takes on an assistant reply, stored with their account as the reply's message id and text, the question before it, the language and time, the assistant route or intent that answered, the model and prompt/graph version when available, the chosen reason codes (for example "Wrong information" or "Unsafe advice") and an optional bounded note | Yes | Optional — collected only when the Player votes or reports a reply | App functionality (AI quality); never used to train anything automatically | No one (the exchange you rated — your message and the assistant's reply — and the Player's comment, redacted, reach only the owner, through their Discord webhook, when the Player reports a reply or gives a 👎 with a reason or a comment; the post never includes the username, recovery email or account id) |
 | **App activity — app interactions; Identifiers — user IDs**: pseudonymous feature events keyed by the immutable Account id | Yes | Automatic unless the Account's analytics is off, including preserved opt-outs and objections sent to the privacy contact | Analytics (feature use and product improvement) | PostHog (EU), service provider only |
 | **App info and performance — Crash logs** (release builds): error message and stack trace, app/service release and platform, breadcrumbs reduced to screen names (ids placeholdered) and HTTP method/route template/status | Yes | Automatic in release builds only | App functionality (stability and debugging) | Sentry (EU), service provider only |
+
+Notes on the Health and fitness rows:
+
+- Pick **both** "Health info" and "Fitness info" in Play's picker. Nutrition
+  data can reveal health information (the policy says so in "What we
+  collect"), so declaring it conservatively is safer than leaving it out.
+- During an active Assignment the Coach can read the Player's Nutrition
+  targets, adherence, Water log and Food log (one day at a time), and active
+  injuries with their clearances. That is the Player's own consented
+  coaching relationship inside the app, not sharing with a third party, so
+  Play's **Shared** answer stays No.
+- Relevant Nutrition facts and one recent Food log day can reach the hosted
+  model provider when the Player's chat question needs them (policy "AI
+  features and hosted model providers"). A model provider acting for MAYOS is
+  a service provider, so this is not "sharing" either.
 
 Notes on the crash-logs row (policy: "Error reporting (Sentry)"):
 
@@ -47,6 +64,16 @@ Notes on the crash-logs row (policy: "Error reporting (Sentry)"):
 - Reports never contain chat text, onboarding answers, workout contents,
   program requests or contact details.
 - Debug and profile builds do not report to Sentry.
+
+**Coach Program import files** (XLSX/CSV/TXT a Coach uploads to import a
+Training program) are read for the import review and not kept; they are a
+Coach's own program sheets, not Player data. If Play's picker asks, declare
+**Files and docs**, processed ephemerally, purpose App functionality.
+**Owner check before submitting:** the privacy policy has no section on
+Program import files yet (only on imported *history*). Either add one, or
+confirm the policy wording covers it, before declaring this row — the form
+and the policy must agree. When the free-form AI import is enabled
+(`PROGRAM_IMPORT_AI_ENABLED`), the sheet content goes to the hosted model too.
 
 Also collected but not a Play data-type row: the **Play install referrer is
 read once per install** and only parsed UTM labels (source/medium/campaign)
@@ -60,7 +87,7 @@ photo stays on the device (it is never uploaded).
 
 | Play question | Answer |
 | :--- | :--- |
-| Data collected | The types in the table above: username, recovery email, health/fitness data, user content (including assistant reply feedback and reports), pseudonymous app interactions, crash logs, and internal Account ids. No contacts, no location, no device identifiers, no advertising IDs |
+| Data collected | The types in the table above: username, recovery email, health and fitness data (Fitness info and Health info, including Nutrition), user content (including assistant reply feedback and reports), pseudonymous app interactions, crash logs, and internal Account ids. No contacts, no location, no device identifiers, no advertising IDs |
 | Data shared | **No data sold, no data shared for advertising, no tracking.** Data *is* processed by service providers: the hosted model provider (AI features, DeepInfra by default), the SMTP provider (emails), PostHog EU (product analytics), and Sentry EU (crash reporting) |
 | Data processed securely | Yes — encrypted **in transit** (https/TLS) |
 | Data deletion available | **Yes**, both in-app (Settings → Linked sign-in → Danger zone → Delete account) and on the web (`https://mayos.online/account-deletion`, which links the direct request form) |
@@ -103,10 +130,18 @@ submission.
 ## Related declarations
 
 - **Health apps declaration / fitness category**: MAYOS stores self-reported
-  fitness data (body data and exercise history above). Declare the app in the
-  **Health & Fitness** category and complete the Health apps declaration
-  stating the app collects user-entered fitness data and stores it (not a
-  fitness-record-sharing service, no third-party health-data exchange).
+  fitness and nutrition data (rows above). Category: **Health & Fitness**.
+  In the Health apps declaration tick:
+  - **Fitness** (workouts, training programs, coaching);
+  - **Nutrition and weight management** (Nutrition plan, Food log, Water log,
+    weight).
+
+  Leave **every** medical box unticked: medical, disease management,
+  clinical decision support, telehealth, medical devices, and anything about
+  healthcare providers. MAYOS does not diagnose, treat or manage any disease
+  (owner decision, 2026-11-26). An Injury record with "physician seen" is the
+  Player's own note used to adjust exercises; MAYOS never makes or changes a
+  medical decision.
 - **Content rating**: fitness/training app, health-adjacent self-reported
   data, no violence, no user-to-user messaging (AI chat is assistant-to-user
   only; coaches never see player chats).
