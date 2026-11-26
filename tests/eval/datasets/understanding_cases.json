@@ -2515,6 +2515,94 @@
    "review_status": "OWNER_REVIEWED"
   },
   {
+   "id": "nocoach-egy-01",
+   "language": "egy",
+   "message": "معنديش كوتش",
+   "expected": [
+    "answer",
+    "ask"
+   ],
+   "program": "five_day",
+   "before": [
+    "عايز أبدل الكرنش بحاجة تانية"
+   ],
+   "reply_none": [
+    "طلب التبديل",
+    "للكوتش",
+    "للـ Coach",
+    "مش هقدر أعدّل",
+    "مش هقدر أعدل",
+    "مقدرش أعدل",
+    "your coach"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "nocoach-egy-02",
+   "language": "egy",
+   "message": "ينفع تبدلي الكرنش؟",
+   "expected": [
+    "answer",
+    "ask",
+    "confirm"
+   ],
+   "program": "five_day",
+   "reply_none": [
+    "طلب التبديل",
+    "للكوتش",
+    "للـ Coach",
+    "مش هقدر أعدّل",
+    "مش هقدر أعدل",
+    "مقدرش أعدل",
+    "your coach"
+   ],
+   "review_status": "PENDING_OWNER"
+  },
+  {
+   "id": "nocoach-en-01",
+   "language": "en",
+   "message": "I don't have a coach",
+   "expected": [
+    "answer",
+    "ask"
+   ],
+   "program": "five_day",
+   "before": [
+    "I want to swap the crunch for something else"
+   ],
+   "reply_none": [
+    "your coach",
+    "send a request",
+    "can't change",
+    "cannot change",
+    "can't edit",
+    "unable to change",
+    "request to"
+   ],
+   "review_status": "NOT_REQUIRED"
+  },
+  {
+   "id": "nocoach-en-02",
+   "language": "en",
+   "message": "can you swap the crunch?",
+   "expected": [
+    "answer",
+    "ask",
+    "confirm"
+   ],
+   "program": "five_day",
+   "reply_none": [
+    "your coach",
+    "send a request",
+    "can't change",
+    "cannot change",
+    "can't edit",
+    "unable to change",
+    "request to"
+   ],
+   "review_status": "NOT_REQUIRED"
+  },
+  {
    "id": "rir-en-01",
    "language": "en",
    "message": "my knee is a bit sore from yesterday's squats, how should I go easier today?",

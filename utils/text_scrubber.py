@@ -46,6 +46,20 @@ _TRAIL_CONTINUATION_PATTERNS = tuple(
 
 EMPTY_RESPONSE_FALLBACK = "I couldn't produce a clear answer. Could you rephrase your question?"
 PIPELINE_ERROR_RESPONSE = "I couldn't complete that request. Please try again."
+PIPELINE_ERROR_RESPONSE_AR = "مقدرتش أكمّل الطلب ده. جرّب تاني."
+# Every language's pipeline error reply, for code that must recognize a failed turn (#871).
+PIPELINE_ERROR_RESPONSES = (PIPELINE_ERROR_RESPONSE, PIPELINE_ERROR_RESPONSE_AR)
+
+
+def pipeline_error_response(language: object) -> str:
+    """The pipeline error reply in the reply language."""
+    return PIPELINE_ERROR_RESPONSE_AR if language == "ar" else PIPELINE_ERROR_RESPONSE
+
+
+def contains_pipeline_error_response(text: object) -> bool:
+    """True when a reply carries a pipeline error reply in any language."""
+    reply = str(text or "")
+    return any(marker in reply for marker in PIPELINE_ERROR_RESPONSES)
 DEEPSEEK_END_OF_SENTENCE_TOKEN = "<｜end▁of▁sentence｜>"
 
 

@@ -94,9 +94,9 @@ def _call_usage(row: dict[str, Any], ordinal: int) -> dict[str, Any]:
 
 def _turn_outcome(error: Exception | None, answer: str, finish_reasons: list[str]) -> str:
     from agent.assistant_graph import OUTPUT_LIMIT_RESPONSE
-    from utils.text_scrubber import PIPELINE_ERROR_RESPONSE
+    from utils.text_scrubber import contains_pipeline_error_response
 
-    if error is not None or PIPELINE_ERROR_RESPONSE in answer:
+    if error is not None or contains_pipeline_error_response(answer):
         return "error"
     if "length" in finish_reasons:
         return "truncated"

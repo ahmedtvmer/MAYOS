@@ -78,7 +78,7 @@ from agent.prompts import DEFAULT_ASSISTANT_STYLE  # noqa: E402
 from service.chat import build_turn_state  # noqa: E402
 from tests.eval.run_player_memory_sweep import summarize_usage  # noqa: E402
 from utils.model_metering import scoped_usage_recorder  # noqa: E402
-from utils.text_scrubber import PIPELINE_ERROR_RESPONSE  # noqa: E402
+from utils.text_scrubber import contains_pipeline_error_response  # noqa: E402
 
 #: Synthetic player identity; no real account or training ledger is touched.
 SYNTHETIC_PLAYER_ID = "ttft_probe_player"
@@ -455,7 +455,7 @@ def _completed_attempt(
 
 
 def _turn_status(reply: str, model_calls: int, turn_errors: list[Exception]) -> str:
-    if turn_errors or PIPELINE_ERROR_RESPONSE in reply:
+    if turn_errors or contains_pipeline_error_response(reply):
         return "error"
     return "ok" if model_calls else "deterministic"
 

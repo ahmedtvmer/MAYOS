@@ -17,7 +17,7 @@ import json
 from types import SimpleNamespace
 
 import pytest
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage
 
 from agent import assistant_graph, player_prompt, player_tools
 from agent.ProgramState import (
@@ -230,6 +230,20 @@ def _script_mutation(monkeypatch, exercises: list[PersistedProgramExerciseSchema
         return program, "md"
 
     monkeypatch.setattr(assistant_graph, "generate_program_pipeline", fake)
+    # #867: the rebuild preview drafts the same program without saving it.
+    monkeypatch.setattr(
+        assistant_graph, "generate_program_draft_pipeline", lambda *args, **kwargs: (program, "md")
+    )
+
+
+def _confirm_rebuild(scenario, monkeypatch, query: str, offer: str, model=None):
+    """#867: a rebuild changes the program only after the Player says yes."""
+    db = scenario["db"]
+    monkeypatch.setattr(assistant_graph, "llm", model or ScriptedChatModel([]))
+    state = _turn_state(scenario, "yes")
+    state["messages"] = [HumanMessage(content=query), AIMessage(content=offer), HumanMessage(content="yes")]
+    response = "".join(assistant_graph.stream_assistant_turn(state, ledger=db.ledger, store=db))
+    return state, response
 
 
 def _mutation_exercises(scenario) -> list[PersistedProgramExerciseSchema]:
@@ -267,6 +281,11 @@ def test_player_controlled_change_requests_change_the_program(
         model = None
     state, response, model, before = _run_turn(scenario, monkeypatch, query, model)
     db = scenario["db"]
+    if query in PROGRAM_CHANGES:
+        assert state["intent"] == "program_mutation"
+        assert state["program_updated"] is False
+        assert db.ledger.get_active_program().version == before
+        state, response = _confirm_rebuild(scenario, monkeypatch, query, response)
 
     assert state["program_updated"] is True
     active = db.ledger.get_active_program()
@@ -403,6 +422,9 @@ def test_frequency_changes_stay_executable(scenario_player, monkeypatch, query):
         scenario, monkeypatch, query, ScriptedChatModel([])
     )
     db = scenario["db"]
+    assert state["intent"] == "program_mutation"
+    assert db.ledger.get_active_program().version == before
+    state, response = _confirm_rebuild(scenario, monkeypatch, query, response, model)
 
     assert state["intent"] == "program_mutation"
     assert state["program_updated"] is True
@@ -455,6 +477,11 @@ def test_static_system_core_carries_no_authority_wording():
     assert "quote coach_note" not in lowered
     assert "mention coach or program requests" not in lowered
     assert "Program changes are handled outside this reply" in core
+    # #859: no refusal and no request offer, for every Player; the swap
+    # wording names no Coach, so it is no cue for an invented Coach.
+    assert "never say you can't change the program" in core
+    assert "never offer to send a request to anyone" in core
+    assert lowered.count("coach") == 1  # only "You are Mayos, an evidence-based strength coach."
     assert "Tabs Home, Program, Nutrition, Progress." in core
 
 

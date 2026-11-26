@@ -34,7 +34,7 @@ from service import assignments as assignments_service
 from service import chat as chat_service
 from service import coach as coach_service
 from service import injuries as injuries_service
-from utils.text_scrubber import PIPELINE_ERROR_RESPONSE
+from utils.text_scrubber import PIPELINE_ERROR_RESPONSES
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 DATASET_PATH = Path(__file__).resolve().parent / "datasets" / "understanding_cases.json"
@@ -424,7 +424,9 @@ def run_turn(store: Any, player: CasePlayer, message: str) -> TurnResult:
             message=message,
             reply=reply,
             intent=str(state.get("intent") or ""),
-            preview=state.get("program_edit_preview") is not None,
+            # #867: a full rebuild also previews first and waits for yes.
+            preview=state.get("program_edit_preview") is not None
+            or ledger.get_pending_program_rebuild() is not None,
             coach_request=state.get("request_suggestion") is not None,
             snapshot=take_snapshot(ledger),
         )
@@ -542,7 +544,7 @@ def _play(store: Any, case: dict[str, Any], player: CasePlayer) -> tuple[Snapsho
     turns: list[TurnResult] = []
     for message in [*case.get("before", []), case["message"]]:
         turns.append(run_turn(store, player, message))
-        if turns[-1].reply.strip() == PIPELINE_ERROR_RESPONSE:
+        if turns[-1].reply.strip() in PIPELINE_ERROR_RESPONSES:
             break
     return start, turns
 
@@ -556,7 +558,7 @@ def run_case(store: Any, case: dict[str, Any], program: dict[str, Any], *, max_a
     for attempt in range(1, max_attempts + 1):
         player = prepare_player(store, case, program, f"{case['id']}-{attempt}")
         start, turns = _play(store, case, player)
-        failed = turns[-1].reply.strip() == PIPELINE_ERROR_RESPONSE
+        failed = turns[-1].reply.strip() in PIPELINE_ERROR_RESPONSES
         if not failed:
             result = score_case(case, start, turns)
             result.wrong_changes = sorted({*result.wrong_changes, *written_wrong})

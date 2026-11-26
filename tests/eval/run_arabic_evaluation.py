@@ -449,22 +449,32 @@ def _synthetic_store(base: Path):
     return create_catalog_store(base)
 
 
-def _fake_generation(scenario: dict[str, Any], **kwargs):
-    """Deterministic program-generation boundary for plumbing mode."""
+def _fake_program(scenario: dict[str, Any], ledger: Any, frequency_override: int | None):
+    """Deterministic rebuilt program for plumbing mode (not saved)."""
     from agent.ProgramState import GeneratedProgramSchema
 
-    ledger = kwargs["ledger"]
     current = ledger.get_active_program()
     effect = scenario["expected_program_effect"]
-    desired = effect.get("target_weekly_frequency") or kwargs.get("frequency_override") or (current.weekly_frequency if current else 3)
+    desired = effect.get("target_weekly_frequency") or frequency_override or (current.weekly_frequency if current else 3)
     source = current.model_dump() if current else {"program_name": "Synthetic program", "split_type": "custom", "days": []}
     source.update(program_name="Synthetic rebuilt program", weekly_frequency=desired, version=None, created_at=None)
     if effect.get("target_split_type"):
         source["split_type"] = effect["target_split_type"]
     source.pop("published_by_coach_account_id", None)
-    program = GeneratedProgramSchema(**source)
+    return GeneratedProgramSchema(**source)
+
+
+def _fake_generation(scenario: dict[str, Any], **kwargs):
+    """Deterministic program-generation boundary for plumbing mode."""
+    ledger = kwargs["ledger"]
+    program = _fake_program(scenario, ledger, kwargs.get("frequency_override"))
     ledger.save_training_program(program.model_dump())
     return program, "synthetic-context"
+
+
+def _fake_draft(scenario: dict[str, Any], request: Any, *, ledger: Any, **_kwargs):
+    """Deterministic rebuild preview draft for plumbing mode (#867)."""
+    return _fake_program(scenario, ledger, request.frequency_override), "synthetic-context"
 
 
 def _run_one(case: dict[str, Any], scenario: dict[str, Any], store: Any, *, mode: str, coach_authority: bool = False) -> dict[str, Any]:
@@ -494,13 +504,22 @@ def _run_one(case: dict[str, Any], scenario: dict[str, Any], store: Any, *, mode
         patches = [patch.object(graph, "llm", fake_model)] if mode == "plumbing" else []
         if mode == "plumbing":
             patches.append(patch.object(graph, "generate_program_pipeline", side_effect=lambda **kwargs: _fake_generation(scenario, **kwargs)))
+            patches.append(patch.object(graph, "generate_program_draft_pipeline", side_effect=lambda request, **kwargs: _fake_draft(scenario, request, **kwargs)))
         from contextlib import ExitStack
+        preview_reply = None
         with ExitStack() as stack:
             for patcher in patches:
                 stack.enter_context(patcher)
             reply = "".join(graph.stream_assistant_turn(state, ledger=ledger, store=store))
+            route = {"intent": state.get("intent"), "intent_metadata": state.get("intent_metadata", {})}
+            if ledger.get_pending_program_rebuild() is not None and not _graph_error_response(reply):
+                # #867: a rebuild shows a preview first; answer it the way a Player would.
+                from langchain_core.messages import AIMessage
+                preview_reply = reply
+                yes = "أيوه" if graph._is_arabic_dominant(case["text"]) else "yes"
+                confirm_state = {**state, "messages": [HumanMessage(content=case["text"]), AIMessage(content=reply), HumanMessage(content=yes)]}
+                reply = "".join(graph.stream_assistant_turn(confirm_state, ledger=ledger, store=store))
         after = _program_facts(ledger)
-        route = {"intent": state.get("intent"), "intent_metadata": state.get("intent_metadata", {})}
         error_response = _graph_error_response(reply)
         if error_response:
             return {"case_id": case["id"] + ("-coach-authority" if coach_authority else ""), "source_case_id": case["id"],
@@ -512,7 +531,7 @@ def _run_one(case: dict[str, Any], scenario: dict[str, Any], store: Any, *, mode
         outcome = _outcome_fields(case, route, reply)
         return {"case_id": case["id"] + ("-coach-authority" if coach_authority else ""), "source_case_id": case["id"],
             "case_status": "completed", **outcome,
-            "reply": reply, "program_facts_before": before, "program_facts_after": after,
+            "reply": reply, "preview_reply": preview_reply, "program_facts_before": before, "program_facts_after": after,
             "program_fact_diff": {"before": before, "after": after, "effect": action_effect_observation},
             "action_effect_pass": action_effect_pass,
             "history_scoring": history_scoring,
@@ -533,9 +552,9 @@ def _outcome_fields(case: dict[str, Any], route: dict[str, Any], reply: str) -> 
 
 
 def _graph_error_response(reply: str) -> str | None:
-    from utils.text_scrubber import EMPTY_RESPONSE_FALLBACK, PIPELINE_ERROR_RESPONSE
+    from utils.text_scrubber import EMPTY_RESPONSE_FALLBACK, PIPELINE_ERROR_RESPONSES
 
-    for marker in (PIPELINE_ERROR_RESPONSE, EMPTY_RESPONSE_FALLBACK):
+    for marker in (*PIPELINE_ERROR_RESPONSES, EMPTY_RESPONSE_FALLBACK):
         if marker in reply:
             return f"Assistant graph returned error response: {marker}"
     return None
