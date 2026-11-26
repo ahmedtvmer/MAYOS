@@ -54,6 +54,14 @@ comes after #740.
 - [ ] **Health apps declaration**, fitness category, and content rating
       questionnaire — guidance in `docs/play/DATA_SAFETY.md` §"Related
       declarations"; the questionnaire itself is owner work.
+- [x] **Nutrition data** declared (#881): Fitness info and Health info rows in
+      `docs/play/DATA_SAFETY.md`; Nutrition and the fitness disclaimer in both
+      listings (`docs/play/STORE_LISTING.md`).
+- [x] **Tester recruitment**: Google Group setup and EN/AR invite message in
+      `docs/play/TESTERS.md` (#881).
+- [ ] **Owner check**: the privacy policy has no section on Coach Program
+      import files; add one or confirm coverage before declaring the
+      "Files and docs" row (`docs/play/DATA_SAFETY.md`).
 - [x] **Target API level**: `targetSdk = 36` and `compileSdk = 36` pinned
       explicitly in `mobile/android/app/build.gradle.kts` (minSdk stays 26),
       not relying on the Flutter default. Build toolchain (AGP 9.1.0 /

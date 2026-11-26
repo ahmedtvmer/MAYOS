@@ -15,6 +15,10 @@ App name / tagline vocabulary (do not substitute):
 | Coach | مدرب |
 | Training program | برنامج تدريبي |
 | Workout | حصة تدريبية |
+| Nutrition plan | خطة تغذية |
+| Nutrition targets | الأهداف الغذائية |
+| Food log | سجل الطعام |
+| Water log | سجل الماء |
 
 Play length rules: app name ≤ 30 characters, short description ≤ 80, full
 description ≤ 4000. The counts below fit.
@@ -34,6 +38,19 @@ assistant reply from its menu") is included in the AR/EN drafts below. #748
 (the 👍/👎 vote and Report action) ships in the same release as this ticket,
 ahead of it, so the sentence is part of the submitted listing; the listing
 must not promise a control that is not in the uploaded build.
+
+## Fitness disclaimer (owner decision, 2026-11-26)
+
+MAYOS is a Health & Fitness app, not a medical one. Both full descriptions end
+with a fixed disclaimer, and no other listing text may promise to diagnose,
+treat, cure or prevent anything:
+
+- EN: "MAYOS gives fitness and nutrition guidance, not medical advice. Talk to
+  a doctor before starting a new program or diet, especially if you have an
+  injury, are pregnant, or have a health condition."
+- AR (one line in the listing):
+
+  > يقدّم MAYOS ميوس إرشاداً في التدريب والتغذية، وليس نصيحة طبية. استشر طبيبك قبل بدء برنامج أو نظام غذائي جديد، خاصةً إذا كانت لديك إصابة أو حمل أو حالة صحية.
 
 ## English listing
 
@@ -57,6 +74,12 @@ must not promise a control that is not in the uploaded build.
   >   (RIR/RPE), with a rest timer that reminds you when the rest is over.
   > • Your history, readiness, and progress stay in your account.
   >
+  > NUTRITION
+  > • Daily calorie and protein targets set for your goal, with a Nutrition
+  >   plan of meals and portions you can swap.
+  > • A Food log and Water log to record what you eat and drink, with
+  >   foods from a built-in Food library.
+  >
   > YOUR AI TRAINING ASSISTANT
   > • Ask the assistant anything about your training; it can build and adapt
   >   your program and answer questions about your own logged data.
@@ -79,6 +102,10 @@ must not promise a control that is not in the uploaded build.
   >   https://api.mayos.online/privacy
   >
   > MAYOS is free. Available in English and Arabic (واجهة عربية كاملة).
+  >
+  > MAYOS gives fitness and nutrition guidance, not medical advice. Talk to
+  > a doctor before starting a new program or diet, especially if you have
+  > an injury, are pregnant, or have a health condition.
 
 ## Arabic listing (RTL)
 
@@ -102,6 +129,12 @@ must not promise a control that is not in the uploaded build.
   >   (RIR/RPE)، مع مؤقّت راحة ينبّهك عند انتهاء الراحة.
   > • سجل تدريبك وتعافيك وتقدمك يبقى في حسابك.
   >
+  > التغذية
+  > • أهداف يومية للسعرات والبروتين حسب هدفك، مع خطة تغذية بوجبات وكميات
+  >   يمكنك تبديلها.
+  > • سجل الطعام وسجل الماء لتسجيل ما تأكله وتشربه، من مكتبة الأطعمة
+  >   المدمجة.
+  >
   > مدربك المساعد بالذكاء الاصطناعي
   > • اسأل المساعد أي شيء عن تدريبك؛ يستطيع بناء برنامجك وتعديله والإجابة
   >   عن أسئلتك من بياناتك المسجّلة.
@@ -123,6 +156,10 @@ must not promise a control that is not in the uploaded build.
   >   الاصطناعي: https://api.mayos.online/privacy
   >
   > MAYOS ميوس مجاني، ويتوفر بالعربية والإنجليزية.
+  >
+  > يقدّم MAYOS ميوس إرشاداً في التدريب والتغذية، وليس نصيحة طبية. استشر
+  > طبيبك قبل بدء برنامج أو نظام غذائي جديد، خاصةً إذا كانت لديك إصابة أو
+  > حمل أو حالة صحية.
 
 ## Screenshots
 
@@ -138,7 +175,8 @@ data or real photos of people.
 | 3 | Workout logger | Sets, reps, weights and the running rest timer | "Log every workout" | "سجّل كل حصة تدريبية" |
 | 4 | Assistant chat | A question about the Player's own data and the AI answer, with the AI disclosure visible | "Ask your AI assistant" | "اسأل مساعدك الذكي" |
 | 5 | Personal records / progress | PR list and weekly volume | "Track your progress" | "تتبّع تقدمك" |
-| 6 | Coach view (roster/alerts) | A Coach's Player roster with alerts | "Train your Players together" | "درّب لاعبيك معاً" |
+| 6 | Nutrition (Food log or Nutrition plan) | The day's targets with logged meals and the Water log | "Eat for your goal" | "كُل حسب هدفك" |
+| 7 | Coach view (roster/alerts) | A Coach's Player roster with alerts | "Train your Players together" | "درّب لاعبيك معاً" |
 
 Screenshot notes:
 
@@ -167,6 +205,8 @@ Screenshot notes:
 - [ ] Re-count app name (≤30), short description (≤80), full description
       (≤4000) after any edit — Play enforces these with hard errors.
 - [ ] The AI-disclosure sentence is present in both languages.
+- [ ] The fitness disclaimer is present in both languages, and nothing in the
+      listing claims to diagnose, treat, cure or prevent anything.
 - [ ] The "report a reply" sentence is present in both languages (#748 ships
       in the same release as this ticket, ahead of it).
 - [ ] Every Arabic string matches the glossary (لاعب / مدرب / برنامج
