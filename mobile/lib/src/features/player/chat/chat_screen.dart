@@ -411,6 +411,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
               :final String responseContent,
               :final bool programUpdated,
               :final bool movementRestrictionsUpdated,
+              :final bool nutritionUpdated,
               :final String outcome,
               :final AiAllowance? lifterAllowance,
               :final ProgramRequestDraft? requestSuggestion,
@@ -463,6 +464,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
             if (movementRestrictionsUpdated) {
               unawaited(ref.read(activeWorkoutControllerProvider.notifier)
                   .refreshMovementRestrictionAnnotations());
+            }
+            if (nutritionUpdated) {
+              ref.read(playerNutritionRevisionProvider.notifier).state++;
             }
           case ChatError(
               :final String detail,

@@ -206,6 +206,7 @@ class ChatDone extends ChatStreamEvent {
     required this.responseContent,
     required this.programUpdated,
     this.movementRestrictionsUpdated = false,
+    this.nutritionUpdated = false,
     this.outcome = 'completed',
     this.lifterAllowance,
     this.coachAllowance,
@@ -217,6 +218,9 @@ class ChatDone extends ChatStreamEvent {
   final String responseContent;
   final bool programUpdated;
   final bool movementRestrictionsUpdated;
+
+  /// Chat saved a Nutrition plan rebuild (#861).
+  final bool nutritionUpdated;
   final String outcome;
   final AiAllowance? lifterAllowance;
   final AiAllowance? coachAllowance;

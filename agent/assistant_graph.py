@@ -114,6 +114,7 @@ from service.exercise_context import describe_exercise, describe_exercises
 from service.inference_metrics import record_failure, record_first_token
 from database.exercise_library.names import near_miss_exercise_ids
 from database.shared import _normalize_exercise_name
+from service import nutrition as nutrition_service
 from service import programs as programs_service
 from service.program_requests import MAX_REASON_CHARS
 from service.program_substitution import ProgramSubstitution, substitute_program_exercise
@@ -224,6 +225,7 @@ IntentType = Literal[
     "composite_intent",
     "coach_controlled",
     "change_help",
+    "nutrition_rebuild",
 ]
 
 # Tier-0a: unconditional acute-trauma signals (fail-closed; no fatigue bypass).
@@ -836,6 +838,7 @@ class AssistantState(TypedDict):
     response_content: str | None
     request_suggestion: dict[str, Any] | None
     pipeline_error: str | None
+    nutrition_updated: NotRequired[bool]
 
 
 def _match_substitution_source(days: list[Any], source_name: str) -> tuple[Any, Any, float]:
@@ -4039,6 +4042,12 @@ def _route_player_turn(state: AssistantState, config: dict[str, Any] | None = No
         rebuild_answer = _pending_program_rebuild_route(query, messages, ledger, active_program)
         if rebuild_answer is not None:
             return rebuild_answer
+        nutrition_answer = _pending_nutrition_rebuild_route(query, messages, ledger)
+        if nutrition_answer is not None:
+            return nutrition_answer
+
+    if _is_nutrition_rebuild_request(query):
+        return {"intent": "nutrition_rebuild", "intent_metadata": {}}
 
     if ledger is not None:
         pending_edit = ledger.get_pending_chat_program_edit()
@@ -6813,7 +6822,7 @@ def program_mutation_node(state: AssistantState, config: dict[str, Any] | None =
 _RE_REBUILD_YES = re.compile(
     r"(?:yes|yeah|yep|yup|sure|ok|okay|confirm|confirmed|go\s+ahead|do\s+it|rebuild\s+it"
     r"|aywa|aiwa|aywah|tamam|mashi|أيوه|ايوه|أيوة|ايوة|اه|آه|تمام|ماشي|نعم|أكيد|اكيد"
-    r"|موافق|يلا|اعمله|ابنيه|اعملها)"
+    r"|موافق|يلا|اعمله|ابنيه|ابنيها|اعملها)"
 )
 _RE_REBUILD_NO = re.compile(
     r"(?:no|nope|nah|cancel|stop|don'?t|la|la2|laa|لا|لأ|لاء|لا\s+شكرا|الغي|ألغي|الغيه|إلغاء|الغاء"
@@ -6924,6 +6933,199 @@ def _pending_program_rebuild_route(
         return {"intent": "telemetry_intercept", "intent_metadata": {"response_content": reply}}
     ledger.clear_pending_program_rebuild()
     return None
+
+
+# Nutrition plan rebuild from chat (#861). Deterministic: a rebuild request
+# never reaches the model, and nothing changes until the Player says yes.
+_RE_NUTRITION_REBUILD_EN = re.compile(
+    r"\b(?:rebuild|redo|recalculate|recalc|regenerate|remake|recompute|reset)\s+"
+    r"(?:(?:my|the|our)\s+)?(?:(?:nutrition|diet|meal|eating)\s+(?:plan|targets?)|nutrition|diet|"
+    r"macros?(?:\s+targets?)?|calories(?:\s+targets?)?|calorie\s+targets?)\b"
+    r"|\b(?:update|refresh)\s+(?:(?:my|the)\s+)?(?:nutrition|diet)\s+(?:plan|targets?)\b"
+    r"|\bnew\s+(?:nutrition|diet|meal)\s+plan\b",
+    re.IGNORECASE,
+)
+_RE_NUTRITION_REBUILD_EN_BLOCK = re.compile(
+    r"\b(?:don'?t|do\s+not|never|no\s+need\s+to|not)\s+(?:\w+\s+){0,2}"
+    r"(?:rebuild|redo|recalculate|recalc|regenerate|remake|recompute|reset|update|refresh|make|need|want)\b"
+    r"|^\s*(?:how|what|why|when|which|should|shall|is|are|does|do|did|was|will\s+it)\b",
+    re.IGNORECASE,
+)
+_RE_EN_REQUEST_QUESTION = re.compile(
+    r"^\s*(?:please\s+)?(?:can|could|would|will)\s+you\b", re.IGNORECASE
+)
+_RE_NUTRITION_OBJECT_AR = re.compile(
+    r"خطه\s+(?:ال)?(?:اكل|تغذيه|دايت)|نظام(?:ي)?\s+(?:ال)?غذائي|(?:^|\s)(?:ال)?دايت(?:\s|$)"
+)
+_RE_NUTRITION_STRONG_VERB_AR = re.compile(
+    r"(?:^|\s)(?:ت?عيد|اعيد|اعد|عيد)\s+(?:بناء|بنا|حساب)|(?:^|\s)(?:ت?بني|ابني|ابنى)"
+    r"|(?:^|\s)(?:ت?جدد|جدد)|(?:^|\s)(?:ت?حدث|حدث)"
+)
+_RE_NUTRITION_WEAK_VERB_AR = re.compile(
+    r"(?:^|\s)(?:ت?ظبط|اظبط|ت?عمل|اعمل|ت?عدل|عدل|ت?حسب|احسب|ت?غير|غير|ت?ظبطلي)"
+)
+_RE_NUTRITION_FRESH_AR = re.compile(r"من\s+(?:جديد|الاول)|(?:^|\s)تاني(?:\s|$)|جديده|جديد(?:\s|$)")
+_RE_NUTRITION_BLOCK_AR = re.compile(
+    r"(?:^|\s)(?:متعملش|ماتعملش|متغيرش|ماتغيرش|متجددش|بلاش|مش\s+(?:عايز|عاوز|محتاج|لازم)|لا\s+ت\S+|ما\s+ت\S+ش)"
+    r"|(?:^|\s)(?:ليه|ازاي|هل|امتي|امتى|ايه|المفروض)(?:\s|$)"
+    r"|(?:^|\s)(?:ممكن|ينفع|اقدر)\s+ا"
+)
+_RE_AR_REQUEST_QUESTION = re.compile(r"(?:^|\s)(?:ممكن|تقدر|لو\s+سمحت)\s+")
+
+
+def _normalize_nutrition_query(query: str) -> str:
+    text = RE_ARABIC_DIACRITICS.sub("", unicodedata.normalize("NFKC", query)).replace("ـ", "")
+    return (
+        text.replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
+        .replace("ة", "ه").replace("ى", "ي").casefold().strip()
+    )
+
+
+def _is_nutrition_rebuild_request(query: str) -> bool:
+    """A Nutrition plan rebuild request, in code (#861). Questions about the
+    plan, negations and "may I" forms are never a rebuild."""
+    text = _normalize_nutrition_query(query)
+    if not text:
+        return False
+    asks = "?" in text or "؟" in text
+    if _RE_NUTRITION_REBUILD_EN.search(text):
+        if _RE_NUTRITION_REBUILD_EN_BLOCK.search(text):
+            return False
+        return not asks or bool(_RE_EN_REQUEST_QUESTION.search(text))
+    if not _RE_NUTRITION_OBJECT_AR.search(text) or _RE_NUTRITION_BLOCK_AR.search(text):
+        return False
+    if not (
+        _RE_NUTRITION_STRONG_VERB_AR.search(text)
+        or (_RE_NUTRITION_WEAK_VERB_AR.search(text) and _RE_NUTRITION_FRESH_AR.search(text))
+    ):
+        return False
+    return not asks or bool(_RE_AR_REQUEST_QUESTION.search(text))
+
+
+def _pending_nutrition_rebuild_route(
+    query: str, messages: Sequence[BaseMessage], ledger: Any
+) -> dict[str, Any] | None:
+    pending = ledger.get_pending_nutrition_rebuild()
+    if pending is None:
+        return None
+    latest_assistant = next(
+        (_get_message_text(item) for item in reversed(messages[:-1]) if isinstance(item, AIMessage)), ""
+    )
+    answer = _program_rebuild_answer(query)
+    if answer is not None and latest_assistant.strip() == str(pending.get("offer_text") or "").strip():
+        if answer == "yes":
+            return {
+                "intent": "nutrition_rebuild",
+                "intent_metadata": {
+                    "confirmed": True,
+                    "plan_id": pending.get("plan_id"),
+                    "language": pending.get("language"),
+                },
+            }
+        ledger.clear_pending_nutrition_rebuild()
+        return {"intent": "telemetry_intercept", "intent_metadata": {
+            "response_content": _NUTRITION_REBUILD_TEXT["cancelled"][_language_index(pending.get("language"))],
+        }}
+    ledger.clear_pending_nutrition_rebuild()
+    return None
+
+
+_NUTRITION_REBUILD_TEXT = {
+    "coach": (
+        "Your Coach controls your Nutrition plan, so I can't rebuild it. Ask your Coach to change it.",
+        "الكوتش بتاعك هو اللي ماسك خطة الأكل، فمقدرش أعيد بناءها. اطلب منه يغيرها.",
+    ),
+    "no_plan": (
+        "You don't have a Nutrition plan yet. Set it up in Nutrition first.",
+        "لسه معندكش خطة أكل. جهّزها الأول من صفحة التغذية.",
+    ),
+    "unchanged": (
+        "Your Nutrition targets already match your current profile, so nothing changed.",
+        "أهدافك الغذائية متظبطة على بياناتك الحالية، فمفيش حاجة اتغيرت.",
+    ),
+    "stale": (
+        "Your Nutrition plan changed after I showed that rebuild, so nothing changed. Ask again to see a new one.",
+        "خطة الأكل اتغيرت بعد ما وريتك إعادة البناء، فمفيش حاجة اتغيرت. اطلبها تاني عشان أوريك واحدة جديدة.",
+    ),
+    "cancelled": (
+        "Okay, I cancelled the Nutrition plan rebuild. Nothing changed.",
+        "تمام، ألغيت إعادة بناء خطة الأكل. مفيش حاجة اتغيرت.",
+    ),
+}
+_NUTRITION_FIELD_LABELS = {
+    "calories": ("Calories", "السعرات", ""),
+    "protein_g": ("Protein", "البروتين", " g"),
+    "carbs_g": ("Carbs", "الكارب", " g"),
+    "fat_g": ("Fat", "الدهون", " g"),
+}
+
+
+def _language_index(language: object) -> int:
+    return 1 if language == "ar" else 0
+
+
+def _nutrition_change_lines(before: dict[str, Any], after: dict[str, Any], language: str) -> str:
+    lines = []
+    for target_field, (english, arabic, unit) in _NUTRITION_FIELD_LABELS.items():
+        old, new = before.get(target_field), after.get(target_field)
+        if language == "ar":
+            grams = " جرام" if unit else ""
+            lines.append(f"• {arabic}: من {old}{grams} لـ {new}{grams}")
+        else:
+            lines.append(f"- {english}: {old}{unit} → {new}{unit}")
+    return "\n".join(lines)
+
+
+def _nutrition_rebuild_preview_text(preview: dict[str, Any], language: str) -> str:
+    changes = _nutrition_change_lines(preview["before"], preview["after"], language)
+    if language == "ar":
+        return (
+            f"دي أهداف خطة الأكل الجديدة على حسب بياناتك الحالية:\n{changes}\n\n"
+            "دي هتستبدل أهدافك الغذائية الحالية. رد بـ «أيوه» عشان أبنيها، أو «لا» عشان ألغيها."
+        )
+    return (
+        f"Your rebuilt Nutrition targets, from your current profile:\n{changes}\n\n"
+        "This replaces your current Nutrition targets. Reply yes to rebuild it, or no to cancel."
+    )
+
+
+def _nutrition_rebuilt_text(result: dict[str, Any], language: str) -> str:
+    changes = _nutrition_change_lines(result["before"], result["after"], language)
+    if language == "ar":
+        meals = "\n\nالوجبات اتظبطت على الأهداف الجديدة." if result.get("meals") else ""
+        return f"خطة الأكل اتبنت من جديد:\n{changes}{meals}"
+    meals = "\n\nYour meals now follow the new targets." if result.get("meals") else ""
+    return f"Rebuilt your Nutrition plan:\n{changes}{meals}"
+
+
+def _nutrition_rebuild_reply(state_name: str, result: dict[str, Any], language: str) -> str:
+    setup_message = nutrition_service.rebuild_setup_message(state_name, language)
+    if setup_message is not None:
+        return setup_message
+    return _NUTRITION_REBUILD_TEXT[state_name][_language_index(language)]
+
+
+def nutrition_rebuild_node(state: AssistantState, config: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Previews a Nutrition plan rebuild, or saves it after yes (#861)."""
+    ledger, store = _graph_context(config)
+    metadata = state.get("intent_metadata") or {}
+    query = _get_message_text(state["messages"][-1]) if state.get("messages") else ""
+    language = metadata.get("language") or resolve_reply_language(query, state.get("display_language", "en"))
+    if nutrition_service.coach_holds_nutrition_authority(store, ledger, state.get("player_account_id")):
+        ledger.clear_pending_nutrition_rebuild()
+        return _response(_NUTRITION_REBUILD_TEXT["coach"][_language_index(language)])
+    if metadata.get("confirmed"):
+        ledger.clear_pending_nutrition_rebuild()
+        result = nutrition_service.rebuild(ledger, metadata.get("plan_id"))
+        if result["state"] == "rebuilt":
+            return {**_response(_nutrition_rebuilt_text(result, language)), "nutrition_updated": True}
+        return _response(_nutrition_rebuild_reply(result["state"], result, language))
+    preview = nutrition_service.rebuild_preview(ledger)
+    if preview["state"] != "ready":
+        return _response(_nutrition_rebuild_reply(preview["state"], preview, language))
+    offer_text = finalize_coach_output(_nutrition_rebuild_preview_text(preview, language))
+    ledger.set_pending_nutrition_rebuild({"plan_id": preview["plan_id"], "language": language}, offer_text)
+    return _response(offer_text)
 
 
 def deload_choice_node(state: AssistantState, config: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -7865,6 +8067,7 @@ builder.add_node("assistant_preference_delete_confirmed", _safe_node(assistant_p
 builder.add_node("composite_intent", _safe_node(composite_intent_node))
 builder.add_node("coach_controlled", _safe_node(coach_controlled_node))
 builder.add_node("change_help", _safe_node(change_help_node))
+builder.add_node("nutrition_rebuild", _safe_node(nutrition_rebuild_node))
 builder.add_node("generation", _safe_node(generation_node))
 
 builder.set_entry_point("hydrate_context")
@@ -7895,6 +8098,7 @@ builder.add_conditional_edges(
         "composite_intent": "composite_intent",
         "coach_controlled": "coach_controlled",
         "change_help": "change_help",
+        "nutrition_rebuild": "nutrition_rebuild",
         "coaching_qa": "generation",
     },
 )
@@ -7905,7 +8109,7 @@ for node in [
     "catalog_search", "injury_area_clarification", "injury_status_update",
     "injury_physician_followup", "exercise_clearance_update", "exercise_clearance_disambiguation",
     "assistant_preference_delete_confirmed",
-    "composite_intent", "coach_controlled", "change_help", "generation",
+    "composite_intent", "coach_controlled", "change_help", "nutrition_rebuild", "generation",
 ]:
     builder.add_edge(node, END)
 
@@ -8087,6 +8291,7 @@ def stream_assistant_turn(
             "composite_intent": composite_intent_node,
             "coach_controlled": coach_controlled_node,
             "change_help": change_help_node,
+            "nutrition_rebuild": nutrition_rebuild_node,
         }
         if intent == "exercise_history":
             result = exercise_history_node(state, config)
@@ -8228,6 +8433,7 @@ def stream_assistant_turn(
         response_content=content,
         program_updated=bool(result and result.get("program_updated")),
         movement_restrictions_updated=bool(result and result.get("movement_restrictions_updated")),
+        nutrition_updated=bool(result and result.get("nutrition_updated")),
         program_change=result.get("program_change") if result else None,
         request_suggestion=result.get("request_suggestion") if result else None,
         program_edit_preview=result.get("program_edit_preview") if result else None,

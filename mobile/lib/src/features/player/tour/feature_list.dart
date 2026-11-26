@@ -6,7 +6,7 @@ import 'tour_targets.dart';
 
 /// The shared Feature list used by the Tour and later discovery surfaces.
 const int tourCurrentVersion = 1;
-const int currentFeatureRelease = 9;
+const int currentFeatureRelease = 10;
 const int kReleaseShareCard = 3;
 const int kReleasePrCelebration = 3;
 const int kReleaseDurationCheck = 4;
@@ -63,6 +63,17 @@ List<String> validateFeatureEntries(
 }
 
 const List<FeatureEntry> featureList = <FeatureEntry>[
+  FeatureEntry(
+    id: 'rebuild_nutrition_chat',
+    titleEn: 'Rebuild your Nutrition plan from chat',
+    sentenceEn: 'Ask the assistant to rebuild your Nutrition plan: it shows your new targets from your current profile and changes nothing until you say yes.',
+    titleAr: 'أعد بناء خطة التغذية عبر المحادثة',
+    sentenceAr: 'اطلب من المساعد إعادة بناء خطة التغذية: يعرض أهدافك الجديدة حسب بياناتك الحالية ولا يغيّر شيئًا حتى توافق.',
+    target: 'whats_new_edit_program_chat',
+    location: TourRouteLocation(chatPath),
+    release: 10,
+    audience: 'lifter',
+  ),
   FeatureEntry(
     id: 'android_offline_reminders',
     titleEn: 'Workout reminders on Android',

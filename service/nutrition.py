@@ -922,3 +922,75 @@ def _recalculate_activity_targets(ledger: Any, training_profile: dict[str, Any],
     goal = active_plan["goal"]
     return _calculate_for(ledger, training_profile, training_profile.get("gender", "male"),
                           activity, goal, active_plan["intensity"] or "moderate")
+
+
+# Chat Nutrition plan rebuild (#861). Same formulas as setup and the activity
+# recalculation: the active plan's goal, intensity and Daily activity, with the
+# Player's current Training profile (weight, age, training days).
+REBUILD_TARGET_FIELDS = ("calories", "protein_g", "carbs_g", "fat_g")
+
+
+def coach_holds_nutrition_authority(store: Any, ledger: Any, player_account_id: str | None) -> bool:
+    """True while the assigned Coach holds Nutrition authority (#861)."""
+    active_plan = ledger.get_active_nutrition_plan()
+    if active_plan is None or active_plan["author"] != "Coach" or not player_account_id or store is None:
+        return False
+    assignment = store.get_active_assignment_for_player(player_account_id)
+    return bool(assignment and active_plan["authority_assignment_id"] == assignment.get("assignment_id"))
+
+
+def rebuild_preview(ledger: Any) -> dict[str, Any]:
+    """The rebuilt Nutrition targets, without saving.
+
+    ``state`` is ``ready`` (with ``before``, ``after`` and the active ``plan_id``),
+    ``unchanged``, ``no_plan``, or a setup state from ``MESSAGES``.
+    """
+    if screening_blocks_targets(ledger):
+        return {"state": "blocked"}
+    active_plan = ledger.get_active_nutrition_plan()
+    if active_plan is None:
+        return {"state": "no_plan"}
+    profile = ledger.get_nutrition_profile()
+    if not _profile_is_complete(profile):
+        return {"state": "incomplete"}
+    if int(profile["age"]) < 18:
+        return {"state": "under_18"}
+    before = json.loads(active_plan["targets_json"])
+    after = _recalculate_activity_targets(ledger, profile, active_plan, active_plan["daily_activity"])
+    if all(before.get(field) == after.get(field) for field in REBUILD_TARGET_FIELDS):
+        return {"state": "unchanged", "plan_id": active_plan["id"]}
+    return {"state": "ready", "plan_id": active_plan["id"],
+            "before": {field: before.get(field) for field in REBUILD_TARGET_FIELDS},
+            "after": {field: after.get(field) for field in REBUILD_TARGET_FIELDS}}
+
+
+def rebuild(ledger: Any, plan_id: Any) -> dict[str, Any]:
+    """Saves the rebuilt targets when the plan is still the one previewed.
+
+    ``state`` is ``rebuilt`` (with ``before``, ``after`` and ``meals``), ``stale``
+    when the plan changed since the preview, or a ``rebuild_preview`` state.
+    """
+    current = rebuild_preview(ledger)
+    if current.get("plan_id") != plan_id:
+        return {"state": "stale"} if current["state"] in {"ready", "unchanged"} else current
+    if current["state"] != "ready":
+        return current
+    active_plan = ledger.get_active_nutrition_plan()
+    profile = ledger.get_nutrition_profile()
+    targets = _recalculate_activity_targets(ledger, profile, active_plan, active_plan["daily_activity"])
+    source_snapshot = ledger.get_nutrition_goal_offer_snapshot(active_plan["id"])
+    with ledger.ledger_transaction():
+        ledger.save_nutrition_plan(NutritionPlanVersion(
+            active_plan["goal"], json.loads(active_plan["goal_reason_data_json"]),
+            active_plan["intensity"], active_plan["daily_activity"], targets,
+            goal_source_snapshot=json.loads(source_snapshot[0]) if source_snapshot else None,
+        ))
+    saved = ledger.get_active_nutrition_plan()
+    meals = json.loads(saved["meals_json"]) if saved["meals_json"] else None
+    return {"state": "rebuilt", "before": current["before"], "after": current["after"],
+            "meals": bool(meals and meals.get("enabled"))}
+
+
+def rebuild_setup_message(state: str, language: str) -> str | None:
+    """The fixed setup reply for a rebuild that cannot run, if one applies."""
+    return _message(state, language) if state in MESSAGES else None

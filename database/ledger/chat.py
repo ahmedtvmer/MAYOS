@@ -186,24 +186,25 @@ class LedgerChatMixin:
         )
         self._commit_ledger()
 
-    def set_pending_program_rebuild(self, rebuild: dict[str, Any], offer_text: str) -> None:
-        """Chat showed a Training program rebuild and waits for yes or no (#867).
+    def _set_pending_rebuild(self, kind: str, rebuild: dict[str, Any], offer_text: str) -> None:
+        """Chat showed a rebuild and waits for yes or no (#867, #861).
         One pending question at a time: any newer chat question replaces it."""
         self.conn.execute(
             "INSERT INTO assistant_goal_weak_point_pending "
-            "(id, muscles_json, offer_id, kind, offer_text, created_at) VALUES (1, ?, ?, 'program_rebuild', ?, ?) "
+            "(id, muscles_json, offer_id, kind, offer_text, created_at) VALUES (1, ?, ?, ?, ?, ?) "
             "ON CONFLICT(id) DO UPDATE SET muscles_json = excluded.muscles_json, "
             "offer_id = excluded.offer_id, kind = excluded.kind, offer_text = excluded.offer_text, "
             "created_at = excluded.created_at",
-            (json.dumps(rebuild, ensure_ascii=False), str(uuid.uuid4()), offer_text,
+            (json.dumps(rebuild, ensure_ascii=False), str(uuid.uuid4()), kind, offer_text,
              datetime.now(UTC).isoformat()),
         )
         self._commit_ledger()
 
-    def get_pending_program_rebuild(self) -> dict[str, Any] | None:
+    def _get_pending_rebuild(self, kind: str) -> dict[str, Any] | None:
         row = self.conn.execute(
             "SELECT muscles_json, offer_text, created_at FROM assistant_goal_weak_point_pending "
-            "WHERE id = 1 AND kind = 'program_rebuild'"
+            "WHERE id = 1 AND kind = ?",
+            (kind,),
         ).fetchone()
         if row is None:
             return None
@@ -211,12 +212,24 @@ class LedgerChatMixin:
             created = datetime.fromisoformat(row["created_at"])
             rebuild = json.loads(row["muscles_json"])
         except (TypeError, ValueError, json.JSONDecodeError):
-            self.clear_pending_program_rebuild()
+            self._clear_pending_rebuild(kind)
             return None
         if (datetime.now(UTC) - created).total_seconds() > 1800 or not isinstance(rebuild, dict):
-            self.clear_pending_program_rebuild()
+            self._clear_pending_rebuild(kind)
             return None
         return {**rebuild, "offer_text": row["offer_text"]}
+
+    def _clear_pending_rebuild(self, kind: str) -> None:
+        self.conn.execute(
+            "DELETE FROM assistant_goal_weak_point_pending WHERE id = 1 AND kind = ?", (kind,)
+        )
+        self._commit_ledger()
+
+    def set_pending_program_rebuild(self, rebuild: dict[str, Any], offer_text: str) -> None:
+        self._set_pending_rebuild("program_rebuild", rebuild, offer_text)
+
+    def get_pending_program_rebuild(self) -> dict[str, Any] | None:
+        return self._get_pending_rebuild("program_rebuild")
 
     def update_pending_program_rebuild(self, offer_text: str, program_version: Any) -> None:
         """A combined reply carries the rebuild offer; keep its text and the
@@ -236,15 +249,22 @@ class LedgerChatMixin:
         self._commit_ledger()
 
     def clear_pending_program_rebuild(self) -> None:
-        self.conn.execute(
-            "DELETE FROM assistant_goal_weak_point_pending WHERE id = 1 AND kind = 'program_rebuild'"
-        )
-        self._commit_ledger()
+        self._clear_pending_rebuild("program_rebuild")
+
+    def set_pending_nutrition_rebuild(self, rebuild: dict[str, Any], offer_text: str) -> None:
+        """Chat showed a Nutrition plan rebuild and waits for yes or no (#861)."""
+        self._set_pending_rebuild("nutrition_rebuild", rebuild, offer_text)
+
+    def get_pending_nutrition_rebuild(self) -> dict[str, Any] | None:
+        return self._get_pending_rebuild("nutrition_rebuild")
+
+    def clear_pending_nutrition_rebuild(self) -> None:
+        self._clear_pending_rebuild("nutrition_rebuild")
 
     def get_pending_goal_weak_point_suggestion(self) -> dict[str, Any] | None:
         row = self.conn.execute(
             "SELECT muscles_json, offer_id, kind, offer_text, created_at "
-            "FROM assistant_goal_weak_point_pending WHERE id = 1 AND kind NOT IN ('swap_question', 'program_rebuild')"
+            "FROM assistant_goal_weak_point_pending WHERE id = 1 AND kind NOT IN ('swap_question', 'program_rebuild', 'nutrition_rebuild')"
         ).fetchone()
         if row is None:
             return None

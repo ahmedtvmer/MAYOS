@@ -214,6 +214,10 @@ class _NutritionTabState extends ConsumerState<NutritionTab>
 
   @override
   Widget build(BuildContext context) {
+    // Chat rebuilt the Nutrition plan while this tab stayed alive (#861).
+    ref.listen<int>(playerNutritionRevisionProvider, (int? _, int __) {
+      if (!_saving && !_waterSaving) _load();
+    });
     final bool arabic = ref.watch(displayLanguageProvider) == 'ar';
     final NutritionCopy copy = NutritionCopy(arabic ? 'ar' : 'en');
     return Directionality(
