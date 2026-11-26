@@ -60,7 +60,9 @@ from agent.fitness_abbreviations import (
     resolve_unknown_abbreviation_with_llm,
 )
 from agent.program_generator import (
+    ProgramGenerationRequest,
     extract_frequency_from_text,
+    generate_program_draft_pipeline,
     generate_program_pipeline,
     get_biomechanical_cue,
 )
@@ -1562,20 +1564,33 @@ def _arabic_split_family(value: str) -> str | None:
     return matched if matched in ARABIC_SPLIT_PREFERENCES else None
 
 
-def _arabic_program_change_is_directive(query: str) -> bool:
+def _arabic_program_change_is_blocked(query: str) -> bool:
+    """A question, negation or hedge about the program: advice, never a change (#867)."""
     normalized = RE_ARABIC_DIACRITICS.sub("", query).strip()
     if normalized.endswith(("؟", "?")) or re.match(
         r"^(?:ينفع|إزاي|ازاي|ازاى|كيف|هل|لو(?!\s+سمحت)|مش|ما|لا|تنصحني|ايه رأيك|إيه رأيك)(?=\s|$)",
         normalized,
     ):
-        return False
+        return True
     if RE_ARABIC_NEGATED_PROGRAM_CHANGE.search(normalized) or re.search(
         r"(?<!\w)(?:مش|ما|لا)\s+(?:تغير|تظبط|تعدل|تبدل|تخلي|تعمل|تزود|تقلل)(?:لي)?(?!\w)",
         normalized,
     ):
+        return True
+    # «ممكن أغير…» / «ينفع أعدل…» ask whether the Player may change it; «ممكن
+    # تغيّرلي…» asks chat to change it and stays a request.
+    if re.search(
+        r"(?<!\w)(?:ممكن|ينفع|اقدر|أقدر)\s+(?:أ|ا)(?:ظبط|غير|عدل|بدل|خلي|عمل|زود|قلل)",
+        normalized,
+    ):
+        return True
+    return bool(RE_ARABIC_HEDGED_PROGRAM_CHANGE.search(normalized))
+
+
+def _arabic_program_change_is_directive(query: str) -> bool:
+    if _arabic_program_change_is_blocked(query):
         return False
-    if RE_ARABIC_HEDGED_PROGRAM_CHANGE.search(normalized):
-        return False
+    normalized = RE_ARABIC_DIACRITICS.sub("", query).strip()
     return _authorized_action(query, "program_mutation") or bool(
         RE_ARABIC_PROGRAM_COMMAND.search(normalized)
         or RE_ARABIC_WANTED_PROGRAM_CHANGE.search(normalized)
@@ -1774,7 +1789,7 @@ def _validated_arabic_split(
 def _validated_arabic_program_change(
     query: str, classification: ArabicIntentClassification, ledger: Any
 ) -> dict[str, Any] | None:
-    if not _arabic_program_change_is_directive(query):
+    if _arabic_program_change_is_blocked(query):
         return None
     if classification.target_frequency is None and not classification.target_split_type:
         return None
@@ -4021,6 +4036,11 @@ def _route_player_turn(state: AssistantState, config: dict[str, Any] | None = No
             return swap_answer
 
     if ledger is not None:
+        rebuild_answer = _pending_program_rebuild_route(query, messages, ledger, active_program)
+        if rebuild_answer is not None:
+            return rebuild_answer
+
+    if ledger is not None:
         pending_edit = ledger.get_pending_chat_program_edit()
         if pending_edit is not None:
             latest_assistant = next((_get_message_text(item) for item in reversed(messages[:-1])
@@ -5816,7 +5836,28 @@ def _apply_program_authority_gate(
         if intent == "program_mutation" and _is_unresolved_program_change(query):
             return _change_help_route(route)
         return route
-    return _change_help_route(route)
+    return _loose_program_change_route(query) or _change_help_route(route)
+
+
+def _loose_program_change_route(query: str) -> dict[str, Any] | None:
+    """A loose English rebuild request that names a supported split or a
+    frequency (#867). It only reaches a preview: nothing changes until the
+    Player confirms."""
+    if ARABIC_SCRIPT_RE.search(query) or _is_unresolved_program_change(query):
+        return None
+    if not (
+        RE_PROGRAM_MUTATION.search(query)
+        or _RE_PROGRAM_DIRECTIVE_REQUEST.search(query)
+        or _RE_WANTED_SPLIT_REQUEST.search(query)
+    ):
+        return None
+    frequency = _extract_frequency(query)
+    if match_split_keyword(query) is None and frequency is None:
+        return None
+    return {
+        "intent": "program_mutation",
+        "intent_metadata": {"target_frequency": frequency, "loose_request": True},
+    }
 
 
 def coach_controlled_node(state: AssistantState, config: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -6490,7 +6531,10 @@ def _program_mutation_frequency(
 def _program_mutation_confirmation(
     program: Any, query: str, state: AssistantState
 ) -> str:
-    if resolve_reply_language(query, state.get("display_language", "en")) == "ar":
+    language = (state.get("intent_metadata") or {}).get("rebuild_language") or resolve_reply_language(
+        query, state.get("display_language", "en")
+    )
+    if language == "ar":
         frequency_label = _arabic_frequency_label(program.weekly_frequency)
         return f"تمام، ظبطتلك البرنامج التدريبي على {frequency_label}: {program.program_name}."
     return f"Rebuilt routine: **{program.program_name}** ({program.weekly_frequency} Days/Week). Context cleared for new routine."
@@ -6508,13 +6552,14 @@ def _program_mutation_result(
     }
 
 
+def _rebuild_split_preference(query: str, metadata: dict[str, Any]) -> str:
+    return metadata.get("split_family") if metadata.get("arabic_data_validated") is True else query
+
+
 def _run_program_mutation(
-    state: AssistantState, ledger: Any, frequency: int | None
+    state: AssistantState, ledger: Any, frequency: int | None, split_preference: str | None
 ) -> dict[str, Any]:
     query = _get_message_text(state["messages"][-1])
-    metadata = state.get("intent_metadata", {})
-    arabic_data_validated = metadata.get("arabic_data_validated") is True
-    split_preference = metadata.get("split_family") if arabic_data_validated else query
     try:
         prog, _ = generate_program_pipeline(
             user_split_override=split_preference,
@@ -6741,15 +6786,144 @@ def program_mutation_node(state: AssistantState, config: dict[str, Any] | None =
     ledger, store = _graph_context(config)
     query = _get_message_text(state["messages"][-1])
     metadata = state.get("intent_metadata", {})
-    if metadata.get("arabic_data_validated") is not True and not _authorized_action(query, "program_mutation"):
+    if not (
+        metadata.get("arabic_data_validated") is True
+        or metadata.get("rebuild_confirmed") is True
+        or metadata.get("loose_request") is True
+    ) and not _authorized_action(query, "program_mutation"):
         return _response(AUTHORIZATION_RESPONSE)
     if not programs_service.player_controls_program(store, ledger, state.get("player_account_id")):
         suggestion = _split_change_request_suggestion(query, metadata)
         return _response(_coach_program_refusal(query), request_suggestion=suggestion)
+    if metadata.get("rebuild_confirmed") is True:
+        ledger.clear_pending_program_rebuild()
+        return _run_program_mutation(
+            state, ledger, metadata.get("target_frequency"), metadata.get("split_preference")
+        )
     frequency, issue = _program_mutation_frequency(query, metadata)
     if issue:
         return _response(issue)
-    return _run_program_mutation(state, ledger, frequency)
+    return _program_rebuild_preview(state, ledger, frequency)
+
+
+# --- #867: every rebuild is confirmed first ----------------------------------
+# A rebuild replaces the Training program and clears the chat, so chat shows
+# the new program and waits for a clear yes. "No" or any other message drops
+# the offer and changes nothing.
+_RE_REBUILD_YES = re.compile(
+    r"(?:yes|yeah|yep|yup|sure|ok|okay|confirm|confirmed|go\s+ahead|do\s+it|rebuild\s+it"
+    r"|aywa|aiwa|aywah|tamam|mashi|أيوه|ايوه|أيوة|ايوة|اه|آه|تمام|ماشي|نعم|أكيد|اكيد"
+    r"|موافق|يلا|اعمله|ابنيه|اعملها)"
+)
+_RE_REBUILD_NO = re.compile(
+    r"(?:no|nope|nah|cancel|stop|don'?t|la|la2|laa|لا|لأ|لاء|لا\s+شكرا|الغي|ألغي|الغيه|إلغاء|الغاء"
+    r"|مش\s+عايز|مش\s+عاوز|بلاش|خلاص\s+لا|سيبه|سيبها)"
+)
+_REBUILD_ANSWER_TAIL = r"(?:\s*(?:please|pls|thanks|لو\s+سمحت|شكرا|يا\s+\w+))?[\s.!،,]*"
+
+
+def _program_rebuild_answer(query: str) -> str | None:
+    """"yes" or "no" for a clear answer to the rebuild offer; None otherwise."""
+    normalized = RE_ARABIC_DIACRITICS.sub("", unicodedata.normalize("NFKC", query)).strip().casefold()
+    if "?" in normalized or "؟" in normalized:
+        return None
+    normalized = normalized.strip(" .!،,")
+    if re.fullmatch(rf"{_RE_REBUILD_NO.pattern}{_REBUILD_ANSWER_TAIL}", normalized):
+        return "no"
+    yes = _RE_REBUILD_YES.pattern
+    if re.fullmatch(rf"{yes}(?:[\s,،]+{yes})?{_REBUILD_ANSWER_TAIL}", normalized):
+        return "yes"
+    return None
+
+
+def _rebuild_preview_text(program: Any, language: str) -> str:
+    days = []
+    for day in program.days:
+        names = ", ".join(exercise.exercise_name for exercise in day.exercises)
+        label = f"اليوم {day.day_order}" if language == "ar" else f"Day {day.day_order}"
+        days.append(f"{label} · {day.day_name}: {names}")
+    summary = "\n".join(days)
+    if language == "ar":
+        frequency_label = _arabic_frequency_label(program.weekly_frequency)
+        return (
+            f"معاينة البرنامج الجديد: **{program.program_name}** ({frequency_label})\n{summary}\n\n"
+            "ده هيستبدل برنامجك الحالي ويمسح المحادثة دي. "
+            "رد بـ «أيوه» عشان أبنيه، أو «لا» عشان ألغيه."
+        )
+    return (
+        f"New program preview: **{program.program_name}** ({program.weekly_frequency} days/week)\n"
+        f"{summary}\n\nThis replaces your current Training program and clears this chat. "
+        "Reply yes to rebuild it, or no to cancel."
+    )
+
+
+def _program_rebuild_preview(
+    state: AssistantState, ledger: Any, frequency: int | None
+) -> dict[str, Any]:
+    query = _get_message_text(state["messages"][-1])
+    metadata = state.get("intent_metadata", {})
+    split_preference = _rebuild_split_preference(query, metadata)
+    language = resolve_reply_language(query, state.get("display_language", "en"))
+    try:
+        program, _markdown = generate_program_draft_pipeline(
+            ProgramGenerationRequest(split_preference, None, frequency), ledger=ledger
+        )
+    except Exception as error:
+        logger.error(f"Rebuild preview failure: {error}")
+        failure = (
+            "مقدرتش أجهز البرنامج الجديد. مفيش حاجة اتغيرت."
+            if language == "ar"
+            else "Could not rebuild split with those parameters. Nothing changed."
+        )
+        return _response(failure)
+    offer_text = finalize_coach_output(_rebuild_preview_text(program, language))
+    active = ledger.get_active_program()
+    ledger.set_pending_program_rebuild(
+        {
+            "split_preference": split_preference,
+            "frequency": frequency,
+            "language": language,
+            "program_version": getattr(active, "version", None),
+        },
+        offer_text,
+    )
+    return {**_response(offer_text), "rebuild_preview": True}
+
+
+def _pending_program_rebuild_route(
+    query: str, messages: Sequence[BaseMessage], ledger: Any, program: Any
+) -> dict[str, Any] | None:
+    pending = ledger.get_pending_program_rebuild()
+    if pending is None:
+        return None
+    latest_assistant = next(
+        (_get_message_text(item) for item in reversed(messages[:-1]) if isinstance(item, AIMessage)), ""
+    )
+    answer = _program_rebuild_answer(query)
+    if (
+        answer is not None
+        and latest_assistant.strip() == str(pending.get("offer_text") or "").strip()
+        and pending.get("program_version") == getattr(program, "version", None)
+    ):
+        if answer == "yes":
+            return {
+                "intent": "program_mutation",
+                "intent_metadata": {
+                    "rebuild_confirmed": True,
+                    "split_preference": pending.get("split_preference"),
+                    "target_frequency": pending.get("frequency"),
+                    "rebuild_language": pending.get("language"),
+                },
+            }
+        ledger.clear_pending_program_rebuild()
+        reply = (
+            "تمام، ألغيت إعادة بناء البرنامج. مفيش حاجة اتغيرت."
+            if pending.get("language") == "ar"
+            else "Okay, I cancelled the rebuild. Nothing changed."
+        )
+        return {"intent": "telemetry_intercept", "intent_metadata": {"response_content": reply}}
+    ledger.clear_pending_program_rebuild()
+    return None
 
 
 def deload_choice_node(state: AssistantState, config: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -7567,6 +7741,7 @@ def composite_intent_node(state: AssistantState, config: dict[str, Any] | None =
     program_change = None
     request_suggestion = None
     program_edit_preview = None
+    rebuild_preview = False
 
     handler_map = {
         "clinical_intercept": clinical_intercept_node,
@@ -7606,6 +7781,7 @@ def composite_intent_node(state: AssistantState, config: dict[str, Any] | None =
                 program_change = res.get("program_change", program_change)
             if res.get("program_edit_preview") is not None:
                 program_edit_preview = res["program_edit_preview"]
+            rebuild_preview = rebuild_preview or bool(res.get("rebuild_preview"))
             if request_suggestion is None:
                 request_suggestion = res.get("request_suggestion")
             content = res.get("response_content", "")
@@ -7632,6 +7808,11 @@ def composite_intent_node(state: AssistantState, config: dict[str, Any] | None =
         if ledger is not None:
             ledger.update_pending_chat_program_edit_offer(program_edit_preview["id"], combined_response)
         result["program_edit_preview"] = program_edit_preview
+    if rebuild_preview:
+        ledger, _store = _graph_context(config)
+        if ledger is not None:
+            active = ledger.get_active_program()
+            ledger.update_pending_program_rebuild(combined_response, getattr(active, "version", None))
     return result
 
 

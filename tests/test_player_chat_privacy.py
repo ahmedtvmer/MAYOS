@@ -3107,10 +3107,7 @@ def _seed_chat_program(db, player, *, split_type="Full Body", frequency=3, gende
 
 
 def _install_chat_program_generator(monkeypatch):
-    def generate_program(
-        *, user_split_override=None, rep_preference_override=None,
-        frequency_override=None, ledger, **_kwargs,
-    ):
+    def build_program(user_split_override, frequency_override, ledger):
         current_program = ledger.get_active_program()
         frequency = frequency_override or current_program.weekly_frequency
         profile = ledger.get_player_profile() or {}
@@ -3127,12 +3124,47 @@ def _install_chat_program_generator(monkeypatch):
                 for index in range(1, frequency + 1)
             ],
         )
+        return program, frequency
+
+    def generate_program(
+        *, user_split_override=None, rep_preference_override=None,
+        frequency_override=None, ledger, **_kwargs,
+    ):
+        program, frequency = build_program(user_split_override, frequency_override, ledger)
         if frequency != (ledger.get_player_profile() or {}).get("weekly_frequency"):
             ledger.update_player_frequency(frequency)
         ledger.save_training_program(program.model_dump())
         return program, ""
 
+    def draft_program(request, *, ledger, **_kwargs):
+        program, _frequency = build_program(
+            request.user_split_override, request.frequency_override, ledger
+        )
+        return program, ""
+
     monkeypatch.setattr(assistant_graph, "generate_program_pipeline", generate_program)
+    # #867: the rebuild preview drafts the same program without saving it.
+    monkeypatch.setattr(assistant_graph, "generate_program_draft_pipeline", draft_program)
+
+
+def _post_chat(client, headers, content):
+    with client.stream(
+        "POST", "/chat/messages", headers=headers, json={"content": content}
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+    return body
+
+
+def _confirmed_rebuild(client, db, player, headers, content):
+    """#867: the request shows a preview; the program changes after «أيوه»."""
+    with db.open_ledger(player) as ledger:
+        version = ledger.get_active_program().version
+    _post_chat(client, headers, content)
+    with db.open_ledger(player) as ledger:
+        assert ledger.get_active_program().version == version
+        assert ledger.get_pending_program_rebuild() is not None
+    return _post_chat(client, headers, "أيوه")
 
 
 def test_arabic_program_change_runs_through_http_chat_with_validated_split(api, monkeypatch):
@@ -3146,12 +3178,7 @@ def test_arabic_program_change_runs_through_http_chat_with_validated_split(api, 
     )
     monkeypatch.setattr(assistant_graph, "llm", model)
 
-    with client.stream(
-        "POST", "/chat/messages", headers=headers,
-        json={"content": "غيّر البرنامج لتقسيمة Upper / Lower."},
-    ) as response:
-        body = response.read().decode("utf-8")
-        assert response.status_code == 200
+    body = _confirmed_rebuild(client, db, player, headers, "غيّر البرنامج لتقسيمة Upper / Lower.")
 
     with db.open_ledger(player) as ledger:
         after = ledger.get_active_program()
@@ -3184,12 +3211,7 @@ def test_arabic_frequency_change_runs_through_http_chat(
     model = ScriptedChatModel([{"intent": "program_change", "target_frequency": frequency}])
     monkeypatch.setattr(assistant_graph, "llm", model)
 
-    with client.stream(
-        "POST", "/chat/messages", headers=headers,
-        json={"content": message},
-    ) as response:
-        body = response.read().decode("utf-8")
-        assert response.status_code == 200
+    body = _confirmed_rebuild(client, db, player, headers, message)
 
     with db.open_ledger(player) as ledger:
         after = ledger.get_active_program()
@@ -3316,12 +3338,9 @@ def test_arabic_frequency_change_retires_glute_priority_split(api, monkeypatch, 
     )
     monkeypatch.setattr(assistant_graph, "llm", model)
 
-    with client.stream(
-        "POST", "/chat/messages", headers=headers,
-        json={"content": f"ظبّطلي البرنامج على {target_frequency} أيام."},
-    ) as response:
-        body = response.read().decode("utf-8")
-        assert response.status_code == 200
+    body = _confirmed_rebuild(
+        client, db, player, headers, f"ظبّطلي البرنامج على {target_frequency} أيام."
+    )
 
     with db.open_ledger(player) as ledger:
         after = ledger.get_active_program()
@@ -3492,12 +3511,9 @@ def test_english_program_routing_remains_unchanged(api, monkeypatch):
     model = ScriptedChatModel()
     monkeypatch.setattr(assistant_graph, "llm", model)
 
-    with client.stream(
-        "POST", "/chat/messages", headers=headers,
-        json={"content": "switch routine to 4 days"},
-    ) as response:
-        body = response.read().decode("utf-8")
-        assert response.status_code == 200
+    offer = _post_chat(client, headers, "switch routine to 4 days")
+    assert "Reply yes to rebuild it" in _done_content(offer)
+    body = _post_chat(client, headers, "yes")
     assert "Rebuilt routine:" in _done_content(body)
     with db.open_ledger(player) as ledger:
         assert ledger.get_active_program().weekly_frequency == 4
