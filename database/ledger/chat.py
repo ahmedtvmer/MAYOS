@@ -186,10 +186,65 @@ class LedgerChatMixin:
         )
         self._commit_ledger()
 
+    def set_pending_program_rebuild(self, rebuild: dict[str, Any], offer_text: str) -> None:
+        """Chat showed a Training program rebuild and waits for yes or no (#867).
+        One pending question at a time: any newer chat question replaces it."""
+        self.conn.execute(
+            "INSERT INTO assistant_goal_weak_point_pending "
+            "(id, muscles_json, offer_id, kind, offer_text, created_at) VALUES (1, ?, ?, 'program_rebuild', ?, ?) "
+            "ON CONFLICT(id) DO UPDATE SET muscles_json = excluded.muscles_json, "
+            "offer_id = excluded.offer_id, kind = excluded.kind, offer_text = excluded.offer_text, "
+            "created_at = excluded.created_at",
+            (json.dumps(rebuild, ensure_ascii=False), str(uuid.uuid4()), offer_text,
+             datetime.now(UTC).isoformat()),
+        )
+        self._commit_ledger()
+
+    def get_pending_program_rebuild(self) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            "SELECT muscles_json, offer_text, created_at FROM assistant_goal_weak_point_pending "
+            "WHERE id = 1 AND kind = 'program_rebuild'"
+        ).fetchone()
+        if row is None:
+            return None
+        try:
+            created = datetime.fromisoformat(row["created_at"])
+            rebuild = json.loads(row["muscles_json"])
+        except (TypeError, ValueError, json.JSONDecodeError):
+            self.clear_pending_program_rebuild()
+            return None
+        if (datetime.now(UTC) - created).total_seconds() > 1800 or not isinstance(rebuild, dict):
+            self.clear_pending_program_rebuild()
+            return None
+        return {**rebuild, "offer_text": row["offer_text"]}
+
+    def update_pending_program_rebuild(self, offer_text: str, program_version: Any) -> None:
+        """A combined reply carries the rebuild offer; keep its text and the
+        program version the offer was shown against (#867)."""
+        row = self.conn.execute(
+            "SELECT muscles_json FROM assistant_goal_weak_point_pending "
+            "WHERE id = 1 AND kind = 'program_rebuild'"
+        ).fetchone()
+        if row is None:
+            return
+        rebuild = {**json.loads(row["muscles_json"]), "program_version": program_version}
+        self.conn.execute(
+            "UPDATE assistant_goal_weak_point_pending SET muscles_json = ?, offer_text = ? "
+            "WHERE id = 1 AND kind = 'program_rebuild'",
+            (json.dumps(rebuild, ensure_ascii=False), offer_text),
+        )
+        self._commit_ledger()
+
+    def clear_pending_program_rebuild(self) -> None:
+        self.conn.execute(
+            "DELETE FROM assistant_goal_weak_point_pending WHERE id = 1 AND kind = 'program_rebuild'"
+        )
+        self._commit_ledger()
+
     def get_pending_goal_weak_point_suggestion(self) -> dict[str, Any] | None:
         row = self.conn.execute(
             "SELECT muscles_json, offer_id, kind, offer_text, created_at "
-            "FROM assistant_goal_weak_point_pending WHERE id = 1 AND kind != 'swap_question'"
+            "FROM assistant_goal_weak_point_pending WHERE id = 1 AND kind NOT IN ('swap_question', 'program_rebuild')"
         ).fetchone()
         if row is None:
             return None

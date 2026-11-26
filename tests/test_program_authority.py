@@ -1028,12 +1028,15 @@ def test_assistant_mutation_proceeds_before_publication(api, monkeypatch):
     monkeypatch.setattr(assistant_graph, "generate_program_pipeline", pipeline)
     db.switch_user("p1")
 
+    # #867: the Player already said yes to the rebuild preview.
     state = {
-        "messages": [HumanMessage(content="rebuild my program")],
+        "messages": [HumanMessage(content="yes")],
         "trainee_id": "p1",
         "player_account_id": player_account_id,
         "intent": "program_mutation",
-        "intent_metadata": {"target_frequency": None},
+        "intent_metadata": {
+            "rebuild_confirmed": True, "target_frequency": None, "split_preference": "rebuild my program",
+        },
     }
     result = assistant_graph.program_mutation_node(state, {"configurable": {"ledger": db.ledger, "store": db}})
     assert result["program_updated"] is True
@@ -1080,12 +1083,15 @@ def test_assistant_mutation_proceeds_after_unassignment(api, monkeypatch):
     monkeypatch.setattr(assistant_graph, "generate_program_pipeline", pipeline)
     db.switch_user("p1")
 
+    # #867: the Player already said yes to the rebuild preview.
     state = {
-        "messages": [HumanMessage(content="rebuild my program")],
+        "messages": [HumanMessage(content="yes")],
         "trainee_id": "p1",
         "player_account_id": player_account_id,
         "intent": "program_mutation",
-        "intent_metadata": {"target_frequency": None},
+        "intent_metadata": {
+            "rebuild_confirmed": True, "target_frequency": None, "split_preference": "rebuild my program",
+        },
     }
     result = assistant_graph.program_mutation_node(state, {"configurable": {"ledger": db.ledger, "store": db}})
     assert result["program_updated"] is True
@@ -1347,9 +1353,16 @@ def test_chat_api_edits_player_controlled_program_without_suggestion(api, monkey
     assert client.post("/programs/generate", headers=player_headers, json={}).status_code == 200
     pipeline, mutation_calls = _counting_saver(db, "Mutated Plan")
     monkeypatch.setattr(assistant_graph, "generate_program_pipeline", pipeline)
+    monkeypatch.setattr(
+        assistant_graph, "generate_program_draft_pipeline",
+        lambda *args, **kwargs: (_program("Mutated Plan"), "md"),
+    )
     monkeypatch.setattr(chat_router, "admit_model_request", lambda *args, **kwargs: None)
 
-    done = _chat_done_event(client, player_headers, "rebuild my program")
+    offer = _chat_done_event(client, player_headers, "rebuild my program")
+    assert offer["program_updated"] is False
+    assert mutation_calls["n"] == 0
+    done = _chat_done_event(client, player_headers, "yes")
     assert done["program_updated"] is True
     assert "request_suggestion" not in done
     assert calls["n"] == 1

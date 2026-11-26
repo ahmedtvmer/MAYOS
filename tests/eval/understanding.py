@@ -381,7 +381,9 @@ def run_turn(store: Any, player: CasePlayer, message: str) -> TurnResult:
             message=message,
             reply=reply,
             intent=str(state.get("intent") or ""),
-            preview=state.get("program_edit_preview") is not None,
+            # #867: a full rebuild also previews first and waits for yes.
+            preview=state.get("program_edit_preview") is not None
+            or ledger.get_pending_program_rebuild() is not None,
             coach_request=state.get("request_suggestion") is not None,
             snapshot=take_snapshot(ledger),
         )
