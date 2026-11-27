@@ -61,7 +61,7 @@ abstract final class MayosPalette {
   static const Color wallpaperTextSecondary = Color(0xFFD4D4D8);
   static const Color wallpaperTextMuted = Color(0xFFC4C4CA);
   static const Color wallpaperDanger = Color(0xFFFCA5A5);
-  static const Color wallpaperBorder = Color(0xFF8A8A93);
+  static const Color wallpaperBorder = Color(0xFF9A9AA2);
   static const Color wallpaperBorderStrong = Color(0xFFA1A1AA);
   static const Color wallpaperLink = Color(0xFFF5F5F4);
 }
