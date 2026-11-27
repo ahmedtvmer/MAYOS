@@ -60,6 +60,17 @@ OFL faces (Medium, SemiBold, Bold) registered at weights 500, 600 and 700, so
 display styles select weight with `fontWeight` only. Inter stays a variable
 font with explicit `FontVariation`s.
 
+The files come from [`google/fonts`](https://github.com/google/fonts), branch
+`main`, folder `ofl/baijamjuree/`, downloaded on 2026-11-27 (upstream:
+[`cadsondemak/Bai-Jamjuree`](https://github.com/cadsondemak/Bai-Jamjuree)). Their SHA-256 hashes are:
+
+| File | SHA-256 |
+| --- | --- |
+| `assets/fonts/BaiJamjuree-Medium.ttf` | `95782f3c3e07866749fb28e1d1a356e383e8f2bdcc7b88d4e3a3fc546613137f` |
+| `assets/fonts/BaiJamjuree-SemiBold.ttf` | `daaa68bc721e893861f948f40542b9f1ea8496a3fe4250a0ffc86dab0aee8f3c` |
+| `assets/fonts/BaiJamjuree-Bold.ttf` | `74784411504a295a5255e736e0a8389892af2c8a14e914d3e194329b59279223` |
+| `assets/fonts/OFL-BaiJamjuree.txt` | `fe5e822667a4b2e083b8fdd7a37546163f26f6481b58742236abffdcfb3e6c71` |
+
 ### Swapping the fonts later (one place)
 
 1. Drop new `.ttf` files under `mobile/assets/fonts/`.
