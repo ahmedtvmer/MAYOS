@@ -465,9 +465,9 @@ def test_policy_source_file_exists_and_every_section_is_served(api):
     # wraps across lines and bolds its lead-ins.
     flat = " ".join(source.split()).replace("**", "")
     from service import privacy_policy
-    assert privacy_policy.POLICY_VERSION == "1.15"
-    assert privacy_policy.POLICY_EFFECTIVE_DATE == "2026-11-23"
-    assert "Effective date: 2026-11-23 — Policy version 1.15" in body
+    assert privacy_policy.POLICY_VERSION == "1.16"
+    assert privacy_policy.POLICY_EFFECTIVE_DATE == "2026-11-26"
+    assert "Effective date: 2026-11-26 — Policy version 1.16" in body
     assert "Germany (Contabo)" in flat and "fly.io" not in flat.lower()
     assert "This is the only email sent to you." not in flat
     for phrase in (
@@ -477,6 +477,7 @@ def test_policy_source_file_exists_and_every_section_is_served(api):
         "/account/delete-request",
         "Imported history (existing records only): these records may include the source file name, a snapshot fingerprint, per-table row counts, the opt-in reference, and the import time",
         "MAYOS does not accept new history imports",
+        "The upload is read once to build an import review and is not stored",
         "deleted with your account",
         "last day you used the app",
         "owner-only admin page",
