@@ -30,6 +30,11 @@ os.environ["DISCORD_ALERT_WEBHOOK_URL"] = ""
 # their fallback, so both must start blank for tests to stay hermetic.
 os.environ["DISCORD_FEEDBACK_WEBHOOK_URL"] = ""
 
+# Tests must not report to the live Sentry project with a DSN from .env (#893):
+# tests that need a DSN set a fake one with monkeypatch.
+os.environ["SENTRY_DSN"] = ""
+os.environ["SENTRY_READ_TOKEN"] = ""
+
 # Same for outbound email: a developer `.env` with real SMTP settings must not
 # make tests send mail. ``service/email_sender._deliver`` treats an empty
 # SMTP_HOST as its console backend, so pinning it empty makes delivery hermetic.
