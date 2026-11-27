@@ -71,6 +71,7 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
     sentenceAr: 'ألوان جديدة بالأحمر على الفحمي، وشعار جديد وعناوين أوضح؛ وكل شيء آخر في مكانه.',
     target: 'brand_mayos',
     location: TourShellTabLocation(tabIndex: 0),
+    audience: 'lifter',
     release: 11,
   ),
   FeatureEntry(
