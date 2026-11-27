@@ -114,6 +114,7 @@ class AuthScaffold extends ConsumerWidget {
                                   child: Center(
                                     child: MayosBrandLockup(
                                       height: logoHeight,
+                                      gap: 4,
                                       variant: wallpaper
                                           ? MayosBrandVariant.white
                                           : MayosBrandVariant.auto,

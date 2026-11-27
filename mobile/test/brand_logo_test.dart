@@ -9,21 +9,10 @@ import 'package:mayos_mobile/src/core/ui/mayos_app_header.dart';
 import 'package:mayos_mobile/src/core/ui/mayos_logo.dart';
 import 'package:mayos_mobile/src/features/shared/splash_screen.dart';
 
-/// Issue #109: the monochrome brand lockup. These tests pin the asset chosen
-/// per theme and the header/splash geometry so the blue asset cannot creep
-/// back and the small centred lockup cannot regress.
-
-const String _whiteLockup = 'assets/brand/mayos-lockup-white.png';
-const String _blackLockup = 'assets/brand/mayos-lockup-black.png';
-const String _whiteMark = 'assets/brand/mayos-mark-white.png';
-const String _blackMark = 'assets/brand/mayos-mark-black.png';
-
-String _assetName(WidgetTester tester) {
-  final Image image = tester.widget<Image>(find.byType(Image));
-  final ImageProvider<Object> provider = image.image;
-  expect(provider, isA<AssetImage>());
-  return (provider as AssetImage).assetName;
-}
+/// Issues #109 and #886: the brand lockup and mark. These tests pin the red
+/// dumbbell M, the word colour per theme, the fixed mark-to-word gaps and the
+/// mark-only header so the old monochrome images cannot creep back.
+const Color _logoRed = Color(0xFFB3001B);
 
 Future<void> _pumpThemed(
   WidgetTester tester,
@@ -49,27 +38,54 @@ Future<void> _pumpThemed(
 }
 
 void main() {
-  testWidgets('header wordmark uses the MAYOS lockup face (A drawn as Λ)',
+  testWidgets('header shows the mark alone, with no MAYOS text under it',
       (WidgetTester tester) async {
     await _pumpThemed(tester, const MayosAppHeader(), brightness: Brightness.dark);
-    final Text word = tester.widget<Text>(find.text('MAYOS').first);
-    expect(word.style?.fontFamily, 'MayosWordmark');
-    expect(word.style?.fontWeight, FontWeight.w600);
+    expect(find.byType(MayosBrandMark), findsOneWidget);
+    expect(find.text('MAYOS'), findsNothing);
   });
 
-  group('MayosBrandLockup asset per theme', () {
-    testWidgets('dark theme uses the white lockup',
+  group('MayosBrandMark', () {
+    for (final Brightness brightness in Brightness.values) {
+      testWidgets('is the logo red with a 5:3 shape in ${brightness.name}',
+          (WidgetTester tester) async {
+        await _pumpThemed(tester, const MayosBrandMark(size: 30),
+            brightness: brightness);
+        final MayosBrandMark mark =
+            tester.widget<MayosBrandMark>(find.byType(MayosBrandMark));
+        expect(mark.color, _logoRed);
+        final Size size = tester.getSize(find.byType(MayosBrandMark));
+        expect(size.height, 30);
+        expect(size.width, closeTo(50, 0.01));
+      });
+    }
+  });
+
+  group('MayosBrandLockup', () {
+    Text word(WidgetTester tester) => tester.widget<Text>(find.text('MAYOS'));
+
+    testWidgets('word uses the wordmark face (A drawn as Λ)',
         (WidgetTester tester) async {
       await _pumpThemed(tester, const MayosBrandLockup(),
           brightness: Brightness.dark);
-      expect(_assetName(tester), _whiteLockup);
+      expect(word(tester).style?.fontFamily, 'MayosWordmark');
+      expect(word(tester).style?.fontWeight, FontWeight.w600);
     });
 
-    testWidgets('light theme uses the black lockup',
+    testWidgets('dark theme draws a white word under the red mark',
+        (WidgetTester tester) async {
+      await _pumpThemed(tester, const MayosBrandLockup(),
+          brightness: Brightness.dark);
+      expect(word(tester).style?.color, const Color(0xFFF5F5F4));
+      expect(tester.widget<MayosBrandMark>(find.byType(MayosBrandMark)).color,
+          _logoRed);
+    });
+
+    testWidgets('light theme draws a near-black word',
         (WidgetTester tester) async {
       await _pumpThemed(tester, const MayosBrandLockup(),
           brightness: Brightness.light);
-      expect(_assetName(tester), _blackLockup);
+      expect(word(tester).style?.color, isNot(const Color(0xFFF5F5F4)));
     });
 
     testWidgets('an explicit white variant wins over the theme',
@@ -79,21 +95,29 @@ void main() {
         const MayosBrandLockup(variant: MayosBrandVariant.white),
         brightness: Brightness.light,
       );
-      expect(_assetName(tester), _whiteLockup);
+      expect(word(tester).style?.color, const Color(0xFFF5F5F4));
     });
-  });
 
-  group('MayosBrandMark asset per theme', () {
-    testWidgets('dark theme uses the white mark', (WidgetTester tester) async {
-      await _pumpThemed(tester, const MayosBrandMark(),
+    for (final double gap in <double>[5, 4]) {
+      testWidgets('keeps a fixed ${gap.toInt()}px gap between mark and word',
+          (WidgetTester tester) async {
+        for (final double height in <double>[60, 120]) {
+          await _pumpThemed(tester, MayosBrandLockup(height: height, gap: gap),
+              brightness: Brightness.dark);
+          final Rect mark = tester.getRect(find.byType(MayosBrandMark));
+          final Rect text = tester.getRect(find.text('MAYOS'));
+          expect(text.top - mark.bottom, closeTo(gap, 0.01),
+              reason: 'height $height');
+          expect(text.center.dx, closeTo(mark.center.dx, 1.0));
+        }
+      });
+    }
+
+    testWidgets('fits inside the requested height', (WidgetTester tester) async {
+      await _pumpThemed(tester, const MayosBrandLockup(height: 100),
           brightness: Brightness.dark);
-      expect(_assetName(tester), _whiteMark);
-    });
-
-    testWidgets('light theme uses the black mark', (WidgetTester tester) async {
-      await _pumpThemed(tester, const MayosBrandMark(),
-          brightness: Brightness.light);
-      expect(_assetName(tester), _blackMark);
+      expect(tester.getSize(find.byType(MayosBrandLockup)).height,
+          lessThanOrEqualTo(100.5));
     });
   });
 
@@ -131,16 +155,9 @@ void main() {
         ),
       );
       await tester.pump();
-      // Resolve the mark so the measured width matches the real (loaded) asset
-      // rather than the zero-width placeholder frames.
-      await tester.runAsync(() => precacheImage(
-            const AssetImage(_whiteMark),
-            tester.element(find.byType(MayosAppHeader)),
-          ));
-      await tester.pump();
     }
 
-    testWidgets('is centred, stacked (mark above MAYOS) and at most 40px tall',
+    testWidgets('is centred, mark only and at most 40px tall',
         (WidgetTester tester) async {
       const Size size = Size(360, 640);
       await pumpHeader(tester, size);
@@ -148,11 +165,8 @@ void main() {
       final Rect brand = tester.getRect(find.byKey(MayosAppHeader.brandKey));
       expect(brand.center.dx, closeTo(size.width / 2, 0.5));
       expect(brand.height, lessThanOrEqualTo(40));
-      final Rect mark = tester.getRect(find.byType(MayosBrandMark));
-      final Rect word = tester.getRect(find.text('MAYOS'));
-      expect(word.top, greaterThanOrEqualTo(mark.bottom),
-          reason: 'the wordmark sits under the mark, never beside it');
-      expect(word.center.dx, closeTo(mark.center.dx, 0.5));
+      expect(find.byType(MayosBrandMark), findsOneWidget);
+      expect(find.text('MAYOS'), findsNothing);
     });
 
     testWidgets('does not crowd the actions at 320px width',

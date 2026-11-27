@@ -14,6 +14,7 @@ import '../../../core/theme/mayos_colors.dart';
 import '../../../core/analytics_client.dart';
 import '../../../core/models.dart';
 import '../../../core/personal_records.dart';
+import '../../../core/ui/mayos_logo.dart';
 import 'workout_card_action_adapter.dart';
 import 'workout_card_action_platform.dart';
 import 'workout_photo_adapter.dart';
@@ -228,8 +229,9 @@ class WorkoutShareCard extends StatelessWidget {
       Align(key: const ValueKey<String>('workoutCard.logoPlacement'),
         alignment: AlignmentDirectional.bottomEnd, child: Padding(
         padding: const EdgeInsetsDirectional.only(end: 26, bottom: 23),
-        child: Image.asset('assets/brand/mayos-lockup-white.png',
-          key: const ValueKey<String>('workoutCard.logo'), height: 37, fit: BoxFit.contain))),
+        child: const MayosBrandLockup(
+          key: ValueKey<String>('workoutCard.logo'), height: 37, gap: 2,
+          variant: MayosBrandVariant.white))),
       Align(alignment: Alignment.bottomCenter, child: Padding(
         padding: const EdgeInsetsDirectional.fromSTEB(26, 24, 26, 57),
         child: _buildCardDetails(cardioOnly: cardioOnly, volume: volume))),
@@ -667,8 +669,6 @@ Future<Uint8List> _captureWorkoutCard(
   if (imageBytes case final Uint8List photo) {
     await _precacheWorkoutPhoto(photo, context);
   }
-  if (!context.mounted) throw StateError('Share card capture context was removed');
-  await precacheImage(const AssetImage('assets/brand/mayos-lockup-white.png'), context);
   if (!context.mounted) throw StateError('Share card capture context was removed');
   final GlobalKey boundaryKey = GlobalKey();
   final OverlayState captureOverlay = overlay ?? Overlay.of(context);

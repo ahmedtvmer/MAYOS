@@ -1,38 +1,130 @@
 import 'package:flutter/material.dart';
 
 import '../display_language/copy_context.dart';
+import '../theme/mayos_colors.dart';
 import '../theme/mayos_theme.dart';
+import '../theme/mayos_typography.dart';
 
-/// Supplied MAYOS logo variants. Marks are never redrawn, recoloured or
-/// distorted; the bundled files are deterministic trims of the supplied
-/// originals (see `mobile/tool/trim_logos.py` and DESIGN.md).
+/// Which colour the "MAYOS" word under the mark takes. The mark itself is
+/// always the logo red (#886).
 enum MayosBrandVariant {
-  /// Picks by effective theme (see each widget's `auto` mapping).
+  /// Picks by effective theme: dark → white word, light → near-black word.
   auto,
   white,
   black,
 }
 
-String _file(MayosBrandVariant variant, String kind) {
-  final String name = switch (variant) {
-    MayosBrandVariant.white => 'white',
-    MayosBrandVariant.black => 'black',
-    MayosBrandVariant.auto => 'black',
-  };
-  return 'assets/brand/mayos-$kind-$name.png';
+/// Geometry of the dumbbell M, in the supplied SVG's 512-unit space
+/// (`assets/brand/mark-*.svg` at the repo root). The mark
+/// is drawn, not shipped as an image, so it stays sharp at every size and
+/// never needs a per-theme file.
+abstract final class _MarkGeometry {
+  /// Tight box around the artwork: x 56–456, y 136–376 (5:3).
+  static const Rect bounds = Rect.fromLTWH(56, 136, 400, 240);
+  static const double aspectRatio = 400 / 240;
+
+  static const List<Offset> v = <Offset>[
+    Offset(144, 176),
+    Offset(256, 330),
+    Offset(368, 176),
+  ];
+  static const double strokeWidth = 34;
+  static const double miterLimit = 12;
+
+  static final List<RRect> bars = <RRect>[
+    RRect.fromLTRBR(108, 138, 180, 374, const Radius.circular(36)),
+    RRect.fromLTRBR(332, 138, 404, 374, const Radius.circular(36)),
+    RRect.fromLTRBR(60, 192, 100, 320, const Radius.circular(20)),
+    RRect.fromLTRBR(412, 192, 452, 320, const Radius.circular(20)),
+  ];
 }
 
-/// The full mark + wordmark lockup, cropped to its content. Used for the
-/// splash hero. `auto` maps dark→white and light→black.
+class _MarkPainter extends CustomPainter {
+  const _MarkPainter(this.color);
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final double scale = size.height / _MarkGeometry.bounds.height;
+    canvas
+      ..save()
+      ..scale(scale)
+      ..translate(-_MarkGeometry.bounds.left, -_MarkGeometry.bounds.top);
+    final Paint fill = Paint()
+      ..color = color
+      ..isAntiAlias = true;
+    for (final RRect bar in _MarkGeometry.bars) {
+      canvas.drawRRect(bar, fill);
+    }
+    final Path v = Path()
+      ..moveTo(_MarkGeometry.v[0].dx, _MarkGeometry.v[0].dy)
+      ..lineTo(_MarkGeometry.v[1].dx, _MarkGeometry.v[1].dy)
+      ..lineTo(_MarkGeometry.v[2].dx, _MarkGeometry.v[2].dy);
+    canvas.drawPath(
+      v,
+      Paint()
+        ..color = color
+        ..isAntiAlias = true
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = _MarkGeometry.strokeWidth
+        ..strokeJoin = StrokeJoin.miter
+        ..strokeMiterLimit = _MarkGeometry.miterLimit
+        ..strokeCap = StrokeCap.butt,
+    );
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_MarkPainter oldDelegate) => oldDelegate.color != color;
+}
+
+/// The MAYOS dumbbell M on its own, in the logo red. [size] is its height;
+/// the width follows the artwork's 5:3 shape. Used in the app header (alone,
+/// with no word under it), onboarding and the install prompt.
+class MayosBrandMark extends StatelessWidget {
+  const MayosBrandMark({
+    super.key,
+    this.size = 24,
+    this.color = MayosPalette.red,
+  });
+
+  final double size;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      key: const ValueKey<String>('mayos_brand_mark'),
+      height: size,
+      width: size * _MarkGeometry.aspectRatio,
+      child: CustomPaint(painter: _MarkPainter(color)),
+    );
+  }
+}
+
+/// The mark with "MAYOS" under it in the wordmark face (A drawn as Λ), widely
+/// letter-spaced. Used where people first meet the app: the splash, the
+/// logged-out screens and the share card.
+///
+/// [height] is the whole lockup's height. [gap] is the fixed space between
+/// mark and word, chosen by Thomas: 5 on the splash, 4 on sign-in.
 class MayosBrandLockup extends StatelessWidget {
   const MayosBrandLockup({
     super.key,
     this.height = 120,
+    this.gap = 5,
     this.variant = MayosBrandVariant.auto,
   });
 
   final double height;
+  final double gap;
   final MayosBrandVariant variant;
+
+  /// The word's size and line height relative to the mark's height.
+  static const double _wordToMark = 0.36;
+  static const double _wordLineHeight = 1.2;
+  static const double _letterSpacing = 0.42;
 
   @override
   Widget build(BuildContext context) {
@@ -41,59 +133,42 @@ class MayosBrandLockup extends StatelessWidget {
     final MayosBrandVariant resolved = variant == MayosBrandVariant.auto
         ? (c.isDark ? MayosBrandVariant.white : MayosBrandVariant.black)
         : variant;
+    final Color wordColor = resolved == MayosBrandVariant.white
+        ? MayosPalette.darkTextPrimary
+        : MayosPalette.lightTextPrimary;
+    final double markHeight =
+        ((height - gap) / (1 + _wordToMark * _wordLineHeight))
+            .clamp(0.0, double.infinity);
+    final double fontSize = markHeight * _wordToMark;
     return Semantics(
       label: brandName,
       image: true,
       excludeSemantics: true,
-      child: Image.asset(
-        _file(resolved, 'lockup'),
-        height: height,
-        fit: BoxFit.contain,
-        filterQuality: FilterQuality.high,
-        excludeFromSemantics: true,
-        errorBuilder: (_, __, ___) => _fallback(context, height),
+      child: MediaQuery.withNoTextScaling(
+        child: Column(
+          key: const ValueKey<String>('mayos_brand_lockup'),
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            MayosBrandMark(size: markHeight),
+            SizedBox(height: gap),
+            Padding(
+              // Letter spacing trails the last letter; the same space on the
+              // left keeps the word centred under the mark in both directions.
+              padding: EdgeInsets.only(left: fontSize * _letterSpacing),
+              child: Text(
+                'MAYOS',
+                textDirection: TextDirection.ltr,
+                style: MayosTypography.brandWordmark.copyWith(
+                  fontSize: fontSize,
+                  height: _wordLineHeight,
+                  letterSpacing: fontSize * _letterSpacing,
+                  color: wordColor,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
-
-/// The mark only, with the wordmark split off. Used beside a clean, letter-
-/// spaced "MAYOS" text wordmark at small placements (the app header).
-/// `auto` maps dark→white and light→black.
-class MayosBrandMark extends StatelessWidget {
-  const MayosBrandMark({
-    super.key,
-    this.size = 30,
-    this.variant = MayosBrandVariant.auto,
-  });
-
-  final double size;
-  final MayosBrandVariant variant;
-
-  @override
-  Widget build(BuildContext context) {
-    final MayosThemeExtension c = MayosTheme.of(context);
-    final MayosBrandVariant resolved = variant == MayosBrandVariant.auto
-        ? (c.isDark ? MayosBrandVariant.white : MayosBrandVariant.black)
-        : variant;
-    return Image.asset(
-      _file(resolved, 'mark'),
-      height: size,
-      fit: BoxFit.contain,
-      filterQuality: FilterQuality.high,
-      excludeFromSemantics: true,
-      errorBuilder: (_, __, ___) => SizedBox(height: size, width: size),
-    );
-  }
-}
-
-Widget _fallback(BuildContext context, double height) => Text(
-      'MAYOS',
-      style: TextStyle(
-        fontFamily: 'Montserrat',
-        fontWeight: FontWeight.w600,
-        fontSize: height * 0.5,
-        letterSpacing: height * 0.08,
-        color: MayosTheme.of(context).textPrimary,
-      ),
-    );

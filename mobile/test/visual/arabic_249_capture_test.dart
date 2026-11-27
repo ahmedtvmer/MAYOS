@@ -486,10 +486,6 @@ Future<void> _captureEnglishScreens(WidgetTester tester) async {
 Future<void> _precacheBrandImages(WidgetTester tester) async {
   final BuildContext context = tester.element(find.byType(MaterialApp));
   const List<String> assets = <String>[
-    'assets/brand/mayos-lockup-white.png',
-    'assets/brand/mayos-lockup-black.png',
-    'assets/brand/mayos-mark-white.png',
-    'assets/brand/mayos-mark-black.png',
     'assets/images/gym-wallpaper.jpg',
   ];
   await tester.runAsync(() async {
