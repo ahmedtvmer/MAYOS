@@ -28,6 +28,7 @@ import '../../../core/ui/first_strong_direction.dart';
 import '../../../core/workout_storage.dart';
 import '../../../providers.dart';
 import '../assignment/program_request_dialog.dart';
+import '../auth/auth_controller.dart';
 import '../tour/tour_targets.dart';
 
 /// Hosted player-assistant chat (#37, ADR 016/036).
@@ -279,9 +280,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     // the screen render (treated as no acceptance and an empty cache).
     bool accepted = false;
     List<ChatMessage> cached = <ChatMessage>[];
+    // Read providers before any await: the screen can be disposed mid-load
+    // (#894), and `ref` must not be used after that.
+    final ChatCacheStore store = _store;
     try {
-      accepted = await _store.readDisclosureAccepted(accountId);
-      cached = await _store.readHistory(accountId);
+      accepted = await store.readDisclosureAccepted(accountId);
+      cached = await store.readHistory(accountId);
     } on Object {
       accepted = false;
       cached = <ChatMessage>[];
@@ -291,27 +295,33 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       _disclosureLoaded = true;
       _messages = cached;
     });
+    if (!mounted) return;
     await _loadHistory();
   }
 
   Future<void> _loadHistory() async {
+    if (!mounted) return;
     final String? accountId = _accountId;
     if (accountId == null) return;
+    // Read providers before any await (#894): the screen can be disposed while
+    // history loads, and `ref` must not be used after that.
+    final ApiClient api = ref.read(apiClientProvider);
+    final ChatCacheStore store = _store;
+    final AuthController auth = ref.read(authControllerProvider.notifier);
     _setStateIfMounted(() {
       _loadingHistory = true;
       _historyFailure = null;
     });
     try {
-      final List<ChatMessage> fresh =
-          await ref.read(apiClientProvider).chatHistory();
-      await _store.writeHistory(accountId, fresh);
+      final List<ChatMessage> fresh = await api.chatHistory();
+      await store.writeHistory(accountId, fresh);
       _setStateIfMounted(() {
         _messages = fresh;
         _offline = false;
         _historyFailure = null;
         _loadingHistory = false;
       });
-      unawaited(ref.read(authControllerProvider.notifier).refreshAccount());
+      unawaited(auth.refreshAccount());
     } on ApiException catch (error) {
       _setStateIfMounted(() {
         _loadingHistory = false;

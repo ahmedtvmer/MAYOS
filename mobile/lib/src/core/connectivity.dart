@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers.dart';
 import 'api_client.dart';
 import 'display_language/copy_context.dart';
+import 'foreground_policy.dart';
 import 'connectivity_events.dart';
 import 'saved_player_reads.dart';
 import '../features/player/auth/auth_controller.dart';
@@ -32,18 +33,48 @@ final Provider<Stream<bool>> browserConnectivityEventsProvider =
 ///
 /// `true` is online. Shared screen frames read the provider for the banner.
 class ConnectivityController extends StateNotifier<bool> {
-  ConnectivityController() : super(true);
+  ConnectivityController({this.offlineGrace = Duration.zero}) : super(true);
+
+  /// How long an API transport failure waits for a completed response before
+  /// the app reports offline (#894).
+  final Duration offlineGrace;
+  Timer? _pendingOffline;
 
   /// A transport failure or timeout prevents a complete response.
   void markOffline() {
+    _pendingOffline?.cancel();
+    _pendingOffline = null;
     state = false;
+  }
+
+  /// An API request failed in transport. After a resume the first attempt can
+  /// fail on a stale connection and the retry succeed, so with a grace period
+  /// the app waits for that retry before reporting offline (#894).
+  void noteTransportFailure() {
+    if (offlineGrace == Duration.zero) {
+      markOffline();
+      return;
+    }
+    if (!state || _pendingOffline != null) return;
+    _pendingOffline = Timer(offlineGrace, () {
+      _pendingOffline = null;
+      if (mounted) state = false;
+    });
   }
 
   /// Any completed response proves the connection is back.
   void markOnline() {
+    _pendingOffline?.cancel();
+    _pendingOffline = null;
     if (!state) {
       state = true;
     }
+  }
+
+  @override
+  void dispose() {
+    _pendingOffline?.cancel();
+    super.dispose();
   }
 }
 
@@ -52,7 +83,9 @@ class ConnectivityController extends StateNotifier<bool> {
 final StateNotifierProvider<ConnectivityController, bool>
     connectivityControllerProvider =
     StateNotifierProvider<ConnectivityController, bool>((ref) {
-  final ConnectivityController controller = ConnectivityController();
+  final ConnectivityController controller = ConnectivityController(
+    offlineGrace: ref.read(foregroundPolicyProvider).offlineGrace,
+  );
   final StreamSubscription<bool> browserEvents =
       ref.watch(browserConnectivityEventsProvider).listen((bool online) {
     if (online) {
@@ -74,7 +107,7 @@ final StateNotifierProvider<ConnectivityController, bool>
     onError: (DioException error, ErrorInterceptorHandler handler) {
       // A completed refusal proves reachability; a timeout may be partial.
       if (isTransportFailure(error)) {
-        controller.markOffline();
+        controller.noteTransportFailure();
       } else {
         controller.markOnline();
       }

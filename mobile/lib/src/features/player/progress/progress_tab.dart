@@ -50,7 +50,7 @@ class ProgressTab extends ConsumerStatefulWidget {
 class _ProgressTabState extends ConsumerState<ProgressTab>
     with RefetchOnReconnect<ProgressTab> {
   @override
-  Future<void> refreshAfterReconnect() => _load();
+  Future<void> refreshAfterReconnect() => _load(quiet: true);
 
   static const List<int> _volumePeriods = <int>[7, 28, 90];
 
@@ -118,9 +118,10 @@ class _ProgressTabState extends ConsumerState<ProgressTab>
     }
   }
 
-  Future<void> _load() async {
+  /// [quiet] refreshes loaded progress in place, without the spinner (#894).
+  Future<void> _load({bool quiet = false}) async {
     setState(() {
-      _loading = true;
+      _loading = !quiet || _exercises.isEmpty;
       _loadError = null;
       _notice = null;
     });
