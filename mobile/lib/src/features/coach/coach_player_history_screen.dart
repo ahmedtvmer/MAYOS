@@ -38,6 +38,7 @@ import 'coach_request_sheet.dart';
 import 'coach_shared.dart';
 import 'program_publish_confirmation.dart';
 import 'program_template_save_sheet.dart';
+import '../../core/ui/mayos_error_text.dart';
 
 /// The player page (#120): one assigned player's open coach alerts on top,
 /// then the **Program · History · Check-ins · Requests** segments.
@@ -427,7 +428,6 @@ class _GenerateDraftDialogState extends State<_GenerateDraftDialog> {
   @override
   Widget build(BuildContext context) {
     final copy = coachCopyOf(context);
-    final MayosThemeExtension c = MayosTheme.of(context);
     final List<CoachProgramSplitOption> splitOptions =
         widget.options.optionsByDays[_frequency] ??
             const <CoachProgramSplitOption>[];
@@ -461,11 +461,9 @@ class _GenerateDraftDialogState extends State<_GenerateDraftDialog> {
           ),
           if (_failure != null) ...<Widget>[
             const SizedBox(height: MayosSpacing.sm),
-            Text(
+            MayosErrorText(
               displayCopyOf(context).failureMessage(_failure!),
-              style: MayosTypography.of(context)
-                  .bodySecondary
-                  .copyWith(color: c.danger),
+              style: MayosTypography.of(context).bodySecondary,
             ),
           ],
           const SizedBox(height: MayosSpacing.md),
@@ -1018,9 +1016,9 @@ class _CoachPlayerHistoryScreenState
         MayosSectionHeader(title: _programRequests.any((ProgramRequest request) => request.isFoodSwap)
             ? copy.requests : copy.programRequests),
         if (_requestError != null) ...<Widget>[
-          Text(
+          MayosErrorText(
             displayCopyOf(context).failureMessage(_requestError!),
-            style: MayosTypography.of(context).bodySecondary.copyWith(color: c.danger),
+            style: MayosTypography.of(context).bodySecondary,
           ),
           const SizedBox(height: MayosSpacing.sm),
         ],

@@ -72,12 +72,17 @@ flutter:
     - assets/images/
 
   fonts:
-    # MAYOS typography pair (OFL). See mobile/DESIGN.md for provenance and how
+    # MAYOS fonts (OFL). See mobile/DESIGN.md for provenance and how
     # to swap the approximation. Variable fonts: weights are selected through
     # MayosTypography, which sets explicit `fontVariations`.
-    - family: PlayfairDisplay
+    - family: BaiJamjuree
       fonts:
-        - asset: assets/fonts/PlayfairDisplay-Variable.ttf
+        - asset: assets/fonts/BaiJamjuree-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/BaiJamjuree-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/BaiJamjuree-Bold.ttf
+          weight: 700
     - family: MayosWordmark
       fonts:
         - asset: assets/fonts/MayosWordmark-SemiBold.ttf

@@ -6,7 +6,7 @@ import 'tour_targets.dart';
 
 /// The shared Feature list used by the Tour and later discovery surfaces.
 const int tourCurrentVersion = 1;
-const int currentFeatureRelease = 10;
+const int currentFeatureRelease = 11;
 const int kReleaseShareCard = 3;
 const int kReleasePrCelebration = 3;
 const int kReleaseDurationCheck = 4;
@@ -63,6 +63,16 @@ List<String> validateFeatureEntries(
 }
 
 const List<FeatureEntry> featureList = <FeatureEntry>[
+  FeatureEntry(
+    id: 'new_look',
+    titleEn: 'A new look',
+    sentenceEn: 'New red-on-charcoal colours, a new logo and clearer headings; everything else stays where it was.',
+    titleAr: 'شكل جديد',
+    sentenceAr: 'ألوان جديدة بالأحمر على الفحمي، وشعار جديد وعناوين أوضح؛ وكل شيء آخر في مكانه.',
+    target: 'brand_mayos',
+    location: TourShellTabLocation(tabIndex: 0),
+    release: 11,
+  ),
   FeatureEntry(
     id: 'rebuild_nutrition_chat',
     titleEn: 'Rebuild your Nutrition plan from chat',

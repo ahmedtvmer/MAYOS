@@ -21,6 +21,7 @@ import '../../core/ui/assistant_feedback.dart';
 import '../../core/ui/first_strong_direction.dart';
 import '../../providers.dart';
 import 'coach_assistant_state.dart';
+import '../../core/ui/mayos_error_text.dart';
 
 /// The coach assistant for ONE selected player (#45, ADR 049).
 ///
@@ -509,9 +510,9 @@ class _CoachAssistantScreenState extends ConsumerState<CoachAssistantScreen> {
       ),
       child: FirstStrongDirection(
         text: message,
-        child: Text(
+        child: MayosErrorText(
           message,
-          style: MayosTypography.of(context).bodySecondary.copyWith(color: c.danger),
+          style: MayosTypography.of(context).bodySecondary,
         ),
       ),
     );

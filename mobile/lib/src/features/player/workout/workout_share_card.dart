@@ -10,6 +10,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/display_language/workout_copy.dart';
+import '../../../core/theme/mayos_colors.dart';
 import '../../../core/analytics_client.dart';
 import '../../../core/models.dart';
 import '../../../core/personal_records.dart';
@@ -37,10 +38,10 @@ class WorkoutShareFlowFeedback {
     final bool arabic = WorkoutCopy(languageCode).isArabic;
     _preparingOverlay = OverlayEntry(builder: (BuildContext context) =>
       Positioned.fill(child: Stack(children: <Widget>[
-        const ModalBarrier(dismissible: false, color: Color(0xc9070f1a)),
+        const ModalBarrier(dismissible: false, color: Color(0xc90d0d0e)),
         Center(child: Column(mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            const CircularProgressIndicator(color: Color(0xff2F6BFF)),
+            const CircularProgressIndicator(color: MayosPalette.red),
             const SizedBox(height: 16),
             Text(arabic ? 'جارٍ تجهيز البطاقة…' : 'Preparing your card…',
               style: const TextStyle(color: Colors.white, fontSize: 16)),
@@ -154,7 +155,7 @@ class WorkoutShareCard extends StatelessWidget {
   WorkoutCopy get _copy => WorkoutCopy(languageCode);
 
   TextStyle get _valueStyle => TextStyle(color: Colors.white,
-      fontFamily: _arabic ? 'IBMPlexSansArabic' : 'Montserrat', fontSize: 24.3,
+      fontFamily: _arabic ? 'IBMPlexSansArabic' : 'BaiJamjuree', fontSize: 24.3,
       fontWeight: FontWeight.w700);
 
   /// Arabic duration drawn as separate pieces in a fixed left-to-right row, so
@@ -213,7 +214,7 @@ class WorkoutShareCard extends StatelessWidget {
   Widget _buildCardSurface({required bool cardioOnly, required String volume}) => DecoratedBox(
     decoration: const BoxDecoration(gradient: RadialGradient(
       center: Alignment(0.6, -0.9), radius: 1.2,
-      colors: <Color>[Color(0xff16305A), Color(0xff0A1422), Color(0xff070F1A)],
+      colors: <Color>[Color(0xff3a0e14), Color(0xff141414), Color(0xff0d0d0e)],
       stops: <double>[0, .55, 1])),
     child: Stack(fit: StackFit.expand, children: <Widget>[
       if (photoBytes case final Uint8List photo)
@@ -222,7 +223,7 @@ class WorkoutShareCard extends StatelessWidget {
           errorBuilder: (_, __, ___) => const SizedBox.shrink())),
       const Positioned.fill(child: DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(
         begin: Alignment.topCenter, end: Alignment.bottomCenter,
-        colors: <Color>[Color(0x59070F1A), Color(0x00070F1A), Color(0xeb070F1A)],
+        colors: <Color>[Color(0x590d0d0e), Color(0x000d0d0e), Color(0xeb0d0d0e)],
         stops: <double>[0, .45, 1])))),
       Align(key: const ValueKey<String>('workoutCard.logoPlacement'),
         alignment: AlignmentDirectional.bottomEnd, child: Padding(
@@ -261,13 +262,13 @@ class WorkoutShareCard extends StatelessWidget {
   Widget _buildDayName(String name) => Padding(
     padding: EdgeInsets.only(bottom: performedDate == null ? 20 : 6),
     child: Text(name, maxLines: 2, overflow: TextOverflow.ellipsis,
-      style: TextStyle(color: Colors.white, fontFamily: _arabic ? 'IBMPlexSansArabic' : 'Montserrat',
+      style: TextStyle(color: Colors.white, fontFamily: _arabic ? 'IBMPlexSansArabic' : 'BaiJamjuree',
         fontSize: 43, height: 1.02, fontWeight: FontWeight.w800)));
 
   Widget _buildPerformedDate(DateTime date) => Padding(
     padding: const EdgeInsets.only(bottom: 18),
     child: Text(_formatPerformedDate(date),
-      style: TextStyle(color: const Color(0xffC9D3E1),
+      style: TextStyle(color: const Color(0xffd4d4d8),
         fontFamily: _arabic ? 'IBMPlexSansArabic' : 'Inter', fontSize: 14.3,
         fontWeight: FontWeight.w500)));
 
@@ -297,13 +298,13 @@ class WorkoutShareCard extends StatelessWidget {
       values.add(('${stats.workingSets}', _arabic ? 'المجموعات' : 'Sets'));
     }
     return Container(padding: const EdgeInsets.only(top: 14),
-      decoration: const BoxDecoration(border: Border(top: BorderSide(color: Color(0x47f3f6fb)))),
+      decoration: const BoxDecoration(border: Border(top: BorderSide(color: Color(0x47f5f5f4)))),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
       for (int i = 0; i < values.length; i++)
         Expanded(child: Container(
           padding: EdgeInsetsDirectional.only(start: i == 0 ? 0 : 14, end: 8),
           decoration: i == 0 ? null : const BoxDecoration(
-            border: BorderDirectional(start: BorderSide(color: Color(0x33f3f6fb)))),
+            border: BorderDirectional(start: BorderSide(color: Color(0x33f5f5f4)))),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
             FittedBox(fit: BoxFit.scaleDown, alignment: AlignmentDirectional.centerStart,
               child: _arabic && values[i].$1 == _duration
@@ -312,7 +313,7 @@ class WorkoutShareCard extends StatelessWidget {
                       style: _valueStyle)),
             const SizedBox(height: 3),
             Text(values[i].$2, maxLines: 2, overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: const Color(0xffC9D3E1),
+              style: TextStyle(color: const Color(0xffd4d4d8),
                 fontFamily: _arabic ? 'IBMPlexSansArabic' : 'Inter', fontSize: 14.3,
                 fontWeight: FontWeight.w500)),
           ]))),
@@ -469,8 +470,8 @@ class _WorkoutCardPreviewState extends State<_WorkoutCardPreview> {
   Widget build(BuildContext context) => PopScope<dynamic>(
     canPop: !_busy,
     child: Scaffold(
-    backgroundColor: const Color(0xff07162d),
-    appBar: AppBar(backgroundColor: const Color(0xff07162d),
+    backgroundColor: MayosPalette.darkCanvas,
+    appBar: AppBar(backgroundColor: MayosPalette.darkCanvas,
       leading: IconButton(tooltip: _ar ? 'إغلاق' : 'Close', icon: const Icon(Icons.close),
         onPressed: _busy ? null : () => Navigator.of(context).pop(false))),
     body: SafeArea(child: Column(children: <Widget>[

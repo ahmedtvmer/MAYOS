@@ -363,14 +363,21 @@ class _CoachNutritionDraftScreenState extends ConsumerState<CoachNutritionDraftS
         ],
       ],
       for (final dynamic issue in _evaluation['errors'] as List? ?? <dynamic>[])
-        Text(copy.issue('$issue'), style: TextStyle(color: Theme.of(context).colorScheme.error)),
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
+          Icon(Icons.error_outline, size: 18, color: Theme.of(context).colorScheme.error),
+          const SizedBox(width: 6),
+          Expanded(child: Text(copy.issue('$issue'), style: TextStyle(color: Theme.of(context).colorScheme.error))),
+        ]),
       Wrap(spacing: 12, children: <Widget>[
         if (widget.templateId != null) TextButton(onPressed: _save,
           child: Text(copy.text('Save template', 'حفظ القالب')))
         else ...<Widget>[
         FilledButton(key: const Key('publish_nutrition_draft'), onPressed: _dirty || _saving != null || _evaluation['can_publish'] != true || _conflict
           ? null : _publish, child: Text(copy.publish)),
-        TextButton(onPressed: _discard, child: Text(copy.text('Discard draft', 'حذف المسودة'))),
+        TextButton.icon(onPressed: _discard,
+          style: TextButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.error),
+          icon: const Icon(Icons.delete_outline),
+          label: Text(copy.text('Discard draft', 'حذف المسودة'))),
         ],
       ]),
     ];

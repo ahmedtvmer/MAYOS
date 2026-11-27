@@ -22,7 +22,7 @@ abstract final class MayosTheme {
       _build(MayosThemeExtension.dark, language: language);
 
   /// Dark tokens tuned for the logged-out surfaces drawn on the gym photo
-  /// (#110). Links, progress and focused field edges use a lighter blue so they
+  /// (#110). Links use a near-white so they
   /// clear WCAG AA / non-text contrast against the photo.
   static ThemeData get wallpaper => wallpaperForLanguage('en');
   static ThemeData wallpaperForLanguage(String language) => _build(
@@ -55,9 +55,9 @@ abstract final class MayosTheme {
       error: c.danger,
       onError: c.onDanger,
       errorContainer:
-          c.isDark ? const Color(0x332B1416) : const Color(0xFFFCE8E8),
+          c.isDark ? const Color(0x33B3001B) : const Color(0xFFFCE7EA),
       onErrorContainer:
-          c.isDark ? const Color(0xFFFFD9D9) : const Color(0xFF7A1C1C),
+          c.isDark ? const Color(0xFFFFD9DC) : const Color(0xFF7A0012),
       surface: c.surface,
       onSurface: c.textPrimary,
       onSurfaceVariant: c.textSecondary,
@@ -95,7 +95,7 @@ abstract final class MayosTheme {
     final TextTheme textTheme = MayosTypography.textTheme(c, typography);
     final SystemUiOverlayStyle overlay = overlayStyle(c);
     // Links, progress and focus rings default to the accent; the wallpaper theme
-    // passes a lighter blue so they clear contrast against the photo.
+    // passes a near-white link colour so it clears contrast against the photo.
     final Color link = linkColor ?? c.accent;
 
     final RoundedRectangleBorder cardShape = RoundedRectangleBorder(
@@ -288,7 +288,7 @@ abstract final class MayosTheme {
         backgroundColor: c.isDark ? c.surfaceElevated : c.textPrimary,
         contentTextStyle: textTheme.bodyMedium
             ?.copyWith(color: c.isDark ? c.textPrimary : c.surface),
-        actionTextColor: c.isDark ? c.accent : const Color(0xFF9EC1FF),
+        actionTextColor: c.accent,
         behavior: SnackBarBehavior.floating,
         elevation: 0,
         insetPadding: const EdgeInsets.all(16),

@@ -15,6 +15,7 @@ import '../../core/ui/mayos_text_field.dart';
 import '../../providers.dart';
 import 'coach_program_draft_screen.dart';
 import 'program_import_files.dart';
+import '../../core/ui/mayos_error_text.dart';
 
 enum _ProgramImportInputMode { file, paste }
 
@@ -272,7 +273,7 @@ class _CoachProgramImportScreenState
             ],
             if (_error != null) ...<Widget>[
               const SizedBox(height: MayosSpacing.sm),
-              Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+              MayosErrorText(_error!),
             ],
           ],
         ),

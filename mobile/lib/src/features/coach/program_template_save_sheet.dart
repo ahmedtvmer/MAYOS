@@ -8,6 +8,7 @@ import '../../core/theme/mayos_typography.dart';
 import '../../core/ui/is_desktop_layout.dart';
 import '../../core/ui/mayos_button.dart';
 import '../../core/ui/mayos_bottom_sheet_editor.dart';
+import '../../core/ui/mayos_error_text.dart';
 
 /// One free-text value copied from a player's program after Coach review.
 class ProgramTemplateNoteReview {
@@ -429,11 +430,9 @@ class _ProgramTemplateSaveSheetState extends State<_ProgramTemplateSaveSheet> {
         decoration: InputDecoration(labelText: copy.templateDescription),
       );
 
-  Widget _errorMessage(MayosThemeExtension colors) => Text(
+  Widget _errorMessage(MayosThemeExtension colors) => MayosErrorText(
         _error!,
-        style: MayosTypography.of(context)
-            .bodySecondary
-            .copyWith(color: colors.danger),
+        style: MayosTypography.of(context).bodySecondary,
       );
 }
 

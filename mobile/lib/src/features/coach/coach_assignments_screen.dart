@@ -172,6 +172,7 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
           MayosButton(
             label: copy.revoke,
             expand: false,
+            destructive: true,
             onPressed: () => Navigator.of(context).pop(true),
           ),
         ],
@@ -223,6 +224,7 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
           MayosButton(
             label: copy.disableCoaching,
             expand: false,
+            destructive: true,
             onPressed: () => Navigator.of(context).pop(true),
           ),
         ],
@@ -414,7 +416,9 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
                 children: <Widget>[
                   MayosButton(
                     label: actionLabel,
+                    icon: Icons.person_remove_outlined,
                     variant: MayosButtonVariant.tertiary,
+                    destructive: true,
                     expand: false,
                     onPressed: busy ? null : () => _revoke(entry),
                   ),
@@ -700,6 +704,7 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
           label: coachCopyOf(context).disableCoaching,
           icon: Icons.logout,
           variant: MayosButtonVariant.secondary,
+          destructive: true,
           loading: _disabling,
           onPressed: _disabling ? null : _disable,
         ),

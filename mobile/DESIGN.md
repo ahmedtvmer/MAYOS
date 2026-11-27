@@ -13,11 +13,11 @@ the official Google Fonts OFL sources:
 
 | Role | Family | File | Axes |
 | --- | --- | --- | --- |
-| Display / editorial headings | **Playfair Display** | `assets/fonts/PlayfairDisplay-Variable.ttf` | `wght` 400–900 |
+| Display headings, exercise names, big numbers (English) | **Bai Jamjuree** (#885) | `assets/fonts/BaiJamjuree-{Medium,SemiBold,Bold}.ttf` | static 500 / 600 / 700 |
 | Interface / body / numeric | **Inter** | `assets/fonts/Inter-Variable.ttf` | `wght` 100–900, `opsz` 14–32 |
 | Code | System monospace (`Roboto Mono` / `Menlo` fallbacks) | platform font | regular, line height 1.4 |
 
-Licenses: `assets/fonts/OFL-PlayfairDisplay.txt`, `assets/fonts/OFL-Inter.txt`
+Licenses: `assets/fonts/OFL-BaiJamjuree.txt`, `assets/fonts/OFL-Inter.txt`
 (SIL Open Font License 1.1).
 
 ### Arabic Display language
@@ -26,8 +26,9 @@ When the account's Display language is Arabic, every MAYOS typography role,
 including display headings, body, labels, code and numeric text, uses
 **IBM Plex Sans Arabic** through `MayosTypography`. This applies to the Arabic
 app version in Player and Coach mode and Flutter web, independently of the
-assistant reply language. The English app version continues to use Playfair
-Display for display headings and Inter for interface text. The branded MAYOS
+assistant reply language. The redesign in #885 does not change Arabic. The
+English app version uses Bai Jamjuree for display headings and Inter for
+interface text. The branded MAYOS
 wordmark keeps its Inter treatment and supplied brand artwork. Arabic styles
 retain the existing role sizes and weights, use 1.5 line height, and use zero
 letter spacing.
@@ -52,13 +53,23 @@ hashes are also recorded in `docs/design-review/143/font-provenance.json`.
 Selected-family actual-widget captures and a disposable source bundle are
 published in `docs/design-review/249/production/`.
 
-**Approximation note.** Playfair Display is chosen as the closest widely
-licensed match to the reference's high-contrast, transitional-style editorial
-serif (the `Good morning, Ahmed.` hero and the serif wordmark feel); Inter is
-the closest clean neutral UI sans. These are *not* the exact fonts in the
-reference. Both are OFL and are bundled as variable fonts; weights are selected
-with explicit `FontVariation`s in `MayosTypography` so rendering does not
-depend on engine weight mapping.
+**Heading face (#885).** Bai Jamjuree replaced Playfair Display, chosen by
+Thomas on 2026-11-27: squared, sporty letterforms with clear figures for
+weights and reps, matching the blunt dumbbell M. It is bundled as three static
+OFL faces (Medium, SemiBold, Bold) registered at weights 500, 600 and 700, so
+display styles select weight with `fontWeight` only. Inter stays a variable
+font with explicit `FontVariation`s.
+
+The files come from [`google/fonts`](https://github.com/google/fonts), branch
+`main`, folder `ofl/baijamjuree/`, downloaded on 2026-11-27 (upstream:
+[`cadsondemak/Bai-Jamjuree`](https://github.com/cadsondemak/Bai-Jamjuree)). Their SHA-256 hashes are:
+
+| File | SHA-256 |
+| --- | --- |
+| `assets/fonts/BaiJamjuree-Medium.ttf` | `95782f3c3e07866749fb28e1d1a356e383e8f2bdcc7b88d4e3a3fc546613137f` |
+| `assets/fonts/BaiJamjuree-SemiBold.ttf` | `daaa68bc721e893861f948f40542b9f1ea8496a3fe4250a0ffc86dab0aee8f3c` |
+| `assets/fonts/BaiJamjuree-Bold.ttf` | `74784411504a295a5255e736e0a8389892af2c8a14e914d3e194329b59279223` |
+| `assets/fonts/OFL-BaiJamjuree.txt` | `fe5e822667a4b2e083b8fdd7a37546163f26f6481b58742236abffdcfb3e6c71` |
 
 ### Swapping the fonts later (one place)
 
@@ -159,9 +170,29 @@ All under `lib/src/core/theme/`.
   inputs, cards, navigation, dialogs, sheets, snackbars, chips, list tiles,
   switches, chips, date pickers, menus, dividers and progress indicators.
 
-Neither theme is an inversion of the other: dark is layered deep navy
-(`canvas #0A1422` → `surface #101D2E` → `surfaceElevated #16263B`), light is a
-warm off-white canvas (`#F6F5F2`) with white elevated surfaces and navy text.
+Red on charcoal (#885). One brand red, the logo's `#B3001B`, is used for
+everything red in both themes: filled buttons, ticked sets, the selected tab,
+links, red text, outlines and danger. Labels on red are white (7.2:1). In dark
+mode red text on charcoal measures about 2.4–2.6:1; Thomas chose one exact red
+over a lighter text tint, knowing this.
+
+Neither theme is an inversion of the other: dark is layered neutral charcoal
+matching the app icon (`canvas #141414` → `surface #1C1C1E` →
+`surfaceElevated #252528`), light is a warm off-white canvas (`#F5F4F2`) with
+white elevated surfaces and near-black text (`#18181B`). Success stays green
+and warning stays amber.
+
+### Danger is told apart by shape
+
+Danger and the brand share one red, so colour alone never says "danger":
+
+- On a screen, a destructive action is never a filled red button. Use
+  `MayosButton(destructive: true)` with the secondary (outlined) or tertiary
+  (text) variant and an icon (trash, close, leave, warning).
+- Anything that can't be undone asks again in a confirm dialog or sheet. Only
+  the final confirm button there is a filled destructive primary.
+- Every error message shows an icon: use `MayosErrorText`
+  (`lib/src/core/ui/mayos_error_text.dart`) instead of red `Text`.
 
 ## Components
 
