@@ -8,6 +8,7 @@ import '../../core/display_language/copy_context.dart';
 import '../../core/display_language/food_swap_request_copy.dart';
 import '../../core/models.dart';
 import '../../providers.dart';
+import '../../core/ui/mayos_error_text.dart';
 
 class CoachFoodSwapRequestEditor extends ConsumerStatefulWidget {
   const CoachFoodSwapRequestEditor({super.key, required this.request, required this.onResolved});
@@ -96,7 +97,7 @@ class _CoachFoodSwapRequestEditorState extends ConsumerState<CoachFoodSwapReques
             decoration: InputDecoration(labelText: copy.grams)),
           TextField(key: const Key('food_swap_coach_reply'), controller: _reply, enabled: !_busy,
             maxLength: 500, maxLines: 3, decoration: InputDecoration(labelText: copy.reply, helperText: copy.replyHint)),
-          if (_error != null) Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          if (_error != null) MayosErrorText(_error!),
         ]))),
       actions: <Widget>[
         TextButton(onPressed: _busy ? null : () => Navigator.pop(context), child: Text(copy.cancel)),

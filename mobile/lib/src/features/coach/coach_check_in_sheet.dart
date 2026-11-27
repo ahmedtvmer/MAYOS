@@ -15,6 +15,7 @@ import '../../core/ui/mayos_bottom_sheet_editor.dart';
 import '../../core/ui/mayos_button.dart';
 import '../../core/ui/mayos_phone_tap_target.dart';
 import '../../providers.dart';
+import '../../core/ui/mayos_error_text.dart';
 
 /// The four channels the log-check-in sheet offers (#120): a call, a message,
 /// an in-person meeting, and other. Values come from [CheckIn.channels] — the
@@ -224,16 +225,16 @@ class _LogCheckInSheetState extends ConsumerState<LogCheckInSheet> {
           ),
           if (_error != null) ...<Widget>[
             const SizedBox(height: MayosSpacing.sm),
-            Text(
+            MayosErrorText(
               _error!,
-              style: MayosTypography.of(context).bodySecondary.copyWith(color: c.danger),
+              style: MayosTypography.of(context).bodySecondary,
             ),
           ],
           if (_failure != null) ...<Widget>[
             const SizedBox(height: MayosSpacing.sm),
-            Text(
+            MayosErrorText(
               displayCopyOf(context).failureMessage(_failure!),
-              style: MayosTypography.of(context).bodySecondary.copyWith(color: c.danger),
+              style: MayosTypography.of(context).bodySecondary,
             ),
           ],
           if (widget.showSaveAction) ...<Widget>[

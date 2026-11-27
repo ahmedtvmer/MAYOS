@@ -4,8 +4,8 @@
   "start_url": "/app/",
   "scope": "/app/",
   "display": "standalone",
-  "theme_color": "#0A1422",
-  "background_color": "#0A1422",
+  "theme_color": "#141414",
+  "background_color": "#141414",
   "icons": [
     {
       "src": "mayos-icon-192.png",

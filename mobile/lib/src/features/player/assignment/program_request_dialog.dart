@@ -13,6 +13,7 @@ import '../../../core/theme/mayos_typography.dart';
 import '../../../core/ui/mayos_button.dart';
 import '../../../core/ui/mayos_text_field.dart';
 import '../../../providers.dart';
+import '../../../core/ui/mayos_error_text.dart';
 
 /// The read-only substitution slot shown before the player enters a reason.
 class ProgramSubstitutionRequestPrefill {
@@ -374,9 +375,9 @@ class _ProgramRequestDialogState extends State<ProgramRequestDialog> {
       ),
       if (_localError != null) ...<Widget>[
         const SizedBox(height: MayosSpacing.sm),
-        Text(
+        MayosErrorText(
           _localError!,
-          style: MayosTypography.of(context).bodySecondary.copyWith(color: colors.danger),
+          style: MayosTypography.of(context).bodySecondary,
         ),
       ],
     ];

@@ -198,8 +198,10 @@ class _CaptureFixture {
 }
 
 Future<void> _loadCaptureFonts() async {
-  final FontLoader playfair = FontLoader('PlayfairDisplay')
-    ..addFont(rootBundle.load('assets/fonts/PlayfairDisplay-Variable.ttf'));
+  final FontLoader display = FontLoader('BaiJamjuree')
+    ..addFont(rootBundle.load('assets/fonts/BaiJamjuree-Medium.ttf'))
+    ..addFont(rootBundle.load('assets/fonts/BaiJamjuree-SemiBold.ttf'))
+    ..addFont(rootBundle.load('assets/fonts/BaiJamjuree-Bold.ttf'));
   final FontLoader inter = FontLoader('Inter')
     ..addFont(rootBundle.load('assets/fonts/Inter-Variable.ttf'));
   final FontLoader arabic = FontLoader(MayosTypography.arabicFamily)
@@ -213,7 +215,7 @@ Future<void> _loadCaptureFonts() async {
   final FontLoader icons = FontLoader('MaterialIcons')
     ..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
   await Future.wait<void>(
-      <Future<void>>[playfair.load(), inter.load(), arabic.load(), icons.load()]);
+      <Future<void>>[display.load(), inter.load(), arabic.load(), icons.load()]);
 }
 
 Future<void> _startApp(

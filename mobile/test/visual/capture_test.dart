@@ -53,8 +53,10 @@ class _Surface {
 
 Future<void> _loadFonts() async {
   TestWidgetsFlutterBinding.ensureInitialized();
-  final FontLoader serif = FontLoader('PlayfairDisplay')
-    ..addFont(rootBundle.load('assets/fonts/PlayfairDisplay-Variable.ttf'));
+  final FontLoader serif = FontLoader('BaiJamjuree')
+    ..addFont(rootBundle.load('assets/fonts/BaiJamjuree-Medium.ttf'))
+    ..addFont(rootBundle.load('assets/fonts/BaiJamjuree-SemiBold.ttf'))
+    ..addFont(rootBundle.load('assets/fonts/BaiJamjuree-Bold.ttf'));
   final FontLoader sans = FontLoader('Inter')
     ..addFont(rootBundle.load('assets/fonts/Inter-Variable.ttf'));
   // The test bundle ships the Material icon font; without it, icons render as

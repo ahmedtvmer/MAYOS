@@ -13,6 +13,7 @@ import 'coach_food_log_view.dart';
 import 'coach_nutrition_draft_screen.dart';
 import 'nutrition_template_actions.dart';
 import '../../core/display_language/nutrition_draft_copy.dart';
+import '../../core/ui/mayos_error_text.dart';
 
 class CoachNutritionSegment extends ConsumerStatefulWidget {
   const CoachNutritionSegment({super.key, required this.assignmentId});
@@ -222,8 +223,7 @@ class _CoachNutritionSegmentState extends ConsumerState<CoachNutritionSegment>
         _targetsEditor(copy),
         _saveButton(copy),
         if (_error != null)
-          Text(_error!,
-              style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          MayosErrorText(_error!),
         const SizedBox(height: 20),
         _nutritionInsights(copy),
       ]);

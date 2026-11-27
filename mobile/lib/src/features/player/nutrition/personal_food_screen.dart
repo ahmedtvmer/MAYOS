@@ -9,6 +9,7 @@ import '../../../providers.dart';
 import 'food_nutrient_fields.dart';
 import '../../../core/connectivity_message.dart';
 import '../../../core/display_language/copy_context.dart';
+import '../../../core/ui/mayos_error_text.dart';
 
 class PersonalFoodScreen extends ConsumerStatefulWidget {
   const PersonalFoodScreen({this.initialName = '', super.key});
@@ -115,7 +116,7 @@ class _PersonalFoodScreenState extends ConsumerState<PersonalFoodScreen> {
           FoodNutrientFields(controllers: _fields, copy: copy,
             onChanged: () => setState(() {}), enabled: !_saving),
           if (!_valid) Text(copy.invalidNutrients),
-          if (_error != null) Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          if (_error != null) MayosErrorText(_error!),
           const SizedBox(height: 20),
           FilledButton(onPressed: _saving || !_valid ? null : _save,
             child: Text(_saving ? copy.saving : copy.save)),

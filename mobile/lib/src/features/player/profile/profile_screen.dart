@@ -28,6 +28,7 @@ import '../../../router.dart';
 import '../tour/tour_targets.dart';
 import '../tour/tour_controller.dart';
 import '../xp/xp_widgets.dart';
+import '../../../core/ui/mayos_error_text.dart';
 import '../onboarding/onboarding_widgets.dart'
     show isFieldAnswerValid, optionLabel;
 
@@ -715,7 +716,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
   }
 
   Widget _injuriesSection(ProfileCopy copy) {
-    final MayosThemeExtension c = MayosTheme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
@@ -806,9 +806,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
         if (_injuryFailure != null)
           Padding(
             padding: const EdgeInsets.only(top: MayosSpacing.xs),
-            child: Text(
+            child: MayosErrorText(
               displayCopyOf(context).failureMessage(_injuryFailure!),
-              style: MayosTypography.of(context).bodySecondary.copyWith(color: c.danger),
+              style: MayosTypography.of(context).bodySecondary,
             ),
           ),
         const SizedBox(height: MayosSpacing.xs),

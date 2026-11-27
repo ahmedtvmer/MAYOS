@@ -25,6 +25,7 @@ import 'coach_exercise_picker_dialog.dart';
 import 'program_import_files.dart';
 import 'program_publish_confirmation.dart';
 import 'program_template_save_sheet.dart';
+import '../../core/ui/mayos_error_text.dart';
 
 part 'program_editor/day_card.dart';
 part 'program_editor/exercise_card.dart';
@@ -1228,7 +1229,9 @@ class _CoachProgramDraftScreenState
                               MayosButton(
                                 key: const Key('program_draft_discard'),
                                 label: copy.discardDraft,
+                                icon: Icons.delete_outline,
                                 variant: MayosButtonVariant.tertiary,
+                                destructive: true,
                                 loading: _discarding,
                                 onPressed: _busy ? null : _discardDraft,
                               ),
@@ -1496,9 +1499,9 @@ Widget _editorErrorText(
   if (message == null) return const SizedBox.shrink();
   return Padding(
     padding: const EdgeInsets.only(top: MayosSpacing.xs),
-    child: Text(
+    child: MayosErrorText(
       message,
-      style: MayosTypography.of(context).body.copyWith(color: colors.danger),
+      style: MayosTypography.of(context).body,
     ),
   );
 }

@@ -7,10 +7,15 @@ enum MayosButtonVariant { primary, secondary, tertiary }
 
 /// MAYOS action button.
 ///
-/// Primary is a filled blue CTA; secondary is outlined; tertiary is a quiet
+/// Primary is a filled red CTA; secondary is outlined; tertiary is a quiet
 /// text action. All variants keep a >=48dp target, show a pressed state, and
-/// swap their label for a spinner while [loading]. [destructive] paints a
-/// primary button in the danger colour (account deletion, discards).
+/// swap their label for a spinner while [loading].
+///
+/// [destructive] paints the button in the danger colour. Danger shares the
+/// brand red (#885), so it is told apart by shape: on a screen a destructive
+/// action is a secondary (outlined) or tertiary (text) button with an [icon];
+/// only the final confirm button inside a confirm dialog or sheet is a filled
+/// destructive primary.
 class MayosButton extends StatelessWidget {
   const MayosButton({
     super.key,
@@ -45,7 +50,7 @@ class MayosButton extends StatelessWidget {
               strokeWidth: 2,
               color: variant == MayosButtonVariant.primary
                   ? (destructive ? c.onDanger : c.onAccent)
-                  : c.accent,
+                  : (destructive ? c.danger : c.accent),
             ),
           )
         : _content(context);
@@ -63,10 +68,19 @@ class MayosButton extends StatelessWidget {
         ),
       MayosButtonVariant.secondary => OutlinedButton(
           onPressed: enabled ? onPressed : null,
+          style: destructive
+              ? OutlinedButton.styleFrom(
+                  foregroundColor: c.danger,
+                  side: BorderSide(color: c.danger),
+                )
+              : null,
           child: child,
         ),
       MayosButtonVariant.tertiary => TextButton(
           onPressed: enabled ? onPressed : null,
+          style: destructive
+              ? TextButton.styleFrom(foregroundColor: c.danger)
+              : null,
           child: child,
         ),
     };

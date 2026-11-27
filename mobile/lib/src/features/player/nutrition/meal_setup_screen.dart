@@ -11,6 +11,7 @@ import '../tour/tour_targets.dart';
 import 'food_search_screen.dart';
 import '../../../core/connectivity_message.dart';
 import '../../../core/display_language/copy_context.dart';
+import '../../../core/ui/mayos_error_text.dart';
 
 class MealSetupEntry extends ConsumerWidget {
   const MealSetupEntry({super.key});
@@ -205,8 +206,7 @@ class _MealSetupScreenState extends ConsumerState<MealSetupScreen> {
                 setState(() => _vegetarian = selected)),
         _dislikedFoods(copy),
         if (_error != null)
-          Text(_error!,
-              style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          MayosErrorText(_error!),
         const SizedBox(height: 16),
         FilledButton(
             key: const Key('save_meal_setup'),

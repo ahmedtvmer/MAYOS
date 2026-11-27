@@ -22,6 +22,7 @@ import 'player_assignment_activity.dart';
 import '../../../providers.dart';
 import '../../../router.dart';
 import 'program_request_dialog.dart';
+import '../../../core/ui/mayos_error_text.dart';
 
 /// Player-side coaching assignment (#24).
 ///
@@ -233,6 +234,7 @@ class _PlayerAssignmentScreenState
           MayosButton(
             label: _copy.leaveCoach,
             expand: false,
+            destructive: true,
             onPressed: () => Navigator.of(context).pop(true),
           ),
         ],
@@ -349,9 +351,9 @@ class _PlayerAssignmentScreenState
               ),
             ),
             if (_requestError != null) ...<Widget>[
-              Text(
+              MayosErrorText(
                 displayCopyOf(context).failureMessage(_requestError!),
-                style: MayosTypography.of(context).bodySecondary.copyWith(color: c.danger),
+                style: MayosTypography.of(context).bodySecondary,
               ),
               const SizedBox(height: MayosSpacing.sm),
             ],
@@ -506,6 +508,7 @@ class _PlayerAssignmentScreenState
           label: _copy.leaveCoach,
           icon: Icons.link_off,
           variant: MayosButtonVariant.secondary,
+          destructive: true,
           expand: false,
           loading: _ending,
           onPressed: _ending ? null : _end,

@@ -36,6 +36,7 @@ import 'program_authority_recovery.dart';
 import 'program_change_summary_card.dart';
 import 'program_day_edit_dialog.dart';
 import 'preparing_program_banner.dart';
+import '../../../core/ui/mayos_error_text.dart';
 
 enum _SwapDirection { apply, undo }
 
@@ -1404,9 +1405,9 @@ class _ProgramTabState extends ConsumerState<ProgramTab>
           ],
           if (_actionError != null) ...<Widget>[
             const SizedBox(height: MayosSpacing.sm),
-            Text(
+            MayosErrorText(
               displayCopyOf(context).failureMessage(_actionError!),
-              style: MayosTypography.of(context).bodySecondary.copyWith(color: c.danger),
+              style: MayosTypography.of(context).bodySecondary,
             ),
           ],
           const SizedBox(height: MayosSpacing.md),

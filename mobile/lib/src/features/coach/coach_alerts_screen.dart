@@ -19,6 +19,7 @@ import '../../core/ui/mayos_card.dart';
 import '../../core/ui/mayos_phone_tap_target.dart';
 import '../../providers.dart';
 import 'coach_shared.dart';
+import '../../core/ui/mayos_error_text.dart';
 
 /// Coach alert centre (#31): lists missed expected-day alerts with their new /
 /// acknowledged / resolved state and lets the coach acknowledge or resolve
@@ -247,9 +248,9 @@ class _CoachAlertsScreenState extends ConsumerState<CoachAlertsScreen>
         if (_error != null)
           Padding(
             padding: const EdgeInsets.only(bottom: MayosSpacing.sm),
-            child: Text(
+            child: MayosErrorText(
               displayCopyOf(context).failureMessage(_error!),
-              style: MayosTypography.of(context).bodySecondary.copyWith(color: c.danger),
+              style: MayosTypography.of(context).bodySecondary,
             ),
           ),
         Wrap(

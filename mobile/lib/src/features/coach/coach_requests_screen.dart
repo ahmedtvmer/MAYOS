@@ -21,6 +21,7 @@ import '../../providers.dart';
 import '../../router.dart';
 import 'coach_request_sheet.dart';
 import 'coach_shared.dart';
+import '../../core/ui/mayos_error_text.dart';
 
 /// The Requests tab of the Coach mode shell (#121): every Assignment request
 /// across the roster from `GET /coach/program-requests`, pending first, then
@@ -356,10 +357,9 @@ class _CoachRequestDetailPaneState extends State<CoachRequestDetailPane> {
         if (widget.error != null)
           Padding(
             padding: const EdgeInsets.only(bottom: MayosSpacing.sm),
-            child: Text(
+            child: MayosErrorText(
               displayCopyOf(context).failureMessage(widget.error!),
-              style:
-                  MayosTypography.of(context).bodySecondary.copyWith(color: theme.danger),
+              style: MayosTypography.of(context).bodySecondary,
             ),
           ),
         MayosSectionHeader(title: copy.requestDetail),

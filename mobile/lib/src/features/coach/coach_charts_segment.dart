@@ -11,6 +11,7 @@ import '../../core/display_language/nutrition_copy.dart';
 import '../../core/models.dart';
 import '../../providers.dart';
 import '../nutrition/pace_proposal_card.dart';
+import '../../core/ui/mayos_error_text.dart';
 
 class CoachChartsSegment extends ConsumerStatefulWidget {
   const CoachChartsSegment({super.key, required this.assignmentId});
@@ -79,8 +80,7 @@ class _CoachChartsSegmentState extends ConsumerState<CoachChartsSegment>
       if (state.paceProposal != null) ...<Widget>[
         PaceProposalCard(proposal: state.paceProposal!, canDecide: state.authority == 'coach',
           busy: _deciding, onDecision: _decidePaceProposal),
-        if (_decisionError != null) Text(_decisionError!,
-            style: TextStyle(color: Theme.of(context).colorScheme.error)),
+        if (_decisionError != null) MayosErrorText(_decisionError!),
         const SizedBox(height: 12),
       ],
       Text(copy.coachWeightAdherence, style: Theme.of(context).textTheme.titleLarge),

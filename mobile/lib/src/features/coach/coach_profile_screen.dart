@@ -24,6 +24,7 @@ import '../../core/ui/is_desktop_layout.dart';
 import '../../providers.dart';
 import 'coach_program_templates_screen.dart';
 import 'coach_nutrition_templates_screen.dart';
+import '../../core/ui/mayos_error_text.dart';
 
 /// Coach profile tab of the Coach mode shell (#119): display name, bio,
 /// specialization, capacity, the player invite, assignment notices, and the
@@ -369,9 +370,9 @@ class _CoachProfileScreenState extends ConsumerState<CoachProfileScreen>
           ),
           if (_saveError != null) ...<Widget>[
             const SizedBox(height: MayosSpacing.sm),
-            Text(
+            MayosErrorText(
               displayCopyOf(context).failureMessage(_saveError!),
-              style: MayosTypography.of(context).bodySecondary.copyWith(color: c.danger),
+              style: MayosTypography.of(context).bodySecondary,
             ),
           ],
           const SizedBox(height: MayosSpacing.lg),
@@ -485,11 +486,9 @@ class _CoachProfileScreenState extends ConsumerState<CoachProfileScreen>
     if (_saveError == null) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.only(top: MayosSpacing.xs),
-      child: Text(
+      child: MayosErrorText(
         displayCopyOf(context).failureMessage(_saveError!),
-        style: MayosTypography.of(context)
-            .bodySecondary
-            .copyWith(color: colors.danger),
+        style: MayosTypography.of(context).bodySecondary,
       ),
     );
   }

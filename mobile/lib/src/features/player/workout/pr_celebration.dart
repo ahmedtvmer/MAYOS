@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/mayos_colors.dart';
+
 import '../../../core/display_language/workout_copy.dart';
 import '../../../core/personal_records.dart';
 
@@ -65,7 +67,7 @@ class _PrCelebrationState extends State<PrCelebration> with SingleTickerProvider
       child: Stack(
         fit: StackFit.expand,
         children: <Widget>[
-          const ColoredBox(color: Color(0xff07101f)),
+          const ColoredBox(color: MayosPalette.darkCanvas),
           if (!reduceMotion)
             IgnorePointer(
               child: AnimatedBuilder(
@@ -116,7 +118,7 @@ class PrConfettiPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    const List<Color> colors = <Color>[Color(0xff2f6bff), Color(0xffffd166), Colors.white];
+    const List<Color> colors = <Color>[MayosPalette.red, Color(0xffffd166), Colors.white];
     final Paint paint = Paint()..style = PaintingStyle.fill;
     final List<Offset> positions = particlePositions(size);
     for (int i = 0; i < positions.length; i++) {

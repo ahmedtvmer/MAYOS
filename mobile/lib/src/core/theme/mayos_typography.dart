@@ -30,17 +30,11 @@ final class MayosTypography {
     required this.serifMedium,
   });
 
-  static const String displayFamily = 'PlayfairDisplay';
+  static const String displayFamily = 'BaiJamjuree';
   static const String uiFamily = 'Inter';
   static const String arabicFamily = 'IBMPlexSansArabic';
   static const List<String> fontFamilyFallback = <String>[arabicFamily];
 
-  static const List<FontVariation> _serifSemiBold = <FontVariation>[
-    FontVariation('wght', 600),
-  ];
-  static const List<FontVariation> _serifMedium = <FontVariation>[
-    FontVariation('wght', 500),
-  ];
   static const List<FontVariation> _regular = <FontVariation>[
     FontVariation('wght', 400),
     FontVariation('opsz', 16),
@@ -81,7 +75,6 @@ final class MayosTypography {
       fontSize: 40,
       height: 1.08,
       fontWeight: FontWeight.w600,
-      fontVariations: _serifSemiBold,
       letterSpacing: -0.5,
     ),
     pageHeading: TextStyle(
@@ -90,7 +83,6 @@ final class MayosTypography {
       fontSize: 28,
       height: 1.15,
       fontWeight: FontWeight.w600,
-      fontVariations: _serifSemiBold,
       letterSpacing: -0.3,
     ),
     sectionHeading: TextStyle(
@@ -215,7 +207,6 @@ final class MayosTypography {
       fontFamily: displayFamily,
       fontFamilyFallback: fontFamilyFallback,
       fontWeight: FontWeight.w500,
-      fontVariations: _serifMedium,
     ),
   );
 

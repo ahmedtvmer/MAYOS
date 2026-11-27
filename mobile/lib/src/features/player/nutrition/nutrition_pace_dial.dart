@@ -8,6 +8,7 @@ import '../../../core/models.dart';
 import '../../../providers.dart';
 import '../../../core/connectivity_message.dart';
 import '../../../core/display_language/copy_context.dart';
+import '../../../core/ui/mayos_error_text.dart';
 
 class NutritionPaceDial extends ConsumerStatefulWidget {
   const NutritionPaceDial({required this.plan, this.initialGoal, super.key});
@@ -117,7 +118,7 @@ class _NutritionPaceDialState extends ConsumerState<NutritionPaceDial> {
           if (_preview?['reach_target_date'] != null)
             Text('${copy.reachTarget}: ${copy.formatDate(_preview!['reach_target_date'] as String)}'),
         ],
-        if (_error != null) Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+        if (_error != null) MayosErrorText(_error!),
         FilledButton(onPressed: _saving || _loading ? null : () => _save(copy), child: Text(copy.saveGoal)),
       ])));
   }

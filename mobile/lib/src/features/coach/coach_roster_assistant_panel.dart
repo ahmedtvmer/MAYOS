@@ -20,6 +20,7 @@ import '../../providers.dart';
 import 'coach_assistant_screen.dart';
 import 'coach_assistant_state.dart';
 import 'coach_roster_alias.dart';
+import '../../core/ui/mayos_error_text.dart';
 
 class CoachRosterAssistantPanel extends ConsumerStatefulWidget {
   const CoachRosterAssistantPanel({
@@ -231,10 +232,9 @@ class _CoachRosterAssistantPanelState
 
   Widget _errorMessage(MayosThemeExtension colors) => Padding(
     padding: const EdgeInsets.only(top: MayosSpacing.sm),
-    child: Text(
+    child: MayosErrorText(
       displayCopyOf(context).failureMessage(_error!),
-      style: MayosTypography.of(context).bodySecondary
-          .copyWith(color: colors.danger),
+      style: MayosTypography.of(context).bodySecondary,
     ),
   );
 
