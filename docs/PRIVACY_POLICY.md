@@ -300,6 +300,26 @@ requests. Please keep identifying details out of free-text fields.
 AI usage is metered per account and rate-limited, so a runaway client cannot
 consume unlimited model capacity.
 
+### Program import (Coaches)
+
+A Coach can import a Training program for a Player they are assigned to, by
+uploading a spreadsheet or text file (XLSX, CSV or TXT, up to 1 MB) or by
+pasting text.
+
+- The upload is read once to build an import review and is **not stored**.
+  Only the Training program draft the Coach checks and confirms is saved, as
+  part of that Player's program history.
+- A sheet in the **MAYOS template** is read by fixed rules; no part of it is
+  sent to a model.
+- Other sheets and pasted text are accepted **only when the operator has
+  enabled** free-form import. Then the sheet's cells (or the text) are sent to
+  the hosted model provider to translate them into a Training program, and
+  exercise names that don't match the Exercise library may be sent again for
+  suggestions. The request is attributed to the Coach's account in the model
+  usage records described above.
+- A sheet is whatever the Coach wrote. Coaches should keep names, contact
+  details and health information out of import files.
+
 ### Coach AI analysis (when enabled by the operator)
 
 An optional feature lets your coach ask a short analysis question about you in

@@ -59,9 +59,9 @@ comes after #740.
       listings (`docs/play/STORE_LISTING.md`).
 - [x] **Tester recruitment**: Google Group setup and EN/AR invite message in
       `docs/play/TESTERS.md` (#881).
-- [ ] **Owner check**: the privacy policy has no section on Coach Program
-      import files; add one or confirm coverage before declaring the
-      "Files and docs" row (`docs/play/DATA_SAFETY.md`).
+- [x] **Program import files** covered by policy 1.16 "Program import
+      (Coaches)" (#884) and declared as Files and docs in
+      `docs/play/DATA_SAFETY.md`.
 - [x] **Target API level**: `targetSdk = 36` and `compileSdk = 36` pinned
       explicitly in `mobile/android/app/build.gradle.kts` (minSdk stays 26),
       not relying on the Flutter default. Build toolchain (AGP 9.1.0 /

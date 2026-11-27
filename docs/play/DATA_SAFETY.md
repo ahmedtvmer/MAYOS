@@ -2,7 +2,7 @@
 
 Prepared for issue #750, updated for Nutrition in #881. Answer key for Play
 Console → **App content → Data safety**, derived from `docs/PRIVACY_POLICY.md`
-(version 1.15, effective 2026-11-23) and the closed-trial answer key in `docs/PLAY_RELEASE.md` §8. The
+(version 1.16, effective 2026-11-26) and the closed-trial answer key in `docs/PLAY_RELEASE.md` §8. The
 rule is unchanged: **the form may never contradict the published policy** —
 Play rejects apps whose Data safety form and privacy policy disagree, so fill
 the form only from what actually ships.
@@ -65,15 +65,13 @@ Notes on the crash-logs row (policy: "Error reporting (Sentry)"):
   program requests or contact details.
 - Debug and profile builds do not report to Sentry.
 
-**Coach Program import files** (XLSX/CSV/TXT a Coach uploads to import a
-Training program) are read for the import review and not kept; they are a
-Coach's own program sheets, not Player data. If Play's picker asks, declare
-**Files and docs**, processed ephemerally, purpose App functionality.
-**Owner check before submitting:** the privacy policy has no section on
-Program import files yet (only on imported *history*). Either add one, or
-confirm the policy wording covers it, before declaring this row — the form
-and the policy must agree. When the free-form AI import is enabled
-(`PROGRAM_IMPORT_AI_ENABLED`), the sheet content goes to the hosted model too.
+**Coach Program import files** (XLSX/CSV/TXT up to 1 MB, or pasted text, a
+Coach uploads to import a Training program; policy "Program import (Coaches)",
+#884) are read for one import review and not stored. Declare **Files and
+docs**: collected, **processed ephemerally**, optional, purpose App
+functionality, not shared. When free-form import is enabled
+(`PROGRAM_IMPORT_AI_ENABLED`), the content goes to the hosted model provider,
+which is a service provider, not sharing.
 
 Also collected but not a Play data-type row: the **Play install referrer is
 read once per install** and only parsed UTM labels (source/medium/campaign)
