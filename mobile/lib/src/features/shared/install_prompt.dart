@@ -19,6 +19,7 @@ import '../../providers.dart';
 import '../../router.dart';
 import '../player/tour/tour_controller.dart';
 import '../player/tour/tour_targets.dart';
+import '../../core/ui/mayos_logo.dart';
 
 final Provider<InstallPromptStore> installPromptStoreProvider =
     Provider<InstallPromptStore>((ref) => platform.createInstallPromptStore(
@@ -253,13 +254,10 @@ class _InstallPromptDialog extends ConsumerWidget {
                 icon: const Icon(Icons.close),
               ),
             ),
-            Image.asset(
-              colors.brightness == Brightness.dark
-                  ? 'assets/brand/mayos-mark-white.png'
-                  : 'assets/brand/mayos-mark-black.png',
-              width: 64,
-              height: 64,
-              semanticLabel: 'MAYOS',
+            Semantics(
+              label: 'MAYOS',
+              image: true,
+              child: const MayosBrandMark(size: 40),
             ),
             const SizedBox(height: MayosSpacing.md),
             Text(

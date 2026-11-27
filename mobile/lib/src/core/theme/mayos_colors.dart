@@ -12,6 +12,9 @@ abstract final class MayosPalette {
   static const Color blueDeep = Color(0xFF2563EB);
   static const Color bluePressedDeep = Color(0xFF1D4ED8);
 
+  // Logo red (#886): the dumbbell M and the app icon's mark.
+  static const Color red = Color(0xFFB3001B);
+
   // Dark surfaces — layered deep navy / blue-black.
   static const Color darkCanvas = Color(0xFF0A1422);
   static const Color darkSurface = Color(0xFF101D2E);

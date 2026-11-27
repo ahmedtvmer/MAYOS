@@ -24,8 +24,14 @@ re-encoded once with Pillow (`quality=80, optimize=True, progressive=True`) to
 strip metadata. No pixels were recoloured or retouched. Final file: **1080×1620,
 125,181 bytes (≈122 KB)** — under the ~400 KB budget.
 
-The photo is bundled only under `assets/images/`; it is never edited in place and
-its source is the page above.
+**Black and white (#886).** On 2026-11-27 the file was converted to greyscale
+with Pillow (`convert("L")`, contrast ×1.1) and re-saved with the same settings
+(`quality=80, optimize=True, progressive=True`), so its cold teal grade no
+longer clashes with the red-on-charcoal colours. The Unsplash License allows
+modification. Same crop and size; `web/mayos-loading-wallpaper.jpg` got the
+same conversion.
+
+The photo is bundled only under `assets/images/`; its source is the page above.
 
 ## Contrast on the wallpaper
 
@@ -39,25 +45,30 @@ since real display blur is proportionally larger), with the 60% black overlay
 composited in sRGB. Following the issue's guidance, the worst case is the
 photo's **95th-percentile** luminance after blur + overlay:
 
-- effective background p95 luminance = **0.0653**
-- absolute maximum (brightest specular pixel) = **0.1212**
+- effective background p95 luminance = **0.0692**
+- absolute maximum (brightest specular pixel) = **0.1329**
 
-Dark-theme tokens drawn directly on the photo, against p95 (WCAG AA body text
-needs 4.5:1; non-text UI needs 3:1):
+Re-measured on the black-and-white image (#886) with the neutral wallpaper
+tokens from #885. Dark-theme tokens drawn directly on the photo, against p95
+(WCAG AA body text needs 4.5:1; non-text UI needs 3:1):
 
 | Token | Colour | Contrast vs p95 | vs brightest pixel |
 | --- | --- | --- | --- |
-| `textPrimary` | `#F3F6FB` | 8.41:1 | 5.66:1 |
-| `textSecondary` (wallpaper) | `#C7D0DE` | 5.86:1 | 3.94:1 |
-| `textMuted` (wallpaper) | `#B7C3D4` | 5.10:1 | 3.44:1 |
-| link / progress (wallpaper) | `#A8C2FF` | 5.13:1 | 3.45:1 |
-| `success` | `#34D399` | 4.74:1 | 3.19:1 |
-| `danger` (wallpaper) | `#FCA5A5` | 4.80:1 | 3.23:1 |
-| field border (wallpaper) | `#8598B0` | 3.09:1 | — |
-| checkbox border (wallpaper) | `#9AACC2` | 3.93:1 | — |
+| `textPrimary` | `#F5F5F4` | 8.07:1 | 5.26:1 |
+| `textSecondary` (wallpaper) | `#D4D4D8` | 5.96:1 | 3.88:1 |
+| `textMuted` (wallpaper) | `#C4C4CA` | 5.07:1 | 3.31:1 |
+| link (wallpaper) | `#F5F5F4` | 8.07:1 | 5.26:1 |
+| `success` | `#34D399` | 4.58:1 | 2.99:1 |
+| `danger` (wallpaper) | `#FCA5A5` | 4.64:1 | 3.03:1 |
+| field border (wallpaper) | `#9A9AA2` | 3.15:1 | — |
+| checkbox border (wallpaper) | `#A1A1AA` | 3.44:1 | — |
 
-Field text sits on the opaque dark field fill `#101D2E`, not the photo:
-`textSecondary` on that fill is 10.9:1 and `textPrimary` 15.7:1.
+The red logo mark (`#B3001B`) measures about 1.2:1 against the photo: it reads
+by hue, not brightness. A logo has no WCAG contrast requirement, and Thomas
+chose the deep red with this in view.
+
+Field text sits on the opaque dark field fill `#1C1C1E`, not the photo:
+`textSecondary` on that fill is 11.5:1 and `textPrimary` 15.6:1.
 
 The wallpaper tokens live in `MayosPalette` (lightened from the dark theme) and
 are applied only on the wallpapered screens via `MayosTheme.wallpaper`; the

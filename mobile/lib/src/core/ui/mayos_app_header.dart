@@ -122,40 +122,18 @@ class MayosAppHeader extends StatelessWidget {
   }
 }
 
-/// The small-placement brand treatment: the supplied mark with a clean,
-/// letterspaced "MAYOS" wordmark stacked under it (never beside it), in the
-/// lockup's own face (A drawn as Λ) and the theme's primary text colour. The
-/// wordmark is a decorative label, so its text scaling is clamped to keep the
-/// header from crowding the actions at 320dp.
+/// The small-placement brand treatment (#886): the red dumbbell M alone, with
+/// no word under it. Screen readers still hear the brand name.
 class _MayosWordmark extends StatelessWidget {
   const _MayosWordmark({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final MayosThemeExtension c = MayosTheme.of(context);
     final String brandName = displayCopyOf(context).brandName;
-    return MediaQuery.withClampedTextScaling(
-      maxScaleFactor: 1.2,
-      child: Semantics(
-        label: brandName,
-        excludeSemantics: true,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            const MayosBrandMark(size: 22),
-            const SizedBox(height: 1),
-            Text(
-              'MAYOS',
-              style: MayosTypography.brandWordmark.copyWith(
-                fontSize: 8,
-                height: 1.1,
-                letterSpacing: 2.2,
-                color: c.textPrimary,
-              ),
-            ),
-          ],
-        ),
-      ),
+    return Semantics(
+      label: brandName,
+      excludeSemantics: true,
+      child: const MayosBrandMark(size: 24),
     );
   }
 }
