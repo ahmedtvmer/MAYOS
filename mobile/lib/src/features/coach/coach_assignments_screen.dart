@@ -624,18 +624,22 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
             actions: Row(
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
-                MayosButton(
-                  key: Key('roster_revoke_${entry.assignmentId}'),
-                  label: _busyAssignmentId == entry.assignmentId
-                      ? coachCopyOf(context).revoking
-                      : coachCopyOf(context).revoke,
-                  icon: Icons.person_remove_outlined,
-                  variant: MayosButtonVariant.tertiary,
-                  destructive: true,
-                  expand: false,
-                  onPressed: _busyAssignmentId == entry.assignmentId
-                      ? null
-                      : () => _revoke(entry),
+                // Flexible: on a narrow phone the label truncates instead of
+                // pushing the chevron past the card edge.
+                Flexible(
+                  child: MayosButton(
+                    key: Key('roster_revoke_${entry.assignmentId}'),
+                    label: _busyAssignmentId == entry.assignmentId
+                        ? coachCopyOf(context).revoking
+                        : coachCopyOf(context).revoke,
+                    icon: Icons.person_remove_outlined,
+                    variant: MayosButtonVariant.tertiary,
+                    destructive: true,
+                    expand: false,
+                    onPressed: _busyAssignmentId == entry.assignmentId
+                        ? null
+                        : () => _revoke(entry),
+                  ),
                 ),
                 Icon(
                   Icons.chevron_right,
