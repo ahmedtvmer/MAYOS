@@ -96,23 +96,32 @@ def greyscale_wallpaper(src, dst):
     im.convert("RGB").save(dst, quality=80, optimize=True, progressive=True)
 
 
-def lockup_png(dst, mark_h=160, gap=12):
-    font = ImageFont.truetype(str(MOBILE / "assets/fonts/MayosWordmark-SemiBold.ttf"), int(mark_h * 0.36))
-    spacing = int(mark_h * 0.36 * 0.42)
+def lockup_png(dst, height=480, gap=20):
+    """The splash lockup exactly as `MayosBrandLockup` lays it out, at 4x.
+
+    The web loading screen shows this image at the splash's lockup height, so
+    the hand-off to Flutter must not move anything: same mark height, fixed
+    gap (5 at the splash's 120 high, so 20 at 4x), word size 0.36 of the mark,
+    line height 1.2 and letter spacing 0.42em between letters, word centred.
+    """
+    mark_h = (height - gap) / (1 + 0.36 * 1.2)
+    size = mark_h * 0.36
+    font = ImageFont.truetype(str(MOBILE / "assets/fonts/MayosWordmark-SemiBold.ttf"), round(size))
+    spacing = size * 0.42
     letters = "MAYOS"
-    widths = [font.getbbox(ch)[2] - font.getbbox(ch)[0] for ch in letters]
-    word_w = sum(widths) + spacing * (len(letters) - 1)
-    asc, desc = font.getmetrics()
+    advances = [font.getlength(ch) for ch in letters]
+    word_w = sum(advances) + spacing * (len(letters) - 1)
     mark_w = mark_h * 400 / 240
-    W = int(max(mark_w, word_w)) + 8
-    H = int(mark_h + gap + asc + desc) + 4
-    img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    W = int(round(max(mark_w, word_w))) + 2
+    img = Image.new("RGBA", (W, int(round(height))), (0, 0, 0, 0))
     draw_mark(img, LOGO_RED, ((W - mark_w) / 2, 0, (W + mark_w) / 2, mark_h))
     d = ImageDraw.Draw(img)
+    line_top = mark_h + gap
+    baseline_mid = line_top + size * 1.2 / 2
     x = (W - word_w) / 2
-    for ch, w in zip(letters, widths):
-        d.text((x - font.getbbox(ch)[0], mark_h + gap), ch, font=font, fill=WORD + (255,))
-        x += w + spacing
+    for ch, adv in zip(letters, advances):
+        d.text((x, baseline_mid), ch, font=font, fill=WORD + (255,), anchor="lm")
+        x += adv + spacing
     img.save(dst, optimize=True)
 
 

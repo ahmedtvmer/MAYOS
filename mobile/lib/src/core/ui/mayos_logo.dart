@@ -136,8 +136,24 @@ class MayosBrandLockup extends StatelessWidget {
     final Color wordColor = resolved == MayosBrandVariant.white
         ? MayosPalette.darkTextPrimary
         : MayosPalette.lightTextPrimary;
+    // The word's laid-out height per unit of font size, measured rather than
+    // assumed, so mark + gap + word never exceeds [height].
+    final TextPainter probe = TextPainter(
+      text: TextSpan(
+        text: 'MAYOS',
+        style: MayosTypography.brandWordmark.copyWith(
+          fontSize: 100,
+          height: _wordLineHeight,
+          letterSpacing: 100 * _letterSpacing,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+      maxLines: 1,
+    )..layout();
+    final double wordPerFont = probe.height / 100;
+    probe.dispose();
     final double markHeight =
-        ((height - gap) / (1 + _wordToMark * _wordLineHeight))
+        ((height - gap) / (1 + _wordToMark * wordPerFont))
             .clamp(0.0, double.infinity);
     final double fontSize = markHeight * _wordToMark;
     return Semantics(
@@ -151,19 +167,14 @@ class MayosBrandLockup extends StatelessWidget {
           children: <Widget>[
             MayosBrandMark(size: markHeight),
             SizedBox(height: gap),
-            Padding(
-              // Letter spacing trails the last letter; the same space on the
-              // left keeps the word centred under the mark in both directions.
-              padding: EdgeInsets.only(left: fontSize * _letterSpacing),
-              child: Text(
-                'MAYOS',
-                textDirection: TextDirection.ltr,
-                style: MayosTypography.brandWordmark.copyWith(
-                  fontSize: fontSize,
-                  height: _wordLineHeight,
-                  letterSpacing: fontSize * _letterSpacing,
-                  color: wordColor,
-                ),
+            Text(
+              'MAYOS',
+              textDirection: TextDirection.ltr,
+              style: MayosTypography.brandWordmark.copyWith(
+                fontSize: fontSize,
+                height: _wordLineHeight,
+                letterSpacing: fontSize * _letterSpacing,
+                color: wordColor,
               ),
             ),
           ],
