@@ -142,11 +142,12 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
       rethrow;
     }
     final TrainingProgram? program = active.program;
-    if (accountId != null) {
+    // Check the load is still current (and the screen mounted) before reading
+    // providers after the await (#894).
+    if (accountId != null && _isCurrentLoad(generation, accountId)) {
       final PlayerProgramUpdate? sharedProgram =
           ref.read(playerProgramUpdateProvider);
-      if (_isCurrentLoad(generation, accountId) &&
-          (!active.fromCache || sharedProgram?.accountId != accountId)) {
+      if (!active.fromCache || sharedProgram?.accountId != accountId) {
         ref.read(playerProgramUpdateProvider.notifier).state =
             PlayerProgramUpdate(
           accountId: accountId,
@@ -396,9 +397,15 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
       });
     });
     return FutureBuilder<_DashboardData>(
+      // A new account starts from an empty snapshot, never the previous
+      // account's data.
+      key: ValueKey<String?>(accountId),
       future: _future,
       builder: (BuildContext context, AsyncSnapshot<_DashboardData> snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
+        // A refresh keeps the loaded Home on screen; the skeleton is only for
+        // the first load (#894).
+        if (snapshot.connectionState == ConnectionState.waiting &&
+            !snapshot.hasData) {
           return const _HomeSkeleton();
         }
         if (snapshot.hasError) {

@@ -4,6 +4,7 @@ import 'package:flutter_web_plugins/url_strategy.dart';
 
 import 'src/app.dart';
 import 'src/core/error_reporting.dart';
+import 'src/core/foreground_policy.dart';
 
 Future<void> main() async {
   // Clean URLs on web: the browser path is the route, no '#' fragment (#127).
@@ -11,5 +12,11 @@ Future<void> main() async {
   usePathUrlStrategy();
   WidgetsFlutterBinding.ensureInitialized();
   await initializeErrorReporting();
-  runApp(const ProviderScope(child: MayosApp()));
+  runApp(ProviderScope(
+    overrides: <Override>[
+      // Release timings for resume refreshes and the offline banner (#894).
+      foregroundPolicyProvider.overrideWithValue(ForegroundPolicy.release),
+    ],
+    child: const MayosApp(),
+  ));
 }

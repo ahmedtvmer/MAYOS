@@ -12,6 +12,7 @@ import 'core/error_reporting.dart';
 import 'core/app_display_mode.dart';
 import 'core/app_mode.dart';
 import 'core/connectivity.dart';
+import 'core/foreground_policy.dart';
 import 'core/display_language/controller.dart';
 import 'core/first_touch.dart';
 import 'core/models.dart';
@@ -49,6 +50,8 @@ class _MayosAppState extends ConsumerState<MayosApp>
   bool _analyticsLaunchTracked = false;
   late final ProviderSubscription<AuthState> _analyticsAuthSubscription;
   ProviderSubscription<bool>? _connectivitySubscription;
+  late final ResumeGate _resumeGate =
+      ResumeGate(ref.read(foregroundPolicyProvider).resumeRefreshAfter);
   StreamSubscription<SharedProgramText>? _sharedTextSubscription;
 
   @override
@@ -177,11 +180,14 @@ class _MayosAppState extends ConsumerState<MayosApp>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    // A real return to the app, not the notification shade or a dialog (#894).
+    final bool returned = _resumeGate.onLifecycle(state);
     if (state == AppLifecycleState.resumed) {
+      ref.read(draftSyncServiceProvider).resumeForeground();
+      if (!returned) return;
       unawaited(ref.read(appUpdateRequiredProvider.notifier).checkPolicy());
       // Grants/revocations can happen elsewhere; refresh live capabilities.
       unawaited(ref.read(authControllerProvider.notifier).refreshAccount());
-      ref.read(draftSyncServiceProvider).resumeForeground();
       // Picks up program, training-day and setting changes made elsewhere (#840).
       unawaited(ref.read(localReminderSyncProvider).sync());
     } else if (state == AppLifecycleState.paused) {

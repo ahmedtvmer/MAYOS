@@ -98,7 +98,7 @@ class _ProgramTabState extends ConsumerState<ProgramTab>
         _dismissingProgramDesignOffer) {
       return;
     }
-    await _load();
+    await _load(quiet: true);
   }
 
   bool _loading = true;
@@ -142,7 +142,10 @@ class _ProgramTabState extends ConsumerState<ProgramTab>
   String? get _accountId =>
       ref.read(authControllerProvider).session?.account.accountId;
 
-  Future<void> _load() async {
+  /// [quiet] refreshes a loaded program in place: no spinner, and a failed
+  /// refresh keeps what is on screen (#894).
+  Future<void> _load({bool quiet = false}) async {
+    final bool keepContent = quiet && _program != null;
     final String? accountId = _accountId;
     if (accountId != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -155,9 +158,11 @@ class _ProgramTabState extends ConsumerState<ProgramTab>
       });
     }
     setState(() {
-      _loading = true;
+      if (!keepContent) {
+        _loading = true;
+        _bestE1rmByExercise = <String, double>{};
+      }
       _loadError = null;
-      _bestE1rmByExercise = <String, double>{};
     });
     final WorkoutCacheStore cache = ref.read(workoutCacheStoreProvider);
     try {
@@ -187,7 +192,9 @@ class _ProgramTabState extends ConsumerState<ProgramTab>
       unawaited(_loadBestE1rm(accountId));
     } on ApiException catch (error) {
       if (!mounted) return;
-      if (accountId != null &&
+      // A failed quiet refresh keeps the loaded program and its controls.
+      if (!keepContent &&
+          accountId != null &&
           ref.read(authControllerProvider.notifier).ownsAccount(accountId)) {
         ref.read(programFeatureAvailabilityProvider.notifier).state =
             ProgramFeatureAvailability(
@@ -196,7 +203,7 @@ class _ProgramTabState extends ConsumerState<ProgramTab>
         );
       }
       setState(() {
-        _loadError = apiFailureMessage(error);
+        if (!keepContent) _loadError = apiFailureMessage(error);
         _loading = false;
       });
     }

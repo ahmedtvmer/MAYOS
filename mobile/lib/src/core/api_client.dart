@@ -7,6 +7,7 @@ import 'package:dio/dio.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
 import 'error_reporting.dart';
+import 'http_adapter.dart' if (dart.library.io) 'http_adapter_io.dart';
 import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb;
 
@@ -195,7 +196,8 @@ class ApiClient {
         _clientHeader = (clientHeaderLoader ?? _loadClientHeader)(),
         _buildHeader = (buildHeaderLoader ?? _loadBuildHeader)(),
         _displayLanguageLoader = displayLanguageLoader ?? (() => 'en'),
-        _retryDelay = retryDelay {
+        _retryDelay = retryDelay,
+        _ownsAdapter = adapter == null {
     _dio = Dio(
       BaseOptions(
         baseUrl: baseUrl,
@@ -205,7 +207,8 @@ class ApiClient {
         responseType: ResponseType.json,
       ),
     );
-    _dio.httpClientAdapter = adapter ?? _dio.httpClientAdapter;
+    _dio.httpClientAdapter =
+        adapter ?? createAppHttpAdapter() ?? _dio.httpClientAdapter;
     _dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: _attachToken,
@@ -334,6 +337,20 @@ class ApiClient {
   void Function(AppVersionPolicy policy)? onAppUpdateRequired;
 
   Dio get dio => _dio;
+
+  final bool _ownsAdapter;
+
+  /// Drops pooled connections after the app returns from the background
+  /// (#894). A frozen app's idle sockets are often dead, and reusing them makes
+  /// the first requests fail. In-flight requests finish on the old adapter.
+  void resetConnections() {
+    if (!_ownsAdapter || _disposed) return;
+    final HttpClientAdapter? fresh = createAppHttpAdapter();
+    if (fresh == null) return;
+    final HttpClientAdapter previous = _dio.httpClientAdapter;
+    _dio.httpClientAdapter = fresh;
+    previous.close();
+  }
 
   /// Cancels requests that belonged to the session that just ended.
   Future<void> cancelAuthenticatedRequests() async {
