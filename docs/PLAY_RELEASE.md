@@ -105,18 +105,19 @@ ANDROID_APP_SHA256_CERT_FINGERPRINTS=AA:BB:…,DD:EE:…
 ## 6. Build the signed artifact
 
 ```bash
-cd mobile
-flutter pub get
-GOOGLE_WEB_CLIENT_ID="<web-client-id>.apps.googleusercontent.com"
-POSTHOG_CLIENT_KEY="phc_<public-posthog-project-key>"   # same key as the web build; see DEPLOYMENT.md section 12
-flutter build appbundle --release \
-  -PappLinkHost=api.mayos.online \
-  --dart-define=MAYOS_API_BASE_URL=https://api.mayos.online \
-  --dart-define=GOOGLE_WEB_CLIENT_ID="$GOOGLE_WEB_CLIENT_ID" \
-  --dart-define=POSTHOG_CLIENT_KEY="$POSTHOG_CLIENT_KEY"
-# → build/app/outputs/bundle/release/app-release.aab
+scripts/build_android_release.sh
+# → mobile/build/app/outputs/bundle/release/app-release.aab
 ```
 
+The script reads `GOOGLE_WEB_CLIENT_ID`, `SENTRY_APP_DSN` and optional
+`POSTHOG_CLIENT_KEY` from the shell or from `MAYOS_ANDROID_ENV` (default: the
+gitignored repo-root `.env`), and passes them with `MAYOS_API_BASE_URL`,
+`SENTRY_RELEASE=mayos-mobile@<versionName>+<versionCode>` and
+`SENTRY_ENVIRONMENT=production` (#895).
+
+- [ ] `SENTRY_APP_DSN` is the **mayos-app** project's DSN. The script refuses
+      to build when it is missing or equals the server `SENTRY_DSN`; build 3
+      reported app crashes to `mayos-api` with release `unknown` because of that.
 - [ ] `MAYOS_API_BASE_URL` is **required** in release builds
       (`mobile/lib/src/core/config.dart` fails fast without it) and must be
       https.
