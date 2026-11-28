@@ -26,6 +26,11 @@ subprojects {
         pluginManager.withPlugin("com.android.library") {
             pluginManager.apply("org.jetbrains.kotlin.android")
         }
+        // Its Java compiles for 17; without this its Kotlin targets whatever
+        // JDK runs Gradle (25 with Android Studio's JBR) and the build fails.
+        tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+            compilerOptions.jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+        }
     }
 }
 
