@@ -151,19 +151,14 @@ class MayosBrandLockup extends StatelessWidget {
           children: <Widget>[
             MayosBrandMark(size: markHeight),
             SizedBox(height: gap),
-            Padding(
-              // Letter spacing trails the last letter; the same space on the
-              // left keeps the word centred under the mark in both directions.
-              padding: EdgeInsets.only(left: fontSize * _letterSpacing),
-              child: Text(
-                'MAYOS',
-                textDirection: TextDirection.ltr,
-                style: MayosTypography.brandWordmark.copyWith(
-                  fontSize: fontSize,
-                  height: _wordLineHeight,
-                  letterSpacing: fontSize * _letterSpacing,
-                  color: wordColor,
-                ),
+            Text(
+              'MAYOS',
+              textDirection: TextDirection.ltr,
+              style: MayosTypography.brandWordmark.copyWith(
+                fontSize: fontSize,
+                height: _wordLineHeight,
+                letterSpacing: fontSize * _letterSpacing,
+                color: wordColor,
               ),
             ),
           ],
