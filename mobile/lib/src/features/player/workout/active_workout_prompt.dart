@@ -57,7 +57,9 @@ Future<ActiveWorkoutPromptChoice?> showActiveWorkoutPrompt(
       actions: <Widget>[
         MayosButton(
           label: copy.discard,
+          icon: Icons.delete_outline,
           variant: MayosButtonVariant.tertiary,
+          destructive: true,
           expand: false,
           onPressed: () =>
               Navigator.of(context).pop(ActiveWorkoutPromptChoice.discard),

@@ -629,7 +629,9 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
                   label: _busyAssignmentId == entry.assignmentId
                       ? coachCopyOf(context).revoking
                       : coachCopyOf(context).revoke,
+                  icon: Icons.person_remove_outlined,
                   variant: MayosButtonVariant.tertiary,
+                  destructive: true,
                   expand: false,
                   onPressed: _busyAssignmentId == entry.assignmentId
                       ? null
