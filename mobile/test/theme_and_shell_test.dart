@@ -17,6 +17,7 @@ import 'package:mayos_mobile/src/core/ui/mayos_bottom_navigation.dart';
 import 'package:mayos_mobile/src/features/shared/mode_switch.dart';
 import 'package:mayos_mobile/src/providers.dart';
 import 'package:mayos_mobile/src/router.dart';
+import 'package:mayos_mobile/src/core/ui/mayos_logo.dart';
 
 import 'support/fake_mayos_api.dart';
 
@@ -241,9 +242,10 @@ void main() {
     // The Progress tab also renders its own serif title, so the label may
     // appear more than once; the nav items list above is the authoritative check.
     expect(find.text('Progress'), findsWidgets);
-    // Header: the brand, the profile avatar and Settings; the chat icon now
-    // lives only in the bottom bar (#789).
-    expect(find.text('MAYOS'), findsOneWidget);
+    // Header: the brand mark (no word under it since #886), the profile avatar
+    // and Settings; the chat icon now lives only in the bottom bar (#789).
+    expect(find.byType(MayosBrandMark), findsOneWidget);
+    expect(find.text('MAYOS'), findsNothing);
     expect(find.byIcon(Icons.settings_outlined), findsOneWidget);
     expect(find.byKey(PlayerShell.profileAvatarKey), findsOneWidget);
     expect(find.text('AL'), findsOneWidget);
