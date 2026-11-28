@@ -108,11 +108,47 @@ class _DeleteAccountPasswordFieldState
       );
 }
 
-mixin _AccountSecurityMethods on ConsumerState<AccountSecuritySection> {
+/// Owns the password dialog's three fields, so they live exactly as long as
+/// the dialog route. Changing a password ends the session and closes Settings
+/// while the dialog is still animating out; fields owned by the section would
+/// be disposed under the closing dialog.
+class _PasswordDialogFields extends StatefulWidget {
+  const _PasswordDialogFields({required this.builder});
+
+  final Widget Function(
+    BuildContext context,
+    TextEditingController currentPassword,
+    TextEditingController newPassword,
+    TextEditingController newPasswordConfirm,
+  ) builder;
+
+  @override
+  State<_PasswordDialogFields> createState() => _PasswordDialogFieldsState();
+}
+
+class _PasswordDialogFieldsState extends State<_PasswordDialogFields> {
   final TextEditingController _currentPassword = TextEditingController();
   final TextEditingController _newPassword = TextEditingController();
   final TextEditingController _newPasswordConfirm = TextEditingController();
 
+  @override
+  void dispose() {
+    _currentPassword.dispose();
+    _newPassword.dispose();
+    _newPasswordConfirm.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.builder(
+        context,
+        _currentPassword,
+        _newPassword,
+        _newPasswordConfirm,
+      );
+}
+
+mixin _AccountSecurityMethods on ConsumerState<AccountSecuritySection> {
   late Account _account;
   bool _methodBusy = false;
   String? _methodNotice;
@@ -146,14 +182,6 @@ mixin _AccountSecurityMethods on ConsumerState<AccountSecuritySection> {
     if (oldWidget.account != widget.account) {
       _account = widget.account;
     }
-  }
-
-  @override
-  void dispose() {
-    _currentPassword.dispose();
-    _newPassword.dispose();
-    _newPasswordConfirm.dispose();
-    super.dispose();
   }
 
   /// Re-reads `GET /auth/me` after a sign-in-method change, so the section
@@ -320,8 +348,9 @@ mixin _AccountSecurityMethods on ConsumerState<AccountSecuritySection> {
   /// sets its first password, an account with one replaces it. Only the
   /// wording, the optional "current password" field, and [onSubmit] differ.
   ///
-  /// The password fields live at section level because changing a password
-  /// can switch the session while the dialog route is still animating out.
+  /// The fields belong to the dialog route ([_PasswordDialogFields]) because
+  /// changing a password can switch the session while the route is still
+  /// animating out.
   Future<void> _promptPasswordDialog({
     required String title,
     required String intro,
@@ -335,109 +364,114 @@ mixin _AccountSecurityMethods on ConsumerState<AccountSecuritySection> {
     required Future<void> Function(String current, String password) onSubmit,
   }) async {
     if (_methodBusy) return;
-    _currentPassword.clear();
-    _newPassword.clear();
-    _newPasswordConfirm.clear();
     bool busy = false;
     bool done = false;
     String? error;
     FailureMessage? dialogFailure;
     await showDialog<void>(
       context: context,
-      builder: (BuildContext dialogContext) => StatefulBuilder(
-        builder: (BuildContext context, StateSetter setDialogState) =>
-            AlertDialog(
-          title: Text(title),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Text(intro),
-                const SizedBox(height: MayosSpacing.md),
-                if (askCurrent) ...<Widget>[
+      builder: (BuildContext dialogContext) => _PasswordDialogFields(
+        builder: (
+          BuildContext fieldsContext,
+          TextEditingController currentPassword,
+          TextEditingController newPassword,
+          TextEditingController newPasswordConfirm,
+        ) =>
+            StatefulBuilder(
+          builder: (BuildContext context, StateSetter setDialogState) =>
+              AlertDialog(
+            title: Text(title),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(intro),
+                  const SizedBox(height: MayosSpacing.md),
+                  if (askCurrent) ...<Widget>[
+                    AuthPasswordField(
+                      controller: currentPassword,
+                      fieldKey: currentKey,
+                      label: _copy.currentPassword,
+                    ),
+                    const SizedBox(height: MayosSpacing.sm),
+                  ],
                   AuthPasswordField(
-                    controller: _currentPassword,
-                    fieldKey: currentKey,
-                    label: _copy.currentPassword,
+                    controller: newPassword,
+                    fieldKey: passwordKey,
+                    label: _copy.newPassword,
                   ),
                   const SizedBox(height: MayosSpacing.sm),
-                ],
-                AuthPasswordField(
-                  controller: _newPassword,
-                  fieldKey: passwordKey,
-                  label: _copy.newPassword,
-                ),
-                const SizedBox(height: MayosSpacing.sm),
-                AuthPasswordField(
-                  controller: _newPasswordConfirm,
-                  fieldKey: confirmFieldKey,
-                  label: _copy.confirmNewPassword,
-                ),
-                if (error != null || dialogFailure != null) ...<Widget>[
-                  const SizedBox(height: MayosSpacing.sm),
-                  Text(
-                    error ??
-                        MayosCopy(_language)
-                            .failureMessage(dialogFailure!),
-                    style: MayosTypography.of(context).bodySecondary
-                        .copyWith(color: MayosTheme.of(context).danger),
+                  AuthPasswordField(
+                    controller: newPasswordConfirm,
+                    fieldKey: confirmFieldKey,
+                    label: _copy.confirmNewPassword,
                   ),
+                  if (error != null || dialogFailure != null) ...<Widget>[
+                    const SizedBox(height: MayosSpacing.sm),
+                    Text(
+                      error ??
+                          MayosCopy(_language).failureMessage(dialogFailure!),
+                      style: MayosTypography.of(context)
+                          .bodySecondary
+                          .copyWith(color: MayosTheme.of(context).danger),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
-          ),
-          actions: <Widget>[
-            MayosButton(
-              label: _copy.cancel,
-              variant: MayosButtonVariant.tertiary,
-              expand: false,
-              onPressed: busy ? null : () => Navigator.of(dialogContext).pop(),
-            ),
-            MayosButton(
-              key: submitKey,
-              label: confirmLabel,
-              expand: false,
-              loading: busy,
-              onPressed: busy
-                  ? null
-                  : () async {
-                      if (askCurrent && _currentPassword.text.isEmpty) {
-                        setDialogState(
-                            () => error = _copy.enterCurrentPassword);
-                        return;
-                      }
-                      final NewPasswordValidation? invalid =
-                          validateNewPassword(
-                              _newPassword.text, _newPasswordConfirm.text);
-                      if (invalid != null) {
-                        final MayosCopy copy =
-                            MayosCopy(_language);
-                        setDialogState(() => error =
-                            newPasswordValidationMessage(invalid, copy));
-                        return;
-                      }
-                      setDialogState(() {
-                        busy = true;
-                        error = null;
-                        dialogFailure = null;
-                      });
-                      try {
-                        await onSubmit(
-                            _currentPassword.text, _newPassword.text);
-                        done = true;
-                        if (dialogContext.mounted) {
-                          Navigator.of(dialogContext).pop();
+            actions: <Widget>[
+              MayosButton(
+                label: _copy.cancel,
+                variant: MayosButtonVariant.tertiary,
+                expand: false,
+                onPressed:
+                    busy ? null : () => Navigator.of(dialogContext).pop(),
+              ),
+              MayosButton(
+                key: submitKey,
+                label: confirmLabel,
+                expand: false,
+                loading: busy,
+                onPressed: busy
+                    ? null
+                    : () async {
+                        if (askCurrent && currentPassword.text.isEmpty) {
+                          setDialogState(
+                              () => error = _copy.enterCurrentPassword);
+                          return;
                         }
-                      } on ApiException catch (apiError) {
+                        final NewPasswordValidation? invalid =
+                            validateNewPassword(
+                                newPassword.text, newPasswordConfirm.text);
+                        if (invalid != null) {
+                          final MayosCopy copy = MayosCopy(_language);
+                          setDialogState(() => error =
+                              newPasswordValidationMessage(invalid, copy));
+                          return;
+                        }
                         setDialogState(() {
-                          busy = false;
-                          dialogFailure = _accountMutationFailure(apiError);
+                          busy = true;
+                          error = null;
+                          dialogFailure = null;
                         });
-                      }
-                    },
-            ),
-          ],
+                        try {
+                          await onSubmit(
+                              currentPassword.text, newPassword.text);
+                          done = true;
+                          if (dialogContext.mounted) {
+                            Navigator.of(dialogContext).pop();
+                          }
+                        } on ApiException catch (apiError) {
+                          setDialogState(() {
+                            busy = false;
+                            dialogFailure = _accountMutationFailure(apiError);
+                          });
+                        }
+                      },
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -516,9 +550,9 @@ mixin _AccountSecurityMethods on ConsumerState<AccountSecuritySection> {
                   const SizedBox(height: MayosSpacing.sm),
                   Text(
                     error ??
-                        MayosCopy(_language)
-                            .failureMessage(dialogFailure!),
-                    style: MayosTypography.of(context).bodySecondary
+                        MayosCopy(_language).failureMessage(dialogFailure!),
+                    style: MayosTypography.of(context)
+                        .bodySecondary
                         .copyWith(color: MayosTheme.of(context).danger),
                   ),
                 ],
@@ -706,7 +740,9 @@ mixin _AccountSecurityMethods on ConsumerState<AccountSecuritySection> {
         child: Text(
           notice,
           style: _methodNoticeIsError
-              ? MayosTypography.of(context).bodySecondary.copyWith(color: c.danger)
+              ? MayosTypography.of(context)
+                  .bodySecondary
+                  .copyWith(color: c.danger)
               : MayosTypography.of(context).body,
         ),
       ),
