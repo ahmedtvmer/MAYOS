@@ -2362,6 +2362,33 @@ void main() {
     expect(tester.state(find.byType(DashboardTab)), same(homeState));
   });
 
+  testWidgets('a resume refresh keeps loaded Home on screen (#894)', (tester) async {
+    final FakeMayosApi fake = _signedInFake();
+    await _pumpHome(tester, fake);
+    await _pumpUntilFound(tester, find.byKey(DashboardTab.listKey));
+    int programReads() => fake.adapter.requests
+        .where((FakeRequest request) => request.path == '/programs/active')
+        .length;
+    final int readsBefore = programReads();
+    final Completer<void> release = Completer<void>();
+    fake.adapter.beforeRespond = (FakeRequest request) async {
+      if (request.path == '/programs/active') await release.future;
+    };
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    // The refresh is still waiting, yet Home keeps its loaded list.
+    expect(programReads(), greaterThan(readsBefore));
+    expect(find.byKey(DashboardTab.listKey), findsOneWidget);
+
+    release.complete();
+    await tester.pumpAndSettle();
+    expect(find.byKey(DashboardTab.listKey), findsOneWidget);
+  });
+
   testWidgets('Home sharing survives Home disposal while the gallery is open', (tester) async {
     final Completer<XFile?> pendingPicker = Completer<XFile?>();
     final Completer<Uint8List> pendingCapture = Completer<Uint8List>();

@@ -5,12 +5,22 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'api_client.dart';
 import 'connectivity.dart';
+import 'foreground_policy.dart';
+import '../providers.dart';
 
 /// Recovery comes from an explicit browser event or app resume, never from an
 /// API response: refreshing must not trigger another round of refreshing.
 final StateNotifierProvider<ReconnectController, int> reconnectProvider =
     StateNotifierProvider<ReconnectController, int>((ref) {
-  final ReconnectController controller = ReconnectController();
+  final Duration? resumeRefreshAfter =
+      ref.read(foregroundPolicyProvider).resumeRefreshAfter;
+  final ReconnectController controller = ReconnectController(
+    resumeGate: ResumeGate(resumeRefreshAfter),
+    // Only the release policy resets connections; tests keep their adapters.
+    onReturn: resumeRefreshAfter == null
+        ? null
+        : () => ref.read(apiClientProvider).resetConnections(),
+  );
   WidgetsBinding.instance.addObserver(controller);
   final StreamSubscription<bool> subscription = ref
       .watch(browserConnectivityEventsProvider)
@@ -24,7 +34,13 @@ final StateNotifierProvider<ReconnectController, int> reconnectProvider =
 
 class ReconnectController extends StateNotifier<int>
     with WidgetsBindingObserver {
-  ReconnectController() : super(0);
+  ReconnectController({ResumeGate? resumeGate, VoidCallback? onReturn})
+      : _resumeGate = resumeGate ?? ResumeGate(null),
+        _onReturn = onReturn,
+        super(0);
+
+  final ResumeGate _resumeGate;
+  final VoidCallback? _onReturn;
 
   bool _receivedBrowserState = false;
 
@@ -37,7 +53,11 @@ class ReconnectController extends StateNotifier<int>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState lifecycle) {
-    if (lifecycle == AppLifecycleState.resumed) state += 1;
+    // Only a real return refreshes; the shade or a dialog does not (#894).
+    if (!_resumeGate.onLifecycle(lifecycle)) return;
+    // Fresh connections first, so the refetch below does not reuse dead ones.
+    _onReturn?.call();
+    state += 1;
   }
 }
 

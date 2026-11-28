@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -193,6 +194,38 @@ Future<void> _openSettings(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('leaving chat while its history loads uses no disposed screen (#894)',
+      (tester) async {
+    final FakeMayosApi fake = _fakePlayer('alice');
+    await _pumpChat(tester, fake, store: InMemoryChatCacheStore());
+    final Completer<void> release = Completer<void>();
+    fake.adapter.beforeRespond = (FakeRequest request) async {
+      if (request.path == '/chat/history') await release.future;
+    };
+    // A resume refetches the visible chat; its history request is held.
+    // Step through Android's real transitions: chat listens to lifecycle.
+    for (final AppLifecycleState state in <AppLifecycleState>[
+      AppLifecycleState.inactive,
+      AppLifecycleState.hidden,
+      AppLifecycleState.paused,
+      AppLifecycleState.hidden,
+      AppLifecycleState.inactive,
+      AppLifecycleState.resumed,
+    ]) {
+      tester.binding.handleAppLifecycleStateChanged(state);
+    }
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('chat_composer')), findsNothing);
+
+    release.complete();
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
   test('chat message limit and localized counter copy match the service', () {
     expect(chatMessageMaxChars, 400);
     const MayosCopy english = MayosCopy('en');
