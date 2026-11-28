@@ -105,7 +105,8 @@ void main() {
           await _pumpThemed(tester, MayosBrandLockup(height: height, gap: gap),
               brightness: Brightness.dark);
           final Rect mark = tester.getRect(find.byType(MayosBrandMark));
-          final Rect text = tester.getRect(find.text('MAYOS'));
+          final Rect text = tester.getRect(
+              find.byKey(const ValueKey<String>('mayos_brand_word')));
           expect(text.top - mark.bottom, closeTo(gap, 0.01),
               reason: 'height $height');
           expect(text.center.dx, closeTo(mark.center.dx, 1.0));
