@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build the signed Android App Bundle for Google Play (#895).
 #
-#   scripts/build_android_release.sh
+#   scripts/build_android_release.sh [extra flutter build args...]
 #
 # Signing comes from mobile/android/key.properties (gitignored, see
 # docs/PLAY_RELEASE.md §3-4). Build values come from the environment or from a
@@ -62,5 +62,5 @@ echo "Building $release against $api_url"
 cd "$repo_root/mobile"
 flutter build appbundle --release \
   -PappLinkHost="${api_url#https://}" \
-  "${defines[@]}"
+  "${defines[@]}" "$@"
 echo "Bundle: mobile/build/app/outputs/bundle/release/app-release.aab ($release)"
