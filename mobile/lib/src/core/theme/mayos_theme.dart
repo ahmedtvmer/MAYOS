@@ -200,7 +200,9 @@ abstract final class MayosTheme {
           minimumSize: const WidgetStatePropertyAll<Size>(Size(48, 48)),
           foregroundColor: WidgetStateProperty.resolveWith((states) {
             if (states.contains(WidgetState.disabled)) return c.textDisabled;
-            return link;
+            // Plain text buttons use the text colour (#885 decision B); red is
+            // for filled buttons, links and destructive actions.
+            return linkColor ?? c.textPrimary;
           }),
           overlayColor: WidgetStatePropertyAll<Color>(c.accentSubtle),
           padding: const WidgetStatePropertyAll<EdgeInsets>(
@@ -232,7 +234,7 @@ abstract final class MayosTheme {
         errorStyle: textTheme.bodySmall?.copyWith(color: c.danger),
         border: inputBorder(c.border),
         enabledBorder: inputBorder(c.border),
-        focusedBorder: inputBorder(link, 1.6),
+        focusedBorder: inputBorder(linkColor ?? c.focusRing, 1.6),
         errorBorder: inputBorder(c.danger),
         focusedErrorBorder: inputBorder(c.danger, 1.6),
         disabledBorder: inputBorder(c.border.withValues(alpha: 0.5)),

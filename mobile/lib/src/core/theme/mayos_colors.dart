@@ -22,7 +22,7 @@ abstract final class MayosPalette {
   static const Color darkSecondarySurface = Color(0xFF18181A);
   static const Color darkBorder = Color(0xFF2B2B30);
   static const Color darkBorderStrong = Color(0xFF3D3D44);
-  static const Color darkSelectedSurface = Color(0xFF3A0E14);
+  static const Color darkSelectedSurface = Color(0xFF2A2A2E);
 
   static const Color darkTextPrimary = Color(0xFFF5F5F4);
   static const Color darkTextSecondary = Color(0xFFB3B3BA);
@@ -36,7 +36,7 @@ abstract final class MayosPalette {
   static const Color lightSecondarySurface = Color(0xFFF1F0EE);
   static const Color lightBorder = Color(0xFFE3E1DD);
   static const Color lightBorderStrong = Color(0xFFCFCCC7);
-  static const Color lightSelectedSurface = Color(0xFFFCE7EA);
+  static const Color lightSelectedSurface = Color(0xFFEDEBE8);
 
   static const Color lightTextPrimary = Color(0xFF18181B);
   static const Color lightTextSecondary = Color(0xFF52525B);
