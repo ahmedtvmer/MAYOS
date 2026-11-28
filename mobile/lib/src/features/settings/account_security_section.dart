@@ -119,7 +119,17 @@ mixin _AccountSecurityMethods on ConsumerState<AccountSecuritySection> {
   FailureMessage? _methodFailure;
   bool _methodNoticeIsError = false;
 
-  ProfileCopy get _copy => ProfileCopy(ref.read(displayLanguageProvider));
+  // Dialogs opened from this section can outlive it (signing out closes
+  // Settings while a dialog is still on screen), and Flutter may rebuild them
+  // after this widget is gone. They read the language through [_language],
+  // which keeps the last value instead of touching a disposed `ref`.
+  String? _lastLanguage;
+  String get _language {
+    if (mounted) _lastLanguage = ref.read(displayLanguageProvider);
+    return _lastLanguage ?? ref.read(displayLanguageProvider);
+  }
+
+  ProfileCopy get _copy => ProfileCopy(_language);
 
   FailureMessage _accountMutationFailure(ApiException error) =>
       mutationFailureMessage(error);
@@ -368,7 +378,7 @@ mixin _AccountSecurityMethods on ConsumerState<AccountSecuritySection> {
                   const SizedBox(height: MayosSpacing.sm),
                   Text(
                     error ??
-                        MayosCopy(ref.read(displayLanguageProvider))
+                        MayosCopy(_language)
                             .failureMessage(dialogFailure!),
                     style: MayosTypography.of(context).bodySecondary
                         .copyWith(color: MayosTheme.of(context).danger),
@@ -402,7 +412,7 @@ mixin _AccountSecurityMethods on ConsumerState<AccountSecuritySection> {
                               _newPassword.text, _newPasswordConfirm.text);
                       if (invalid != null) {
                         final MayosCopy copy =
-                            MayosCopy(ref.read(displayLanguageProvider));
+                            MayosCopy(_language);
                         setDialogState(() => error =
                             newPasswordValidationMessage(invalid, copy));
                         return;
@@ -506,7 +516,7 @@ mixin _AccountSecurityMethods on ConsumerState<AccountSecuritySection> {
                   const SizedBox(height: MayosSpacing.sm),
                   Text(
                     error ??
-                        MayosCopy(ref.read(displayLanguageProvider))
+                        MayosCopy(_language)
                             .failureMessage(dialogFailure!),
                     style: MayosTypography.of(context).bodySecondary
                         .copyWith(color: MayosTheme.of(context).danger),

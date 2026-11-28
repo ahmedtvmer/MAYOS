@@ -1237,7 +1237,8 @@ class _DebriefCard extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: MayosSpacing.xs),
       child: MayosCard(
         key: const Key('chat_debrief'),
-        color: c.accentSubtle,
+        color: c.surfaceElevated,
+        borderColor: c.selectedBorder,
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[

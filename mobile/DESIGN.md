@@ -178,6 +178,17 @@ matching the app icon (`canvas #141414` → `surface #1C1C1E` →
 white elevated surfaces and near-black text (`#18181B`). Success stays green
 and warning stays amber.
 
+Red is kept for action. After the first review (Thomas, 2026-11-28):
+
+- Plain text buttons (Cancel, Skip, inline actions) use the text colour, not red.
+- Selected and highlighted areas (active set row, selected tab pill, the chat
+  Session debrief card) use a neutral lifted grey (`#2A2A2E` dark, `#EDEBE8`
+  light), with a thin red edge where a border marks selection.
+- The focused field outline is near-white in dark mode and near-black in light
+  mode, so it can't be mistaken for an error.
+- The first chart series (for example Protein) is near-white / near-black;
+  success green and warning amber stay as the other series.
+
 ### Danger is told apart by shape
 
 Danger and the brand share one red, so colour alone never says "danger":
